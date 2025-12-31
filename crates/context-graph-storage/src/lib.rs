@@ -21,6 +21,12 @@ pub mod memex;
 pub mod rocksdb_backend;
 pub mod serialization;
 
+// Re-export column family types for storage consumers
+pub use column_families::{
+    cf_names, edges_options, embeddings_options, get_column_family_descriptors, index_options,
+    nodes_options, system_options,
+};
+
 // Re-export core types for storage consumers
 pub use context_graph_core::marblestone::{Domain, EdgeType, NeurotransmitterWeights};
 pub use context_graph_core::types::{

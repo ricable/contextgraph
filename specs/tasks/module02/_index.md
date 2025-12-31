@@ -7,7 +7,7 @@
 - **Foundation:** 12 tasks
 - **Logic:** 6 tasks
 - **Surface:** 10 tasks
-- **Current Progress:** 14/28 (50%) - Tasks 001-014 VERIFIED (Foundation Layer + Logic Serialization)
+- **Current Progress:** 15/28 (54%) - Tasks 001-015 VERIFIED (Foundation Layer + Logic Serialization + Column Families)
 - **Version:** 1.0.0
 - **Created:** 2025-12-31
 - **Dependencies:** module-01-ghost-system
@@ -113,8 +113,8 @@ graph TD
 | 12 | TASK-M02-012 | Implement Johari Transition Logic | foundation | 001 | 2.0 | ✅ Complete |
 | 13 | TASK-M02-013 | Create Storage Crate Structure | logic | 006 | 1.5 | ✅ Complete |
 | 14 | TASK-M02-014 | Implement Bincode Serialization | logic | 013 | 2.5 | ✅ Complete |
-| 15 | TASK-M02-015 | Define Column Family Descriptors | logic | 013 | 3.0 | ⏳ Ready |
-| 16 | TASK-M02-016 | Implement RocksDB Backend Open/Close | logic | 014, 015 | 3.0 | ⛔ Blocked |
+| 15 | TASK-M02-015 | Define Column Family Descriptors | logic | 013 | 3.0 | ✅ Complete |
+| 16 | TASK-M02-016 | Implement RocksDB Backend Open/Close | logic | 014, 015 | 3.0 | ⏳ Ready |
 | 17 | TASK-M02-017 | Implement Node CRUD Operations | logic | 014, 016 | 4.0 | ⛔ Blocked |
 | 18 | TASK-M02-018 | Implement Edge CRUD Operations | logic | 011, 017 | 3.0 | ⛔ Blocked |
 | 19 | TASK-M02-019 | Define EmotionalState Enum | surface | — | 1.0 | ⏳ Ready |
@@ -153,8 +153,8 @@ graph TD
 | TASK-M02-012 | 2025-12-31 | 2025-12-31 | 2025-12-31 | Sherlock-Holmes verified: 27+ transition tests pass, 0 clippy warnings, all transition rules match spec |
 | TASK-M02-013 | 2025-12-31 | 2025-12-31 | 2025-12-31 | Sherlock-Holmes verified: build succeeded, 0 clippy warnings, all re-exports resolve |
 | TASK-M02-014 | 2025-12-31 | 2025-12-31 | 2025-12-31 | Sherlock-Holmes verified: 41/41 tests pass, 0 clippy warnings, hybrid approach (msgpack+bincode) |
-| TASK-M02-015 | — | — | — | **READY** (013 complete) - Column Family Descriptors |
-| TASK-M02-016 | — | — | — | Depends on 014, 015 |
+| TASK-M02-015 | 2025-12-31 | 2025-12-31 | 2025-12-31 | Sherlock-Holmes verified: 23/23 tests pass, 0 clippy warnings, 12 CFs match spec |
+| TASK-M02-016 | — | — | — | **READY** (014, 015 complete) - RocksDB Backend Open/Close |
 | TASK-M02-017 | — | — | — | Depends on 014, 016 |
 | TASK-M02-018 | — | — | — | Depends on 011, 017 |
 | TASK-M02-019 | — | — | — | No dependencies |
