@@ -10,8 +10,8 @@ This matrix ensures every requirement, component, and behavior from the Module 0
 
 | Item | Description | Task ID | File Path | Verified |
 |------|-------------|---------|-----------|----------|
-| JohariQuadrant | Four quadrant enum (Open, Hidden, Blind, Unknown) | TASK-M02-001 | `crates/context-graph-core/src/johari.rs` | ☐ |
-| Modality | Content type classification enum | TASK-M02-002 | `crates/context-graph-core/src/metadata.rs` | ☐ |
+| JohariQuadrant | Four quadrant enum (Open, Hidden, Blind, Unknown) | TASK-M02-001 | `crates/context-graph-core/src/types/johari.rs` | ☑ |
+| Modality | Content type classification enum | TASK-M02-002 | `crates/context-graph-core/src/types/johari.rs` | ☑ |
 | ValidationError | Node validation error types | TASK-M02-004 | `crates/context-graph-core/src/memory_node.rs` | ☐ |
 | Domain | Marblestone context domain enum | TASK-M02-007 | `crates/context-graph-core/src/marblestone.rs` | ☐ |
 | EdgeType | Graph edge relationship types | TASK-M02-009 | `crates/context-graph-core/src/marblestone.rs` | ☐ |

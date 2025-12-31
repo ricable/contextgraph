@@ -7,7 +7,7 @@
 - **Foundation:** 12 tasks
 - **Logic:** 6 tasks
 - **Surface:** 10 tasks
-- **Current Progress:** 0/28 (0%)
+- **Current Progress:** 2/28 (7%)
 - **Version:** 1.0.0
 - **Created:** 2025-12-31
 - **Dependencies:** module-01-ghost-system
@@ -99,9 +99,9 @@ graph TD
 
 | # | Task ID | Title | Layer | Depends On | Est. Hours | Status |
 |---|---------|-------|-------|------------|------------|--------|
-| 1 | TASK-M02-001 | Define JohariQuadrant Enum | foundation | — | 2.0 | ⏳ Ready |
-| 2 | TASK-M02-002 | Define Modality Enum | foundation | — | 1.5 | ⏳ Ready |
-| 3 | TASK-M02-003 | Define NodeMetadata Struct | foundation | 002 | 3.0 | ⛔ Blocked |
+| 1 | TASK-M02-001 | Define JohariQuadrant Enum | foundation | — | 2.0 | ✅ Complete |
+| 2 | TASK-M02-002 | Define Modality Enum | foundation | — | 1.5 | ✅ Complete |
+| 3 | TASK-M02-003 | Define NodeMetadata Struct | foundation | 002 | 3.0 | ⏳ Ready |
 | 4 | TASK-M02-004 | Define ValidationError Enum | foundation | — | 1.0 | ⏳ Ready |
 | 5 | TASK-M02-005 | Define MemoryNode Struct | foundation | 001, 003, 004 | 2.0 | ⛔ Blocked |
 | 6 | TASK-M02-006 | Implement MemoryNode Methods | foundation | 005 | 3.0 | ⛔ Blocked |
@@ -139,8 +139,8 @@ graph TD
 
 | Task | Started | Completed | Verified | Notes |
 |------|---------|-----------|----------|-------|
-| TASK-M02-001 | — | — | — | No dependencies |
-| TASK-M02-002 | — | — | — | No dependencies |
+| TASK-M02-001 | 2025-12-31 | 2025-12-31 | 2025-12-31 | Verified via commit 857b910 |
+| TASK-M02-002 | 2025-12-31 | 2025-12-31 | 2025-12-31 | Verified: 19 tests pass, 0 clippy warnings |
 | TASK-M02-003 | — | — | — | Depends on 002 |
 | TASK-M02-004 | — | — | — | No dependencies |
 | TASK-M02-005 | — | — | — | Depends on 001, 003, 004 |
