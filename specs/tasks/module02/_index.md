@@ -107,7 +107,7 @@ graph TD
 | 6 | TASK-M02-006 | Implement MemoryNode Methods | foundation | 005 | 3.0 | ✅ Complete |
 | 7 | TASK-M02-007 | Define Domain Enum (Marblestone) | foundation | — | 1.0 | ✅ Complete |
 | 8 | TASK-M02-008 | Define NeurotransmitterWeights Struct | foundation | 007 | 2.0 | ✅ Complete |
-| 9 | TASK-M02-009 | Define EdgeType Enum | foundation | — | 0.5 | ⏳ Ready |
+| 9 | TASK-M02-009 | Define EdgeType Enum (Marblestone) + Migrate from graph_edge.rs | foundation | — | 1.5 | ⏳ Ready |
 | 10 | TASK-M02-010 | Define GraphEdge Struct | foundation | 007, 008, 009 | 2.0 | ⛔ Blocked |
 | 11 | TASK-M02-011 | Implement GraphEdge Methods | foundation | 010 | 2.5 | ⛔ Blocked |
 | 12 | TASK-M02-012 | Implement Johari Transition Logic | foundation | 001 | 2.0 | ⛔ Blocked |
@@ -147,7 +147,7 @@ graph TD
 | TASK-M02-006 | 2025-12-31 | 2025-12-31 | 2025-12-31 | Sherlock-Holmes verified: 86/86 tests pass, 0 clippy warnings |
 | TASK-M02-007 | 2025-12-31 | 2025-12-31 | 2025-12-31 | Sherlock-Holmes verified: 29/29 tests pass, 0 clippy warnings |
 | TASK-M02-008 | 2025-12-31 | 2025-12-31 | 2025-12-31 | Sherlock-Holmes verified: 66/66 marblestone tests pass (29 Domain + 37 NT), 0 clippy warnings |
-| TASK-M02-009 | — | — | — | No dependencies |
+| TASK-M02-009 | — | — | — | MIGRATION: Move EdgeType from graph_edge.rs to marblestone.rs, reduce to 4 variants per constitution |
 | TASK-M02-010 | — | — | — | Depends on 007, 008, 009 |
 | TASK-M02-011 | — | — | — | Depends on 010 |
 | TASK-M02-012 | — | — | — | Depends on 001 |
