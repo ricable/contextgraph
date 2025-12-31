@@ -187,10 +187,7 @@ impl JohariQuadrant {
         trigger: TransitionTrigger,
     ) -> Result<JohariTransition, String> {
         if *self == target {
-            return Err(format!(
-                "Cannot transition to same quadrant: {:?}",
-                self
-            ));
+            return Err(format!("Cannot transition to same quadrant: {:?}", self));
         }
 
         let is_valid = self
@@ -203,7 +200,11 @@ impl JohariQuadrant {
         } else {
             Err(format!(
                 "Invalid transition: {:?} -> {:?} via {:?}. Valid transitions from {:?}: {:?}",
-                self, target, trigger, self, self.valid_transitions()
+                self,
+                target,
+                trigger,
+                self,
+                self.valid_transitions()
             ))
         }
     }
@@ -966,7 +967,11 @@ mod tests {
     #[test]
     fn test_transition_trigger_all_variants() {
         let all = TransitionTrigger::all();
-        assert_eq!(all.len(), 6, "TransitionTrigger should have exactly 6 variants");
+        assert_eq!(
+            all.len(),
+            6,
+            "TransitionTrigger should have exactly 6 variants"
+        );
         assert!(all.contains(&TransitionTrigger::ExplicitShare));
         assert!(all.contains(&TransitionTrigger::SelfRecognition));
         assert!(all.contains(&TransitionTrigger::PatternDiscovery));
@@ -987,19 +992,35 @@ mod tests {
 
     #[test]
     fn test_transition_trigger_display() {
-        assert_eq!(format!("{}", TransitionTrigger::ExplicitShare), "ExplicitShare");
-        assert_eq!(format!("{}", TransitionTrigger::SelfRecognition), "SelfRecognition");
-        assert_eq!(format!("{}", TransitionTrigger::PatternDiscovery), "PatternDiscovery");
+        assert_eq!(
+            format!("{}", TransitionTrigger::ExplicitShare),
+            "ExplicitShare"
+        );
+        assert_eq!(
+            format!("{}", TransitionTrigger::SelfRecognition),
+            "SelfRecognition"
+        );
+        assert_eq!(
+            format!("{}", TransitionTrigger::PatternDiscovery),
+            "PatternDiscovery"
+        );
         assert_eq!(format!("{}", TransitionTrigger::Privatize), "Privatize");
-        assert_eq!(format!("{}", TransitionTrigger::ExternalObservation), "ExternalObservation");
-        assert_eq!(format!("{}", TransitionTrigger::DreamConsolidation), "DreamConsolidation");
+        assert_eq!(
+            format!("{}", TransitionTrigger::ExternalObservation),
+            "ExternalObservation"
+        );
+        assert_eq!(
+            format!("{}", TransitionTrigger::DreamConsolidation),
+            "DreamConsolidation"
+        );
     }
 
     #[test]
     fn test_transition_trigger_serde_roundtrip() {
         for trigger in TransitionTrigger::all() {
             let json = serde_json::to_string(&trigger).expect("serialize failed");
-            let parsed: TransitionTrigger = serde_json::from_str(&json).expect("deserialize failed");
+            let parsed: TransitionTrigger =
+                serde_json::from_str(&json).expect("deserialize failed");
             assert_eq!(trigger, parsed, "Roundtrip failed for {:?}", trigger);
         }
     }
@@ -1007,12 +1028,30 @@ mod tests {
     #[test]
     fn test_transition_trigger_serde_snake_case() {
         // Verify snake_case serialization per constitution.yaml requirement
-        assert_eq!(serde_json::to_string(&TransitionTrigger::ExplicitShare).unwrap(), "\"explicit_share\"");
-        assert_eq!(serde_json::to_string(&TransitionTrigger::SelfRecognition).unwrap(), "\"self_recognition\"");
-        assert_eq!(serde_json::to_string(&TransitionTrigger::PatternDiscovery).unwrap(), "\"pattern_discovery\"");
-        assert_eq!(serde_json::to_string(&TransitionTrigger::Privatize).unwrap(), "\"privatize\"");
-        assert_eq!(serde_json::to_string(&TransitionTrigger::ExternalObservation).unwrap(), "\"external_observation\"");
-        assert_eq!(serde_json::to_string(&TransitionTrigger::DreamConsolidation).unwrap(), "\"dream_consolidation\"");
+        assert_eq!(
+            serde_json::to_string(&TransitionTrigger::ExplicitShare).unwrap(),
+            "\"explicit_share\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TransitionTrigger::SelfRecognition).unwrap(),
+            "\"self_recognition\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TransitionTrigger::PatternDiscovery).unwrap(),
+            "\"pattern_discovery\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TransitionTrigger::Privatize).unwrap(),
+            "\"privatize\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TransitionTrigger::ExternalObservation).unwrap(),
+            "\"external_observation\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TransitionTrigger::DreamConsolidation).unwrap(),
+            "\"dream_consolidation\""
+        );
     }
 
     #[test]
@@ -1026,8 +1065,12 @@ mod tests {
 
     #[test]
     fn test_open_to_hidden_via_privatize() {
-        let result = JohariQuadrant::Open.transition_to(JohariQuadrant::Hidden, TransitionTrigger::Privatize);
-        assert!(result.is_ok(), "Open -> Hidden via Privatize should succeed");
+        let result = JohariQuadrant::Open
+            .transition_to(JohariQuadrant::Hidden, TransitionTrigger::Privatize);
+        assert!(
+            result.is_ok(),
+            "Open -> Hidden via Privatize should succeed"
+        );
         let transition = result.unwrap();
         assert_eq!(transition.from, JohariQuadrant::Open);
         assert_eq!(transition.to, JohariQuadrant::Hidden);
@@ -1037,16 +1080,24 @@ mod tests {
 
     #[test]
     fn test_open_cannot_go_to_blind() {
-        let result = JohariQuadrant::Open.transition_to(JohariQuadrant::Blind, TransitionTrigger::SelfRecognition);
+        let result = JohariQuadrant::Open
+            .transition_to(JohariQuadrant::Blind, TransitionTrigger::SelfRecognition);
         assert!(result.is_err(), "Open -> Blind should fail");
         let err = result.unwrap_err();
-        assert!(err.contains("Invalid transition"), "Error should mention 'Invalid transition': {}", err);
+        assert!(
+            err.contains("Invalid transition"),
+            "Error should mention 'Invalid transition': {}",
+            err
+        );
         println!("Open -> Blind error: {}", err);
     }
 
     #[test]
     fn test_open_cannot_go_to_unknown() {
-        let result = JohariQuadrant::Open.transition_to(JohariQuadrant::Unknown, TransitionTrigger::DreamConsolidation);
+        let result = JohariQuadrant::Open.transition_to(
+            JohariQuadrant::Unknown,
+            TransitionTrigger::DreamConsolidation,
+        );
         assert!(result.is_err(), "Open -> Unknown should fail");
         let err = result.unwrap_err();
         assert!(err.contains("Invalid transition"));
@@ -1055,8 +1106,12 @@ mod tests {
 
     #[test]
     fn test_hidden_to_open_via_explicit_share() {
-        let result = JohariQuadrant::Hidden.transition_to(JohariQuadrant::Open, TransitionTrigger::ExplicitShare);
-        assert!(result.is_ok(), "Hidden -> Open via ExplicitShare should succeed");
+        let result = JohariQuadrant::Hidden
+            .transition_to(JohariQuadrant::Open, TransitionTrigger::ExplicitShare);
+        assert!(
+            result.is_ok(),
+            "Hidden -> Open via ExplicitShare should succeed"
+        );
         let transition = result.unwrap();
         assert_eq!(transition.from, JohariQuadrant::Hidden);
         assert_eq!(transition.to, JohariQuadrant::Open);
@@ -1066,22 +1121,30 @@ mod tests {
 
     #[test]
     fn test_hidden_cannot_go_to_blind() {
-        let result = JohariQuadrant::Hidden.transition_to(JohariQuadrant::Blind, TransitionTrigger::SelfRecognition);
+        let result = JohariQuadrant::Hidden
+            .transition_to(JohariQuadrant::Blind, TransitionTrigger::SelfRecognition);
         assert!(result.is_err(), "Hidden -> Blind should fail");
         println!("Hidden -> Blind error: {}", result.unwrap_err());
     }
 
     #[test]
     fn test_hidden_cannot_go_to_unknown() {
-        let result = JohariQuadrant::Hidden.transition_to(JohariQuadrant::Unknown, TransitionTrigger::DreamConsolidation);
+        let result = JohariQuadrant::Hidden.transition_to(
+            JohariQuadrant::Unknown,
+            TransitionTrigger::DreamConsolidation,
+        );
         assert!(result.is_err(), "Hidden -> Unknown should fail");
         println!("Hidden -> Unknown error: {}", result.unwrap_err());
     }
 
     #[test]
     fn test_blind_to_open_via_self_recognition() {
-        let result = JohariQuadrant::Blind.transition_to(JohariQuadrant::Open, TransitionTrigger::SelfRecognition);
-        assert!(result.is_ok(), "Blind -> Open via SelfRecognition should succeed");
+        let result = JohariQuadrant::Blind
+            .transition_to(JohariQuadrant::Open, TransitionTrigger::SelfRecognition);
+        assert!(
+            result.is_ok(),
+            "Blind -> Open via SelfRecognition should succeed"
+        );
         let transition = result.unwrap();
         assert_eq!(transition.from, JohariQuadrant::Blind);
         assert_eq!(transition.to, JohariQuadrant::Open);
@@ -1091,8 +1154,12 @@ mod tests {
 
     #[test]
     fn test_blind_to_hidden_via_self_recognition() {
-        let result = JohariQuadrant::Blind.transition_to(JohariQuadrant::Hidden, TransitionTrigger::SelfRecognition);
-        assert!(result.is_ok(), "Blind -> Hidden via SelfRecognition should succeed");
+        let result = JohariQuadrant::Blind
+            .transition_to(JohariQuadrant::Hidden, TransitionTrigger::SelfRecognition);
+        assert!(
+            result.is_ok(),
+            "Blind -> Hidden via SelfRecognition should succeed"
+        );
         let transition = result.unwrap();
         assert_eq!(transition.from, JohariQuadrant::Blind);
         assert_eq!(transition.to, JohariQuadrant::Hidden);
@@ -1102,15 +1169,22 @@ mod tests {
 
     #[test]
     fn test_blind_cannot_go_to_unknown() {
-        let result = JohariQuadrant::Blind.transition_to(JohariQuadrant::Unknown, TransitionTrigger::DreamConsolidation);
+        let result = JohariQuadrant::Blind.transition_to(
+            JohariQuadrant::Unknown,
+            TransitionTrigger::DreamConsolidation,
+        );
         assert!(result.is_err(), "Blind -> Unknown should fail");
         println!("Blind -> Unknown error: {}", result.unwrap_err());
     }
 
     #[test]
     fn test_unknown_to_open_via_dream_consolidation() {
-        let result = JohariQuadrant::Unknown.transition_to(JohariQuadrant::Open, TransitionTrigger::DreamConsolidation);
-        assert!(result.is_ok(), "Unknown -> Open via DreamConsolidation should succeed");
+        let result = JohariQuadrant::Unknown
+            .transition_to(JohariQuadrant::Open, TransitionTrigger::DreamConsolidation);
+        assert!(
+            result.is_ok(),
+            "Unknown -> Open via DreamConsolidation should succeed"
+        );
         let transition = result.unwrap();
         assert_eq!(transition.from, JohariQuadrant::Unknown);
         assert_eq!(transition.to, JohariQuadrant::Open);
@@ -1120,8 +1194,12 @@ mod tests {
 
     #[test]
     fn test_unknown_to_open_via_pattern_discovery() {
-        let result = JohariQuadrant::Unknown.transition_to(JohariQuadrant::Open, TransitionTrigger::PatternDiscovery);
-        assert!(result.is_ok(), "Unknown -> Open via PatternDiscovery should succeed");
+        let result = JohariQuadrant::Unknown
+            .transition_to(JohariQuadrant::Open, TransitionTrigger::PatternDiscovery);
+        assert!(
+            result.is_ok(),
+            "Unknown -> Open via PatternDiscovery should succeed"
+        );
         let transition = result.unwrap();
         assert_eq!(transition.from, JohariQuadrant::Unknown);
         assert_eq!(transition.to, JohariQuadrant::Open);
@@ -1131,8 +1209,14 @@ mod tests {
 
     #[test]
     fn test_unknown_to_hidden_via_dream_consolidation() {
-        let result = JohariQuadrant::Unknown.transition_to(JohariQuadrant::Hidden, TransitionTrigger::DreamConsolidation);
-        assert!(result.is_ok(), "Unknown -> Hidden via DreamConsolidation should succeed");
+        let result = JohariQuadrant::Unknown.transition_to(
+            JohariQuadrant::Hidden,
+            TransitionTrigger::DreamConsolidation,
+        );
+        assert!(
+            result.is_ok(),
+            "Unknown -> Hidden via DreamConsolidation should succeed"
+        );
         let transition = result.unwrap();
         assert_eq!(transition.from, JohariQuadrant::Unknown);
         assert_eq!(transition.to, JohariQuadrant::Hidden);
@@ -1142,8 +1226,14 @@ mod tests {
 
     #[test]
     fn test_unknown_to_blind_via_external_observation() {
-        let result = JohariQuadrant::Unknown.transition_to(JohariQuadrant::Blind, TransitionTrigger::ExternalObservation);
-        assert!(result.is_ok(), "Unknown -> Blind via ExternalObservation should succeed");
+        let result = JohariQuadrant::Unknown.transition_to(
+            JohariQuadrant::Blind,
+            TransitionTrigger::ExternalObservation,
+        );
+        assert!(
+            result.is_ok(),
+            "Unknown -> Blind via ExternalObservation should succeed"
+        );
         let transition = result.unwrap();
         assert_eq!(transition.from, JohariQuadrant::Unknown);
         assert_eq!(transition.to, JohariQuadrant::Blind);
@@ -1157,9 +1247,18 @@ mod tests {
             // Try all triggers for self-transition
             for trigger in TransitionTrigger::all() {
                 let result = quadrant.transition_to(quadrant, trigger);
-                assert!(result.is_err(), "Self-transition {:?} -> {:?} should fail", quadrant, quadrant);
+                assert!(
+                    result.is_err(),
+                    "Self-transition {:?} -> {:?} should fail",
+                    quadrant,
+                    quadrant
+                );
                 let err = result.unwrap_err();
-                assert!(err.contains("Cannot transition to same quadrant"), "Error should mention 'same quadrant': {}", err);
+                assert!(
+                    err.contains("Cannot transition to same quadrant"),
+                    "Error should mention 'same quadrant': {}",
+                    err
+                );
             }
             println!("VERIFIED: {:?} cannot transition to itself", quadrant);
         }
@@ -1168,10 +1267,18 @@ mod tests {
     #[test]
     fn test_invalid_trigger_rejected() {
         // Valid target (Hidden) but wrong trigger (not Privatize)
-        let result = JohariQuadrant::Open.transition_to(JohariQuadrant::Hidden, TransitionTrigger::ExplicitShare);
-        assert!(result.is_err(), "Open -> Hidden via ExplicitShare should fail (wrong trigger)");
+        let result = JohariQuadrant::Open
+            .transition_to(JohariQuadrant::Hidden, TransitionTrigger::ExplicitShare);
+        assert!(
+            result.is_err(),
+            "Open -> Hidden via ExplicitShare should fail (wrong trigger)"
+        );
         let err = result.unwrap_err();
-        assert!(err.contains("Invalid transition"), "Error should mention 'Invalid transition': {}", err);
+        assert!(
+            err.contains("Invalid transition"),
+            "Error should mention 'Invalid transition': {}",
+            err
+        );
         println!("Wrong trigger rejected: {}", err);
     }
 
@@ -1188,25 +1295,46 @@ mod tests {
         // Timestamp should be roughly now (within 1 second)
         let now = chrono::Utc::now();
         let diff = (now - transition.timestamp).num_seconds().abs();
-        assert!(diff < 2, "Timestamp should be within 2 seconds of now, got diff={}", diff);
+        assert!(
+            diff < 2,
+            "Timestamp should be within 2 seconds of now, got diff={}",
+            diff
+        );
         println!("Transition record: {:?}", transition);
     }
 
     #[test]
     fn test_valid_transitions_count() {
         // Open: 1 (-> Hidden)
-        assert_eq!(JohariQuadrant::Open.valid_transitions().len(), 1, "Open should have 1 valid transition");
+        assert_eq!(
+            JohariQuadrant::Open.valid_transitions().len(),
+            1,
+            "Open should have 1 valid transition"
+        );
 
         // Hidden: 1 (-> Open)
-        assert_eq!(JohariQuadrant::Hidden.valid_transitions().len(), 1, "Hidden should have 1 valid transition");
+        assert_eq!(
+            JohariQuadrant::Hidden.valid_transitions().len(),
+            1,
+            "Hidden should have 1 valid transition"
+        );
 
         // Blind: 2 (-> Open, -> Hidden)
-        assert_eq!(JohariQuadrant::Blind.valid_transitions().len(), 2, "Blind should have 2 valid transitions");
+        assert_eq!(
+            JohariQuadrant::Blind.valid_transitions().len(),
+            2,
+            "Blind should have 2 valid transitions"
+        );
 
         // Unknown: 4 (-> Open×2, -> Hidden, -> Blind)
-        assert_eq!(JohariQuadrant::Unknown.valid_transitions().len(), 4, "Unknown should have 4 valid transitions");
+        assert_eq!(
+            JohariQuadrant::Unknown.valid_transitions().len(),
+            4,
+            "Unknown should have 4 valid transitions"
+        );
 
-        println!("Transition counts: Open={}, Hidden={}, Blind={}, Unknown={}",
+        println!(
+            "Transition counts: Open={}, Hidden={}, Blind={}, Unknown={}",
             JohariQuadrant::Open.valid_transitions().len(),
             JohariQuadrant::Hidden.valid_transitions().len(),
             JohariQuadrant::Blind.valid_transitions().len(),
@@ -1217,7 +1345,11 @@ mod tests {
     #[test]
     fn test_can_transition_to_false_for_self() {
         for quadrant in JohariQuadrant::all() {
-            assert!(!quadrant.can_transition_to(quadrant), "{:?} should not be able to transition to itself", quadrant);
+            assert!(
+                !quadrant.can_transition_to(quadrant),
+                "{:?} should not be able to transition to itself",
+                quadrant
+            );
         }
     }
 
@@ -1257,7 +1389,9 @@ mod tests {
         assert_eq!(transition.to, parsed.to);
         assert_eq!(transition.trigger, parsed.trigger);
         // Timestamps might differ slightly due to precision, just check they're close
-        let diff = (transition.timestamp - parsed.timestamp).num_milliseconds().abs();
+        let diff = (transition.timestamp - parsed.timestamp)
+            .num_milliseconds()
+            .abs();
         assert!(diff < 1000, "Timestamps should be within 1 second");
         println!("JohariTransition roundtrip JSON: {}", json);
     }
@@ -1292,7 +1426,12 @@ mod tests {
         let transitions = JohariQuadrant::Unknown.valid_transitions();
         for (target, trigger) in transitions.iter() {
             let result = JohariQuadrant::Unknown.transition_to(*target, *trigger);
-            assert!(result.is_ok(), "Unknown -> {:?} via {:?} should succeed", target, trigger);
+            assert!(
+                result.is_ok(),
+                "Unknown -> {:?} via {:?} should succeed",
+                target,
+                trigger
+            );
             println!("Unknown -> {:?} via {:?}: OK", target, trigger);
         }
     }
@@ -1309,9 +1448,17 @@ mod tests {
             if target == JohariQuadrant::Hidden {
                 assert!(result, "Open should be able to transition to Hidden");
             } else {
-                assert!(!result, "Open should NOT be able to transition to {:?}", target);
+                assert!(
+                    !result,
+                    "Open should NOT be able to transition to {:?}",
+                    target
+                );
             }
-            println!("Open -> {:?}: {}", target, if result { "VALID" } else { "INVALID" });
+            println!(
+                "Open -> {:?}: {}",
+                target,
+                if result { "VALID" } else { "INVALID" }
+            );
         }
     }
 }

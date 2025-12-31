@@ -9,6 +9,7 @@ license = "MIT"
 context-graph-core = { path = "../context-graph-core" }
 rocksdb = "0.22"
 bincode = "1.3"
+rmp-serde = "1.1"
 thiserror = "1.0"
 uuid = { version = "1.6", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }

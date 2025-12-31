@@ -467,8 +467,8 @@ impl Handlers {
                     "node": {
                         "id": node.id.to_string(),
                         "content": node.content,
-                        "modality": format!("{:?}", node.modality),
-                        "johariQuadrant": format!("{:?}", node.johari_quadrant),
+                        "modality": format!("{:?}", node.metadata.modality),
+                        "johariQuadrant": format!("{:?}", node.quadrant),
                         "importance": node.importance,
                         "createdAt": node.created_at.to_rfc3339(),
                     }

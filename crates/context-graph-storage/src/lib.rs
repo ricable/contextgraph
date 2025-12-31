@@ -24,6 +24,12 @@ pub mod serialization;
 // Re-export core types for storage consumers
 pub use context_graph_core::marblestone::{Domain, EdgeType, NeurotransmitterWeights};
 pub use context_graph_core::types::{
-    EdgeId, EmbeddingVector, GraphEdge, JohariQuadrant, MemoryNode, Modality, NodeId,
-    NodeMetadata, ValidationError,
+    EdgeId, EmbeddingVector, GraphEdge, JohariQuadrant, MemoryNode, Modality, NodeId, NodeMetadata,
+    ValidationError,
+};
+
+// Re-export serialization types and functions
+pub use serialization::{
+    deserialize_edge, deserialize_embedding, deserialize_node, deserialize_uuid, serialize_edge,
+    serialize_embedding, serialize_node, serialize_uuid, SerializationError,
 };

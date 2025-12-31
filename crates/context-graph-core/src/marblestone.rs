@@ -186,7 +186,11 @@ impl NeurotransmitterWeights {
     /// ```
     #[inline]
     pub fn new(excitatory: f32, inhibitory: f32, modulatory: f32) -> Self {
-        Self { excitatory, inhibitory, modulatory }
+        Self {
+            excitatory,
+            inhibitory,
+            modulatory,
+        }
     }
 
     /// Get domain-specific neurotransmitter profile.
@@ -285,9 +289,12 @@ impl NeurotransmitterWeights {
             return false;
         }
         // Check valid range [0.0, 1.0]
-        self.excitatory >= 0.0 && self.excitatory <= 1.0
-            && self.inhibitory >= 0.0 && self.inhibitory <= 1.0
-            && self.modulatory >= 0.0 && self.modulatory <= 1.0
+        self.excitatory >= 0.0
+            && self.excitatory <= 1.0
+            && self.inhibitory >= 0.0
+            && self.inhibitory <= 1.0
+            && self.modulatory >= 0.0
+            && self.modulatory <= 1.0
     }
 }
 
@@ -364,7 +371,12 @@ impl EdgeType {
     /// Returns all edge type variants as an array.
     #[inline]
     pub fn all() -> [EdgeType; 4] {
-        [Self::Semantic, Self::Temporal, Self::Causal, Self::Hierarchical]
+        [
+            Self::Semantic,
+            Self::Temporal,
+            Self::Causal,
+            Self::Hierarchical,
+        ]
     }
 
     /// Returns the default base weight for this edge type.
@@ -428,39 +440,65 @@ mod tests {
     fn test_description_non_empty_for_all_variants() {
         for domain in Domain::all() {
             let desc = domain.description();
-            assert!(!desc.is_empty(), "Description for {:?} must not be empty", domain);
-            assert!(desc.len() > 10, "Description for {:?} should be meaningful", domain);
+            assert!(
+                !desc.is_empty(),
+                "Description for {:?} must not be empty",
+                domain
+            );
+            assert!(
+                desc.len() > 10,
+                "Description for {:?} should be meaningful",
+                domain
+            );
         }
     }
 
     #[test]
     fn test_code_description_mentions_precision() {
-        assert!(Domain::Code.description().to_lowercase().contains("precision"));
+        assert!(Domain::Code
+            .description()
+            .to_lowercase()
+            .contains("precision"));
     }
 
     #[test]
     fn test_legal_description_mentions_reasoning() {
-        assert!(Domain::Legal.description().to_lowercase().contains("reasoning"));
+        assert!(Domain::Legal
+            .description()
+            .to_lowercase()
+            .contains("reasoning"));
     }
 
     #[test]
     fn test_medical_description_mentions_causal() {
-        assert!(Domain::Medical.description().to_lowercase().contains("causal"));
+        assert!(Domain::Medical
+            .description()
+            .to_lowercase()
+            .contains("causal"));
     }
 
     #[test]
     fn test_creative_description_mentions_exploration() {
-        assert!(Domain::Creative.description().to_lowercase().contains("exploration"));
+        assert!(Domain::Creative
+            .description()
+            .to_lowercase()
+            .contains("exploration"));
     }
 
     #[test]
     fn test_research_description_mentions_balanced() {
-        assert!(Domain::Research.description().to_lowercase().contains("balanced"));
+        assert!(Domain::Research
+            .description()
+            .to_lowercase()
+            .contains("balanced"));
     }
 
     #[test]
     fn test_general_description_mentions_default() {
-        assert!(Domain::General.description().to_lowercase().contains("default"));
+        assert!(Domain::General
+            .description()
+            .to_lowercase()
+            .contains("default"));
     }
 
     // =========================================================================
@@ -533,7 +571,12 @@ mod tests {
     fn test_display_all_lowercase() {
         for domain in Domain::all() {
             let s = domain.to_string();
-            assert_eq!(s, s.to_lowercase(), "Display for {:?} must be lowercase", domain);
+            assert_eq!(
+                s,
+                s.to_lowercase(),
+                "Display for {:?} must be lowercase",
+                domain
+            );
         }
     }
 
@@ -570,8 +613,12 @@ mod tests {
             let json = serde_json::to_string(&domain).unwrap();
             // Remove quotes
             let value = json.trim_matches('"');
-            assert!(value.chars().all(|c| c.is_lowercase() || c == '_'),
-                "Serde output for {:?} must be snake_case: {}", domain, value);
+            assert!(
+                value.chars().all(|c| c.is_lowercase() || c == '_'),
+                "Serde output for {:?} must be snake_case: {}",
+                domain,
+                value
+            );
         }
     }
 
@@ -711,7 +758,11 @@ mod tests {
     fn test_nt_all_domains_produce_valid_weights() {
         for domain in Domain::all() {
             let weights = NeurotransmitterWeights::for_domain(domain);
-            assert!(weights.validate(), "Domain {:?} produced invalid weights", domain);
+            assert!(
+                weights.validate(),
+                "Domain {:?} produced invalid weights",
+                domain
+            );
         }
     }
 
@@ -722,7 +773,11 @@ mod tests {
         let weights = NeurotransmitterWeights::for_domain(Domain::General);
         // General: (1.0*0.5 - 1.0*0.2) * (1 + (0.3-0.5)*0.4) = 0.3 * 0.92 = 0.276
         let effective = weights.compute_effective_weight(1.0);
-        assert!((effective - 0.276).abs() < 0.001, "Expected ~0.276, got {}", effective);
+        assert!(
+            (effective - 0.276).abs() < 0.001,
+            "Expected ~0.276, got {}",
+            effective
+        );
     }
 
     #[test]
@@ -731,7 +786,11 @@ mod tests {
         // Creative has high excitatory (0.8), low inhibitory (0.1)
         // (1.0*0.8 - 1.0*0.1) * (1 + (0.6-0.5)*0.4) = 0.7 * 1.04 = 0.728
         let effective = weights.compute_effective_weight(1.0);
-        assert!((effective - 0.728).abs() < 0.001, "Expected ~0.728, got {}", effective);
+        assert!(
+            (effective - 0.728).abs() < 0.001,
+            "Expected ~0.728, got {}",
+            effective
+        );
     }
 
     #[test]
@@ -740,7 +799,11 @@ mod tests {
         // Legal has equal excitatory/inhibitory (0.4, 0.4) = net zero signal
         // (1.0*0.4 - 1.0*0.4) * (1 + (0.2-0.5)*0.4) = 0.0 * 0.88 = 0.0
         let effective = weights.compute_effective_weight(1.0);
-        assert!((effective - 0.0).abs() < 0.001, "Expected ~0.0, got {}", effective);
+        assert!(
+            (effective - 0.0).abs() < 0.001,
+            "Expected ~0.0, got {}",
+            effective
+        );
     }
 
     #[test]
@@ -780,7 +843,11 @@ mod tests {
                         assert!(
                             effective >= 0.0 && effective <= 1.0,
                             "Out of range: exc={}, inh={}, mod={}, base={} -> {}",
-                            exc, inh, modul, base, effective
+                            exc,
+                            inh,
+                            modul,
+                            base,
+                            effective
                         );
                     }
                 }
@@ -849,13 +916,19 @@ mod tests {
     #[test]
     fn test_nt_validate_infinity() {
         let weights = NeurotransmitterWeights::new(f32::INFINITY, 0.5, 0.5);
-        assert!(!weights.validate(), "Infinity must fail validation per AP-009");
+        assert!(
+            !weights.validate(),
+            "Infinity must fail validation per AP-009"
+        );
     }
 
     #[test]
     fn test_nt_validate_neg_infinity() {
         let weights = NeurotransmitterWeights::new(f32::NEG_INFINITY, 0.5, 0.5);
-        assert!(!weights.validate(), "Neg infinity must fail validation per AP-009");
+        assert!(
+            !weights.validate(),
+            "Neg infinity must fail validation per AP-009"
+        );
     }
 
     // --- Default Implementation Tests ---
@@ -864,7 +937,10 @@ mod tests {
     fn test_nt_default_is_general() {
         let default_weights = NeurotransmitterWeights::default();
         let general_weights = NeurotransmitterWeights::for_domain(Domain::General);
-        assert_eq!(default_weights, general_weights, "Default must equal General profile");
+        assert_eq!(
+            default_weights, general_weights,
+            "Default must equal General profile"
+        );
     }
 
     #[test]
@@ -921,7 +997,8 @@ mod tests {
     fn test_nt_serde_roundtrip() {
         let weights = NeurotransmitterWeights::new(0.6, 0.3, 0.4);
         let json = serde_json::to_string(&weights).expect("serialize failed");
-        let restored: NeurotransmitterWeights = serde_json::from_str(&json).expect("deserialize failed");
+        let restored: NeurotransmitterWeights =
+            serde_json::from_str(&json).expect("deserialize failed");
         assert_eq!(weights, restored);
     }
 
@@ -939,7 +1016,8 @@ mod tests {
         for domain in Domain::all() {
             let weights = NeurotransmitterWeights::for_domain(domain);
             let json = serde_json::to_string(&weights).expect("serialize failed");
-            let restored: NeurotransmitterWeights = serde_json::from_str(&json).expect("deserialize failed");
+            let restored: NeurotransmitterWeights =
+                serde_json::from_str(&json).expect("deserialize failed");
             assert_eq!(weights, restored, "Roundtrip failed for {:?}", domain);
         }
     }
@@ -966,22 +1044,34 @@ mod tests {
 
     #[test]
     fn test_edge_type_semantic_description() {
-        assert!(EdgeType::Semantic.description().to_lowercase().contains("similar"));
+        assert!(EdgeType::Semantic
+            .description()
+            .to_lowercase()
+            .contains("similar"));
     }
 
     #[test]
     fn test_edge_type_temporal_description() {
-        assert!(EdgeType::Temporal.description().to_lowercase().contains("time"));
+        assert!(EdgeType::Temporal
+            .description()
+            .to_lowercase()
+            .contains("time"));
     }
 
     #[test]
     fn test_edge_type_causal_description() {
-        assert!(EdgeType::Causal.description().to_lowercase().contains("cause"));
+        assert!(EdgeType::Causal
+            .description()
+            .to_lowercase()
+            .contains("cause"));
     }
 
     #[test]
     fn test_edge_type_hierarchical_description() {
-        assert!(EdgeType::Hierarchical.description().to_lowercase().contains("parent"));
+        assert!(EdgeType::Hierarchical
+            .description()
+            .to_lowercase()
+            .contains("parent"));
     }
 
     // --- all() Tests ---
@@ -1033,8 +1123,12 @@ mod tests {
     fn test_edge_type_weights_in_valid_range() {
         for edge_type in EdgeType::all() {
             let weight = edge_type.default_weight();
-            assert!(weight >= 0.0 && weight <= 1.0,
-                "Weight {} for {:?} out of range", weight, edge_type);
+            assert!(
+                weight >= 0.0 && weight <= 1.0,
+                "Weight {} for {:?} out of range",
+                weight,
+                edge_type
+            );
         }
     }
 
@@ -1071,7 +1165,12 @@ mod tests {
     fn test_edge_type_display_all_lowercase() {
         for edge_type in EdgeType::all() {
             let s = edge_type.to_string();
-            assert_eq!(s, s.to_lowercase(), "Display for {:?} not lowercase", edge_type);
+            assert_eq!(
+                s,
+                s.to_lowercase(),
+                "Display for {:?} not lowercase",
+                edge_type
+            );
         }
     }
 
@@ -1101,7 +1200,10 @@ mod tests {
     #[test]
     fn test_edge_type_serde_invalid_variant_fails() {
         let result: Result<EdgeType, _> = serde_json::from_str(r#""invalid""#);
-        assert!(result.is_err(), "Invalid variant should fail deserialization");
+        assert!(
+            result.is_err(),
+            "Invalid variant should fail deserialization"
+        );
     }
 
     // --- Derive Trait Tests ---

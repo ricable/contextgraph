@@ -160,12 +160,7 @@ impl GraphEdge {
     /// );
     /// assert_eq!(edge.weight, 0.8); // Causal default
     /// ```
-    pub fn new(
-        source_id: NodeId,
-        target_id: NodeId,
-        edge_type: EdgeType,
-        domain: Domain,
-    ) -> Self {
+    pub fn new(source_id: NodeId, target_id: NodeId, edge_type: EdgeType, domain: Domain) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
@@ -256,7 +251,9 @@ impl GraphEdge {
     /// ```
     #[inline]
     pub fn get_modulated_weight(&self) -> f32 {
-        let nt_factor = self.neurotransmitter_weights.compute_effective_weight(self.weight);
+        let nt_factor = self
+            .neurotransmitter_weights
+            .compute_effective_weight(self.weight);
         (nt_factor * (1.0 + self.steering_reward * 0.2)).clamp(0.0, 1.0)
     }
 
@@ -583,18 +580,48 @@ mod tests {
 
         // Verify all field names appear in JSON
         assert!(json.contains("\"id\""), "JSON missing id field");
-        assert!(json.contains("\"source_id\""), "JSON missing source_id field");
-        assert!(json.contains("\"target_id\""), "JSON missing target_id field");
-        assert!(json.contains("\"edge_type\""), "JSON missing edge_type field");
+        assert!(
+            json.contains("\"source_id\""),
+            "JSON missing source_id field"
+        );
+        assert!(
+            json.contains("\"target_id\""),
+            "JSON missing target_id field"
+        );
+        assert!(
+            json.contains("\"edge_type\""),
+            "JSON missing edge_type field"
+        );
         assert!(json.contains("\"weight\""), "JSON missing weight field");
-        assert!(json.contains("\"confidence\""), "JSON missing confidence field");
+        assert!(
+            json.contains("\"confidence\""),
+            "JSON missing confidence field"
+        );
         assert!(json.contains("\"domain\""), "JSON missing domain field");
-        assert!(json.contains("\"neurotransmitter_weights\""), "JSON missing neurotransmitter_weights field");
-        assert!(json.contains("\"is_amortized_shortcut\""), "JSON missing is_amortized_shortcut field");
-        assert!(json.contains("\"steering_reward\""), "JSON missing steering_reward field");
-        assert!(json.contains("\"traversal_count\""), "JSON missing traversal_count field");
-        assert!(json.contains("\"created_at\""), "JSON missing created_at field");
-        assert!(json.contains("\"last_traversed_at\""), "JSON missing last_traversed_at field");
+        assert!(
+            json.contains("\"neurotransmitter_weights\""),
+            "JSON missing neurotransmitter_weights field"
+        );
+        assert!(
+            json.contains("\"is_amortized_shortcut\""),
+            "JSON missing is_amortized_shortcut field"
+        );
+        assert!(
+            json.contains("\"steering_reward\""),
+            "JSON missing steering_reward field"
+        );
+        assert!(
+            json.contains("\"traversal_count\""),
+            "JSON missing traversal_count field"
+        );
+        assert!(
+            json.contains("\"created_at\""),
+            "JSON missing created_at field"
+        );
+        assert!(
+            json.contains("\"last_traversed_at\""),
+            "JSON missing last_traversed_at field"
+        );
     }
 
     #[test]
@@ -625,7 +652,10 @@ mod tests {
         edge.edge_type = EdgeType::Hierarchical;
 
         let json = serde_json::to_string(&edge).unwrap();
-        assert!(json.contains("\"hierarchical\""), "EdgeType should serialize to snake_case");
+        assert!(
+            json.contains("\"hierarchical\""),
+            "EdgeType should serialize to snake_case"
+        );
     }
 
     #[test]
@@ -634,7 +664,10 @@ mod tests {
         edge.domain = Domain::Medical;
 
         let json = serde_json::to_string(&edge).unwrap();
-        assert!(json.contains("\"medical\""), "Domain should serialize to snake_case");
+        assert!(
+            json.contains("\"medical\""),
+            "Domain should serialize to snake_case"
+        );
     }
 
     // =========================================================================
@@ -806,7 +839,10 @@ mod tests {
     #[test]
     fn test_source_and_target_are_different() {
         let edge = create_test_edge();
-        assert_ne!(edge.source_id, edge.target_id, "Source and target should be different UUIDs");
+        assert_ne!(
+            edge.source_id, edge.target_id,
+            "Source and target should be different UUIDs"
+        );
     }
 
     // =========================================================================
@@ -849,45 +885,85 @@ mod tests {
 
     #[test]
     fn test_new_uses_edge_type_default_weight() {
-        let edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Causal, Domain::General);
+        let edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Causal,
+            Domain::General,
+        );
         assert_eq!(edge.weight, EdgeType::Causal.default_weight());
         assert_eq!(edge.weight, 0.8);
     }
 
     #[test]
     fn test_new_sets_confidence_to_half() {
-        let edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         assert_eq!(edge.confidence, 0.5);
     }
 
     #[test]
     fn test_new_sets_steering_reward_to_zero() {
-        let edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         assert_eq!(edge.steering_reward, 0.0);
     }
 
     #[test]
     fn test_new_sets_traversal_count_to_zero() {
-        let edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         assert_eq!(edge.traversal_count, 0);
     }
 
     #[test]
     fn test_new_sets_is_amortized_shortcut_false() {
-        let edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         assert!(!edge.is_amortized_shortcut);
     }
 
     #[test]
     fn test_new_sets_last_traversed_at_none() {
-        let edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         assert!(edge.last_traversed_at.is_none());
     }
 
     #[test]
     fn test_new_generates_unique_id() {
-        let edge1 = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
-        let edge2 = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let edge1 = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
+        let edge2 = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         assert_ne!(edge1.id, edge2.id);
     }
 
@@ -904,7 +980,10 @@ mod tests {
         for domain in Domain::all() {
             let edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, domain);
             assert_eq!(edge.domain, domain);
-            assert_eq!(edge.neurotransmitter_weights, NeurotransmitterWeights::for_domain(domain));
+            assert_eq!(
+                edge.neurotransmitter_weights,
+                NeurotransmitterWeights::for_domain(domain)
+            );
         }
     }
 
@@ -913,9 +992,12 @@ mod tests {
     #[test]
     fn test_with_weight_sets_explicit_values() {
         let edge = GraphEdge::with_weight(
-            Uuid::new_v4(), Uuid::new_v4(),
-            EdgeType::Semantic, Domain::General,
-            0.75, 0.95
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+            0.75,
+            0.95,
         );
         assert_eq!(edge.weight, 0.75);
         assert_eq!(edge.confidence, 0.95);
@@ -924,9 +1006,12 @@ mod tests {
     #[test]
     fn test_with_weight_clamps_weight_high() {
         let edge = GraphEdge::with_weight(
-            Uuid::new_v4(), Uuid::new_v4(),
-            EdgeType::Semantic, Domain::General,
-            1.5, 0.5
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+            1.5,
+            0.5,
         );
         assert_eq!(edge.weight, 1.0);
     }
@@ -934,9 +1019,12 @@ mod tests {
     #[test]
     fn test_with_weight_clamps_weight_low() {
         let edge = GraphEdge::with_weight(
-            Uuid::new_v4(), Uuid::new_v4(),
-            EdgeType::Semantic, Domain::General,
-            -0.5, 0.5
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+            -0.5,
+            0.5,
         );
         assert_eq!(edge.weight, 0.0);
     }
@@ -944,9 +1032,12 @@ mod tests {
     #[test]
     fn test_with_weight_clamps_confidence_high() {
         let edge = GraphEdge::with_weight(
-            Uuid::new_v4(), Uuid::new_v4(),
-            EdgeType::Semantic, Domain::General,
-            0.5, 1.5
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+            0.5,
+            1.5,
         );
         assert_eq!(edge.confidence, 1.0);
     }
@@ -954,9 +1045,12 @@ mod tests {
     #[test]
     fn test_with_weight_clamps_confidence_low() {
         let edge = GraphEdge::with_weight(
-            Uuid::new_v4(), Uuid::new_v4(),
-            EdgeType::Semantic, Domain::General,
-            0.5, -0.5
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+            0.5,
+            -0.5,
         );
         assert_eq!(edge.confidence, 0.0);
     }
@@ -965,33 +1059,58 @@ mod tests {
 
     #[test]
     fn test_get_modulated_weight_applies_nt() {
-        let edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         // General NT: excitatory=0.5, inhibitory=0.2, modulatory=0.3
         // Base weight for Semantic: 0.5
         // NT factor: (0.5*0.5 - 0.5*0.2) * (1 + (0.3-0.5)*0.4) = 0.15 * 0.92 = 0.138
         // With steering_reward=0: 0.138 * (1 + 0*0.2) = 0.138
         let modulated = edge.get_modulated_weight();
-        assert!((modulated - 0.138).abs() < 0.001, "Expected ~0.138, got {}", modulated);
+        assert!(
+            (modulated - 0.138).abs() < 0.001,
+            "Expected ~0.138, got {}",
+            modulated
+        );
     }
 
     #[test]
     fn test_get_modulated_weight_applies_steering_positive() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         edge.steering_reward = 1.0;
         // NT factor ~0.138 (from above)
         // With steering_reward=1.0: 0.138 * (1 + 1.0*0.2) = 0.138 * 1.2 = 0.1656
         let modulated = edge.get_modulated_weight();
-        assert!(modulated > 0.138, "Positive steering should increase weight");
+        assert!(
+            modulated > 0.138,
+            "Positive steering should increase weight"
+        );
     }
 
     #[test]
     fn test_get_modulated_weight_applies_steering_negative() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         edge.steering_reward = -1.0;
         // NT factor ~0.138
         // With steering_reward=-1.0: 0.138 * (1 + (-1.0)*0.2) = 0.138 * 0.8 = 0.1104
         let modulated = edge.get_modulated_weight();
-        assert!(modulated < 0.138, "Negative steering should decrease weight");
+        assert!(
+            modulated < 0.138,
+            "Negative steering should decrease weight"
+        );
     }
 
     #[test]
@@ -999,13 +1118,17 @@ mod tests {
         for domain in Domain::all() {
             for edge_type in EdgeType::all() {
                 for sr in [-1.0_f32, -0.5, 0.0, 0.5, 1.0] {
-                    let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), edge_type, domain);
+                    let mut edge =
+                        GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), edge_type, domain);
                     edge.steering_reward = sr;
                     let modulated = edge.get_modulated_weight();
                     assert!(
                         modulated >= 0.0 && modulated <= 1.0,
                         "Out of range: domain={:?}, edge_type={:?}, sr={}, modulated={}",
-                        domain, edge_type, sr, modulated
+                        domain,
+                        edge_type,
+                        sr,
+                        modulated
                     );
                 }
             }
@@ -1016,7 +1139,12 @@ mod tests {
 
     #[test]
     fn test_apply_steering_reward_adds() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         edge.apply_steering_reward(0.3);
         assert_eq!(edge.steering_reward, 0.3);
         edge.apply_steering_reward(0.2);
@@ -1025,7 +1153,12 @@ mod tests {
 
     #[test]
     fn test_apply_steering_reward_clamps_positive() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         edge.apply_steering_reward(0.8);
         edge.apply_steering_reward(0.5);
         assert_eq!(edge.steering_reward, 1.0);
@@ -1033,7 +1166,12 @@ mod tests {
 
     #[test]
     fn test_apply_steering_reward_clamps_negative() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         edge.apply_steering_reward(-0.8);
         edge.apply_steering_reward(-0.5);
         assert_eq!(edge.steering_reward, -1.0);
@@ -1041,7 +1179,12 @@ mod tests {
 
     #[test]
     fn test_apply_steering_reward_handles_negative() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         edge.apply_steering_reward(-0.5);
         assert_eq!(edge.steering_reward, -0.5);
     }
@@ -1050,7 +1193,12 @@ mod tests {
 
     #[test]
     fn test_decay_steering_multiplies() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         edge.steering_reward = 1.0;
         edge.decay_steering(0.5);
         assert_eq!(edge.steering_reward, 0.5);
@@ -1058,7 +1206,12 @@ mod tests {
 
     #[test]
     fn test_decay_steering_to_zero() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         edge.steering_reward = 0.5;
         edge.decay_steering(0.0);
         assert_eq!(edge.steering_reward, 0.0);
@@ -1066,7 +1219,12 @@ mod tests {
 
     #[test]
     fn test_decay_steering_negative() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         edge.steering_reward = -1.0;
         edge.decay_steering(0.5);
         assert_eq!(edge.steering_reward, -0.5);
@@ -1076,7 +1234,12 @@ mod tests {
 
     #[test]
     fn test_record_traversal_increments_count() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         assert_eq!(edge.traversal_count, 0);
         edge.record_traversal();
         assert_eq!(edge.traversal_count, 1);
@@ -1086,7 +1249,12 @@ mod tests {
 
     #[test]
     fn test_record_traversal_updates_timestamp() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         assert!(edge.last_traversed_at.is_none());
         edge.record_traversal();
         assert!(edge.last_traversed_at.is_some());
@@ -1094,7 +1262,12 @@ mod tests {
 
     #[test]
     fn test_record_traversal_saturates() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         edge.traversal_count = u64::MAX;
         edge.record_traversal();
         assert_eq!(edge.traversal_count, u64::MAX);
@@ -1104,7 +1277,12 @@ mod tests {
 
     #[test]
     fn test_is_reliable_shortcut_all_conditions_met() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         edge.is_amortized_shortcut = true;
         edge.traversal_count = 5;
         edge.steering_reward = 0.5;
@@ -1114,7 +1292,12 @@ mod tests {
 
     #[test]
     fn test_is_reliable_shortcut_fails_not_shortcut() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         edge.is_amortized_shortcut = false; // Fails here
         edge.traversal_count = 5;
         edge.steering_reward = 0.5;
@@ -1124,7 +1307,12 @@ mod tests {
 
     #[test]
     fn test_is_reliable_shortcut_fails_low_traversal() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         edge.is_amortized_shortcut = true;
         edge.traversal_count = 2; // Fails here (need >= 3)
         edge.steering_reward = 0.5;
@@ -1134,7 +1322,12 @@ mod tests {
 
     #[test]
     fn test_is_reliable_shortcut_fails_low_reward() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         edge.is_amortized_shortcut = true;
         edge.traversal_count = 5;
         edge.steering_reward = 0.2; // Fails here (need > 0.3)
@@ -1144,7 +1337,12 @@ mod tests {
 
     #[test]
     fn test_is_reliable_shortcut_fails_low_confidence() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         edge.is_amortized_shortcut = true;
         edge.traversal_count = 5;
         edge.steering_reward = 0.5;
@@ -1154,7 +1352,12 @@ mod tests {
 
     #[test]
     fn test_is_reliable_shortcut_boundary_traversal() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         edge.is_amortized_shortcut = true;
         edge.traversal_count = 3; // Exactly 3
         edge.steering_reward = 0.5;
@@ -1164,7 +1367,12 @@ mod tests {
 
     #[test]
     fn test_is_reliable_shortcut_boundary_reward() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         edge.is_amortized_shortcut = true;
         edge.traversal_count = 5;
         edge.steering_reward = 0.3; // Exactly 0.3 - should FAIL (need > 0.3)
@@ -1174,7 +1382,12 @@ mod tests {
 
     #[test]
     fn test_is_reliable_shortcut_boundary_confidence() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         edge.is_amortized_shortcut = true;
         edge.traversal_count = 5;
         edge.steering_reward = 0.5;
@@ -1186,7 +1399,12 @@ mod tests {
 
     #[test]
     fn test_mark_as_shortcut() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         assert!(!edge.is_amortized_shortcut);
         edge.mark_as_shortcut();
         assert!(edge.is_amortized_shortcut);
@@ -1194,7 +1412,12 @@ mod tests {
 
     #[test]
     fn test_mark_as_shortcut_idempotent() {
-        let mut edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let mut edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         edge.mark_as_shortcut();
         edge.mark_as_shortcut();
         assert!(edge.is_amortized_shortcut);
@@ -1204,13 +1427,23 @@ mod tests {
 
     #[test]
     fn test_age_seconds_non_negative() {
-        let edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         assert!(edge.age_seconds() >= 0);
     }
 
     #[test]
     fn test_age_seconds_increases() {
-        let edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::General);
+        let edge = GraphEdge::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::General,
+        );
         let age1 = edge.age_seconds();
         std::thread::sleep(std::time::Duration::from_millis(10));
         let age2 = edge.age_seconds();

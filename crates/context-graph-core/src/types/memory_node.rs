@@ -300,7 +300,10 @@ impl MemoryNode {
         }
 
         // 3. Check emotional valence range [-1.0, 1.0]
-        if self.emotional_valence < -1.0 || self.emotional_valence > 1.0 || self.emotional_valence.is_nan() {
+        if self.emotional_valence < -1.0
+            || self.emotional_valence > 1.0
+            || self.emotional_valence.is_nan()
+        {
             return Err(ValidationError::OutOfBounds {
                 field: "emotional_valence".to_string(),
                 value: self.emotional_valence as f64,
@@ -318,7 +321,8 @@ impl MemoryNode {
         }
 
         // 5. Check embedding normalization (magnitude ~= 1.0)
-        let magnitude: f64 = self.embedding
+        let magnitude: f64 = self
+            .embedding
             .iter()
             .map(|x| (*x as f64).powi(2))
             .sum::<f64>()
@@ -1521,14 +1525,22 @@ newlines, plus unicode: 日本語 🎉 émojis"#;
         let node = MemoryNode::new("test".to_string(), vec![0.0; 1536]);
         let decay = node.compute_decay();
         // Just created, decay should be very close to 1.0
-        assert!(decay >= 0.99, "Recent node decay should be ~1.0, got {}", decay);
+        assert!(
+            decay >= 0.99,
+            "Recent node decay should be ~1.0, got {}",
+            decay
+        );
     }
 
     #[test]
     fn test_compute_decay_in_valid_range() {
         let node = MemoryNode::new("test".to_string(), vec![0.0; 1536]);
         let decay = node.compute_decay();
-        assert!(decay >= 0.0 && decay <= 1.0, "Decay {} must be in [0,1]", decay);
+        assert!(
+            decay >= 0.0 && decay <= 1.0,
+            "Decay {} must be in [0,1]",
+            decay
+        );
     }
 
     #[test]
@@ -1543,8 +1555,8 @@ newlines, plus unicode: 日本語 🎉 émojis"#;
     fn test_should_consolidate_high_importance() {
         let mut node = MemoryNode::new("test".to_string(), vec![0.0; 1536]);
         node.importance = 1.0; // High importance should push toward consolidation
-        // Even with just importance=1.0, score = 0.4*1.0 + 0.3*~0 + 0.3*0 = 0.4
-        // Not enough alone, but reasonable behavior
+                               // Even with just importance=1.0, score = 0.4*1.0 + 0.3*~0 + 0.3*0 = 0.4
+                               // Not enough alone, but reasonable behavior
         let _should = node.should_consolidate(); // Just verify it doesn't panic
     }
 
@@ -1570,7 +1582,10 @@ newlines, plus unicode: 日本語 🎉 émojis"#;
     fn test_validate_wrong_embedding_dim() {
         let node = MemoryNode::new("test".to_string(), vec![0.0; 100]); // Wrong dimension
         let result = node.validate();
-        assert!(matches!(result, Err(ValidationError::InvalidEmbeddingDimension { .. })));
+        assert!(matches!(
+            result,
+            Err(ValidationError::InvalidEmbeddingDimension { .. })
+        ));
     }
 
     #[test]
@@ -1580,7 +1595,9 @@ newlines, plus unicode: 日本語 🎉 émojis"#;
         let mut node = MemoryNode::new("test".to_string(), vec![val; dim]);
         node.importance = -0.1;
         let result = node.validate();
-        assert!(matches!(result, Err(ValidationError::OutOfBounds { field, .. }) if field == "importance"));
+        assert!(
+            matches!(result, Err(ValidationError::OutOfBounds { field, .. }) if field == "importance")
+        );
     }
 
     #[test]
@@ -1590,7 +1607,9 @@ newlines, plus unicode: 日本語 🎉 émojis"#;
         let mut node = MemoryNode::new("test".to_string(), vec![val; dim]);
         node.importance = 1.1;
         let result = node.validate();
-        assert!(matches!(result, Err(ValidationError::OutOfBounds { field, .. }) if field == "importance"));
+        assert!(
+            matches!(result, Err(ValidationError::OutOfBounds { field, .. }) if field == "importance")
+        );
     }
 
     #[test]
@@ -1600,7 +1619,9 @@ newlines, plus unicode: 日本語 🎉 émojis"#;
         let mut node = MemoryNode::new("test".to_string(), vec![val; dim]);
         node.emotional_valence = -1.5;
         let result = node.validate();
-        assert!(matches!(result, Err(ValidationError::OutOfBounds { field, .. }) if field == "emotional_valence"));
+        assert!(
+            matches!(result, Err(ValidationError::OutOfBounds { field, .. }) if field == "emotional_valence")
+        );
     }
 
     #[test]
@@ -1610,7 +1631,9 @@ newlines, plus unicode: 日本語 🎉 émojis"#;
         let mut node = MemoryNode::new("test".to_string(), vec![val; dim]);
         node.emotional_valence = 1.5;
         let result = node.validate();
-        assert!(matches!(result, Err(ValidationError::OutOfBounds { field, .. }) if field == "emotional_valence"));
+        assert!(
+            matches!(result, Err(ValidationError::OutOfBounds { field, .. }) if field == "emotional_valence")
+        );
     }
 
     #[test]
@@ -1620,21 +1643,30 @@ newlines, plus unicode: 日本語 🎉 émojis"#;
         let big_content = "x".repeat(MAX_CONTENT_SIZE + 1);
         let node = MemoryNode::new(big_content, vec![val; dim]);
         let result = node.validate();
-        assert!(matches!(result, Err(ValidationError::ContentTooLarge { .. })));
+        assert!(matches!(
+            result,
+            Err(ValidationError::ContentTooLarge { .. })
+        ));
     }
 
     #[test]
     fn test_validate_embedding_not_normalized() {
         let node = MemoryNode::new("test".to_string(), vec![0.5; 1536]); // Not normalized
         let result = node.validate();
-        assert!(matches!(result, Err(ValidationError::EmbeddingNotNormalized { .. })));
+        assert!(matches!(
+            result,
+            Err(ValidationError::EmbeddingNotNormalized { .. })
+        ));
     }
 
     #[test]
     fn test_validate_zero_embedding_fails() {
         let node = MemoryNode::new("test".to_string(), vec![0.0; 1536]); // Magnitude = 0
         let result = node.validate();
-        assert!(matches!(result, Err(ValidationError::EmbeddingNotNormalized { .. })));
+        assert!(matches!(
+            result,
+            Err(ValidationError::EmbeddingNotNormalized { .. })
+        ));
     }
 
     #[test]
