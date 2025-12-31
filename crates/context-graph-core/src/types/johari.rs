@@ -218,10 +218,27 @@ impl Modality {
     pub fn detect(content: &str) -> Self {
         // Code patterns - case-sensitive, must include space after keyword
         const CODE_PATTERNS: &[&str] = &[
-            "fn ", "def ", "class ", "import ", "function ",
-            "const ", "let ", "var ", "pub ", "async ", "impl ",
-            "struct ", "enum ", "mod ", "use ", "package ",
-            "func ", "export ", "from ", "#include", "#define",
+            "fn ",
+            "def ",
+            "class ",
+            "import ",
+            "function ",
+            "const ",
+            "let ",
+            "var ",
+            "pub ",
+            "async ",
+            "impl ",
+            "struct ",
+            "enum ",
+            "mod ",
+            "use ",
+            "package ",
+            "func ",
+            "export ",
+            "from ",
+            "#include",
+            "#define",
         ];
 
         for pattern in CODE_PATTERNS {
@@ -262,7 +279,9 @@ impl Modality {
     pub fn file_extensions(&self) -> &'static [&'static str] {
         match self {
             Self::Text => &["txt", "md", "rst", "adoc"],
-            Self::Code => &["rs", "py", "js", "ts", "go", "java", "c", "cpp", "h", "rb", "php"],
+            Self::Code => &[
+                "rs", "py", "js", "ts", "go", "java", "c", "cpp", "h", "rb", "php",
+            ],
             Self::Image => &["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp"],
             Self::Audio => &["mp3", "wav", "ogg", "flac", "m4a", "aac"],
             Self::Structured => &["json", "yaml", "yml", "toml", "xml"],
@@ -292,7 +311,14 @@ impl Modality {
 
     /// Returns all modality variants as a fixed-size array.
     pub fn all() -> [Modality; 6] {
-        [Self::Text, Self::Code, Self::Image, Self::Audio, Self::Structured, Self::Mixed]
+        [
+            Self::Text,
+            Self::Code,
+            Self::Image,
+            Self::Audio,
+            Self::Structured,
+            Self::Mixed,
+        ]
     }
 }
 
@@ -537,10 +563,19 @@ mod tests {
 
     #[test]
     fn test_modality_detect_rust_code() {
-        assert_eq!(Modality::detect("fn main() { println!(\"hello\"); }"), Modality::Code);
-        assert_eq!(Modality::detect("pub struct Foo { bar: i32 }"), Modality::Code);
+        assert_eq!(
+            Modality::detect("fn main() { println!(\"hello\"); }"),
+            Modality::Code
+        );
+        assert_eq!(
+            Modality::detect("pub struct Foo { bar: i32 }"),
+            Modality::Code
+        );
         assert_eq!(Modality::detect("impl Default for Foo {}"), Modality::Code);
-        assert_eq!(Modality::detect("use std::collections::HashMap;"), Modality::Code);
+        assert_eq!(
+            Modality::detect("use std::collections::HashMap;"),
+            Modality::Code
+        );
     }
 
     #[test]
@@ -558,26 +593,47 @@ mod tests {
         assert_eq!(Modality::detect("const x = 5;"), Modality::Code);
         assert_eq!(Modality::detect("let y = 10;"), Modality::Code);
         assert_eq!(Modality::detect("var z = 'hello';"), Modality::Code);
-        assert_eq!(Modality::detect("export default function() {}"), Modality::Code);
+        assert_eq!(
+            Modality::detect("export default function() {}"),
+            Modality::Code
+        );
     }
 
     #[test]
     fn test_modality_detect_structured_json() {
-        assert_eq!(Modality::detect("{\"key\": \"value\"}"), Modality::Structured);
+        assert_eq!(
+            Modality::detect("{\"key\": \"value\"}"),
+            Modality::Structured
+        );
         assert_eq!(Modality::detect("[1, 2, 3]"), Modality::Structured);
-        assert_eq!(Modality::detect("  { \"nested\": { } }"), Modality::Structured);
+        assert_eq!(
+            Modality::detect("  { \"nested\": { } }"),
+            Modality::Structured
+        );
     }
 
     #[test]
     fn test_modality_detect_structured_yaml() {
-        assert_eq!(Modality::detect("key: value\nother: data"), Modality::Structured);
-        assert_eq!(Modality::detect("name: John\nage: 30"), Modality::Structured);
+        assert_eq!(
+            Modality::detect("key: value\nother: data"),
+            Modality::Structured
+        );
+        assert_eq!(
+            Modality::detect("name: John\nage: 30"),
+            Modality::Structured
+        );
     }
 
     #[test]
     fn test_modality_detect_data_uri() {
-        assert_eq!(Modality::detect("data:image/png;base64,iVBORw0KGg..."), Modality::Image);
-        assert_eq!(Modality::detect("data:audio/mp3;base64,SUQz..."), Modality::Audio);
+        assert_eq!(
+            Modality::detect("data:image/png;base64,iVBORw0KGg..."),
+            Modality::Image
+        );
+        assert_eq!(
+            Modality::detect("data:audio/mp3;base64,SUQz..."),
+            Modality::Audio
+        );
     }
 
     #[test]
@@ -613,8 +669,17 @@ mod tests {
     fn test_modality_file_extensions_no_dots() {
         for modality in Modality::all() {
             for ext in modality.file_extensions() {
-                assert!(!ext.starts_with('.'), "Extension '{}' should not start with dot", ext);
-                assert_eq!(*ext, ext.to_lowercase(), "Extension '{}' should be lowercase", ext);
+                assert!(
+                    !ext.starts_with('.'),
+                    "Extension '{}' should not start with dot",
+                    ext
+                );
+                assert_eq!(
+                    *ext,
+                    ext.to_lowercase(),
+                    "Extension '{}' should be lowercase",
+                    ext
+                );
             }
         }
     }
@@ -625,7 +690,10 @@ mod tests {
         assert_eq!(Modality::Code.primary_embedding_model(), "E7_Code");
         assert_eq!(Modality::Image.primary_embedding_model(), "E10_Multimodal");
         assert_eq!(Modality::Audio.primary_embedding_model(), "E10_Multimodal");
-        assert_eq!(Modality::Structured.primary_embedding_model(), "E1_Semantic");
+        assert_eq!(
+            Modality::Structured.primary_embedding_model(),
+            "E1_Semantic"
+        );
         assert_eq!(Modality::Mixed.primary_embedding_model(), "E1_Semantic");
     }
 

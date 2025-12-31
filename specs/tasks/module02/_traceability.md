@@ -10,9 +10,9 @@ This matrix ensures every requirement, component, and behavior from the Module 0
 
 | Item | Description | Task ID | File Path | Verified |
 |------|-------------|---------|-----------|----------|
-| JohariQuadrant | Four quadrant enum (Open, Hidden, Blind, Unknown) | TASK-M02-001 | `crates/context-graph-core/src/types/johari.rs` | ☑ |
-| Modality | Content type classification enum | TASK-M02-002 | `crates/context-graph-core/src/types/johari.rs` | ☑ |
-| ValidationError | Node validation error types | TASK-M02-004 | `crates/context-graph-core/src/memory_node.rs` | ☐ |
+| JohariQuadrant | Four quadrant enum (Open, Hidden, Blind, Unknown) | TASK-M02-001 | `crates/context-graph-core/src/types/johari.rs` | ✅ |
+| Modality | Content type classification enum | TASK-M02-002 | `crates/context-graph-core/src/types/johari.rs` | ✅ |
+| ValidationError | Node validation error types | TASK-M02-004 | `crates/context-graph-core/src/types/memory_node.rs` | ☐ |
 | Domain | Marblestone context domain enum | TASK-M02-007 | `crates/context-graph-core/src/marblestone.rs` | ☐ |
 | EdgeType | Graph edge relationship types | TASK-M02-009 | `crates/context-graph-core/src/marblestone.rs` | ☐ |
 | EmotionalState | UTL emotional state enum | TASK-M02-019 | `crates/context-graph-core/src/pulse.rs` | ☐ |
@@ -24,8 +24,8 @@ This matrix ensures every requirement, component, and behavior from the Module 0
 
 | Item | Description | Task ID | File Path | Verified |
 |------|-------------|---------|-----------|----------|
-| NodeMetadata | Memory node metadata container | TASK-M02-003 | `crates/context-graph-core/src/metadata.rs` | ☐ |
-| MemoryNode | Core knowledge node struct | TASK-M02-005 | `crates/context-graph-core/src/memory_node.rs` | ☐ |
+| NodeMetadata | Memory node metadata container | TASK-M02-003 | `crates/context-graph-core/src/types/memory_node.rs` | ✅ |
+| MemoryNode | Core knowledge node struct | TASK-M02-005 | `crates/context-graph-core/src/types/memory_node.rs` | ☐ |
 | NeurotransmitterWeights | Marblestone NT weight struct | TASK-M02-008 | `crates/context-graph-core/src/marblestone.rs` | ☐ |
 | GraphEdge | Graph edge with Marblestone fields | TASK-M02-010 | `crates/context-graph-core/src/marblestone.rs` | ☐ |
 | CognitivePulse | System cognitive state struct | TASK-M02-021 | `crates/context-graph-core/src/pulse.rs` | ☐ |
@@ -41,10 +41,10 @@ This matrix ensures every requirement, component, and behavior from the Module 0
 | JohariQuadrant::column_family() | Get RocksDB column family name | TASK-M02-001 | ☐ |
 | Modality::detect() | Auto-detect content modality | TASK-M02-002 | ☐ |
 | Modality::file_extensions() | Get file extensions per modality | TASK-M02-002 | ☐ |
-| NodeMetadata::add_tag() | Add tag to metadata | TASK-M02-003 | ☐ |
-| NodeMetadata::remove_tag() | Remove tag from metadata | TASK-M02-003 | ☐ |
-| NodeMetadata::mark_consolidated() | Mark node as consolidated | TASK-M02-003 | ☐ |
-| NodeMetadata::mark_deleted() | Soft delete node | TASK-M02-003 | ☐ |
+| NodeMetadata::add_tag() | Add tag to metadata | TASK-M02-003 | ✅ |
+| NodeMetadata::remove_tag() | Remove tag from metadata | TASK-M02-003 | ✅ |
+| NodeMetadata::mark_consolidated() | Mark node as consolidated | TASK-M02-003 | ✅ |
+| NodeMetadata::mark_deleted() | Soft delete node | TASK-M02-003 | ✅ |
 | MemoryNode::new() | Create new memory node | TASK-M02-006 | ☐ |
 | MemoryNode::record_access() | Record node access | TASK-M02-006 | ☐ |
 | MemoryNode::compute_decay() | Compute Ebbinghaus decay | TASK-M02-006 | ☐ |
@@ -169,7 +169,7 @@ This matrix ensures every requirement, component, and behavior from the Module 0
 |---------------|-------------|---------|----------|
 | JohariQuadrant unit tests | All enum methods | TASK-M02-001 | ☐ |
 | Modality unit tests | Detection and extensions | TASK-M02-002 | ☐ |
-| NodeMetadata unit tests | Tag and lifecycle operations | TASK-M02-003 | ☐ |
+| NodeMetadata unit tests | Tag and lifecycle operations | TASK-M02-003 | ✅ |
 | ValidationError unit tests | Error display and context | TASK-M02-004 | ☐ |
 | MemoryNode unit tests | All struct methods | TASK-M02-006 | ☐ |
 | NeurotransmitterWeights unit tests | Domain profiles and calculations | TASK-M02-008 | ☐ |
