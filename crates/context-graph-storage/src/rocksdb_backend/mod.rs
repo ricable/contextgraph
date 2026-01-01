@@ -38,6 +38,7 @@ mod embedding_ops;
 mod error;
 mod helpers;
 mod index_ops;
+mod memex_impl;
 mod node_ops;
 
 #[cfg(test)]

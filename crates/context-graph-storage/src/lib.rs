@@ -33,6 +33,9 @@ pub use rocksdb_backend::{
     DEFAULT_MAX_OPEN_FILES,
 };
 
+// Re-export Memex trait and StorageHealth (TASK-M02-026)
+pub use memex::{Memex, StorageHealth};
+
 // Re-export core types for storage consumers
 pub use context_graph_core::marblestone::{Domain, EdgeType, NeurotransmitterWeights};
 pub use context_graph_core::types::{

@@ -120,7 +120,7 @@ This matrix ensures every requirement, component, and behavior from the Module 0
 
 | Item | Description | Task ID | Verified |
 |------|-------------|---------|----------|
-| Memex | Storage abstraction trait | TASK-M02-026 | ☐ |
+| Memex | Storage abstraction trait | TASK-M02-026 | ✅ |
 | Default for JohariQuadrant | Default implementation | TASK-M02-001 | ☐ |
 | Default for Modality | Default implementation | TASK-M02-002 | ☐ |
 | Default for MemoryNode | Default implementation | TASK-M02-006 | ✅ |
@@ -192,7 +192,7 @@ This matrix ensures every requirement, component, and behavior from the Module 0
 | Pulse unit tests | 23 tests for all pulse methods | TASK-M02-021 | ✅ |
 | Index operation tests | Secondary index queries | TASK-M02-023 | ✅ |
 | Embedding storage tests | Vector operations | TASK-M02-024 | ✅ |
-| Memex trait tests | Trait implementation | TASK-M02-026 | ☐ |
+| Memex trait tests | Trait implementation | TASK-M02-026 | ✅ |
 | Integration tests | End-to-end workflows | TASK-M02-027 | ☐ |
 | Doc tests | Example code in documentation | TASK-M02-028 | ☐ |
 
