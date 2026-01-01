@@ -32,7 +32,7 @@
 //!
 //! [fusion]
 //! num_experts = 8
-//! top_k = 2
+//! top_k = 4
 //! output_dim = 1536
 //!
 //! [cache]
@@ -327,36 +327,87 @@ impl BatchConfig {
 ///
 /// Controls the Mixture-of-Experts fusion that combines 12 model outputs
 /// into a unified 1536-dimensional embedding.
+///
+/// # Architecture
+/// ```text
+/// Input: Concatenated embeddings (8320D)
+///        |
+///        v
+///   [Gating Network] --> Expert weights (8 values, temperature-scaled softmax)
+///        |
+///        v
+///   [Top-4 Selection] --> Select 4 experts (Serotonin modulates: range [2,8])
+///        |
+///        v
+///   [Expert Networks] --> Each: 8320 -> 4096 -> 4096 -> 1536
+///        |
+///        v
+///   [Weighted Sum] --> Final 1536D embedding
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FusionConfig {
     /// Number of expert networks in MoE.
     /// Constitution spec: 8 experts
+    /// Default: 8
     #[serde(default = "default_num_experts")]
     pub num_experts: usize,
 
     /// Number of experts to activate per input (top-k routing).
-    /// Constitution spec: top_k = 2
+    /// Constitution spec: top_k = 4 (NOT 2)
+    /// Neuromodulation range: [2, 8] (Serotonin control)
+    /// Default: 4
     #[serde(default = "default_top_k")]
     pub top_k: usize,
 
     /// Output embedding dimension after fusion.
     /// Constitution spec: 1536D (OpenAI ada-002 compatible)
+    /// Default: 1536
     #[serde(default = "default_output_dim")]
     pub output_dim: usize,
 
-    /// Alpha parameter for Laplace smoothing in gating.
-    /// Prevents zero probabilities. Default: 0.01
-    #[serde(default = "default_laplace_alpha")]
-    pub laplace_alpha: f32,
+    /// Hidden dimension in expert FFN layers.
+    /// Architecture: input(8320) -> hidden(4096) -> hidden(4096) -> output(1536)
+    /// Required by: M03-L21 (Expert Networks), M03-L30 (Grouped GEMM)
+    /// Default: 4096
+    #[serde(default = "default_expert_hidden_dim")]
+    pub expert_hidden_dim: usize,
 
-    /// Capacity factor for expert load balancing.
-    /// 1.25x means each expert can handle 125% of uniform load.
+    /// Load balance loss coefficient.
+    /// Penalizes uneven expert utilization during training.
+    /// Set to 0.0 to disable, typical range: [0.01, 0.1]
+    /// Default: 0.01
+    #[serde(default = "default_load_balance_coef")]
+    pub load_balance_coef: f32,
+
+    /// Capacity factor for expert buffers.
+    /// 1.25 = 25% overhead above average load.
+    /// Must be >= 1.0 (no underprovisioning)
+    /// Default: 1.25
     #[serde(default = "default_capacity_factor")]
     pub capacity_factor: f32,
 
-    /// Whether to enable auxiliary load balancing loss.
-    #[serde(default = "default_load_balance_loss")]
-    pub load_balance_loss: bool,
+    /// Temperature for gating network softmax.
+    /// Lower = sharper expert selection, Higher = more uniform distribution
+    /// Range: (0, inf), typical: [0.1, 2.0]
+    /// Neuromodulation: Noradrenaline modulates attention.temp in range [0.5, 2.0]
+    /// Default: 1.0
+    #[serde(default = "default_temperature")]
+    pub temperature: f32,
+
+    /// Noise standard deviation for exploration (training only).
+    /// Gaussian noise added to gating logits before softmax.
+    /// Helps prevent expert collapse during training.
+    /// Set to 0.0 for inference (deterministic).
+    /// Default: 0.0
+    #[serde(default = "default_noise_std")]
+    pub noise_std: f32,
+
+    /// Laplace smoothing alpha for stable routing.
+    /// Formula: (p + alpha) / (1 + alpha * K)
+    /// Prevents zero probabilities in gating.
+    /// Default: 0.01
+    #[serde(default = "default_laplace_alpha")]
+    pub laplace_alpha: f32,
 }
 
 fn default_num_experts() -> usize {
@@ -364,14 +415,18 @@ fn default_num_experts() -> usize {
 }
 
 fn default_top_k() -> usize {
-    2
+    4 // FIXED: was 2, constitution.yaml says 4
 }
 
 fn default_output_dim() -> usize {
     1536
 }
 
-fn default_laplace_alpha() -> f32 {
+fn default_expert_hidden_dim() -> usize {
+    4096
+}
+
+fn default_load_balance_coef() -> f32 {
     0.01
 }
 
@@ -379,8 +434,16 @@ fn default_capacity_factor() -> f32 {
     1.25
 }
 
-fn default_load_balance_loss() -> bool {
-    true
+fn default_temperature() -> f32 {
+    1.0
+}
+
+fn default_noise_std() -> f32 {
+    0.0
+}
+
+fn default_laplace_alpha() -> f32 {
+    0.01
 }
 
 impl Default for FusionConfig {
@@ -389,63 +452,115 @@ impl Default for FusionConfig {
             num_experts: default_num_experts(),
             top_k: default_top_k(),
             output_dim: default_output_dim(),
-            laplace_alpha: default_laplace_alpha(),
+            expert_hidden_dim: default_expert_hidden_dim(),
+            load_balance_coef: default_load_balance_coef(),
             capacity_factor: default_capacity_factor(),
-            load_balance_loss: default_load_balance_loss(),
+            temperature: default_temperature(),
+            noise_std: default_noise_std(),
+            laplace_alpha: default_laplace_alpha(),
         }
     }
 }
 
 impl FusionConfig {
-    /// Validate the configuration.
+    /// Validate fusion configuration values.
     ///
     /// # Errors
-    /// - `EmbeddingError::ConfigError` if num_experts is 0
-    /// - `EmbeddingError::ConfigError` if top_k is 0 or > num_experts
-    /// - `EmbeddingError::ConfigError` if output_dim is 0
-    /// - `EmbeddingError::ConfigError` if laplace_alpha is negative or NaN
-    /// - `EmbeddingError::ConfigError` if capacity_factor < 1.0
+    /// Returns `EmbeddingError::ConfigError` if:
+    /// - num_experts == 0
+    /// - top_k == 0 or top_k > num_experts
+    /// - output_dim == 0
+    /// - expert_hidden_dim == 0
+    /// - temperature <= 0 or is NaN
+    /// - capacity_factor < 1.0 or is NaN
+    /// - laplace_alpha < 0 or is NaN
+    /// - noise_std < 0 or is NaN
+    /// - load_balance_coef < 0 or is NaN
     pub fn validate(&self) -> EmbeddingResult<()> {
         if self.num_experts == 0 {
             return Err(EmbeddingError::ConfigError {
-                message: "num_experts must be greater than 0".to_string(),
+                message: "num_experts must be > 0".to_string(),
             });
         }
-
-        if self.top_k == 0 {
-            return Err(EmbeddingError::ConfigError {
-                message: "top_k must be greater than 0".to_string(),
-            });
-        }
-
-        if self.top_k > self.num_experts {
+        if self.top_k == 0 || self.top_k > self.num_experts {
             return Err(EmbeddingError::ConfigError {
                 message: format!(
-                    "top_k ({}) cannot exceed num_experts ({})",
-                    self.top_k, self.num_experts
+                    "top_k must be in [1, {}], got {}",
+                    self.num_experts, self.top_k
                 ),
             });
         }
-
         if self.output_dim == 0 {
             return Err(EmbeddingError::ConfigError {
-                message: "output_dim must be greater than 0".to_string(),
+                message: "output_dim must be > 0".to_string(),
             });
         }
-
-        if self.laplace_alpha < 0.0 || self.laplace_alpha.is_nan() {
+        if self.expert_hidden_dim == 0 {
             return Err(EmbeddingError::ConfigError {
-                message: "laplace_alpha must be non-negative and not NaN".to_string(),
+                message: "expert_hidden_dim must be > 0".to_string(),
             });
         }
-
+        if self.temperature <= 0.0 || self.temperature.is_nan() {
+            return Err(EmbeddingError::ConfigError {
+                message: "temperature must be > 0 and not NaN".to_string(),
+            });
+        }
         if self.capacity_factor < 1.0 || self.capacity_factor.is_nan() {
             return Err(EmbeddingError::ConfigError {
                 message: "capacity_factor must be >= 1.0 and not NaN".to_string(),
             });
         }
-
+        if self.laplace_alpha < 0.0 || self.laplace_alpha.is_nan() {
+            return Err(EmbeddingError::ConfigError {
+                message: "laplace_alpha must be >= 0 and not NaN".to_string(),
+            });
+        }
+        if self.noise_std < 0.0 || self.noise_std.is_nan() {
+            return Err(EmbeddingError::ConfigError {
+                message: "noise_std must be >= 0 and not NaN".to_string(),
+            });
+        }
+        if self.load_balance_coef < 0.0 || self.load_balance_coef.is_nan() {
+            return Err(EmbeddingError::ConfigError {
+                message: "load_balance_coef must be >= 0 and not NaN".to_string(),
+            });
+        }
         Ok(())
+    }
+
+    /// Create inference configuration (deterministic, no noise).
+    ///
+    /// Returns config with:
+    /// - noise_std = 0.0 (no exploration noise)
+    /// - load_balance_coef = 0.0 (no load balancing loss)
+    ///
+    /// Use this for production inference where determinism is required.
+    pub fn for_inference() -> Self {
+        Self {
+            noise_std: 0.0,
+            load_balance_coef: 0.0,
+            ..Default::default()
+        }
+    }
+
+    /// Create training configuration (with exploration noise).
+    ///
+    /// Returns config with:
+    /// - noise_std = 0.1 (Gaussian noise for exploration)
+    /// - load_balance_coef = 0.01 (auxiliary loss for load balancing)
+    ///
+    /// Use this for training to prevent expert collapse.
+    pub fn for_training() -> Self {
+        Self {
+            noise_std: 0.1,
+            load_balance_coef: 0.01,
+            ..Default::default()
+        }
+    }
+
+    /// Check if this config is for inference mode.
+    pub fn is_inference_mode(&self) -> bool {
+        self.noise_std == 0.0
     }
 }
 
@@ -840,7 +955,7 @@ mod tests {
         assert_eq!(config.batch.max_batch_size, 32);
         assert_eq!(config.batch.max_wait_ms, 50);
         assert_eq!(config.fusion.num_experts, 8);
-        assert_eq!(config.fusion.top_k, 2);
+        assert_eq!(config.fusion.top_k, 4); // FIXED: constitution.yaml says 4, not 2
         assert_eq!(config.fusion.output_dim, 1536);
         assert_eq!(config.cache.max_entries, 100_000);
         assert!(config.gpu.enabled);
@@ -870,11 +985,14 @@ mod tests {
     fn test_fusion_config_default() {
         let config = FusionConfig::default();
         assert_eq!(config.num_experts, 8);
-        assert_eq!(config.top_k, 2);
+        assert_eq!(config.top_k, 4); // FIXED: constitution.yaml says 4, not 2
         assert_eq!(config.output_dim, 1536);
+        assert_eq!(config.expert_hidden_dim, 4096);
+        assert!((config.temperature - 1.0).abs() < f32::EPSILON);
+        assert!((config.noise_std - 0.0).abs() < f32::EPSILON);
         assert!((config.laplace_alpha - 0.01).abs() < f32::EPSILON);
         assert!((config.capacity_factor - 1.25).abs() < f32::EPSILON);
-        assert!(config.load_balance_loss);
+        assert!((config.load_balance_coef - 0.01).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -1233,11 +1351,12 @@ enabled = false
 
     #[test]
     fn test_constitution_fusion_defaults() {
-        // constitution.yaml: num_experts = 8, top_k = 2, output_dim = 1536
+        // constitution.yaml: num_experts = 8, top_k = 4 (NOT 2!), output_dim = 1536
         let config = FusionConfig::default();
         assert_eq!(config.num_experts, 8);
-        assert_eq!(config.top_k, 2);
+        assert_eq!(config.top_k, 4); // FIXED: constitution.yaml fuse_moe.top_k = 4
         assert_eq!(config.output_dim, 1536);
+        assert_eq!(config.expert_hidden_dim, 4096);
     }
 
     #[test]
@@ -1407,5 +1526,389 @@ max_batch_size = 64
         assert!(config.dynamic_batching); // default
         assert_eq!(config.padding_strategy, PaddingStrategy::DynamicMax); // default
         assert!(config.sort_by_length); // default
+    }
+
+    // =========================================================================
+    // FUSION CONFIG NEW FIELD TESTS (M03-F14)
+    // =========================================================================
+
+    #[test]
+    fn test_fusion_config_default_top_k_is_4() {
+        // CRITICAL: constitution.yaml specifies top_k = 4, NOT 2
+        let config = FusionConfig::default();
+        assert_eq!(config.top_k, 4);
+    }
+
+    #[test]
+    fn test_fusion_config_default_expert_hidden_dim() {
+        let config = FusionConfig::default();
+        assert_eq!(config.expert_hidden_dim, 4096);
+    }
+
+    #[test]
+    fn test_fusion_config_default_temperature() {
+        let config = FusionConfig::default();
+        assert!((config.temperature - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_fusion_config_default_noise_std() {
+        let config = FusionConfig::default();
+        assert!((config.noise_std - 0.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_fusion_config_default_load_balance_coef() {
+        let config = FusionConfig::default();
+        assert!((config.load_balance_coef - 0.01).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_fusion_validate_valid_default() {
+        let config = FusionConfig::default();
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_fusion_validate_num_experts_zero() {
+        let config = FusionConfig {
+            num_experts: 0,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("num_experts"));
+    }
+
+    #[test]
+    fn test_fusion_validate_top_k_zero() {
+        let config = FusionConfig {
+            top_k: 0,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("top_k"));
+    }
+
+    #[test]
+    fn test_fusion_validate_top_k_exceeds_experts() {
+        let config = FusionConfig {
+            num_experts: 4,
+            top_k: 8,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("top_k"));
+    }
+
+    #[test]
+    fn test_fusion_validate_top_k_equals_experts_succeeds() {
+        // Edge case: top_k = num_experts should be valid
+        let config = FusionConfig {
+            num_experts: 8,
+            top_k: 8,
+            ..Default::default()
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_fusion_validate_output_dim_zero() {
+        let config = FusionConfig {
+            output_dim: 0,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("output_dim"));
+    }
+
+    #[test]
+    fn test_fusion_validate_expert_hidden_dim_zero() {
+        let config = FusionConfig {
+            expert_hidden_dim: 0,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("expert_hidden_dim"));
+    }
+
+    #[test]
+    fn test_fusion_validate_temperature_zero() {
+        let config = FusionConfig {
+            temperature: 0.0,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("temperature"));
+    }
+
+    #[test]
+    fn test_fusion_validate_temperature_negative() {
+        let config = FusionConfig {
+            temperature: -1.0,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("temperature"));
+    }
+
+    #[test]
+    fn test_fusion_validate_temperature_nan() {
+        let config = FusionConfig {
+            temperature: f32::NAN,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("temperature"));
+    }
+
+    #[test]
+    fn test_fusion_validate_temperature_very_small_succeeds() {
+        // Edge case: very small temperature (still > 0) should be valid
+        let config = FusionConfig {
+            temperature: 0.001,
+            ..Default::default()
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_fusion_validate_noise_std_negative() {
+        let config = FusionConfig {
+            noise_std: -0.1,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("noise_std"));
+    }
+
+    #[test]
+    fn test_fusion_validate_noise_std_nan() {
+        let config = FusionConfig {
+            noise_std: f32::NAN,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("noise_std"));
+    }
+
+    #[test]
+    fn test_fusion_validate_load_balance_coef_negative() {
+        let config = FusionConfig {
+            load_balance_coef: -0.01,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("load_balance_coef"));
+    }
+
+    #[test]
+    fn test_fusion_validate_load_balance_coef_nan() {
+        let config = FusionConfig {
+            load_balance_coef: f32::NAN,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("load_balance_coef"));
+    }
+
+    #[test]
+    fn test_fusion_for_inference_no_noise() {
+        let config = FusionConfig::for_inference();
+        assert!((config.noise_std - 0.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_fusion_for_inference_no_load_balance() {
+        let config = FusionConfig::for_inference();
+        assert!((config.load_balance_coef - 0.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_fusion_for_inference_validates() {
+        let config = FusionConfig::for_inference();
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_fusion_for_training_has_noise() {
+        let config = FusionConfig::for_training();
+        assert!((config.noise_std - 0.1).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_fusion_for_training_has_load_balance() {
+        let config = FusionConfig::for_training();
+        assert!((config.load_balance_coef - 0.01).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_fusion_for_training_validates() {
+        let config = FusionConfig::for_training();
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_fusion_is_inference_mode_true() {
+        let config = FusionConfig::for_inference();
+        assert!(config.is_inference_mode());
+    }
+
+    #[test]
+    fn test_fusion_is_inference_mode_false() {
+        let config = FusionConfig::for_training();
+        assert!(!config.is_inference_mode());
+    }
+
+    #[test]
+    fn test_fusion_is_inference_mode_default() {
+        // Default config has noise_std = 0.0, so should be inference mode
+        let config = FusionConfig::default();
+        assert!(config.is_inference_mode());
+    }
+
+    #[test]
+    fn test_fusion_serde_roundtrip_json() {
+        let original = FusionConfig::default();
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: FusionConfig = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(original.num_experts, restored.num_experts);
+        assert_eq!(original.top_k, restored.top_k);
+        assert_eq!(original.output_dim, restored.output_dim);
+        assert_eq!(original.expert_hidden_dim, restored.expert_hidden_dim);
+        assert!((original.temperature - restored.temperature).abs() < f32::EPSILON);
+        assert!((original.noise_std - restored.noise_std).abs() < f32::EPSILON);
+        assert!((original.load_balance_coef - restored.load_balance_coef).abs() < f32::EPSILON);
+        assert!((original.capacity_factor - restored.capacity_factor).abs() < f32::EPSILON);
+        assert!((original.laplace_alpha - restored.laplace_alpha).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_fusion_serde_roundtrip_toml() {
+        let original = FusionConfig {
+            num_experts: 16,
+            top_k: 6,
+            output_dim: 2048,
+            expert_hidden_dim: 8192,
+            load_balance_coef: 0.05,
+            capacity_factor: 1.5,
+            temperature: 0.8,
+            noise_std: 0.2,
+            laplace_alpha: 0.02,
+        };
+
+        let toml_str = toml::to_string(&original).unwrap();
+        let restored: FusionConfig = toml::from_str(&toml_str).unwrap();
+
+        assert_eq!(original.num_experts, restored.num_experts);
+        assert_eq!(original.top_k, restored.top_k);
+        assert_eq!(original.output_dim, restored.output_dim);
+        assert_eq!(original.expert_hidden_dim, restored.expert_hidden_dim);
+        assert!((original.temperature - restored.temperature).abs() < f32::EPSILON);
+        assert!((original.noise_std - restored.noise_std).abs() < f32::EPSILON);
+        assert!((original.load_balance_coef - restored.load_balance_coef).abs() < f32::EPSILON);
+        assert!((original.capacity_factor - restored.capacity_factor).abs() < f32::EPSILON);
+        assert!((original.laplace_alpha - restored.laplace_alpha).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_fusion_serde_partial_toml_uses_defaults() {
+        // Only specify num_experts and top_k, rest should use defaults
+        let toml_str = r#"
+num_experts = 16
+top_k = 8
+"#;
+        let config: FusionConfig = toml::from_str(toml_str).unwrap();
+
+        assert_eq!(config.num_experts, 16);
+        assert_eq!(config.top_k, 8);
+        assert_eq!(config.output_dim, 1536); // default
+        assert_eq!(config.expert_hidden_dim, 4096); // default
+        assert!((config.temperature - 1.0).abs() < f32::EPSILON); // default
+        assert!((config.noise_std - 0.0).abs() < f32::EPSILON); // default
+        assert!((config.load_balance_coef - 0.01).abs() < f32::EPSILON); // default
+    }
+
+    // =========================================================================
+    // EDGE CASE TESTS FOR FUSION CONFIG
+    // =========================================================================
+
+    #[test]
+    fn test_fusion_edge_case_boundary_values() {
+        // Test boundary values that should pass
+        let config = FusionConfig {
+            num_experts: 1,
+            top_k: 1,
+            output_dim: 1,
+            expert_hidden_dim: 1,
+            temperature: 0.0001, // Very small but > 0
+            noise_std: 0.0,
+            load_balance_coef: 0.0,
+            capacity_factor: 1.0, // Exactly 1.0
+            laplace_alpha: 0.0, // Exactly 0
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_fusion_edge_case_large_values() {
+        // Test large but valid values
+        let config = FusionConfig {
+            num_experts: 1024,
+            top_k: 512,
+            output_dim: 65536,
+            expert_hidden_dim: 32768,
+            temperature: 100.0,
+            noise_std: 10.0,
+            load_balance_coef: 1.0,
+            capacity_factor: 10.0,
+            laplace_alpha: 1.0,
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_fusion_capacity_factor_nan() {
+        let config = FusionConfig {
+            capacity_factor: f32::NAN,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("capacity_factor"));
+    }
+
+    #[test]
+    fn test_fusion_laplace_alpha_nan() {
+        let config = FusionConfig {
+            laplace_alpha: f32::NAN,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("laplace_alpha"));
+    }
+
+    #[test]
+    fn test_fusion_laplace_alpha_negative() {
+        let config = FusionConfig {
+            laplace_alpha: -0.001,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("laplace_alpha"));
     }
 }
