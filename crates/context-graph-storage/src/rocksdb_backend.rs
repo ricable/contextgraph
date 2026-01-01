@@ -22,16 +22,18 @@
 //! - `delete_node()`: Soft delete (SEC-06 compliance) or hard delete
 
 use chrono::{DateTime, Utc};
-use rocksdb::{Cache, ColumnFamily, Options, WriteBatch, DB};
+use rocksdb::{Cache, ColumnFamily, IteratorMode, Options, WriteBatch, DB};
 use std::collections::HashSet;
 use std::path::Path;
 use thiserror::Error;
 
 use crate::column_families::{cf_names, get_column_family_descriptors};
 use crate::serialization::{
-    deserialize_node, serialize_embedding, serialize_node, serialize_uuid, SerializationError,
+    deserialize_edge, deserialize_node, serialize_edge, serialize_embedding, serialize_node,
+    serialize_uuid, SerializationError,
 };
-use context_graph_core::types::{MemoryNode, NodeId, ValidationError};
+use context_graph_core::marblestone::EdgeType;
+use context_graph_core::types::{GraphEdge, MemoryNode, NodeId, ValidationError};
 
 /// Default block cache size: 256MB (per constitution.yaml).
 pub const DEFAULT_CACHE_SIZE: usize = 256 * 1024 * 1024;
@@ -581,6 +583,216 @@ impl RocksDbMemex {
 
         Ok(())
     }
+
+    // =========================================================================
+    // Edge CRUD Operations (TASK-M02-018)
+    // =========================================================================
+
+    /// Stores a GraphEdge with composite key for efficient lookups.
+    ///
+    /// Key format: source_uuid_bytes (16) + target_uuid_bytes (16) + edge_type_byte (1) = 33 bytes
+    /// Preserves all 13 Marblestone fields through bincode serialization.
+    ///
+    /// # Performance
+    /// Target: <1ms p95 latency
+    ///
+    /// # Errors
+    /// - `StorageError::Serialization` if serialization fails
+    /// - `StorageError::WriteFailed` if RocksDB write fails
+    /// - `StorageError::ColumnFamilyNotFound` if edges CF missing
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// use context_graph_storage::rocksdb_backend::RocksDbMemex;
+    /// use context_graph_core::types::GraphEdge;
+    /// use context_graph_core::marblestone::{EdgeType, Domain};
+    /// use uuid::Uuid;
+    ///
+    /// let db = RocksDbMemex::open("./data")?;
+    /// let edge = GraphEdge::new(Uuid::new_v4(), Uuid::new_v4(), EdgeType::Semantic, Domain::Code);
+    /// db.store_edge(&edge)?;
+    /// ```
+    pub fn store_edge(&self, edge: &GraphEdge) -> Result<(), StorageError> {
+        let cf_edges = self.get_cf(cf_names::EDGES)?;
+        let key = format_edge_key(&edge.source_id, &edge.target_id, edge.edge_type);
+        let value = serialize_edge(edge)?;
+
+        self.db
+            .put_cf(cf_edges, &key, &value)
+            .map_err(|e| StorageError::WriteFailed(e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// Retrieves a GraphEdge by source, target, and edge type.
+    ///
+    /// # Performance
+    /// Target: <500μs p95 latency
+    ///
+    /// # Errors
+    /// - `StorageError::NotFound` if edge doesn't exist
+    /// - `StorageError::Serialization` if deserialization fails
+    /// - `StorageError::ReadFailed` if RocksDB read fails
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// use context_graph_storage::rocksdb_backend::RocksDbMemex;
+    /// use context_graph_core::marblestone::EdgeType;
+    /// use uuid::Uuid;
+    ///
+    /// let db = RocksDbMemex::open("./data")?;
+    /// let edge = db.get_edge(&source_id, &target_id, EdgeType::Semantic)?;
+    /// println!("Edge weight: {}", edge.weight);
+    /// ```
+    pub fn get_edge(
+        &self,
+        source_id: &NodeId,
+        target_id: &NodeId,
+        edge_type: EdgeType,
+    ) -> Result<GraphEdge, StorageError> {
+        let cf_edges = self.get_cf(cf_names::EDGES)?;
+        let key = format_edge_key(source_id, target_id, edge_type);
+
+        let value = self
+            .db
+            .get_cf(cf_edges, &key)
+            .map_err(|e| StorageError::ReadFailed(e.to_string()))?
+            .ok_or_else(|| StorageError::NotFound {
+                id: format!("edge:{}:{}:{:?}", source_id, target_id, edge_type),
+            })?;
+
+        deserialize_edge(&value).map_err(StorageError::from)
+    }
+
+    /// Updates an existing GraphEdge.
+    ///
+    /// Same as store - RocksDB overwrites existing keys.
+    /// DOES NOT verify edge exists first (use get_edge if verification needed).
+    ///
+    /// # Errors
+    /// - `StorageError::Serialization` if serialization fails
+    /// - `StorageError::WriteFailed` if RocksDB write fails
+    pub fn update_edge(&self, edge: &GraphEdge) -> Result<(), StorageError> {
+        // Same as store - RocksDB overwrites existing keys
+        self.store_edge(edge)
+    }
+
+    /// Deletes a GraphEdge.
+    ///
+    /// Note: Does NOT return NotFound if edge doesn't exist (RocksDB delete is idempotent).
+    ///
+    /// # Errors
+    /// - `StorageError::WriteFailed` if RocksDB delete fails
+    /// - `StorageError::ColumnFamilyNotFound` if edges CF missing
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// use context_graph_storage::rocksdb_backend::RocksDbMemex;
+    /// use context_graph_core::marblestone::EdgeType;
+    /// use uuid::Uuid;
+    ///
+    /// let db = RocksDbMemex::open("./data")?;
+    /// db.delete_edge(&source_id, &target_id, EdgeType::Semantic)?;
+    /// ```
+    pub fn delete_edge(
+        &self,
+        source_id: &NodeId,
+        target_id: &NodeId,
+        edge_type: EdgeType,
+    ) -> Result<(), StorageError> {
+        let cf_edges = self.get_cf(cf_names::EDGES)?;
+        let key = format_edge_key(source_id, target_id, edge_type);
+
+        self.db
+            .delete_cf(cf_edges, &key)
+            .map_err(|e| StorageError::WriteFailed(e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// Gets all outgoing edges from a source node.
+    ///
+    /// Uses prefix scan for efficiency - O(n) where n = number of outgoing edges.
+    /// The edges CF is configured with a 16-byte prefix extractor for optimal performance.
+    ///
+    /// # Performance
+    /// Efficient prefix scan - only iterates over edges from this source.
+    ///
+    /// # Errors
+    /// - `StorageError::Serialization` if any edge deserialization fails
+    /// - `StorageError::ReadFailed` if RocksDB iteration fails
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// use context_graph_storage::rocksdb_backend::RocksDbMemex;
+    /// use uuid::Uuid;
+    ///
+    /// let db = RocksDbMemex::open("./data")?;
+    /// let outgoing_edges = db.get_edges_from(&source_id)?;
+    /// println!("Found {} outgoing edges", outgoing_edges.len());
+    /// ```
+    pub fn get_edges_from(&self, source_id: &NodeId) -> Result<Vec<GraphEdge>, StorageError> {
+        let cf_edges = self.get_cf(cf_names::EDGES)?;
+        let prefix = format_edge_prefix(source_id);
+        let mut edges = Vec::new();
+
+        // Use prefix iterator for efficient scanning
+        let iter = self.db.prefix_iterator_cf(cf_edges, &prefix);
+
+        for item in iter {
+            let (key, value) = item.map_err(|e| StorageError::ReadFailed(e.to_string()))?;
+
+            // Check that key still starts with our prefix (RocksDB may return more)
+            if !key.starts_with(&prefix) {
+                break;
+            }
+
+            let edge = deserialize_edge(&value)?;
+            edges.push(edge);
+        }
+
+        Ok(edges)
+    }
+
+    /// Gets all incoming edges to a target node.
+    ///
+    /// Uses full scan with filter - O(E) where E = total edges in database.
+    /// Less efficient than get_edges_from() - no reverse index in this implementation.
+    ///
+    /// # Performance
+    /// Full table scan - consider adding a reverse index for high-volume use cases.
+    ///
+    /// # Errors
+    /// - `StorageError::Serialization` if any edge deserialization fails
+    /// - `StorageError::ReadFailed` if RocksDB iteration fails
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// use context_graph_storage::rocksdb_backend::RocksDbMemex;
+    /// use uuid::Uuid;
+    ///
+    /// let db = RocksDbMemex::open("./data")?;
+    /// let incoming_edges = db.get_edges_to(&target_id)?;
+    /// println!("Found {} incoming edges", incoming_edges.len());
+    /// ```
+    pub fn get_edges_to(&self, target_id: &NodeId) -> Result<Vec<GraphEdge>, StorageError> {
+        let cf_edges = self.get_cf(cf_names::EDGES)?;
+        let mut edges = Vec::new();
+
+        // Full scan with filter (no reverse index)
+        let iter = self.db.iterator_cf(cf_edges, IteratorMode::Start);
+
+        for item in iter {
+            let (_key, value) = item.map_err(|e| StorageError::ReadFailed(e.to_string()))?;
+            let edge = deserialize_edge(&value)?;
+
+            if &edge.target_id == target_id {
+                edges.push(edge);
+            }
+        }
+
+        Ok(edges)
+    }
 }
 
 // =========================================================================
@@ -622,6 +834,37 @@ fn format_source_key(source: &str, id: &NodeId) -> Vec<u8> {
     key.push(b':');
     key.extend_from_slice(&serialize_uuid(id));
     key
+}
+
+// =========================================================================
+// Edge Key Helper Functions (TASK-M02-018)
+// =========================================================================
+
+/// Format edge key: 16-byte source_uuid + 16-byte target_uuid + 1-byte edge_type.
+///
+/// Total: 33 bytes. Uses big-endian UUID bytes for proper lexicographic ordering.
+/// This enables efficient prefix scans by source_id.
+///
+/// # Key Structure
+/// - Bytes 0-15: source_id UUID (16 bytes)
+/// - Bytes 16-31: target_id UUID (16 bytes)
+/// - Byte 32: edge_type as u8 (1 byte)
+#[inline]
+fn format_edge_key(source_id: &NodeId, target_id: &NodeId, edge_type: EdgeType) -> Vec<u8> {
+    let mut key = Vec::with_capacity(33);
+    key.extend_from_slice(&serialize_uuid(source_id));
+    key.extend_from_slice(&serialize_uuid(target_id));
+    key.push(edge_type as u8);
+    key
+}
+
+/// Format edge prefix for source_id: just the 16-byte source_uuid.
+///
+/// Used for prefix scans to find all edges from a source node.
+/// The prefix extractor in column_families.rs is configured for 16-byte prefixes.
+#[inline]
+fn format_edge_prefix(source_id: &NodeId) -> Vec<u8> {
+    serialize_uuid(source_id).to_vec()
 }
 
 // DB is automatically closed when RocksDbMemex is dropped (RocksDB's Drop impl)
@@ -1736,5 +1979,624 @@ mod tests {
         );
 
         println!("RESULT: PASS - Performance within sanity bounds");
+    }
+
+    // =========================================================================
+    // Edge CRUD Tests (TASK-M02-018)
+    // Using REAL data, NO MOCKS - per requirements
+    // All tests print BEFORE/AFTER state for evidence
+    // =========================================================================
+
+    use context_graph_core::marblestone::{Domain, NeurotransmitterWeights};
+
+    /// Create a REAL GraphEdge with all 13 fields populated.
+    /// Uses Domain::Code as default.
+    fn create_test_edge() -> GraphEdge {
+        GraphEdge::new(
+            uuid::Uuid::new_v4(),
+            uuid::Uuid::new_v4(),
+            EdgeType::Semantic,
+            Domain::Code,
+        )
+    }
+
+    /// Create a REAL GraphEdge between specific nodes.
+    fn create_test_edge_between(
+        source: uuid::Uuid,
+        target: uuid::Uuid,
+        edge_type: EdgeType,
+    ) -> GraphEdge {
+        GraphEdge::new(source, target, edge_type, Domain::Code)
+    }
+
+    // =========================================================================
+    // store_edge Tests
+    // =========================================================================
+
+    #[test]
+    fn test_edge_crud_store_edge_basic() {
+        println!("=== TEST: store_edge basic operation ===");
+        let (_tmp, db) = create_temp_db();
+        let edge = create_test_edge();
+
+        println!("BEFORE: Storing edge {}", edge.id);
+        let result = db.store_edge(&edge);
+        println!("AFTER: Store result = {:?}", result.is_ok());
+
+        assert!(result.is_ok(), "store_edge should succeed");
+        println!("RESULT: PASS - Edge stored successfully");
+    }
+
+    #[test]
+    fn test_edge_crud_store_and_get_roundtrip() {
+        println!("=== TEST: store_edge + get_edge roundtrip ===");
+        let (_tmp, db) = create_temp_db();
+        let edge = create_test_edge();
+
+        println!("BEFORE: Storing edge with id={}", edge.id);
+        println!("  source_id={}", edge.source_id);
+        println!("  target_id={}", edge.target_id);
+        println!("  edge_type={:?}", edge.edge_type);
+
+        db.store_edge(&edge).expect("store failed");
+
+        let retrieved = db
+            .get_edge(&edge.source_id, &edge.target_id, edge.edge_type)
+            .expect("get failed");
+
+        println!("AFTER: Retrieved edge id={}", retrieved.id);
+
+        // Verify ALL 13 fields preserved
+        assert_eq!(edge.id, retrieved.id, "id mismatch");
+        assert_eq!(edge.source_id, retrieved.source_id, "source_id mismatch");
+        assert_eq!(edge.target_id, retrieved.target_id, "target_id mismatch");
+        assert_eq!(edge.edge_type, retrieved.edge_type, "edge_type mismatch");
+        assert_eq!(edge.weight, retrieved.weight, "weight mismatch");
+        assert_eq!(edge.confidence, retrieved.confidence, "confidence mismatch");
+        assert_eq!(edge.domain, retrieved.domain, "domain mismatch");
+        assert_eq!(
+            edge.neurotransmitter_weights, retrieved.neurotransmitter_weights,
+            "NT weights mismatch"
+        );
+        assert_eq!(
+            edge.is_amortized_shortcut, retrieved.is_amortized_shortcut,
+            "amortized mismatch"
+        );
+        assert_eq!(
+            edge.steering_reward, retrieved.steering_reward,
+            "steering mismatch"
+        );
+        assert_eq!(
+            edge.traversal_count, retrieved.traversal_count,
+            "traversal mismatch"
+        );
+        assert_eq!(edge.created_at, retrieved.created_at, "created_at mismatch");
+        assert_eq!(
+            edge.last_traversed_at, retrieved.last_traversed_at,
+            "last_traversed mismatch"
+        );
+
+        println!("RESULT: All 13 fields preserved ✓");
+    }
+
+    #[test]
+    fn test_edge_crud_store_with_marblestone_fields() {
+        println!("=== TEST: store_edge preserves Marblestone fields ===");
+        let (_tmp, db) = create_temp_db();
+
+        let mut edge = create_test_edge();
+        edge.weight = 0.85;
+        edge.confidence = 0.95;
+        edge.is_amortized_shortcut = true;
+        edge.steering_reward = 0.75;
+        edge.traversal_count = 42;
+        edge.neurotransmitter_weights = NeurotransmitterWeights::for_domain(Domain::Medical);
+        edge.record_traversal();
+
+        println!("BEFORE: Marblestone fields set:");
+        println!("  weight={}", edge.weight);
+        println!("  confidence={}", edge.confidence);
+        println!("  is_amortized_shortcut={}", edge.is_amortized_shortcut);
+        println!("  steering_reward={}", edge.steering_reward);
+        println!("  traversal_count={}", edge.traversal_count);
+        println!("  last_traversed_at={:?}", edge.last_traversed_at);
+
+        db.store_edge(&edge).expect("store failed");
+        let retrieved = db
+            .get_edge(&edge.source_id, &edge.target_id, edge.edge_type)
+            .expect("get failed");
+
+        println!("AFTER: Retrieved Marblestone fields:");
+        println!("  weight={}", retrieved.weight);
+        println!("  confidence={}", retrieved.confidence);
+        println!("  is_amortized_shortcut={}", retrieved.is_amortized_shortcut);
+        println!("  steering_reward={}", retrieved.steering_reward);
+        println!("  traversal_count={}", retrieved.traversal_count);
+        println!("  last_traversed_at={:?}", retrieved.last_traversed_at);
+
+        assert_eq!(edge.is_amortized_shortcut, retrieved.is_amortized_shortcut);
+        assert_eq!(edge.steering_reward, retrieved.steering_reward);
+        assert_eq!(edge.traversal_count, retrieved.traversal_count);
+        assert_eq!(
+            edge.neurotransmitter_weights,
+            retrieved.neurotransmitter_weights
+        );
+        assert!(retrieved.last_traversed_at.is_some());
+
+        println!("RESULT: All Marblestone fields preserved ✓");
+    }
+
+    // =========================================================================
+    // get_edge Tests
+    // =========================================================================
+
+    #[test]
+    fn test_edge_crud_get_edge_not_found() {
+        println!("=== TEST: get_edge returns NotFound ===");
+        let (_tmp, db) = create_temp_db();
+        let fake_source = uuid::Uuid::new_v4();
+        let fake_target = uuid::Uuid::new_v4();
+
+        println!("BEFORE: Querying non-existent edge");
+        let result = db.get_edge(&fake_source, &fake_target, EdgeType::Semantic);
+        println!("AFTER: Result = {:?}", result);
+
+        assert!(result.is_err(), "Should fail for missing edge");
+        assert!(matches!(result, Err(StorageError::NotFound { .. })));
+        println!("RESULT: NotFound returned correctly (fail fast) ✓");
+    }
+
+    // =========================================================================
+    // update_edge Tests
+    // =========================================================================
+
+    #[test]
+    fn test_edge_crud_update_edge() {
+        println!("=== TEST: update_edge ===");
+        let (_tmp, db) = create_temp_db();
+        let mut edge = create_test_edge();
+
+        db.store_edge(&edge).expect("store failed");
+        println!("BEFORE: weight={}", edge.weight);
+
+        edge.weight = 0.999;
+        edge.steering_reward = 0.5;
+        db.update_edge(&edge).expect("update failed");
+
+        let retrieved = db
+            .get_edge(&edge.source_id, &edge.target_id, edge.edge_type)
+            .expect("get failed");
+        println!("AFTER: weight={}", retrieved.weight);
+
+        assert_eq!(retrieved.weight, 0.999);
+        assert_eq!(retrieved.steering_reward, 0.5);
+        println!("RESULT: Edge updated correctly ✓");
+    }
+
+    // =========================================================================
+    // delete_edge Tests
+    // =========================================================================
+
+    #[test]
+    fn test_edge_crud_delete_edge() {
+        println!("=== TEST: delete_edge ===");
+        let (_tmp, db) = create_temp_db();
+        let edge = create_test_edge();
+
+        db.store_edge(&edge).expect("store failed");
+        println!("BEFORE: Edge stored");
+
+        // Verify exists
+        assert!(db
+            .get_edge(&edge.source_id, &edge.target_id, edge.edge_type)
+            .is_ok());
+
+        db.delete_edge(&edge.source_id, &edge.target_id, edge.edge_type)
+            .expect("delete failed");
+        println!("AFTER: Edge deleted");
+
+        // Verify gone
+        let result = db.get_edge(&edge.source_id, &edge.target_id, edge.edge_type);
+        assert!(matches!(result, Err(StorageError::NotFound { .. })));
+        println!("RESULT: Edge deleted correctly ✓");
+    }
+
+    #[test]
+    fn test_edge_crud_delete_idempotent() {
+        println!("=== TEST: delete_edge is idempotent ===");
+        let (_tmp, db) = create_temp_db();
+        let fake_source = uuid::Uuid::new_v4();
+        let fake_target = uuid::Uuid::new_v4();
+
+        println!("BEFORE: Deleting non-existent edge");
+        // Delete should succeed even for non-existent edge (RocksDB is idempotent)
+        let result = db.delete_edge(&fake_source, &fake_target, EdgeType::Semantic);
+        println!("AFTER: Result = {:?}", result.is_ok());
+
+        assert!(result.is_ok(), "Delete should be idempotent");
+        println!("RESULT: Delete is idempotent ✓");
+    }
+
+    // =========================================================================
+    // get_edges_from Tests (prefix scan)
+    // =========================================================================
+
+    #[test]
+    fn test_edge_crud_get_edges_from_prefix_scan() {
+        println!("=== TEST: get_edges_from prefix scan ===");
+        let (_tmp, db) = create_temp_db();
+        let source = uuid::Uuid::new_v4();
+        let target1 = uuid::Uuid::new_v4();
+        let target2 = uuid::Uuid::new_v4();
+        let target3 = uuid::Uuid::new_v4();
+
+        // Create 3 outgoing edges from same source
+        let edge1 = create_test_edge_between(source, target1, EdgeType::Semantic);
+        let edge2 = create_test_edge_between(source, target2, EdgeType::Causal);
+        let edge3 = create_test_edge_between(source, target3, EdgeType::Temporal);
+
+        println!("BEFORE: Storing 3 edges from source {}", source);
+        db.store_edge(&edge1).expect("store1 failed");
+        db.store_edge(&edge2).expect("store2 failed");
+        db.store_edge(&edge3).expect("store3 failed");
+
+        let edges = db.get_edges_from(&source).expect("get_edges_from failed");
+        println!("AFTER: Found {} edges", edges.len());
+
+        assert_eq!(edges.len(), 3, "Should find all 3 outgoing edges");
+
+        // Verify all edges have correct source
+        for edge in &edges {
+            assert_eq!(edge.source_id, source, "All edges should have same source");
+        }
+
+        println!("RESULT: Prefix scan found all outgoing edges ✓");
+    }
+
+    #[test]
+    fn test_edge_crud_get_edges_from_empty() {
+        println!("=== TEST: get_edges_from returns empty vec ===");
+        let (_tmp, db) = create_temp_db();
+        let source = uuid::Uuid::new_v4();
+
+        let edges = db.get_edges_from(&source).expect("get_edges_from failed");
+        assert!(edges.is_empty(), "Should return empty vec for no edges");
+        println!("RESULT: Empty vec returned correctly ✓");
+    }
+
+    #[test]
+    fn test_edge_crud_get_edges_from_does_not_include_other_sources() {
+        println!("=== TEST: get_edges_from only returns edges from specified source ===");
+        let (_tmp, db) = create_temp_db();
+        let source1 = uuid::Uuid::new_v4();
+        let source2 = uuid::Uuid::new_v4();
+        let target = uuid::Uuid::new_v4();
+
+        // Create edges from different sources
+        let edge1 = create_test_edge_between(source1, target, EdgeType::Semantic);
+        let edge2 = create_test_edge_between(source2, target, EdgeType::Semantic);
+
+        db.store_edge(&edge1).expect("store1 failed");
+        db.store_edge(&edge2).expect("store2 failed");
+
+        println!("BEFORE: Stored edges from 2 different sources");
+
+        let edges_from_1 = db.get_edges_from(&source1).expect("get failed");
+        let edges_from_2 = db.get_edges_from(&source2).expect("get failed");
+
+        println!("AFTER: source1 has {} edges, source2 has {} edges",
+            edges_from_1.len(), edges_from_2.len());
+
+        assert_eq!(edges_from_1.len(), 1);
+        assert_eq!(edges_from_2.len(), 1);
+        assert_eq!(edges_from_1[0].source_id, source1);
+        assert_eq!(edges_from_2[0].source_id, source2);
+
+        println!("RESULT: Prefix scan correctly separates sources ✓");
+    }
+
+    // =========================================================================
+    // get_edges_to Tests (full scan)
+    // =========================================================================
+
+    #[test]
+    fn test_edge_crud_get_edges_to_full_scan() {
+        println!("=== TEST: get_edges_to full scan ===");
+        let (_tmp, db) = create_temp_db();
+        let source1 = uuid::Uuid::new_v4();
+        let source2 = uuid::Uuid::new_v4();
+        let source3 = uuid::Uuid::new_v4();
+        let target = uuid::Uuid::new_v4();
+
+        // Create 3 incoming edges to same target
+        let edge1 = create_test_edge_between(source1, target, EdgeType::Semantic);
+        let edge2 = create_test_edge_between(source2, target, EdgeType::Causal);
+        let edge3 = create_test_edge_between(source3, target, EdgeType::Temporal);
+
+        println!("BEFORE: Storing 3 edges to target {}", target);
+        db.store_edge(&edge1).expect("store1 failed");
+        db.store_edge(&edge2).expect("store2 failed");
+        db.store_edge(&edge3).expect("store3 failed");
+
+        let edges = db.get_edges_to(&target).expect("get_edges_to failed");
+        println!("AFTER: Found {} edges", edges.len());
+
+        assert_eq!(edges.len(), 3, "Should find all 3 incoming edges");
+
+        // Verify all edges have correct target
+        for edge in &edges {
+            assert_eq!(edge.target_id, target, "All edges should have same target");
+        }
+
+        println!("RESULT: Full scan found all incoming edges ✓");
+    }
+
+    #[test]
+    fn test_edge_crud_get_edges_to_empty() {
+        println!("=== TEST: get_edges_to returns empty vec ===");
+        let (_tmp, db) = create_temp_db();
+        let target = uuid::Uuid::new_v4();
+
+        let edges = db.get_edges_to(&target).expect("get_edges_to failed");
+        assert!(edges.is_empty(), "Should return empty vec for no edges");
+        println!("RESULT: Empty vec returned correctly ✓");
+    }
+
+    // =========================================================================
+    // Multiple Edge Types Tests
+    // =========================================================================
+
+    #[test]
+    fn test_edge_crud_multiple_edge_types_same_nodes() {
+        println!("=== TEST: Multiple edge types between same nodes ===");
+        let (_tmp, db) = create_temp_db();
+        let source = uuid::Uuid::new_v4();
+        let target = uuid::Uuid::new_v4();
+
+        // Create 4 edges with different types between same nodes
+        for edge_type in EdgeType::all() {
+            let edge = create_test_edge_between(source, target, edge_type);
+            db.store_edge(&edge).expect("store failed");
+            println!("  Stored edge type {:?}", edge_type);
+        }
+
+        println!("BEFORE: Stored 4 edges (one per type) between same nodes");
+
+        // Retrieve each edge type
+        for edge_type in EdgeType::all() {
+            let edge = db
+                .get_edge(&source, &target, edge_type)
+                .expect("get failed");
+            assert_eq!(edge.edge_type, edge_type);
+            println!("  Retrieved edge type {:?} ✓", edge_type);
+        }
+
+        // Verify get_edges_from returns all 4
+        let edges = db.get_edges_from(&source).expect("get_edges_from failed");
+        assert_eq!(edges.len(), 4, "Should find all 4 edge types");
+
+        println!("RESULT: Multiple edge types between same nodes work ✓");
+    }
+
+    // =========================================================================
+    // Edge Case Tests (print before/after state)
+    // =========================================================================
+
+    #[test]
+    fn test_edge_case_extreme_weight_values() {
+        println!("=== EDGE CASE: Extreme weight values ===");
+        let (_tmp, db) = create_temp_db();
+
+        let mut edge = create_test_edge();
+        edge.weight = 0.0;
+        edge.confidence = 1.0;
+        edge.steering_reward = -1.0;
+
+        println!(
+            "BEFORE: weight={}, confidence={}, steering={}",
+            edge.weight, edge.confidence, edge.steering_reward
+        );
+
+        db.store_edge(&edge).expect("store failed");
+        let retrieved = db
+            .get_edge(&edge.source_id, &edge.target_id, edge.edge_type)
+            .expect("get failed");
+
+        println!(
+            "AFTER: weight={}, confidence={}, steering={}",
+            retrieved.weight, retrieved.confidence, retrieved.steering_reward
+        );
+
+        assert_eq!(retrieved.weight, 0.0);
+        assert_eq!(retrieved.confidence, 1.0);
+        assert_eq!(retrieved.steering_reward, -1.0);
+        println!("RESULT: Extreme values preserved ✓");
+    }
+
+    #[test]
+    fn test_edge_case_all_edge_types() {
+        println!("=== EDGE CASE: All EdgeType variants ===");
+        let (_tmp, db) = create_temp_db();
+
+        for edge_type in EdgeType::all() {
+            let edge = GraphEdge::new(
+                uuid::Uuid::new_v4(),
+                uuid::Uuid::new_v4(),
+                edge_type,
+                Domain::General,
+            );
+            println!("  Testing {:?}", edge_type);
+
+            db.store_edge(&edge).expect("store failed");
+            let retrieved = db
+                .get_edge(&edge.source_id, &edge.target_id, edge_type)
+                .expect("get failed");
+
+            assert_eq!(retrieved.edge_type, edge_type);
+        }
+        println!("RESULT: All EdgeType variants work ✓");
+    }
+
+    #[test]
+    fn test_edge_case_all_domain_types() {
+        println!("=== EDGE CASE: All Domain variants ===");
+        let (_tmp, db) = create_temp_db();
+
+        for domain in Domain::all() {
+            let edge = GraphEdge::new(
+                uuid::Uuid::new_v4(),
+                uuid::Uuid::new_v4(),
+                EdgeType::Semantic,
+                domain,
+            );
+            println!("  Testing {:?}", domain);
+
+            db.store_edge(&edge).expect("store failed");
+            let retrieved = db
+                .get_edge(&edge.source_id, &edge.target_id, EdgeType::Semantic)
+                .expect("get failed");
+
+            assert_eq!(retrieved.domain, domain);
+            assert_eq!(
+                retrieved.neurotransmitter_weights,
+                NeurotransmitterWeights::for_domain(domain)
+            );
+        }
+        println!("RESULT: All Domain variants work ✓");
+    }
+
+    // =========================================================================
+    // Helper Function Tests (TASK-M02-018)
+    // =========================================================================
+
+    #[test]
+    fn test_format_edge_key() {
+        let source = uuid::Uuid::new_v4();
+        let target = uuid::Uuid::new_v4();
+        let edge_type = EdgeType::Causal;
+
+        let key = format_edge_key(&source, &target, edge_type);
+
+        assert_eq!(key.len(), 33, "Key should be 16+16+1=33 bytes");
+
+        // First 16 bytes = source UUID
+        let source_bytes: [u8; 16] = key[0..16].try_into().unwrap();
+        assert_eq!(source_bytes, serialize_uuid(&source));
+
+        // Next 16 bytes = target UUID
+        let target_bytes: [u8; 16] = key[16..32].try_into().unwrap();
+        assert_eq!(target_bytes, serialize_uuid(&target));
+
+        // Last byte = edge_type
+        assert_eq!(key[32], edge_type as u8);
+    }
+
+    #[test]
+    fn test_format_edge_prefix() {
+        let source = uuid::Uuid::new_v4();
+        let prefix = format_edge_prefix(&source);
+
+        assert_eq!(prefix.len(), 16, "Prefix should be 16 bytes");
+        assert_eq!(prefix.as_slice(), serialize_uuid(&source).as_slice());
+    }
+
+    // =========================================================================
+    // Evidence Tests - Verify data actually exists in RocksDB
+    // =========================================================================
+
+    #[test]
+    fn test_evidence_edge_exists_in_rocksdb() {
+        println!("=== EVIDENCE: Edge exists in RocksDB CF ===");
+        let (_tmp, db) = create_temp_db();
+        let edge = create_test_edge();
+
+        db.store_edge(&edge).expect("store failed");
+
+        // Directly check RocksDB CF
+        let cf_edges = db.get_cf(cf_names::EDGES).unwrap();
+        let key = format_edge_key(&edge.source_id, &edge.target_id, edge.edge_type);
+        let value = db.db().get_cf(cf_edges, &key).expect("direct read failed");
+
+        assert!(value.is_some(), "Edge MUST exist in edges CF");
+        println!(
+            "  edges CF: Edge exists ({} bytes) ✓",
+            value.unwrap().len()
+        );
+        println!("RESULT: Edge verified in RocksDB ✓");
+    }
+
+    #[test]
+    fn test_evidence_edge_key_is_33_bytes() {
+        println!("=== EVIDENCE: Edge key is exactly 33 bytes ===");
+        let (_tmp, db) = create_temp_db();
+        let edge = create_test_edge();
+
+        db.store_edge(&edge).expect("store failed");
+
+        let cf_edges = db.get_cf(cf_names::EDGES).unwrap();
+        let key = format_edge_key(&edge.source_id, &edge.target_id, edge.edge_type);
+
+        println!("  Key length: {} bytes", key.len());
+        assert_eq!(key.len(), 33, "Edge key must be exactly 33 bytes");
+
+        // Verify key structure
+        println!("  Bytes 0-15: source_uuid");
+        println!("  Bytes 16-31: target_uuid");
+        println!("  Byte 32: edge_type = {}", key[32]);
+
+        // Verify the edge is retrievable with this key
+        let value = db.db().get_cf(cf_edges, &key).unwrap();
+        assert!(value.is_some());
+
+        println!("RESULT: 33-byte key format verified ✓");
+    }
+
+    // =========================================================================
+    // Performance Sanity Tests (TASK-M02-018)
+    // =========================================================================
+
+    #[test]
+    fn test_edge_crud_performance_sanity() {
+        println!("=== PERFORMANCE: Edge CRUD timing ===");
+        let (_tmp, db) = create_temp_db();
+        let edge = create_test_edge();
+
+        // Warm up
+        db.store_edge(&edge).unwrap();
+        let _ = db
+            .get_edge(&edge.source_id, &edge.target_id, edge.edge_type)
+            .unwrap();
+        db.delete_edge(&edge.source_id, &edge.target_id, edge.edge_type)
+            .unwrap();
+
+        // Time store
+        let edge2 = create_test_edge();
+        let start = std::time::Instant::now();
+        db.store_edge(&edge2).unwrap();
+        let store_time = start.elapsed();
+
+        // Time get
+        let start = std::time::Instant::now();
+        let _ = db
+            .get_edge(&edge2.source_id, &edge2.target_id, edge2.edge_type)
+            .unwrap();
+        let get_time = start.elapsed();
+
+        println!("  store_edge: {:?}", store_time);
+        println!("  get_edge: {:?}", get_time);
+
+        // Sanity check: should be < 100ms at least (real target is <1ms/<500μs)
+        assert!(
+            store_time.as_millis() < 100,
+            "store_edge too slow: {:?}",
+            store_time
+        );
+        assert!(
+            get_time.as_millis() < 100,
+            "get_edge too slow: {:?}",
+            get_time
+        );
+
+        println!("RESULT: PASS - Edge CRUD performance within sanity bounds");
     }
 }
