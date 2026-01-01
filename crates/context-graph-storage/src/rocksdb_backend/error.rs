@@ -60,6 +60,25 @@ pub enum StorageError {
     /// Fail fast: invalid nodes are never stored.
     #[error("Validation error: {0}")]
     ValidationFailed(String),
+
+    /// Index corruption detected during scan or validation.
+    ///
+    /// Indicates data integrity issues in secondary indexes.
+    /// Should trigger investigation and potential index rebuild.
+    #[error("Index corruption detected in {index_name}: {details}")]
+    IndexCorrupted {
+        /// Name of the corrupted index (e.g., "johari_open", "temporal")
+        index_name: String,
+        /// Details about the corruption (e.g., "UUID parse failed")
+        details: String,
+    },
+
+    /// Generic internal error for unexpected failures.
+    ///
+    /// Used for internal errors that don't fit other categories.
+    /// Should include diagnostic information for debugging.
+    #[error("Internal storage error: {0}")]
+    Internal(String),
 }
 
 impl From<SerializationError> for StorageError {

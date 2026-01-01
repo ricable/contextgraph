@@ -27,12 +27,14 @@
 //! - `core`: Main RocksDbMemex struct with open/close/health
 //! - `node_ops`: Node CRUD operations
 //! - `edge_ops`: Edge CRUD operations
+//! - `embedding_ops`: Embedding storage operations (TASK-M02-024)
 //! - `index_ops`: Secondary index query operations
 //! - `helpers`: Key formatting utilities
 
 mod config;
 mod core;
 mod edge_ops;
+mod embedding_ops;
 mod error;
 mod helpers;
 mod index_ops;
@@ -44,6 +46,8 @@ mod tests_core;
 mod tests_edge;
 #[cfg(test)]
 mod tests_edge_scan;
+#[cfg(test)]
+mod tests_embedding;
 #[cfg(test)]
 mod tests_index;
 #[cfg(test)]
