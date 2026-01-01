@@ -99,9 +99,9 @@ metadata:
 
 | PRD Requirement | Source | Task ID | Status |
 |-----------------|--------|---------|--------|
-| paraphrase-MiniLM-L6-v2 | models_config.toml | M03-L10 | ☐ |
-| 384D output dimension | constitution.yaml | M03-L10, M03-F02 | ☐ |
-| Message passing for relations | contextprd.md | M03-L10 | ☐ |
+| paraphrase-MiniLM-L6-v2 | models_config.toml | M03-L10 | ✅ |
+| 384D output dimension | constitution.yaml | M03-L10, M03-F02 | ✅ |
+| Message passing for relations | contextprd.md | M03-L10 | ✅ |
 | <5ms latency target | constitution.yaml | M03-S11 | ☐ |
 
 ### PRD-EMB-009: HDC Model
