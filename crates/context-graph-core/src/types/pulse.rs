@@ -103,36 +103,42 @@ impl CognitivePulse {
 ///
 /// These suggest what the agent should consider doing next
 /// based on the current entropy/coherence balance.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum SuggestedAction {
-    /// System ready, no action needed
+    /// System ready for new input - low entropy, high coherence.
     Ready,
-    /// Continue current operation
+    /// Continue current activity - balanced state (DEFAULT).
+    #[default]
     Continue,
-    /// Consider exploring new areas
+    /// Explore new knowledge - use epistemic_action or trigger_dream(rem).
     Explore,
-    /// Focus on consolidating knowledge
+    /// Consolidate knowledge - use trigger_dream(nrem) or merge_concepts.
     Consolidate,
-    /// Reduce complexity, prune low-value nodes
+    /// Prune redundant information - review curation_tasks.
     Prune,
-    /// High entropy - needs stabilization
+    /// Stabilize context - use trigger_dream or critique_context.
     Stabilize,
-    /// Review and verify recent additions
+    /// Review context - use critique_context or reflect_on_memory.
     Review,
 }
 
 impl SuggestedAction {
-    /// Returns a human-readable description of this action.
+    /// Returns a human-readable description with MCP tool guidance.
+    ///
+    /// Each description includes actionable guidance for which MCP tools
+    /// to use based on the current cognitive state.
     pub fn description(&self) -> &'static str {
         match self {
-            Self::Ready => "System is ready and stable",
-            Self::Continue => "Continue current operations",
-            Self::Explore => "Consider exploring new knowledge areas",
-            Self::Consolidate => "Focus on consolidating existing knowledge",
-            Self::Prune => "Consider pruning low-value information",
-            Self::Stabilize => "System needs stabilization - reduce entropy",
-            Self::Review => "Review and verify recent additions",
+            Self::Ready => "System ready for new input - low entropy, high coherence",
+            Self::Continue => "Continue current activity - balanced state",
+            Self::Explore => "Explore new knowledge - use epistemic_action or trigger_dream(rem)",
+            Self::Consolidate => {
+                "Consolidate knowledge - use trigger_dream(nrem) or merge_concepts"
+            }
+            Self::Prune => "Prune redundant information - review curation_tasks",
+            Self::Stabilize => "Stabilize context - use trigger_dream or critique_context",
+            Self::Review => "Review context - use critique_context or reflect_on_memory",
         }
     }
 }
@@ -183,5 +189,139 @@ mod tests {
         let pulse = CognitivePulse::new(1.5, -0.5, SuggestedAction::Continue);
         assert_eq!(pulse.entropy, 1.0);
         assert_eq!(pulse.coherence, 0.0);
+    }
+
+    // =======================================================================
+    // SuggestedAction Tests (TASK-M02-020)
+    // =======================================================================
+
+    #[test]
+    fn test_suggested_action_default_is_continue() {
+        let action = SuggestedAction::default();
+        assert_eq!(action, SuggestedAction::Continue);
+    }
+
+    #[test]
+    fn test_suggested_action_serde_roundtrip() {
+        let actions = [
+            SuggestedAction::Ready,
+            SuggestedAction::Continue,
+            SuggestedAction::Explore,
+            SuggestedAction::Consolidate,
+            SuggestedAction::Prune,
+            SuggestedAction::Stabilize,
+            SuggestedAction::Review,
+        ];
+        for action in actions {
+            let json = serde_json::to_string(&action).unwrap();
+            let parsed: SuggestedAction = serde_json::from_str(&json).unwrap();
+            assert_eq!(action, parsed);
+        }
+    }
+
+    #[test]
+    fn test_suggested_action_serde_snake_case() {
+        // Verify snake_case serialization
+        let json = serde_json::to_string(&SuggestedAction::Ready).unwrap();
+        assert_eq!(json, "\"ready\"");
+
+        let json = serde_json::to_string(&SuggestedAction::Continue).unwrap();
+        assert_eq!(json, "\"continue\"");
+    }
+
+    #[test]
+    fn test_suggested_action_descriptions_not_empty() {
+        let actions = [
+            SuggestedAction::Ready,
+            SuggestedAction::Continue,
+            SuggestedAction::Explore,
+            SuggestedAction::Consolidate,
+            SuggestedAction::Prune,
+            SuggestedAction::Stabilize,
+            SuggestedAction::Review,
+        ];
+        for action in actions {
+            let desc = action.description();
+            assert!(!desc.is_empty(), "{:?} has empty description", action);
+            assert!(
+                desc.len() > 20,
+                "{:?} description too short: {}",
+                action,
+                desc
+            );
+        }
+    }
+
+    #[test]
+    fn test_suggested_action_descriptions_unique() {
+        use std::collections::HashSet;
+        let actions = [
+            SuggestedAction::Ready,
+            SuggestedAction::Continue,
+            SuggestedAction::Explore,
+            SuggestedAction::Consolidate,
+            SuggestedAction::Prune,
+            SuggestedAction::Stabilize,
+            SuggestedAction::Review,
+        ];
+        let descriptions: HashSet<_> = actions.iter().map(|a| a.description()).collect();
+        assert_eq!(
+            descriptions.len(),
+            actions.len(),
+            "Descriptions must be unique"
+        );
+    }
+
+    #[test]
+    fn test_suggested_action_copy_semantics() {
+        let action = SuggestedAction::Explore;
+        let copied = action; // Copy, not move
+        assert_eq!(action, copied);
+        assert_eq!(action.description(), copied.description());
+    }
+
+    #[test]
+    fn test_suggested_action_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(SuggestedAction::Ready);
+        set.insert(SuggestedAction::Continue);
+        set.insert(SuggestedAction::Ready); // duplicate
+        assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    fn test_suggested_action_invalid_serde_rejected() {
+        // Verify invalid variant is correctly rejected
+        let json = "\"unknown_action\"";
+        let result: Result<SuggestedAction, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "Invalid variant should be rejected");
+    }
+
+    #[test]
+    fn test_suggested_action_descriptions_contain_mcp_tools() {
+        // Verify key actions have MCP tool guidance
+        assert!(
+            SuggestedAction::Explore
+                .description()
+                .contains("epistemic_action")
+        );
+        assert!(SuggestedAction::Explore.description().contains("trigger_dream"));
+        assert!(
+            SuggestedAction::Consolidate
+                .description()
+                .contains("trigger_dream")
+        );
+        assert!(
+            SuggestedAction::Consolidate
+                .description()
+                .contains("merge_concepts")
+        );
+        assert!(
+            SuggestedAction::Stabilize
+                .description()
+                .contains("critique_context")
+        );
+        assert!(SuggestedAction::Review.description().contains("reflect_on_memory"));
     }
 }

@@ -70,7 +70,7 @@ impl UtlProcessor for StubUtlProcessor {
     async fn compute_emotional_weight(&self, input: &str, context: &UtlContext) -> CoreResult<f32> {
         let base = Self::hash_to_float(input, 3);
         // Apply emotional state modifier
-        Ok((base * context.emotional_state.weight()).clamp(0.5, 1.5))
+        Ok((base * context.emotional_state.weight_modifier()).clamp(0.5, 1.5))
     }
 
     async fn compute_alignment(&self, input: &str, _context: &UtlContext) -> CoreResult<f32> {
@@ -374,6 +374,8 @@ mod tests {
             EmotionalState::Focused,
             EmotionalState::Stressed,
             EmotionalState::Fatigued,
+            EmotionalState::Engaged,
+            EmotionalState::Confused,
         ];
 
         for state in states {
