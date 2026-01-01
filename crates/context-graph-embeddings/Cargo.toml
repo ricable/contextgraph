@@ -28,6 +28,9 @@ tracing = { workspace = true }
 # For stub implementations
 rand = "0.8"
 
+# Hashing for content deduplication
+xxhash-rust = { version = "0.8", features = ["xxh64"] }
+
 [dev-dependencies]
 tokio-test = "0.4"
 
