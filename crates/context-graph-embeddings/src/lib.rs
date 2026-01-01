@@ -27,11 +27,13 @@
 pub mod error;
 pub mod provider;
 pub mod stub;
+pub mod traits;
 pub mod types;
 
 pub use error::{EmbeddingError, EmbeddingResult};
 pub use provider::EmbeddingProvider;
 pub use stub::StubEmbedder;
+pub use traits::EmbeddingModel;
 pub use types::ModelId;
 
 /// Default embedding dimension (FuseMoE output, OpenAI ada-002 compatible).
