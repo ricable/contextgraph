@@ -96,6 +96,10 @@ pub enum EmbeddingError {
     #[error("Input too long: {actual} tokens exceeds max {max}")]
     InputTooLong { actual: usize, max: usize },
 
+    /// Invalid image data (decoding failed, corrupt, unsupported format).
+    #[error("Invalid image: {reason}")]
+    InvalidImage { reason: String },
+
     // === Processing Errors ===
     /// Batch processing failed (queue overflow, timeout, partial failure).
     #[error("Batch processing error: {message}")]
