@@ -1,0 +1,292 @@
+//! NodeMetadata container for MemoryNode supplementary information.
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use uuid::Uuid;
+
+use crate::types::Modality;
+
+/// Helper function for serde default version value
+fn default_version() -> u32 {
+    1
+}
+
+/// Metadata container for MemoryNode supplementary information.
+///
+/// # Fields
+/// - Source tracking for provenance
+/// - Tagging for categorization
+/// - Versioning for change tracking
+/// - Soft-delete support per SEC-06
+/// - Hierarchical relationships (parent/child)
+/// - Custom attributes for extensibility
+///
+/// # Constitution Compliance
+/// - SEC-06: Soft delete with 30-day recovery
+/// - Naming: snake_case fields
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NodeMetadata {
+    /// Source identifier (e.g., file path, URL, session ID)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+
+    /// Natural language code (ISO 639-1, e.g., "en", "es")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+
+    /// Content modality type
+    pub modality: Modality,
+
+    /// User-defined tags for categorization
+    #[serde(default)]
+    pub tags: Vec<String>,
+
+    /// Cached UTL learning score [0.0, 1.0]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub utl_score: Option<f32>,
+
+    /// Whether this node has been consolidated
+    #[serde(default)]
+    pub consolidated: bool,
+
+    /// Timestamp when consolidation occurred
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub consolidated_at: Option<DateTime<Utc>>,
+
+    /// Version counter (incremented on updates)
+    #[serde(default = "default_version")]
+    pub version: u32,
+
+    /// Soft delete flag (SEC-06 compliance)
+    #[serde(default)]
+    pub deleted: bool,
+
+    /// Timestamp when soft deletion occurred
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<DateTime<Utc>>,
+
+    /// Parent node ID for hierarchical relationships
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<Uuid>,
+
+    /// Child node IDs for hierarchical relationships
+    #[serde(default)]
+    pub child_ids: Vec<Uuid>,
+
+    /// Custom user-defined attributes (JSON-compatible values)
+    #[serde(default)]
+    pub custom: HashMap<String, serde_json::Value>,
+
+    /// Rationale for storing this memory (required per AP-010)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rationale: Option<String>,
+}
+
+impl NodeMetadata {
+    /// Create new metadata with default values.
+    pub fn new() -> Self {
+        Self {
+            source: None,
+            language: None,
+            modality: Modality::default(),
+            tags: Vec::new(),
+            utl_score: None,
+            consolidated: false,
+            consolidated_at: None,
+            version: 1,
+            deleted: false,
+            deleted_at: None,
+            parent_id: None,
+            child_ids: Vec::new(),
+            custom: HashMap::new(),
+            rationale: None,
+        }
+    }
+
+    /// Set the source identifier. Returns self for builder chaining.
+    pub fn with_source(mut self, source: impl Into<String>) -> Self {
+        self.source = Some(source.into());
+        self
+    }
+
+    /// Set the language code. Returns self for builder chaining.
+    pub fn with_language(mut self, language: impl Into<String>) -> Self {
+        self.language = Some(language.into());
+        self
+    }
+
+    /// Set the modality. Returns self for builder chaining.
+    pub fn with_modality(mut self, modality: Modality) -> Self {
+        self.modality = modality;
+        self
+    }
+
+    /// Add a tag. Automatically deduplicates (no duplicates stored).
+    pub fn add_tag(&mut self, tag: impl Into<String>) {
+        let tag = tag.into();
+        if !self.tags.contains(&tag) {
+            self.tags.push(tag);
+        }
+    }
+
+    /// Remove a tag. Returns true if tag was present and removed.
+    pub fn remove_tag(&mut self, tag: &str) -> bool {
+        if let Some(pos) = self.tags.iter().position(|t| t == tag) {
+            self.tags.remove(pos);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Check if a tag exists.
+    pub fn has_tag(&self, tag: &str) -> bool {
+        self.tags.iter().any(|t| t == tag)
+    }
+
+    /// Set a custom attribute. Overwrites if key already exists.
+    pub fn set_custom(&mut self, key: impl Into<String>, value: serde_json::Value) {
+        self.custom.insert(key.into(), value);
+    }
+
+    /// Get a custom attribute by key.
+    pub fn get_custom(&self, key: &str) -> Option<&serde_json::Value> {
+        self.custom.get(key)
+    }
+
+    /// Remove a custom attribute. Returns the removed value if present.
+    pub fn remove_custom(&mut self, key: &str) -> Option<serde_json::Value> {
+        self.custom.remove(key)
+    }
+
+    /// Mark as consolidated with current timestamp.
+    pub fn mark_consolidated(&mut self) {
+        self.consolidated = true;
+        self.consolidated_at = Some(Utc::now());
+    }
+
+    /// Mark as deleted (soft delete) with current timestamp.
+    /// Per SEC-06: Soft delete with 30-day recovery.
+    pub fn mark_deleted(&mut self) {
+        self.deleted = true;
+        self.deleted_at = Some(Utc::now());
+    }
+
+    /// Restore from soft deletion. Clears deleted flag and timestamp.
+    pub fn restore(&mut self) {
+        self.deleted = false;
+        self.deleted_at = None;
+    }
+
+    /// Increment version counter. Saturates at u32::MAX (never wraps).
+    pub fn increment_version(&mut self) {
+        self.version = self.version.saturating_add(1);
+    }
+
+    /// Estimate memory size in bytes.
+    pub fn estimated_size(&self) -> usize {
+        let base = std::mem::size_of::<Self>();
+
+        let source_size = self.source.as_ref().map_or(0, |s| s.len());
+        let language_size = self.language.as_ref().map_or(0, |s| s.len());
+        let rationale_size = self.rationale.as_ref().map_or(0, |s| s.len());
+
+        let tags_size: usize = self.tags.iter().map(|t| t.len()).sum();
+        let child_ids_size = self.child_ids.len() * 16; // UUID is 16 bytes
+
+        // Rough estimate for HashMap: key lengths + value estimate (assume ~32 bytes avg)
+        let custom_size: usize = self.custom.keys().map(|k| k.len() + 32).sum();
+
+        base + source_size + language_size + rationale_size + tags_size + child_ids_size + custom_size
+    }
+}
+
+impl Default for NodeMetadata {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_node_metadata_new_defaults() {
+        let meta = NodeMetadata::new();
+
+        assert!(meta.source.is_none());
+        assert!(meta.language.is_none());
+        assert_eq!(meta.modality, Modality::Text);
+        assert!(meta.tags.is_empty());
+        assert!(meta.utl_score.is_none());
+        assert!(!meta.consolidated);
+        assert!(meta.consolidated_at.is_none());
+        assert_eq!(meta.version, 1);
+        assert!(!meta.deleted);
+        assert!(meta.deleted_at.is_none());
+        assert!(meta.parent_id.is_none());
+        assert!(meta.child_ids.is_empty());
+        assert!(meta.custom.is_empty());
+        assert!(meta.rationale.is_none());
+    }
+
+    #[test]
+    fn test_node_metadata_default_equals_new() {
+        let from_new = NodeMetadata::new();
+        let from_default = NodeMetadata::default();
+        assert_eq!(from_new, from_default);
+    }
+
+    #[test]
+    fn test_node_metadata_builder_chaining() {
+        let meta = NodeMetadata::new()
+            .with_source("file.rs")
+            .with_language("rust")
+            .with_modality(Modality::Code);
+
+        assert_eq!(meta.source, Some("file.rs".to_string()));
+        assert_eq!(meta.language, Some("rust".to_string()));
+        assert_eq!(meta.modality, Modality::Code);
+    }
+
+    #[test]
+    fn test_node_metadata_tag_operations() {
+        let mut meta = NodeMetadata::new();
+        meta.add_tag("important");
+        meta.add_tag("important"); // duplicate
+        meta.add_tag("beta");
+
+        assert_eq!(meta.tags.len(), 2);
+        assert!(meta.has_tag("important"));
+        assert!(meta.has_tag("beta"));
+        assert!(!meta.has_tag("missing"));
+
+        assert!(meta.remove_tag("important"));
+        assert!(!meta.remove_tag("nonexistent"));
+        assert_eq!(meta.tags.len(), 1);
+    }
+
+    #[test]
+    fn test_node_metadata_soft_delete_cycle() {
+        let mut meta = NodeMetadata::new();
+
+        assert!(!meta.deleted);
+        meta.mark_deleted();
+        assert!(meta.deleted);
+        assert!(meta.deleted_at.is_some());
+
+        meta.restore();
+        assert!(!meta.deleted);
+        assert!(meta.deleted_at.is_none());
+    }
+
+    #[test]
+    fn test_node_metadata_version_saturates() {
+        let mut meta = NodeMetadata::new();
+        meta.version = u32::MAX;
+        meta.increment_version();
+        assert_eq!(meta.version, u32::MAX);
+    }
+}
