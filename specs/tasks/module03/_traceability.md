@@ -176,12 +176,12 @@ metadata:
 
 | PRD Requirement | Source | Task ID | Status |
 |-----------------|--------|---------|--------|
-| LRU eviction policy | constitution.yaml | M03-L19, M03-F15 | ☐ |
-| 100K max entries | constitution.yaml | M03-F15 | ☐ |
+| LRU eviction policy | constitution.yaml | M03-L19, M03-F15 | ✅ |
+| 100K max entries | constitution.yaml | M03-F15 | ✅ |
 | <100μs cache hit latency | constitution.yaml | M03-S11 | ☐ |
 | >80% hit rate target | constitution.yaml | M03-S10 | ☐ |
-| Disk persistence option | contextprd.md | M03-L19, M03-F15 | ☐ |
-| TTL-based expiration | constitution.yaml | M03-F15 | ☐ |
+| Disk persistence option | contextprd.md | M03-L19, M03-F15 | ✅ |
+| TTL-based expiration | constitution.yaml | M03-F15 | ✅ |
 | Content hashing (xxhash64) | contextprd.md | M03-L18 | ☐ |
 
 ---
@@ -203,12 +203,12 @@ metadata:
 
 | PRD Requirement | Source | Task ID | Status |
 |-----------------|--------|---------|--------|
-| CUDA 13.1 support | CUDA-Report.md | M03-S04, M03-F15 | ☐ |
-| Green Contexts | CUDA-Report.md | M03-F15 | ☐ |
+| CUDA 13.1 support | CUDA-Report.md | M03-S04, M03-F15 | ✅ |
+| Green Contexts | CUDA-Report.md | M03-F15 | ✅ |
 | GPU memory pool | CUDA-Report.md | M03-S05 | ☐ |
 | <24GB total memory | constitution.yaml | M03-L02, M03-S10 | ☐ |
-| Mixed precision (FP16/BF16) | CUDA-Report.md | M03-F12 | ☐ |
-| CUDA Graphs | CUDA-Report.md | M03-F15 | ☐ |
+| Mixed precision (FP16/BF16) | CUDA-Report.md | M03-F12, M03-F15 | ✅ |
+| CUDA Graphs | CUDA-Report.md | M03-F15 | ✅ |
 | Compute capability 12.0 | CUDA-Report.md | M03-S04 | ☐ |
 | Grouped GEMM for MoE | CUDA-Report.md | M03-S06 | ☐ |
 

@@ -35,6 +35,7 @@ pub use config::{
     BatchConfig,
     CacheConfig,
     EmbeddingConfig,
+    EvictionPolicy,
     FusionConfig,
     GpuConfig,
     ModelRegistryConfig,

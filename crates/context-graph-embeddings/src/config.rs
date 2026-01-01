@@ -51,7 +51,7 @@
 //! - **VALIDATION**: All nested configs are validated together
 
 use std::env;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -565,35 +565,109 @@ impl FusionConfig {
 }
 
 // ============================================================================
+// EVICTION POLICY ENUM
+// ============================================================================
+
+/// Cache eviction policy.
+///
+/// Determines how entries are removed when the cache reaches capacity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum EvictionPolicy {
+    /// Least Recently Used - evict oldest access.
+    /// Best for: temporal locality workloads
+    #[default]
+    Lru,
+
+    /// Least Frequently Used - evict lowest access count.
+    /// Best for: frequency-based access patterns
+    Lfu,
+
+    /// LRU with TTL consideration.
+    /// Prioritizes expired entries for eviction.
+    TtlLru,
+
+    /// Adaptive Replacement Cache - balanced LRU/LFU hybrid.
+    /// Best for: mixed workloads with unknown access patterns
+    Arc,
+}
+
+impl EvictionPolicy {
+    /// Returns all available eviction policies.
+    pub fn all() -> &'static [EvictionPolicy] {
+        &[
+            EvictionPolicy::Lru,
+            EvictionPolicy::Lfu,
+            EvictionPolicy::TtlLru,
+            EvictionPolicy::Arc,
+        ]
+    }
+
+    /// Returns the policy name as a string.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            EvictionPolicy::Lru => "lru",
+            EvictionPolicy::Lfu => "lfu",
+            EvictionPolicy::TtlLru => "ttl_lru",
+            EvictionPolicy::Arc => "arc",
+        }
+    }
+}
+
+// ============================================================================
 // CACHE CONFIG
 // ============================================================================
 
 /// Configuration for embedding cache.
 ///
-/// Controls caching of computed embeddings to avoid redundant computation.
+/// The cache stores computed embeddings keyed by content hash (xxhash64).
+/// Provides <100us lookup vs ~200ms recomputation for cache hits.
+///
+/// # Capacity Calculation
+/// ```text
+/// Single FusedEmbedding: 1536 * 4 bytes = 6,144 bytes
+/// 100K entries: 100,000 * 6,144 = 614,400,000 bytes (~614 MB)
+/// With metadata overhead: ~1 GB
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CacheConfig {
     /// Whether caching is enabled.
+    /// Default: true
     #[serde(default = "default_cache_enabled")]
     pub enabled: bool,
 
     /// Maximum number of cached embeddings.
     /// Constitution spec: 100,000 entries
+    /// Default: 100_000
     #[serde(default = "default_max_entries")]
     pub max_entries: usize,
 
-    /// Time-to-live for cache entries (seconds).
-    /// 0 means no expiration.
-    #[serde(default = "default_ttl_seconds")]
-    pub ttl_seconds: u64,
+    /// Maximum cache size in bytes.
+    /// Default: 1GB (1_073_741_824 bytes)
+    /// This is the primary memory budget constraint.
+    #[serde(default = "default_max_bytes")]
+    pub max_bytes: usize,
 
-    /// Whether to persist cache to disk.
+    /// Time-to-live for cached entries in seconds.
+    /// None = no expiration (entries evicted only by policy).
+    /// Default: None
     #[serde(default)]
-    pub disk_persistence: bool,
+    pub ttl_seconds: Option<u64>,
 
-    /// Path for disk cache (only used if disk_persistence is true).
-    #[serde(default = "default_cache_path")]
-    pub cache_path: String,
+    /// Eviction policy when cache is full.
+    /// Default: Lru
+    #[serde(default)]
+    pub eviction_policy: EvictionPolicy,
+
+    /// Whether to persist cache to disk on shutdown.
+    /// Default: false
+    #[serde(default)]
+    pub persist_to_disk: bool,
+
+    /// Path for disk persistence (required if persist_to_disk is true).
+    /// Default: None
+    #[serde(default)]
+    pub disk_path: Option<PathBuf>,
 }
 
 fn default_cache_enabled() -> bool {
@@ -604,46 +678,66 @@ fn default_max_entries() -> usize {
     100_000
 }
 
-fn default_ttl_seconds() -> u64 {
-    0 // No expiration by default
-}
-
-fn default_cache_path() -> String {
-    "./.cache/embeddings".to_string()
+fn default_max_bytes() -> usize {
+    1_073_741_824 // 1 GB
 }
 
 impl Default for CacheConfig {
     fn default() -> Self {
         Self {
-            enabled: default_cache_enabled(),
-            max_entries: default_max_entries(),
-            ttl_seconds: default_ttl_seconds(),
-            disk_persistence: false,
-            cache_path: default_cache_path(),
+            enabled: true,
+            max_entries: 100_000,
+            max_bytes: 1_073_741_824, // 1 GB
+            ttl_seconds: None,
+            eviction_policy: EvictionPolicy::Lru,
+            persist_to_disk: false,
+            disk_path: None,
         }
     }
 }
 
 impl CacheConfig {
-    /// Validate the configuration.
+    /// Validate cache configuration.
     ///
     /// # Errors
-    /// - `EmbeddingError::ConfigError` if enabled but max_entries is 0
-    /// - `EmbeddingError::ConfigError` if disk_persistence but cache_path is empty
+    /// Returns `EmbeddingError::ConfigError` if:
+    /// - enabled && max_entries == 0
+    /// - enabled && max_bytes == 0
+    /// - persist_to_disk && disk_path.is_none()
     pub fn validate(&self) -> EmbeddingResult<()> {
         if self.enabled && self.max_entries == 0 {
             return Err(EmbeddingError::ConfigError {
-                message: "max_entries must be > 0 when cache is enabled".to_string(),
+                message: "max_entries must be > 0 when cache enabled".to_string(),
             });
         }
-
-        if self.disk_persistence && self.cache_path.is_empty() {
+        if self.enabled && self.max_bytes == 0 {
             return Err(EmbeddingError::ConfigError {
-                message: "cache_path cannot be empty when disk_persistence is enabled".to_string(),
+                message: "max_bytes must be > 0 when cache enabled".to_string(),
             });
         }
-
+        if self.persist_to_disk && self.disk_path.is_none() {
+            return Err(EmbeddingError::ConfigError {
+                message: "disk_path required when persist_to_disk enabled".to_string(),
+            });
+        }
         Ok(())
+    }
+
+    /// Create a disabled cache configuration.
+    pub fn disabled() -> Self {
+        Self {
+            enabled: false,
+            ..Default::default()
+        }
+    }
+
+    /// Calculate the average bytes per entry based on current configuration.
+    pub fn bytes_per_entry(&self) -> usize {
+        if self.max_entries == 0 {
+            0
+        } else {
+            self.max_bytes / self.max_entries
+        }
     }
 }
 
@@ -651,37 +745,60 @@ impl CacheConfig {
 // GPU CONFIG
 // ============================================================================
 
-/// Configuration for GPU/CUDA settings.
+/// Configuration for GPU usage.
 ///
-/// Controls GPU device selection and CUDA features.
+/// Target hardware: RTX 5090 (32GB GDDR7, Compute 12.0, CUDA 13.1)
+///
+/// # Key Features
+/// - Green Contexts: Static SM partitioning for deterministic latency
+/// - Mixed Precision: FP16/BF16 for 2x throughput
+/// - CUDA Graphs: Kernel fusion for reduced launch overhead
+/// - GPU Direct Storage: 25+ GB/s model loading vs ~6 GB/s via CPU
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GpuConfig {
     /// Whether GPU acceleration is enabled.
+    /// Default: true
     #[serde(default = "default_gpu_enabled")]
     pub enabled: bool,
 
-    /// CUDA device IDs to use. Empty means auto-select.
-    /// Default: [0] for single RTX 5090
+    /// CUDA device IDs to use.
+    /// Empty means auto-select first available device.
+    /// Default: [0]
     #[serde(default = "default_device_ids")]
     pub device_ids: Vec<u32>,
 
-    /// Memory limit per GPU (bytes). 0 means no limit.
-    /// Constitution spec: <24GB target (32GB available)
-    #[serde(default = "default_memory_limit")]
-    pub memory_limit: u64,
+    /// Fraction of GPU memory to use (0.0-1.0].
+    /// Constitution spec: <24GB of 32GB = 0.75 max, default 0.9
+    /// Reserve 10% for other operations.
+    /// Default: 0.9
+    #[serde(default = "default_memory_fraction")]
+    pub memory_fraction: f32,
 
-    /// Whether to enable CUDA graphs for kernel optimization.
-    #[serde(default = "default_cuda_graphs")]
-    pub cuda_graphs: bool,
+    /// Use CUDA graphs for kernel fusion.
+    /// Reduces kernel launch overhead.
+    /// Default: true
+    #[serde(default = "default_use_cuda_graphs")]
+    pub use_cuda_graphs: bool,
+
+    /// Enable mixed precision (FP16/BF16) inference.
+    /// Provides 2x throughput with minimal accuracy loss.
+    /// Default: true
+    #[serde(default = "default_mixed_precision")]
+    pub mixed_precision: bool,
+
+    /// Use CUDA 13.1 green contexts for power efficiency.
+    /// Provides static SM partitioning for deterministic latency.
+    /// Requires: CUDA 13.1+, Blackwell architecture (Compute 12.0)
+    /// Default: false (requires explicit opt-in)
+    #[serde(default)]
+    pub green_contexts: bool,
 
     /// Whether to enable GPU Direct Storage (GDS) for fast model loading.
+    /// Provides 25+ GB/s vs ~6 GB/s via CPU path.
+    /// Requires: GDS driver, NVMe SSD
+    /// Default: false
     #[serde(default)]
     pub gds_enabled: bool,
-
-    /// Green Context SM allocation percentage (0-100).
-    /// 0 means disabled.
-    #[serde(default)]
-    pub green_context_percentage: u8,
 }
 
 fn default_gpu_enabled() -> bool {
@@ -692,40 +809,96 @@ fn default_device_ids() -> Vec<u32> {
     vec![0]
 }
 
-fn default_memory_limit() -> u64 {
-    24 * 1024 * 1024 * 1024 // 24GB
+fn default_memory_fraction() -> f32 {
+    0.9
 }
 
-fn default_cuda_graphs() -> bool {
+fn default_use_cuda_graphs() -> bool {
+    true
+}
+
+fn default_mixed_precision() -> bool {
     true
 }
 
 impl Default for GpuConfig {
     fn default() -> Self {
         Self {
-            enabled: default_gpu_enabled(),
-            device_ids: default_device_ids(),
-            memory_limit: default_memory_limit(),
-            cuda_graphs: default_cuda_graphs(),
+            enabled: true,
+            device_ids: vec![0],
+            memory_fraction: 0.9,
+            use_cuda_graphs: true,
+            mixed_precision: true,
+            green_contexts: false,
             gds_enabled: false,
-            green_context_percentage: 0,
         }
     }
 }
 
 impl GpuConfig {
-    /// Validate the configuration.
+    /// Validate GPU configuration.
     ///
     /// # Errors
-    /// - `EmbeddingError::ConfigError` if green_context_percentage > 100
+    /// Returns `EmbeddingError::ConfigError` if:
+    /// - enabled && device_ids.is_empty()
+    /// - memory_fraction <= 0.0 or > 1.0 or is NaN
     pub fn validate(&self) -> EmbeddingResult<()> {
-        if self.green_context_percentage > 100 {
+        if self.enabled && self.device_ids.is_empty() {
             return Err(EmbeddingError::ConfigError {
-                message: "green_context_percentage must be <= 100".to_string(),
+                message: "device_ids cannot be empty when GPU enabled".to_string(),
             });
         }
-
+        if self.memory_fraction <= 0.0 || self.memory_fraction > 1.0 || self.memory_fraction.is_nan() {
+            return Err(EmbeddingError::ConfigError {
+                message: format!(
+                    "memory_fraction must be in (0.0, 1.0], got {}",
+                    self.memory_fraction
+                ),
+            });
+        }
         Ok(())
+    }
+
+    /// Create CPU-only configuration (GPU disabled).
+    ///
+    /// Use when:
+    /// - No GPU available
+    /// - Testing without CUDA
+    /// - Fallback for non-Blackwell hardware
+    pub fn cpu_only() -> Self {
+        Self {
+            enabled: false,
+            device_ids: vec![],
+            memory_fraction: 0.0,
+            use_cuda_graphs: false,
+            mixed_precision: false,
+            green_contexts: false,
+            gds_enabled: false,
+        }
+    }
+
+    /// Create high-performance configuration for RTX 5090.
+    ///
+    /// Enables all optimizations:
+    /// - CUDA graphs
+    /// - Mixed precision
+    /// - Green contexts
+    /// - GDS (if available)
+    pub fn rtx_5090_optimized() -> Self {
+        Self {
+            enabled: true,
+            device_ids: vec![0],
+            memory_fraction: 0.75, // Leave headroom for VRAM pressure
+            use_cuda_graphs: true,
+            mixed_precision: true,
+            green_contexts: true,
+            gds_enabled: true,
+        }
+    }
+
+    /// Check if this config uses GPU acceleration.
+    pub fn is_gpu_enabled(&self) -> bool {
+        self.enabled && !self.device_ids.is_empty()
     }
 }
 
@@ -1000,10 +1173,11 @@ mod tests {
         let config = GpuConfig::default();
         assert!(config.enabled);
         assert_eq!(config.device_ids, vec![0]);
-        assert_eq!(config.memory_limit, 24 * 1024 * 1024 * 1024);
-        assert!(config.cuda_graphs);
+        assert!((config.memory_fraction - 0.9).abs() < f32::EPSILON);
+        assert!(config.use_cuda_graphs);
+        assert!(config.mixed_precision);
+        assert!(!config.green_contexts);
         assert!(!config.gds_enabled);
-        assert_eq!(config.green_context_percentage, 0);
     }
 
     // =========================================================================
@@ -1146,14 +1320,48 @@ mod tests {
     }
 
     #[test]
-    fn test_gpu_green_context_over_100_fails() {
+    fn test_gpu_empty_device_ids_when_enabled_fails() {
         let config = GpuConfig {
-            green_context_percentage: 101,
+            enabled: true,
+            device_ids: vec![],
             ..Default::default()
         };
         let result = config.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("green_context_percentage"));
+        assert!(result.unwrap_err().to_string().contains("device_ids"));
+    }
+
+    #[test]
+    fn test_gpu_memory_fraction_zero_fails() {
+        let config = GpuConfig {
+            memory_fraction: 0.0,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("memory_fraction"));
+    }
+
+    #[test]
+    fn test_gpu_memory_fraction_above_one_fails() {
+        let config = GpuConfig {
+            memory_fraction: 1.1,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("memory_fraction"));
+    }
+
+    #[test]
+    fn test_gpu_memory_fraction_nan_fails() {
+        let config = GpuConfig {
+            memory_fraction: f32::NAN,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("memory_fraction"));
     }
 
     // =========================================================================
@@ -1367,10 +1575,10 @@ enabled = false
     }
 
     #[test]
-    fn test_constitution_gpu_memory_limit() {
-        // constitution.yaml: <24GB target
+    fn test_constitution_gpu_memory_fraction() {
+        // constitution.yaml: <24GB of 32GB = 0.75 max, default 0.9
         let config = GpuConfig::default();
-        assert_eq!(config.memory_limit, 24 * 1024 * 1024 * 1024);
+        assert!((config.memory_fraction - 0.9).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -1910,5 +2118,405 @@ top_k = 8
         let result = config.validate();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("laplace_alpha"));
+    }
+
+    // =========================================================================
+    // EVICTION POLICY TESTS (M03-F15)
+    // =========================================================================
+
+    #[test]
+    fn test_eviction_policy_default() {
+        assert_eq!(EvictionPolicy::default(), EvictionPolicy::Lru);
+    }
+
+    #[test]
+    fn test_eviction_policy_all_variants() {
+        let all = EvictionPolicy::all();
+        assert_eq!(all.len(), 4);
+        assert!(all.contains(&EvictionPolicy::Lru));
+        assert!(all.contains(&EvictionPolicy::Lfu));
+        assert!(all.contains(&EvictionPolicy::TtlLru));
+        assert!(all.contains(&EvictionPolicy::Arc));
+    }
+
+    #[test]
+    fn test_eviction_policy_as_str() {
+        assert_eq!(EvictionPolicy::Lru.as_str(), "lru");
+        assert_eq!(EvictionPolicy::Lfu.as_str(), "lfu");
+        assert_eq!(EvictionPolicy::TtlLru.as_str(), "ttl_lru");
+        assert_eq!(EvictionPolicy::Arc.as_str(), "arc");
+    }
+
+    #[test]
+    fn test_eviction_policy_serde_roundtrip() {
+        for policy in EvictionPolicy::all() {
+            let json = serde_json::to_string(policy).unwrap();
+            let restored: EvictionPolicy = serde_json::from_str(&json).unwrap();
+            assert_eq!(*policy, restored);
+        }
+    }
+
+    #[test]
+    fn test_eviction_policy_serde_snake_case() {
+        // Verify snake_case serialization
+        let json = serde_json::to_string(&EvictionPolicy::TtlLru).unwrap();
+        assert_eq!(json, "\"ttl_lru\"");
+
+        let json = serde_json::to_string(&EvictionPolicy::Arc).unwrap();
+        assert_eq!(json, "\"arc\"");
+    }
+
+    #[test]
+    fn test_eviction_policy_copy() {
+        // EvictionPolicy must be Copy for efficiency
+        let a = EvictionPolicy::Arc;
+        let b = a; // Copy
+        assert_eq!(a, b);
+    }
+
+    // =========================================================================
+    // CACHE CONFIG NEW TESTS (M03-F15)
+    // =========================================================================
+
+    #[test]
+    fn test_cache_config_default_enabled() {
+        let config = CacheConfig::default();
+        assert!(config.enabled);
+    }
+
+    #[test]
+    fn test_cache_config_default_max_entries() {
+        let config = CacheConfig::default();
+        assert_eq!(config.max_entries, 100_000);
+    }
+
+    #[test]
+    fn test_cache_config_default_max_bytes() {
+        let config = CacheConfig::default();
+        assert_eq!(config.max_bytes, 1_073_741_824);
+    }
+
+    #[test]
+    fn test_cache_config_default_ttl_seconds() {
+        let config = CacheConfig::default();
+        assert_eq!(config.ttl_seconds, None);
+    }
+
+    #[test]
+    fn test_cache_config_default_eviction_policy() {
+        let config = CacheConfig::default();
+        assert_eq!(config.eviction_policy, EvictionPolicy::Lru);
+    }
+
+    #[test]
+    fn test_cache_config_default_persist_to_disk() {
+        let config = CacheConfig::default();
+        assert!(!config.persist_to_disk);
+    }
+
+    #[test]
+    fn test_cache_config_default_disk_path() {
+        let config = CacheConfig::default();
+        assert_eq!(config.disk_path, None);
+    }
+
+    #[test]
+    fn test_cache_validate_max_bytes_zero_fails() {
+        let config = CacheConfig {
+            enabled: true,
+            max_entries: 100,
+            max_bytes: 0,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("max_bytes"));
+    }
+
+    #[test]
+    fn test_cache_validate_persist_without_path_fails() {
+        let config = CacheConfig {
+            persist_to_disk: true,
+            disk_path: None,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("disk_path"));
+    }
+
+    #[test]
+    fn test_cache_validate_persist_with_path_succeeds() {
+        let config = CacheConfig {
+            persist_to_disk: true,
+            disk_path: Some(PathBuf::from("/tmp/cache")),
+            ..Default::default()
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_cache_disabled_allows_zero_bytes() {
+        let config = CacheConfig {
+            enabled: false,
+            max_entries: 0,
+            max_bytes: 0,
+            ..Default::default()
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_cache_disabled_constructor() {
+        let config = CacheConfig::disabled();
+        assert!(!config.enabled);
+        // Other fields should still have defaults
+        assert_eq!(config.max_entries, 100_000);
+        assert_eq!(config.max_bytes, 1_073_741_824);
+        assert_eq!(config.eviction_policy, EvictionPolicy::Lru);
+    }
+
+    #[test]
+    fn test_cache_bytes_per_entry() {
+        let config = CacheConfig::default();
+        // 1GB / 100K = 10,737 bytes per entry
+        assert_eq!(config.bytes_per_entry(), 10737);
+    }
+
+    #[test]
+    fn test_cache_bytes_per_entry_zero_entries() {
+        let config = CacheConfig {
+            max_entries: 0,
+            ..Default::default()
+        };
+        assert_eq!(config.bytes_per_entry(), 0);
+    }
+
+    #[test]
+    fn test_cache_serde_roundtrip() {
+        let original = CacheConfig {
+            enabled: true,
+            max_entries: 50_000,
+            max_bytes: 500_000_000,
+            ttl_seconds: Some(3600),
+            eviction_policy: EvictionPolicy::Lfu,
+            persist_to_disk: true,
+            disk_path: Some(PathBuf::from("/var/cache")),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: CacheConfig = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(original.enabled, restored.enabled);
+        assert_eq!(original.max_entries, restored.max_entries);
+        assert_eq!(original.max_bytes, restored.max_bytes);
+        assert_eq!(original.ttl_seconds, restored.ttl_seconds);
+        assert_eq!(original.eviction_policy, restored.eviction_policy);
+        assert_eq!(original.persist_to_disk, restored.persist_to_disk);
+        assert_eq!(original.disk_path, restored.disk_path);
+    }
+
+    #[test]
+    fn test_cache_toml_with_all_new_fields() {
+        let toml_str = r#"
+enabled = true
+max_entries = 50000
+max_bytes = 500000000
+ttl_seconds = 3600
+eviction_policy = "lfu"
+persist_to_disk = true
+disk_path = "/var/cache"
+"#;
+        let config: CacheConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.max_entries, 50_000);
+        assert_eq!(config.max_bytes, 500_000_000);
+        assert_eq!(config.ttl_seconds, Some(3600));
+        assert_eq!(config.eviction_policy, EvictionPolicy::Lfu);
+        assert!(config.persist_to_disk);
+        assert_eq!(config.disk_path, Some(PathBuf::from("/var/cache")));
+    }
+
+    // =========================================================================
+    // GPU CONFIG NEW TESTS (M03-F15)
+    // =========================================================================
+
+    #[test]
+    fn test_gpu_config_default_enabled() {
+        let config = GpuConfig::default();
+        assert!(config.enabled);
+    }
+
+    #[test]
+    fn test_gpu_config_default_device_ids() {
+        let config = GpuConfig::default();
+        assert_eq!(config.device_ids, vec![0]);
+    }
+
+    #[test]
+    fn test_gpu_config_default_memory_fraction() {
+        let config = GpuConfig::default();
+        assert!((config.memory_fraction - 0.9).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_gpu_config_default_use_cuda_graphs() {
+        let config = GpuConfig::default();
+        assert!(config.use_cuda_graphs);
+    }
+
+    #[test]
+    fn test_gpu_config_default_mixed_precision() {
+        let config = GpuConfig::default();
+        assert!(config.mixed_precision);
+    }
+
+    #[test]
+    fn test_gpu_config_default_green_contexts() {
+        let config = GpuConfig::default();
+        assert!(!config.green_contexts);
+    }
+
+    #[test]
+    fn test_gpu_config_default_gds_enabled() {
+        let config = GpuConfig::default();
+        assert!(!config.gds_enabled);
+    }
+
+    #[test]
+    fn test_gpu_cpu_only_enabled() {
+        let config = GpuConfig::cpu_only();
+        assert!(!config.enabled);
+    }
+
+    #[test]
+    fn test_gpu_cpu_only_device_ids() {
+        let config = GpuConfig::cpu_only();
+        assert!(config.device_ids.is_empty());
+    }
+
+    #[test]
+    fn test_gpu_cpu_only_memory_fraction() {
+        let config = GpuConfig::cpu_only();
+        assert!((config.memory_fraction - 0.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_gpu_cpu_only_all_features_disabled() {
+        let config = GpuConfig::cpu_only();
+        assert!(!config.use_cuda_graphs);
+        assert!(!config.mixed_precision);
+        assert!(!config.green_contexts);
+        assert!(!config.gds_enabled);
+    }
+
+    #[test]
+    fn test_gpu_rtx_5090_optimized_enabled() {
+        let config = GpuConfig::rtx_5090_optimized();
+        assert!(config.enabled);
+    }
+
+    #[test]
+    fn test_gpu_rtx_5090_optimized_memory_fraction() {
+        let config = GpuConfig::rtx_5090_optimized();
+        assert!((config.memory_fraction - 0.75).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_gpu_rtx_5090_optimized_all_features_enabled() {
+        let config = GpuConfig::rtx_5090_optimized();
+        assert!(config.use_cuda_graphs);
+        assert!(config.mixed_precision);
+        assert!(config.green_contexts);
+        assert!(config.gds_enabled);
+    }
+
+    #[test]
+    fn test_gpu_is_gpu_enabled_true() {
+        let config = GpuConfig::default();
+        assert!(config.is_gpu_enabled());
+    }
+
+    #[test]
+    fn test_gpu_is_gpu_enabled_false_when_disabled() {
+        let config = GpuConfig {
+            enabled: false,
+            ..Default::default()
+        };
+        assert!(!config.is_gpu_enabled());
+    }
+
+    #[test]
+    fn test_gpu_is_gpu_enabled_false_when_empty_devices() {
+        let config = GpuConfig {
+            enabled: true,
+            device_ids: vec![],
+            ..Default::default()
+        };
+        assert!(!config.is_gpu_enabled());
+    }
+
+    #[test]
+    fn test_gpu_memory_fraction_boundary_one() {
+        // memory_fraction = 1.0 should be valid (inclusive upper bound)
+        let config = GpuConfig {
+            memory_fraction: 1.0,
+            ..Default::default()
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_gpu_disabled_empty_devices_validates() {
+        // Disabled GPU with empty device_ids should be valid
+        let config = GpuConfig {
+            enabled: false,
+            device_ids: vec![],
+            memory_fraction: 0.5,
+            ..Default::default()
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_gpu_serde_roundtrip() {
+        let original = GpuConfig {
+            enabled: true,
+            device_ids: vec![0, 1],
+            memory_fraction: 0.8,
+            use_cuda_graphs: true,
+            mixed_precision: true,
+            green_contexts: true,
+            gds_enabled: true,
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: GpuConfig = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(original.enabled, restored.enabled);
+        assert_eq!(original.device_ids, restored.device_ids);
+        assert!((original.memory_fraction - restored.memory_fraction).abs() < f32::EPSILON);
+        assert_eq!(original.use_cuda_graphs, restored.use_cuda_graphs);
+        assert_eq!(original.mixed_precision, restored.mixed_precision);
+        assert_eq!(original.green_contexts, restored.green_contexts);
+        assert_eq!(original.gds_enabled, restored.gds_enabled);
+    }
+
+    #[test]
+    fn test_gpu_toml_with_all_new_fields() {
+        let toml_str = r#"
+enabled = true
+device_ids = [0, 1]
+memory_fraction = 0.75
+use_cuda_graphs = true
+mixed_precision = true
+green_contexts = true
+gds_enabled = true
+"#;
+        let config: GpuConfig = toml::from_str(toml_str).unwrap();
+        assert!(config.enabled);
+        assert_eq!(config.device_ids, vec![0, 1]);
+        assert!((config.memory_fraction - 0.75).abs() < f32::EPSILON);
+        assert!(config.use_cuda_graphs);
+        assert!(config.mixed_precision);
+        assert!(config.green_contexts);
+        assert!(config.gds_enabled);
     }
 }
