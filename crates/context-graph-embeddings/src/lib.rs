@@ -24,6 +24,7 @@
 //! assert_eq!(ModelId::Semantic.dimension(), 1024);
 //! ```
 
+pub mod batch;
 pub mod config;
 pub mod error;
 pub mod models;
