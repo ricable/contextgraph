@@ -25,6 +25,8 @@ mod device;
 #[cfg(feature = "candle")]
 mod memory;
 #[cfg(feature = "candle")]
+mod model_loader;
+#[cfg(feature = "candle")]
 mod ops;
 #[cfg(feature = "candle")]
 mod tensor;
@@ -33,6 +35,12 @@ mod tensor;
 pub use device::{init_gpu, device, default_dtype, is_gpu_available, get_gpu_info};
 #[cfg(feature = "candle")]
 pub use memory::{GpuMemoryPool, MemoryStats, VramTracker};
+#[cfg(feature = "candle")]
+pub use model_loader::{
+    GpuModelLoader, BertConfig, BertWeights, EmbeddingWeights,
+    AttentionWeights, FfnWeights, EncoderLayerWeights, PoolerWeights,
+    ModelLoadError,
+};
 #[cfg(feature = "candle")]
 pub use ops::{l2_norm_gpu, normalize_gpu, cosine_similarity_gpu, matmul_gpu, softmax_gpu};
 #[cfg(feature = "candle")]

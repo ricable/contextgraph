@@ -110,8 +110,8 @@ pub enum EmbeddingError {
     FusionError { message: String },
 
     /// Tokenization failed (unknown tokens, encoding error).
-    #[error("Tokenization error: {message}")]
-    TokenizationError { message: String },
+    #[error("Tokenization error for {model_id:?}: {message}")]
+    TokenizationError { model_id: ModelId, message: String },
 
     // === Infrastructure Errors ===
     /// GPU/CUDA operation failed.
@@ -271,6 +271,7 @@ mod tests {
     #[test]
     fn test_tokenization_error_shows_message() {
         let err = EmbeddingError::TokenizationError {
+            model_id: ModelId::Semantic,
             message: "unknown token".to_string(),
         };
         let msg = format!("{}", err);
@@ -520,6 +521,7 @@ mod tests {
             message: "test".to_string(),
         };
         let _e10 = EmbeddingError::TokenizationError {
+            model_id: ModelId::Semantic,
             message: "test".to_string(),
         };
 

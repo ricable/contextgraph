@@ -65,6 +65,9 @@ bincode = "1.3"
 candle-core = { workspace = true, optional = true }
 candle-nn = { workspace = true, optional = true }
 
+# HuggingFace tokenizers for BERT-based models
+tokenizers = { version = "0.19", optional = true }
+
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3.10"
@@ -76,5 +79,5 @@ serial_test = "3.0"
 default = ["stub"]
 stub = []           # CPU fallback - stub implementations
 cuda = ["candle"]   # Full CUDA acceleration via Candle (RTX 5090)
-candle = ["dep:candle-core", "dep:candle-nn"]  # Candle ML framework with CUDA 13.x
+candle = ["dep:candle-core", "dep:candle-nn", "dep:tokenizers"]  # Candle ML framework with CUDA 13.x
 onnx = []           # Future: ONNX Runtime support
