@@ -1,28 +1,52 @@
 //! Embedding pipeline for Context Graph.
 //!
-//! This crate provides text-to-embedding conversion using local models.
-//! For Phase 0 (Ghost System), stub implementations return deterministic
-//! random embeddings.
+//! This crate provides GPU-accelerated text-to-embedding conversion using
+//! local models via the Candle backend (mandatory).
+//!
+//! # Mandatory Feature: `candle`
+//!
+//! This crate requires the `candle` feature to be enabled. The crate is designed
+//! for GPU-first architecture targeting NVIDIA RTX 5090 with CUDA 13.1.
+//! Building without the `candle` feature will result in a compile error.
 //!
 //! # Architecture
 //!
 //! - **ModelId**: Enum identifying the 12 models in the ensemble
 //! - **EmbeddingProvider**: Trait for embedding generation
-//! - **StubEmbedder**: Deterministic stub for development
-//! - **LocalEmbedder**: Future ONNX/Candle implementation
+//! - **EmbeddingModel**: Trait for individual model implementations
+//! - **ModelRegistry**: Manages model lifecycle and GPU resources
 //!
 //! # Example
 //!
 //! ```rust,ignore
-//! use context_graph_embeddings::{EmbeddingProvider, StubEmbedder, types::ModelId};
+//! use context_graph_embeddings::{ModelRegistry, ModelRegistryConfig, ModelId};
 //!
-//! let embedder = StubEmbedder::new(1536);
-//! let embedding = embedder.embed("Hello world").await?;
-//! assert_eq!(embedding.len(), 1536);
+//! let config = ModelRegistryConfig::default();
+//! let registry = ModelRegistry::new(config)?;
+//!
+//! // Load and use a model
+//! let semantic = registry.get_or_load(ModelId::Semantic).await?;
+//! let embedding = semantic.embed(&input).await?;
 //!
 //! // Check model dimensions
 //! assert_eq!(ModelId::Semantic.dimension(), 1024);
 //! ```
+
+// =============================================================================
+// MANDATORY FEATURE GATE - GPU-First Architecture
+// =============================================================================
+// The `candle` feature is REQUIRED for context-graph-embeddings.
+// This crate is designed for GPU-first architecture targeting NVIDIA RTX 5090
+// with CUDA 13.1. All embedding operations require Candle's GPU acceleration.
+// =============================================================================
+
+#[cfg(not(feature = "candle"))]
+compile_error!(
+    "The `candle` feature is required for context-graph-embeddings. \
+     This crate is designed for GPU-first architecture targeting NVIDIA RTX 5090 with CUDA 13.1. \
+     Build with: cargo build --features candle \
+     Or enable the default feature: cargo build (candle is now default)"
+);
 
 pub mod batch;
 pub mod cache;
@@ -33,7 +57,6 @@ pub mod gpu;
 pub mod models;
 pub mod provider;
 pub mod storage;
-pub mod stub;
 pub mod traits;
 pub mod types;
 
@@ -49,7 +72,6 @@ pub use config::{
 };
 pub use error::{EmbeddingError, EmbeddingResult};
 pub use provider::EmbeddingProvider;
-pub use stub::StubEmbedder;
 pub use traits::{
     DevicePlacement,
     EmbeddingModel,

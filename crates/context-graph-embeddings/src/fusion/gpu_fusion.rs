@@ -1292,10 +1292,21 @@ impl GpuFuseMoE {
 mod tests {
     use super::*;
 
-    // Helper to get test device (CPU for unit tests, GPU for integration)
+    // Helper to get test device - GPU-only architecture
     fn test_device() -> Device {
-        // For unit tests, use CPU to avoid GPU dependency
-        Device::Cpu
+        // GPU-only architecture - tests MUST use real GPU
+        // Tests will fail if GPU is unavailable - this is intentional
+        match Device::new_cuda(0) {
+            Ok(device) => device,
+            Err(e) => {
+                panic!(
+                    "GPU test device initialization failed: {}. \
+                     This crate requires a CUDA GPU for all tests. \
+                     Ensure CUDA drivers are installed and GPU is available.",
+                    e
+                );
+            }
+        }
     }
 
     // =========================================================================

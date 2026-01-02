@@ -12,46 +12,25 @@
 //! | [`ops`] | GPU-accelerated operations (L2 norm, cosine similarity, matmul) |
 //! | [`memory`] | VRAM tracking and memory pool management |
 //!
-//! # Feature Gating
+//! # Requirements
 //!
-//! All GPU functionality requires the `candle` feature:
-//! ```toml
-//! [dependencies]
-//! context-graph-embeddings = { version = "0.1", features = ["cuda"] }
-//! ```
+//! GPU functionality requires CUDA hardware and the candle backend (now mandatory).
 
-#[cfg(feature = "candle")]
 mod device;
-#[cfg(feature = "candle")]
 mod memory;
-#[cfg(feature = "candle")]
 mod model_loader;
-#[cfg(feature = "candle")]
 mod ops;
-#[cfg(feature = "candle")]
 mod tensor;
 
-#[cfg(feature = "candle")]
-pub use device::{init_gpu, device, default_dtype, is_gpu_available, get_gpu_info};
-#[cfg(feature = "candle")]
+pub use device::{init_gpu, device, default_dtype, is_gpu_available, get_gpu_info, require_gpu};
 pub use memory::{GpuMemoryPool, MemoryStats, VramTracker};
-#[cfg(feature = "candle")]
 pub use model_loader::{
     GpuModelLoader, BertConfig, BertWeights, EmbeddingWeights,
     AttentionWeights, FfnWeights, EncoderLayerWeights, PoolerWeights,
     ModelLoadError,
 };
-#[cfg(feature = "candle")]
 pub use ops::{l2_norm_gpu, normalize_gpu, cosine_similarity_gpu, matmul_gpu, softmax_gpu};
-#[cfg(feature = "candle")]
 pub use tensor::GpuTensor;
-
-/// Stub exports when candle feature is not enabled.
-/// These allow compile-time checking without GPU hardware.
-#[cfg(not(feature = "candle"))]
-pub fn is_gpu_available() -> bool {
-    false
-}
 
 /// GPU device information for runtime queries.
 #[derive(Debug, Clone)]
@@ -78,14 +57,8 @@ impl Default for GpuInfo {
 }
 
 /// Get GPU information at runtime.
-#[cfg(feature = "candle")]
 pub fn gpu_info() -> GpuInfo {
     device::get_gpu_info()
-}
-
-#[cfg(not(feature = "candle"))]
-pub fn gpu_info() -> GpuInfo {
-    GpuInfo::default()
 }
 
 #[cfg(test)]
@@ -93,12 +66,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_gpu_info_stub() {
-        #[cfg(not(feature = "candle"))]
-        {
-            let info = gpu_info();
-            assert!(!info.available);
-            assert_eq!(info.name, "No GPU");
-        }
+    fn test_gpu_info() {
+        let info = gpu_info();
+        // GPU may or may not be available depending on hardware
+        // but the function should always return valid info
+        assert!(!info.name.is_empty());
     }
 }

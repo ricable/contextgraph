@@ -47,6 +47,9 @@ tokio-test = "0.4"
 tempfile = "3.10"
 
 [features]
-default = ["stub"]
-stub = ["context-graph-cuda/stub", "context-graph-embeddings/stub"]
-cuda = ["context-graph-cuda/cuda"]
+# GPU-first architecture: candle is now mandatory for context-graph-embeddings
+# context-graph-cuda still supports stub for gradual migration
+default = ["candle"]
+candle = ["context-graph-embeddings/candle"]
+cuda = ["context-graph-cuda/cuda", "candle"]
+stub = ["context-graph-cuda/stub"]  # Only for context-graph-cuda, embeddings requires candle

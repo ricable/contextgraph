@@ -74,10 +74,9 @@ tempfile = "3.10"
 serial_test = "3.0"
 
 [features]
-# GPU-first architecture: cuda feature enables RTX 5090 acceleration
-# Current default is stub while GPU implementations are being built
-default = ["stub"]
-stub = []           # CPU fallback - stub implementations
-cuda = ["candle"]   # Full CUDA acceleration via Candle (RTX 5090)
-candle = ["dep:candle-core", "dep:candle-nn", "dep:tokenizers"]  # Candle ML framework with CUDA 13.x
+# GPU-first architecture: candle feature is MANDATORY for RTX 5090 acceleration
+# The compile_error! in lib.rs enforces this at compile time
+default = ["candle"]
+candle = ["dep:candle-core", "dep:candle-nn", "dep:tokenizers"]  # Candle ML framework with CUDA 13.x (REQUIRED)
+cuda = ["candle"]   # Alias for candle - Full CUDA acceleration via Candle (RTX 5090)
 onnx = []           # Future: ONNX Runtime support
