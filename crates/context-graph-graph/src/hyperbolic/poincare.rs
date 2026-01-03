@@ -19,6 +19,9 @@
 //! - hyperbolic.max_norm: 0.99999 (1.0 - 1e-5)
 //! - perf.latency.entailment_check: <1ms
 
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+
 use crate::config::HyperbolicConfig;
 
 /// Point in 64-dimensional Poincare ball model of hyperbolic space.
@@ -49,11 +52,13 @@ use crate::config::HyperbolicConfig;
 /// // Floating point tolerance for norm after projection
 /// assert!(point.norm() <= config.max_norm + 1e-6);
 /// ```
+#[serde_as]
 #[repr(C, align(64))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PoincarePoint {
     /// Coordinates in 64-dimensional Euclidean embedding space.
     /// Invariant: sum(coords[i]^2) < 1.0 for valid points.
+    #[serde_as(as = "[_; 64]")]
     pub coords: [f32; 64],
 }
 

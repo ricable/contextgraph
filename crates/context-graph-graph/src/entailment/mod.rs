@@ -19,7 +19,7 @@
 //!
 //! # Components
 //!
-//! - `EntailmentCone`: Cone with apex, aperture, axis (TODO: M04-T06)
+//! - [`EntailmentCone`]: Cone with apex, aperture, and depth for IS-A queries
 //! - Containment logic: O(1) check algorithm (TODO: M04-T07)
 //!
 //! # Constitution Reference
@@ -30,15 +30,6 @@
 //!
 //! CUDA kernels for batch containment checks: TODO: M04-T24
 
-// TODO: M04-T06 - Define EntailmentCone struct
-// pub struct EntailmentCone {
-//     pub apex: PoincarePoint,
-//     pub aperture: f32,  // radians
-//     pub axis: Vec<f32>, // unit vector
-// }
+pub mod cones;
 
-// TODO: M04-T07 - Implement containment logic
-// impl EntailmentCone {
-//     pub fn contains(&self, point: &PoincarePoint) -> bool
-//     pub fn aperture_at_depth(&self, depth: usize, config: &ConeConfig) -> f32
-// }
+pub use cones::EntailmentCone;

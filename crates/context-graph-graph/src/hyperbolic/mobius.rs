@@ -9,7 +9,7 @@
 //! # Mathematics
 //!
 //! - Mobius addition: x ⊕ y = ((1 + 2c<x,y> + c||y||²)x + (1 - c||x||²)y) /
-//!                           (1 + 2c<x,y> + c²||x||²||y||²)
+//!   (1 + 2c<x,y> + c²||x||²||y||²)
 //! - Distance: d(x,y) = (2/√c) * arctanh(√c * ||(-x) ⊕ y||)
 //! - Exp map: Maps tangent vector at x to point on manifold
 //! - Log map: Maps point y to tangent vector at x (inverse of exp_map)
@@ -288,8 +288,8 @@ impl PoincareBall {
         // Create direction point: (tanh_factor / (sqrt_c * v_norm)) * v
         let mut direction = PoincarePoint::origin();
         let scale = tanh_factor / (sqrt_c * v_norm);
-        for i in 0..64 {
-            direction.coords[i] = scale * v[i];
+        for (coord, &v_i) in direction.coords.iter_mut().zip(v.iter()) {
+            *coord = scale * v_i;
         }
 
         // Ensure direction is strictly inside the ball before Mobius add
@@ -381,8 +381,8 @@ impl PoincareBall {
         let scale = (2.0 / (lambda_x * sqrt_c)) * arctanh_val / diff_norm;
 
         let mut result = [0.0; 64];
-        for i in 0..64 {
-            result[i] = scale * diff.coords[i];
+        for (r, &coord) in result.iter_mut().zip(diff.coords.iter()) {
+            *r = scale * coord;
         }
 
         result

@@ -47,6 +47,7 @@ pub mod traversal;
 
 // Re-exports for convenience
 pub use config::{ConeConfig, HyperbolicConfig, IndexConfig};
+pub use entailment::EntailmentCone;
 pub use error::{GraphError, GraphResult};
 pub use hyperbolic::{PoincareBall, PoincarePoint};
 

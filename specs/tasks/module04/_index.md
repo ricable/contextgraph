@@ -27,7 +27,7 @@ metadata:
 - **Foundation:** 12 tasks (M04-T00 to M04-T08a) - Sequences 1-12
 - **Logic:** 13 tasks (M04-T09 to M04-T17a, M04-T26) - Sequences 13-25
 - **Surface:** 11 tasks (M04-T18 to M04-T25, M04-T27 to M04-T29) - Sequences 26-36
-- **Current Progress:** 8/36 (22.2%) - M04-T00, M04-T01, M04-T01a, M04-T02, M04-T02a, M04-T03, M04-T04, M04-T05 Complete
+- **Current Progress:** 9/36 (25%) - M04-T00, M04-T01, M04-T01a, M04-T02, M04-T02a, M04-T03, M04-T04, M04-T05, M04-T06 Complete
 
 ### Atomic Task Files Created
 
@@ -184,8 +184,8 @@ graph TD
 | 6 | M04-T03 | Define ConeConfig for Entailment Cones | foundation | T00 | :white_check_mark: Complete | 1.5 |
 | 7 | M04-T04 | Define PoincarePoint for 64D Hyperbolic Space | foundation | T02 | :white_check_mark: Complete | 2 |
 | 8 | M04-T05 | Implement PoincareBall Mobius Operations | foundation | T04 | :white_check_mark: Complete | 4 |
-| 9 | M04-T06 | Define EntailmentCone Struct | foundation | T03, T05 | :hourglass: Ready | 3 |
-| 10 | M04-T07 | Implement EntailmentCone Containment Logic | foundation | T06 | :no_entry: Blocked | 3 |
+| 9 | M04-T06 | Define EntailmentCone Struct | foundation | T03, T05 | :white_check_mark: Complete | 3 |
+| 10 | M04-T07 | Implement EntailmentCone Containment Logic | foundation | T06 | :hourglass: Ready | 3 |
 | 11 | M04-T08 | Define GraphError Enum | foundation | T00 | :hourglass: Ready | 1.5 |
 | 12 | M04-T08a | **Implement Error Conversions (From traits)** | foundation | T08 | :no_entry: Blocked | 1 |
 | 13 | M04-T09 | Define FAISS FFI Bindings | logic | T08a | :no_entry: Blocked | 4 |
@@ -241,7 +241,7 @@ graph TD
 | M04-T03 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: ConeConfig with 3 fields + validate() |
 | M04-T04 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: PoincarePoint 64D, 30 tests pass |
 | M04-T05 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: PoincareBall with mobius_add, distance, exp_map, log_map |
-| M04-T06 | - | - | - | |
+| M04-T06 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: EntailmentCone struct with 29 tests |
 | M04-T07 | - | - | - | |
 | M04-T08 | - | - | - | |
 | M04-T08a | - | - | - | NEW: Error conversions |
