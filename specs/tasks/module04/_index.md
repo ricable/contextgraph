@@ -27,7 +27,7 @@ metadata:
 - **Foundation:** 12 tasks (M04-T00 to M04-T08a) - Sequences 1-12
 - **Logic:** 13 tasks (M04-T09 to M04-T17a, M04-T26) - Sequences 13-25
 - **Surface:** 11 tasks (M04-T18 to M04-T25, M04-T27 to M04-T29) - Sequences 26-36
-- **Current Progress:** 10/36 (28%) - M04-T00, M04-T01, M04-T01a, M04-T02, M04-T02a, M04-T03, M04-T04, M04-T05, M04-T06, M04-T07 Complete
+- **Current Progress:** 13/36 (36%) - M04-T00 through M04-T09 Complete (Foundation: 12/12, Logic: 1/13 started)
 
 ### Atomic Task Files Created
 
@@ -185,13 +185,13 @@ graph TD
 | 7 | M04-T04 | Define PoincarePoint for 64D Hyperbolic Space | foundation | T02 | :white_check_mark: Complete | 2 |
 | 8 | M04-T05 | Implement PoincareBall Mobius Operations | foundation | T04 | :white_check_mark: Complete | 4 |
 | 9 | M04-T06 | Define EntailmentCone Struct | foundation | T03, T05 | :white_check_mark: Complete | 3 |
-| 10 | M04-T07 | Implement EntailmentCone Containment Logic | foundation | T06 | :hourglass: Ready | 3 |
-| 11 | M04-T08 | Define GraphError Enum | foundation | T00 | :hourglass: Ready | 1.5 |
-| 12 | M04-T08a | **Implement Error Conversions (From traits)** | foundation | T08 | :no_entry: Blocked | 1 |
-| 13 | M04-T09 | Define FAISS FFI Bindings | logic | T08a | :no_entry: Blocked | 4 |
-| 14 | M04-T10 | Implement FaissGpuIndex Wrapper | logic | T01, T09 | :no_entry: Blocked | 5 |
+| 10 | M04-T07 | Implement EntailmentCone Containment Logic | foundation | T06 | :white_check_mark: Complete | 3 |
+| 11 | M04-T08 | Define GraphError Enum | foundation | T00 | :white_check_mark: Complete | 1.5 |
+| 12 | M04-T08a | **Implement Error Conversions (From traits)** | foundation | T08 | :white_check_mark: Complete | 1 |
+| 13 | M04-T09 | Define FAISS FFI Bindings | logic | T08a | :white_check_mark: Complete | 4 |
+| 14 | M04-T10 | Implement FaissGpuIndex Wrapper | logic | T01, T09 | :hourglass: Ready | 5 |
 | 15 | M04-T11 | Implement SearchResult Struct | logic | T10 | :no_entry: Blocked | 1.5 |
-| 16 | M04-T12 | Define Graph Storage Column Families | logic | T08a | :no_entry: Blocked | 2 |
+| 16 | M04-T12 | Define Graph Storage Column Families | logic | T08a | :hourglass: Ready | 2 |
 | 17 | M04-T13 | Implement GraphStorage Backend | logic | T04, T06, T12 | :no_entry: Blocked | 4 |
 | 18 | M04-T13a | **Implement Storage Schema Migrations** | logic | T13 | :no_entry: Blocked | 2 |
 | 19 | M04-T14 | Implement NeurotransmitterWeights for Edges | logic | - | :hourglass: Ready | 2 |
@@ -206,9 +206,9 @@ graph TD
 | 28 | M04-T21 | Implement Contradiction Detection | surface | T18, T16 | :no_entry: Blocked | 3 |
 | 29 | M04-T22 | Implement get_modulated_weight Function | surface | T15 | :no_entry: Blocked | 1 |
 | 30 | M04-T23 | Implement Poincare Distance CUDA Kernel | surface | T05 | :hourglass: Ready | 4 |
-| 31 | M04-T24 | Implement Cone Membership CUDA Kernel | surface | T07 | :no_entry: Blocked | 4 |
+| 31 | M04-T24 | Implement Cone Membership CUDA Kernel | surface | T07 | :hourglass: Ready | 4 |
 | 32 | M04-T26 | **Add EdgeType::CONTRADICTS Variant** | surface | T15 | :no_entry: Blocked | 1 |
-| 33 | M04-T27 | **Fix Containment Formula Conflicts** | surface | T07 | :no_entry: Blocked | 2 |
+| 33 | M04-T27 | **Fix Containment Formula Conflicts** | surface | T07 | :hourglass: Ready | 2 |
 | 34 | M04-T28 | **Implement GPU Memory Manager** | surface | T10 | :no_entry: Blocked | 3 |
 | 35 | M04-T25 | Create Module Integration Tests | surface | T18-T24, T26, T27 | :no_entry: Blocked | 6 |
 | 36 | M04-T29 | **Create Performance Benchmark Suite** | surface | T25, T28 | :no_entry: Blocked | 4 |
@@ -242,10 +242,10 @@ graph TD
 | M04-T04 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: PoincarePoint 64D, 30 tests pass |
 | M04-T05 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: PoincareBall with mobius_add, distance, exp_map, log_map |
 | M04-T06 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: EntailmentCone struct with 29 tests |
-| M04-T07 | - | - | - | |
-| M04-T08 | - | - | - | |
-| M04-T08a | - | - | - | NEW: Error conversions |
-| M04-T09 | - | - | - | No existing FAISS FFI |
+| M04-T07 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: Containment logic with sherlock verification |
+| M04-T08 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: GraphError enum with 32 variants |
+| M04-T08a | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: Error conversions (rocksdb, serde_json, bincode) |
+| M04-T09 | 2026-01-03 | 2026-01-03 | Yes | VERIFIED: FAISS FFI with 33/33 checks passed (sherlock-holmes) |
 | M04-T10 | - | - | - | |
 | M04-T11 | - | - | - | |
 | M04-T12 | - | - | - | |
