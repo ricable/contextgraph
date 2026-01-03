@@ -27,7 +27,7 @@ metadata:
 - **Foundation:** 12 tasks (M04-T00 to M04-T08a) - Sequences 1-12
 - **Logic:** 13 tasks (M04-T09 to M04-T17a, M04-T26) - Sequences 13-25
 - **Surface:** 11 tasks (M04-T18 to M04-T25, M04-T27 to M04-T29) - Sequences 26-36
-- **Current Progress:** 1/36 (2.8%) - M04-T00 Complete
+- **Current Progress:** 4/36 (11.1%) - M04-T00, M04-T01, M04-T01a, M04-T02, M04-T02a Complete
 
 ### Atomic Task Files Created
 
@@ -177,10 +177,10 @@ graph TD
 | # | Task ID | Title | Layer | Depends On | Status | Est. Hours |
 |---|---------|-------|-------|------------|--------|------------|
 | 1 | M04-T00 | **Create context-graph-graph Crate Structure** | foundation | - | :white_check_mark: Complete | 3 |
-| 2 | M04-T01 | Complete IndexConfig for FAISS IVF-PQ | foundation | T00 | :hourglass: Ready | 2 |
-| 3 | M04-T01a | **Re-export Vector1536 from Core** | foundation | T01 | :no_entry: Blocked | 1 |
-| 4 | M04-T02 | Define HyperbolicConfig for Poincare Ball | foundation | T00 | :hourglass: Ready | 1 |
-| 5 | M04-T02a | **Implement Curvature Validation** | foundation | T02 | :no_entry: Blocked | 0.5 |
+| 2 | M04-T01 | Complete IndexConfig for FAISS IVF-PQ | foundation | T00 | :white_check_mark: Complete | 2 |
+| 3 | M04-T01a | **Re-export Vector1536 from Core** | foundation | T01 | :white_check_mark: Complete | 1 |
+| 4 | M04-T02 | Define HyperbolicConfig for Poincare Ball | foundation | T00 | :white_check_mark: Verified | 1 |
+| 5 | M04-T02a | **Implement Curvature Validation** | foundation | T02 | :white_check_mark: Verified | 0.5 |
 | 6 | M04-T03 | Define ConeConfig for Entailment Cones | foundation | T00 | :hourglass: Ready | 1.5 |
 | 7 | M04-T04 | Define PoincarePoint for 64D Hyperbolic Space | foundation | T02 | :no_entry: Blocked | 2 |
 | 8 | M04-T05 | Implement PoincareBall Mobius Operations | foundation | T04 | :no_entry: Blocked | 4 |
@@ -234,10 +234,10 @@ graph TD
 | Task | Started | Completed | Verified | Notes |
 |------|---------|-----------|----------|-------|
 | M04-T00 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: Crate exists with full structure |
-| M04-T01 | - | - | - | |
-| M04-T01a | - | - | - | NEW: Core type re-export |
-| M04-T02 | - | - | - | |
-| M04-T02a | - | - | - | NEW: Validation logic |
+| M04-T01 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: IndexConfig with 8 fields |
+| M04-T01a | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: EmbeddingVector re-export |
+| M04-T02 | 2026-01-03 | 2026-01-03 | Yes | VERIFIED: HyperbolicConfig 4 fields (sherlock-holmes) |
+| M04-T02a | 2026-01-03 | 2026-01-03 | Yes | VERIFIED: validate() with NaN checks (sherlock-holmes) |
 | M04-T03 | - | - | - | |
 | M04-T04 | - | - | - | |
 | M04-T05 | - | - | - | |

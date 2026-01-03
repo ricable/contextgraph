@@ -14,6 +14,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::error::GraphError;
+
 /// Configuration for FAISS IVF-PQ GPU index.
 ///
 /// Configures the FAISS GPU index for 10M+ vector search with <5ms latency.
@@ -119,24 +121,211 @@ impl IndexConfig {
 /// - Curvature must be negative (typically -1.0)
 /// - All points must have norm < 1.0
 ///
-/// TODO: M04-T02 - Add validation for curvature
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// # Constitution Reference
+/// - edge_model.nt_weights: Neurotransmitter weighting in hyperbolic space
+/// - perf.latency.entailment_check: <1ms
+///
+/// # Example
+/// ```
+/// use context_graph_graph::config::HyperbolicConfig;
+///
+/// let config = HyperbolicConfig::default();
+/// assert_eq!(config.dim, 64);
+/// assert_eq!(config.curvature, -1.0);
+/// assert!(config.validate().is_ok());
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct HyperbolicConfig {
-    /// Dimension of hyperbolic space (default: 64)
-    pub dimension: usize,
-    /// Curvature parameter (must be negative, default: -1.0)
+    /// Dimension of hyperbolic space (typically 64 for knowledge graphs).
+    /// Must be positive.
+    pub dim: usize,
+
+    /// Curvature of hyperbolic space. MUST be negative.
+    /// Default: -1.0 (unit hyperbolic space)
+    /// Validated in validate().
     pub curvature: f32,
-    /// Maximum norm for points (default: 0.999, must be < 1.0)
+
+    /// Epsilon for numerical stability in hyperbolic operations.
+    /// Prevents division by zero and NaN in distance calculations.
+    /// Default: 1e-7
+    pub eps: f32,
+
+    /// Maximum norm for points (keeps points strictly inside ball boundary).
+    /// Points with norm >= max_norm will be projected back inside.
+    /// Must be in open interval (0, 1). Default: 1.0 - 1e-5 = 0.99999
     pub max_norm: f32,
 }
 
 impl Default for HyperbolicConfig {
     fn default() -> Self {
         Self {
-            dimension: 64,
+            dim: 64,
             curvature: -1.0,
-            max_norm: 0.999,
+            eps: 1e-7,
+            max_norm: 1.0 - 1e-5, // 0.99999
         }
+    }
+}
+
+impl HyperbolicConfig {
+    /// Create config with custom curvature.
+    ///
+    /// # Arguments
+    /// * `curvature` - Must be negative. Use validate() to check.
+    ///
+    /// # Example
+    /// ```
+    /// use context_graph_graph::config::HyperbolicConfig;
+    /// let config = HyperbolicConfig::with_curvature(-0.5);
+    /// assert_eq!(config.curvature, -0.5);
+    /// assert_eq!(config.dim, 64); // other fields use defaults
+    /// ```
+    pub fn with_curvature(curvature: f32) -> Self {
+        Self {
+            curvature,
+            ..Default::default()
+        }
+    }
+
+    /// Get absolute value of curvature.
+    ///
+    /// Useful for formulas that need |c| rather than c.
+    ///
+    /// # Example
+    /// ```
+    /// use context_graph_graph::config::HyperbolicConfig;
+    /// let config = HyperbolicConfig::default();
+    /// assert_eq!(config.abs_curvature(), 1.0);
+    /// ```
+    #[inline]
+    pub fn abs_curvature(&self) -> f32 {
+        self.curvature.abs()
+    }
+
+    /// Scale factor derived from curvature: sqrt(|c|)
+    ///
+    /// Used in Mobius operations and distance calculations.
+    ///
+    /// # Example
+    /// ```
+    /// use context_graph_graph::config::HyperbolicConfig;
+    /// let config = HyperbolicConfig::default();
+    /// assert_eq!(config.scale(), 1.0); // sqrt(|-1.0|) = 1.0
+    /// ```
+    #[inline]
+    pub fn scale(&self) -> f32 {
+        self.abs_curvature().sqrt()
+    }
+
+    /// Validate that all configuration parameters are mathematically valid
+    /// for the Poincare ball model.
+    ///
+    /// # Validation Rules
+    /// - `dim` > 0: Dimension must be positive
+    /// - `curvature` < 0: Must be negative for hyperbolic space
+    /// - `eps` > 0: Must be positive for numerical stability
+    /// - `max_norm` in (0, 1): Must be strictly between 0 and 1
+    ///
+    /// # Errors
+    /// Returns `GraphError::InvalidConfig` with descriptive message if any
+    /// parameter is invalid. Returns the FIRST error encountered (fail-fast).
+    ///
+    /// # Example
+    /// ```
+    /// use context_graph_graph::config::HyperbolicConfig;
+    ///
+    /// // Valid config passes
+    /// let valid = HyperbolicConfig::default();
+    /// assert!(valid.validate().is_ok());
+    ///
+    /// // Invalid curvature fails
+    /// let mut invalid = HyperbolicConfig::default();
+    /// invalid.curvature = 1.0; // positive is invalid
+    /// assert!(invalid.validate().is_err());
+    /// ```
+    pub fn validate(&self) -> Result<(), GraphError> {
+        // Check dimension
+        if self.dim == 0 {
+            return Err(GraphError::InvalidConfig(
+                "dim must be positive (got 0)".to_string()
+            ));
+        }
+
+        // Check curvature - MUST be negative for hyperbolic space
+        if self.curvature >= 0.0 {
+            return Err(GraphError::InvalidConfig(
+                format!(
+                    "curvature must be negative for hyperbolic space (got {})",
+                    self.curvature
+                )
+            ));
+        }
+
+        // Check for NaN curvature
+        if self.curvature.is_nan() {
+            return Err(GraphError::InvalidConfig(
+                "curvature cannot be NaN".to_string()
+            ));
+        }
+
+        // Check epsilon
+        if self.eps <= 0.0 {
+            return Err(GraphError::InvalidConfig(
+                format!(
+                    "eps must be positive for numerical stability (got {})",
+                    self.eps
+                )
+            ));
+        }
+
+        // Check for NaN eps
+        if self.eps.is_nan() {
+            return Err(GraphError::InvalidConfig(
+                "eps cannot be NaN".to_string()
+            ));
+        }
+
+        // Check max_norm - must be in open interval (0, 1)
+        if self.max_norm <= 0.0 || self.max_norm >= 1.0 {
+            return Err(GraphError::InvalidConfig(
+                format!(
+                    "max_norm must be in open interval (0, 1), got {}",
+                    self.max_norm
+                )
+            ));
+        }
+
+        // Check for NaN max_norm
+        if self.max_norm.is_nan() {
+            return Err(GraphError::InvalidConfig(
+                "max_norm cannot be NaN".to_string()
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Create a validated config with custom curvature.
+    ///
+    /// Returns error if curvature is invalid (>= 0 or NaN).
+    ///
+    /// # Example
+    /// ```
+    /// use context_graph_graph::config::HyperbolicConfig;
+    ///
+    /// let config = HyperbolicConfig::try_with_curvature(-0.5).unwrap();
+    /// assert_eq!(config.curvature, -0.5);
+    ///
+    /// // Invalid curvature returns error
+    /// assert!(HyperbolicConfig::try_with_curvature(1.0).is_err());
+    /// ```
+    pub fn try_with_curvature(curvature: f32) -> Result<Self, GraphError> {
+        let config = Self {
+            curvature,
+            ..Default::default()
+        };
+        config.validate()?;
+        Ok(config)
     }
 }
 
@@ -272,11 +461,234 @@ mod tests {
     #[test]
     fn test_hyperbolic_config_default() {
         let config = HyperbolicConfig::default();
-        assert_eq!(config.dimension, 64);
-        assert_eq!(config.curvature, -1.0);
+
+        // Verify all 4 fields
+        assert_eq!(config.dim, 64, "Default dim must be 64");
+        assert_eq!(config.curvature, -1.0, "Default curvature must be -1.0");
+        assert_eq!(config.eps, 1e-7, "Default eps must be 1e-7");
+        assert!((config.max_norm - 0.99999).abs() < 1e-10, "Default max_norm must be 1.0 - 1e-5");
+
+        // Invariants
         assert!(config.curvature < 0.0, "Curvature must be negative");
         assert!(config.max_norm < 1.0, "Max norm must be < 1.0");
         assert!(config.max_norm > 0.0, "Max norm must be positive");
+        assert!(config.eps > 0.0, "Eps must be positive");
+    }
+
+    #[test]
+    fn test_hyperbolic_config_with_curvature() {
+        let config = HyperbolicConfig::with_curvature(-0.5);
+        assert_eq!(config.curvature, -0.5);
+        assert_eq!(config.dim, 64); // defaults preserved
+        assert_eq!(config.eps, 1e-7);
+    }
+
+    #[test]
+    fn test_hyperbolic_config_abs_curvature() {
+        let config = HyperbolicConfig::default();
+        assert_eq!(config.abs_curvature(), 1.0);
+
+        let config2 = HyperbolicConfig::with_curvature(-2.5);
+        assert_eq!(config2.abs_curvature(), 2.5);
+    }
+
+    #[test]
+    fn test_hyperbolic_config_scale() {
+        let config = HyperbolicConfig::default();
+        assert_eq!(config.scale(), 1.0); // sqrt(|-1.0|) = 1.0
+
+        let config2 = HyperbolicConfig::with_curvature(-4.0);
+        assert_eq!(config2.scale(), 2.0); // sqrt(|-4.0|) = 2.0
+    }
+
+    #[test]
+    fn test_hyperbolic_config_serialization_roundtrip() {
+        let config = HyperbolicConfig::default();
+        let json = serde_json::to_string(&config).expect("Serialization failed");
+        let deserialized: HyperbolicConfig = serde_json::from_str(&json).expect("Deserialization failed");
+        assert_eq!(config, deserialized);
+    }
+
+    #[test]
+    fn test_hyperbolic_config_json_fields() {
+        let config = HyperbolicConfig::default();
+        let json = serde_json::to_string_pretty(&config).expect("Serialization failed");
+
+        // Verify all 4 fields appear in JSON
+        assert!(json.contains("\"dim\":"), "JSON must contain dim field");
+        assert!(json.contains("\"curvature\":"), "JSON must contain curvature field");
+        assert!(json.contains("\"eps\":"), "JSON must contain eps field");
+        assert!(json.contains("\"max_norm\":"), "JSON must contain max_norm field");
+    }
+
+    // ============ Validation Tests ============
+
+    #[test]
+    fn test_validate_default_passes() {
+        let config = HyperbolicConfig::default();
+        assert!(config.validate().is_ok(), "Default config must be valid");
+    }
+
+    #[test]
+    fn test_validate_dim_zero_fails() {
+        let config = HyperbolicConfig {
+            dim: 0,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("dim"), "Error should mention 'dim'");
+        assert!(err_msg.contains("positive"), "Error should mention 'positive'");
+    }
+
+    #[test]
+    fn test_validate_curvature_zero_fails() {
+        let config = HyperbolicConfig {
+            curvature: 0.0,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("curvature"), "Error should mention 'curvature'");
+        assert!(err_msg.contains("negative"), "Error should mention 'negative'");
+    }
+
+    #[test]
+    fn test_validate_curvature_positive_fails() {
+        let config = HyperbolicConfig {
+            curvature: 1.0,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("1"), "Error should include the actual value");
+    }
+
+    #[test]
+    fn test_validate_curvature_nan_fails() {
+        let config = HyperbolicConfig {
+            curvature: f32::NAN,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("NaN"), "Error should mention 'NaN'");
+    }
+
+    #[test]
+    fn test_validate_eps_zero_fails() {
+        let config = HyperbolicConfig {
+            eps: 0.0,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("eps"), "Error should mention 'eps'");
+    }
+
+    #[test]
+    fn test_validate_eps_negative_fails() {
+        let config = HyperbolicConfig {
+            eps: -1e-7,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_max_norm_zero_fails() {
+        let config = HyperbolicConfig {
+            max_norm: 0.0,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("max_norm"), "Error should mention 'max_norm'");
+    }
+
+    #[test]
+    fn test_validate_max_norm_one_fails() {
+        let config = HyperbolicConfig {
+            max_norm: 1.0,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err(), "max_norm=1.0 is ON boundary, not inside ball");
+    }
+
+    #[test]
+    fn test_validate_max_norm_greater_than_one_fails() {
+        let config = HyperbolicConfig {
+            max_norm: 1.5,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_max_norm_negative_fails() {
+        let config = HyperbolicConfig {
+            max_norm: -0.5,
+            ..Default::default()
+        };
+        let result = config.validate();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_custom_valid_curvature() {
+        // Various valid negative curvatures
+        for c in [-0.1, -0.5, -1.0, -2.0, -10.0] {
+            let config = HyperbolicConfig::with_curvature(c);
+            assert!(config.validate().is_ok(), "curvature {} should be valid", c);
+        }
+    }
+
+    #[test]
+    fn test_try_with_curvature_valid() {
+        let config = HyperbolicConfig::try_with_curvature(-0.5).unwrap();
+        assert_eq!(config.curvature, -0.5);
+        assert_eq!(config.dim, 64); // default
+    }
+
+    #[test]
+    fn test_try_with_curvature_invalid() {
+        assert!(HyperbolicConfig::try_with_curvature(0.0).is_err());
+        assert!(HyperbolicConfig::try_with_curvature(1.0).is_err());
+        assert!(HyperbolicConfig::try_with_curvature(f32::NAN).is_err());
+    }
+
+    #[test]
+    fn test_validate_fail_fast_order() {
+        // When multiple fields are invalid, should fail on first check (dim)
+        let config = HyperbolicConfig {
+            dim: 0,
+            curvature: 1.0,  // also invalid
+            eps: -1.0,       // also invalid
+            max_norm: 2.0,   // also invalid
+        };
+        let err_msg = config.validate().unwrap_err().to_string();
+        assert!(err_msg.contains("dim"), "Should fail on dim first");
+    }
+
+    #[test]
+    fn test_validate_boundary_values() {
+        // Test values very close to boundaries
+        let barely_valid = HyperbolicConfig {
+            dim: 1,
+            curvature: -1e-10,  // tiny but negative
+            eps: 1e-10,         // tiny but positive
+            max_norm: 0.9999999, // close to 1 but not 1
+        };
+        assert!(barely_valid.validate().is_ok());
     }
 
     #[test]
@@ -289,14 +701,6 @@ mod tests {
         assert!(config.min_aperture < config.base_aperture);
     }
 
-    #[test]
-    fn test_hyperbolic_config_serialization() {
-        let config = HyperbolicConfig::default();
-        let json = serde_json::to_string(&config).expect("Failed to serialize");
-        let deserialized: HyperbolicConfig =
-            serde_json::from_str(&json).expect("Failed to deserialize");
-        assert_eq!(config.curvature, deserialized.curvature);
-    }
 
     #[test]
     fn test_cone_config_serialization() {
