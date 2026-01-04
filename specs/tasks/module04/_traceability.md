@@ -48,8 +48,8 @@ This document serves as the verification layer between:
 | ColumnFamilies | RocksDB CF definitions (adjacency, hyperbolic, cones) | M04-T12 | [ ] |
 | GraphStorage | RocksDB backend for graph data | M04-T13 | [ ] |
 | StorageMigrations | Schema versioning and migration support | M04-T13a | [ ] |
-| NeurotransmitterWeights | Marblestone NT struct (excitatory, inhibitory, modulatory) | M04-T14 | [ ] |
-| NTWeightValidation | Range validation [0,1] for NT weights | M04-T14a | [ ] |
+| NeurotransmitterWeights | Marblestone NT struct (excitatory, inhibitory, modulatory) | M04-T14 | [x] |
+| NTWeightValidation | Range validation [0,1] for NT weights | M04-T14a | [x] |
 | GraphEdge | Edge with 13 Marblestone fields | M04-T15 | [ ] |
 | EdgeType | Enum: Semantic, Temporal, Causal, Hierarchical, CONTRADICTS | M04-T15, M04-T26 | [ ] |
 | Domain | Enum: Code, Legal, Medical, Creative, Research, General | M04-T15 | [ ] |
@@ -200,15 +200,15 @@ These issues were identified during analysis and require resolution:
 
 | Issue | Severity | Source | Resolution Task | Status |
 |-------|----------|--------|-----------------|--------|
-| `context-graph-graph` crate does not exist | CRITICAL | Foundation Analysis | M04-T00 | Pending |
-| Vector1536 type not re-exported from core | HIGH | Foundation Analysis | M04-T01a | Pending |
-| EntailmentCone.axis field mismatch between specs | MEDIUM | Analysis | M04-T06 clarifies fields | Pending |
+| `context-graph-graph` crate does not exist | CRITICAL | Foundation Analysis | M04-T00 | RESOLVED (commit 53f56ec) |
+| Vector1536 type not re-exported from core | HIGH | Foundation Analysis | M04-T01a | RESOLVED (commit 7306023) |
+| EntailmentCone.axis field mismatch between specs | MEDIUM | Analysis | M04-T06 clarifies fields | RESOLVED (commit cae3058) |
 | NT formula conflicts (3 different formulas found) | HIGH | Surface Analysis | M04-T27 | Pending |
 | EdgeType CONTRADICTS missing | HIGH | Surface Analysis | M04-T26 | Pending |
 | VRAM budget discrepancy (20GB vs 24GB) | LOW | Surface Analysis | M04-T28 | Pending |
-| Curvature validation not enforced | MEDIUM | Foundation Analysis | M04-T02a | Pending |
-| NT weight range [0,1] not enforced | MEDIUM | Logic Analysis | M04-T14a | Pending |
-| Storage schema migration missing | MEDIUM | Logic Analysis | M04-T13a | Pending |
+| Curvature validation not enforced | MEDIUM | Foundation Analysis | M04-T02a | RESOLVED (commit 0fb2c0f) |
+| NT weight range [0,1] not enforced | MEDIUM | Logic Analysis | M04-T14a | RESOLVED (commit a4dbcd9) |
+| Storage schema migration missing | MEDIUM | Logic Analysis | M04-T13a | RESOLVED (commit 1a84fd2) |
 
 ---
 

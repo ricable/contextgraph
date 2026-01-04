@@ -27,7 +27,7 @@ metadata:
 - **Foundation:** 12 tasks (M04-T00 to M04-T08a) - Sequences 1-12
 - **Logic:** 13 tasks (M04-T09 to M04-T17a, M04-T26) - Sequences 13-25
 - **Surface:** 11 tasks (M04-T18 to M04-T25, M04-T27 to M04-T29) - Sequences 26-36
-- **Current Progress:** 13/36 (36%) - M04-T00 through M04-T09 Complete (Foundation: 12/12, Logic: 1/13 started)
+- **Current Progress:** 20/36 (56%) - M04-T00 through M04-T14a Complete (Foundation: 12/12, Logic: 8/13 complete)
 
 ### Atomic Task Files Created
 
@@ -191,18 +191,18 @@ graph TD
 | 13 | M04-T09 | Define FAISS FFI Bindings | logic | T08a | :white_check_mark: Complete | 4 |
 | 14 | M04-T10 | Implement FaissGpuIndex Wrapper | logic | T01, T09 | :white_check_mark: Complete | 5 |
 | 15 | M04-T11 | Implement SearchResult Struct | logic | T10 | :white_check_mark: Complete | 1.5 |
-| 16 | M04-T12 | Define Graph Storage Column Families | logic | T08a | :hourglass: Ready | 2 |
-| 17 | M04-T13 | Implement GraphStorage Backend | logic | T04, T06, T12 | :no_entry: Blocked | 4 |
-| 18 | M04-T13a | **Implement Storage Schema Migrations** | logic | T13 | :no_entry: Blocked | 2 |
-| 19 | M04-T14 | Implement NeurotransmitterWeights for Edges | logic | - | :hourglass: Ready | 2 |
-| 20 | M04-T14a | **Implement NT Weight Range Validation** | logic | T14 | :no_entry: Blocked | 1 |
-| 21 | M04-T15 | Implement GraphEdge with Marblestone Fields | logic | T14a | :no_entry: Blocked | 3 |
+| 16 | M04-T12 | Define Graph Storage Column Families | logic | T08a | :white_check_mark: Complete | 2 |
+| 17 | M04-T13 | Implement GraphStorage Backend | logic | T04, T06, T12 | :white_check_mark: Complete | 4 |
+| 18 | M04-T13a | **Implement Storage Schema Migrations** | logic | T13 | :white_check_mark: Complete | 2 |
+| 19 | M04-T14 | Integrate NeurotransmitterWeights for Edges | logic | - | :white_check_mark: Complete | 2 |
+| 20 | M04-T14a | **Implement NT Weight Range Validation** | logic | T14 | :white_check_mark: Complete | 1 |
+| 21 | M04-T15 | Implement GraphEdge with Marblestone Fields | logic | T14a | :hourglass: Ready | 3 |
 | 22 | M04-T16 | Implement BFS Graph Traversal | logic | T13, T15 | :no_entry: Blocked | 3 |
-| 23 | M04-T17 | Implement DFS Graph Traversal | logic | T13 | :no_entry: Blocked | 2 |
+| 23 | M04-T17 | Implement DFS Graph Traversal | logic | T13 | :hourglass: Ready | 2 |
 | 24 | M04-T17a | **Implement A* Hyperbolic Traversal** | logic | T17 | :no_entry: Blocked | 3 |
-| 25 | M04-T18 | Implement Semantic Search Operation | surface | T10, T11 | :no_entry: Blocked | 3 |
+| 25 | M04-T18 | Implement Semantic Search Operation | surface | T10, T11 | :hourglass: Ready | 3 |
 | 26 | M04-T19 | Implement Domain-Aware Search (Marblestone) | surface | T14a, T15, T18 | :no_entry: Blocked | 3 |
-| 27 | M04-T20 | Implement Entailment Query Operation | surface | T07, T13 | :no_entry: Blocked | 4 |
+| 27 | M04-T20 | Implement Entailment Query Operation | surface | T07, T13 | :hourglass: Ready | 4 |
 | 28 | M04-T21 | Implement Contradiction Detection | surface | T18, T16 | :no_entry: Blocked | 3 |
 | 29 | M04-T22 | Implement get_modulated_weight Function | surface | T15 | :no_entry: Blocked | 1 |
 | 30 | M04-T23 | Implement Poincare Distance CUDA Kernel | surface | T05 | :hourglass: Ready | 4 |
@@ -246,13 +246,13 @@ graph TD
 | M04-T08 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: GraphError enum with 32 variants |
 | M04-T08a | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: Error conversions (rocksdb, serde_json, bincode) |
 | M04-T09 | 2026-01-03 | 2026-01-03 | Yes | VERIFIED: FAISS FFI with 33/33 checks passed (sherlock-holmes) |
-| M04-T10 | - | - | - | |
-| M04-T11 | - | - | - | |
-| M04-T12 | - | - | - | |
-| M04-T13 | - | - | - | |
-| M04-T13a | - | - | - | NEW: Schema migrations |
-| M04-T14 | - | - | - | Can start immediately |
-| M04-T14a | - | - | - | NEW: Range validation |
+| M04-T10 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: FaissGpuIndex with sherlock verification |
+| M04-T11 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: SearchResult struct with full verification |
+| M04-T12 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: Column families with sherlock verification |
+| M04-T13 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: GraphStorage backend with sherlock verification |
+| M04-T13a | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: Storage migrations with sherlock verification |
+| M04-T14 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: NT weight integration |
+| M04-T14a | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: Result-returning validation wrapper |
 | M04-T15 | - | - | - | |
 | M04-T16 | - | - | - | |
 | M04-T17 | - | - | - | |
