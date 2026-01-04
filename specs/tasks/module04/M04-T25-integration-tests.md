@@ -1,784 +1,514 @@
 ---
 id: "M04-T25"
-title: "Create Module Integration Tests"
+title: "Complete Module Integration Tests"
 description: |
-  Implement comprehensive integration tests for Module 4:
-  - End-to-end FAISS index lifecycle (train, add, search)
-  - Hyperbolic distance computation (CPU vs GPU comparison)
-  - Entailment cone containment queries
-  - Graph traversal with Marblestone edge modulation
-  - Domain-aware search ranking
-  - Contradiction detection pipeline
-  Performance benchmarks against NFR targets.
+  VERIFY and COMPLETE comprehensive integration tests for Module 4 Knowledge Graph.
+  Test files ALREADY EXIST at crates/context-graph-graph/tests/ - you must audit, fix, and complete them.
+  Tests exercise complete workflows: storage lifecycle, hyperbolic geometry, entailment cones,
+  graph traversal with Marblestone modulation, domain-aware search, and contradiction detection.
+  ALL tests use REAL implementations - NO MOCKS.
 layer: "surface"
-status: "pending"
+status: "in_progress"
 priority: "critical"
-estimated_hours: 6
-sequence: 33
+estimated_hours: 8
+sequence: 35
 depends_on:
-  - "M04-T18"
-  - "M04-T19"
-  - "M04-T20"
-  - "M04-T21"
-  - "M04-T23"
-  - "M04-T24"
-  - "M04-T26"
-  - "M04-T27"
+  - "M04-T18"  # Semantic search (COMPLETE - f044c84)
+  - "M04-T19"  # Domain-aware search (COMPLETE - f891496)
+  - "M04-T20"  # Entailment query (COMPLETE - 4fd5052)
+  - "M04-T21"  # Contradiction detection (COMPLETE - 11a4bb8)
+  - "M04-T22"  # get_modulated_weight (COMPLETE - 4536e42)
+  - "M04-T23"  # Poincare CUDA kernel (COMPLETE - f303e17)
+  - "M04-T24"  # Cone CUDA kernel (COMPLETE - 6274f5e)
+  - "M04-T26"  # EdgeType::Contradicts (COMPLETE - 11a4bb8)
 spec_refs:
   - "TECH-GRAPH-004 Section 11"
+  - "constitution.yaml testing"
   - "All NFR-KG requirements"
-files_to_create:
+files_already_created:
   - path: "crates/context-graph-graph/tests/integration_tests.rs"
-    description: "Comprehensive integration tests"
+    description: "ALREADY EXISTS - Audit and complete"
   - path: "crates/context-graph-graph/tests/common/mod.rs"
-    description: "Shared test utilities"
+    description: "ALREADY EXISTS - Shared test utilities module"
   - path: "crates/context-graph-graph/tests/common/fixtures.rs"
-    description: "Test data fixtures"
-files_to_modify: []
+    description: "ALREADY EXISTS - Test data fixtures"
+  - path: "crates/context-graph-graph/tests/common/helpers.rs"
+    description: "ALREADY EXISTS - Helper functions for test setup"
+files_to_modify:
+  - path: "crates/context-graph-graph/tests/integration_tests.rs"
+    description: "Complete all test categories, ensure compilation, verify all tests pass"
 test_file: "crates/context-graph-graph/tests/integration_tests.rs"
 ---
 
-## Context
+# M04-T25: Complete Module Integration Tests
 
-Integration tests validate that all Module 4 components work correctly together in realistic scenarios. Unlike unit tests which verify individual functions, integration tests exercise complete workflows: indexing millions of vectors, performing semantic search, traversing the graph with Marblestone modulation, and detecting contradictions. These tests ensure the system meets performance NFRs and catches integration issues between components.
+## CRITICAL: READ THIS FIRST
 
-**CRITICAL**: Per REQ-KG-TEST, all tests MUST use real FAISS GPU index. Mock implementations are forbidden for vector similarity search.
+**YOU ARE AN AI AGENT WITH A FRESH CONTEXT WINDOW.**
 
-## Scope
+### What Already Exists (DO NOT RECREATE)
 
-### In Scope
-- End-to-end FAISS index lifecycle tests
-- CPU vs GPU comparison tests
-- Entailment hierarchy tests
-- Graph traversal tests
-- Domain-aware search tests
-- Contradiction detection tests
-- Performance validation against NFR targets
-- Test fixtures and utilities
+The test infrastructure ALREADY EXISTS:
+```
+crates/context-graph-graph/tests/
+├── integration_tests.rs     # ALREADY EXISTS - ~800 lines, PARTIAL
+├── common/
+│   ├── mod.rs               # ALREADY EXISTS
+│   ├── fixtures.rs          # ALREADY EXISTS
+│   └── helpers.rs           # ALREADY EXISTS
+├── nt_integration_tests.rs  # ALREADY EXISTS
+├── nt_validation_tests.rs   # ALREADY EXISTS
+└── storage_tests.rs         # ALREADY EXISTS
+```
 
-### Out of Scope
-- Stress testing / load testing
-- Multi-GPU tests
-- Distributed system tests
-- Fuzzing
+### Your Task
 
-## Definition of Done
+1. **AUDIT** existing `integration_tests.rs` for compilation errors
+2. **FIX** any imports that don't match actual module exports
+3. **COMPLETE** any missing test categories
+4. **VERIFY** all tests pass with `cargo test -p context-graph-graph --test integration_tests`
 
-### Test File Structure
+### Mandatory Rules
+
+1. **NO BACKWARDS COMPATIBILITY** - System must work or fail fast
+2. **NO WORKAROUNDS/FALLBACKS** - If something doesn't work, error out with detailed diagnostics
+3. **NO MOCK DATA** - Use REAL storage, REAL data operations
+4. **VERIFY OUTPUTS PHYSICALLY** - After each operation, query the actual data source to prove it worked
+5. **USE sherlock-holmes AGENT** at the end for forensic verification
+
+---
+
+## Current Codebase State (Audited 2026-01-04)
+
+### Verified Crate Structure
+
+```
+crates/context-graph-graph/
+├── Cargo.toml
+├── src/
+│   ├── lib.rs                     # Main exports - READ THIS FOR IMPORTS
+│   ├── config.rs                  # IndexConfig, HyperbolicConfig, ConeConfig
+│   ├── error.rs                   # GraphError enum (32 variants)
+│   ├── hyperbolic/
+│   │   ├── mod.rs
+│   │   ├── poincare.rs            # PoincarePoint (64D)
+│   │   └── mobius.rs              # PoincareBall operations
+│   ├── entailment/
+│   │   ├── mod.rs                 # Re-exports
+│   │   ├── cones.rs               # EntailmentCone struct
+│   │   └── query.rs               # entailment_query(), EntailmentResult
+│   ├── index/
+│   │   ├── mod.rs
+│   │   ├── faiss_ffi.rs           # FAISS FFI bindings
+│   │   ├── gpu_index.rs           # FaissGpuIndex wrapper
+│   │   └── search_result.rs       # SearchResult, SearchResultItem
+│   ├── storage/
+│   │   ├── mod.rs                 # Column family constants, re-exports
+│   │   ├── storage_impl.rs        # GraphStorage backend
+│   │   ├── edges.rs               # GraphEdge, EdgeId
+│   │   └── migrations.rs          # Schema migrations
+│   ├── search/
+│   │   ├── mod.rs                 # semantic_search(), semantic_search_simple()
+│   │   ├── domain_search.rs       # domain_aware_search(), DomainSearchResult
+│   │   ├── filters.rs             # SearchFilters
+│   │   └── result.rs              # SemanticSearchResult, SemanticSearchResultItem
+│   ├── traversal/
+│   │   ├── mod.rs                 # Re-exports BFS, DFS, A*
+│   │   ├── bfs.rs                 # bfs_traverse(), BfsParams, BfsResult
+│   │   ├── dfs.rs                 # dfs_traverse(), DfsParams, DfsResult
+│   │   └── astar.rs               # astar_search(), AstarParams, AstarResult
+│   ├── contradiction/
+│   │   ├── mod.rs                 # Re-exports
+│   │   └── detector.rs            # contradiction_detect(), ContradictionResult
+│   ├── marblestone/
+│   │   ├── mod.rs                 # get_modulated_weight(), DOMAIN_MATCH_BONUS
+│   │   └── validation.rs          # NT weight validation
+│   └── query/                     # High-level query operations
+└── tests/
+    ├── integration_tests.rs       # THIS TASK
+    ├── common/                    # Test utilities
+    ├── nt_integration_tests.rs
+    ├── nt_validation_tests.rs
+    └── storage_tests.rs
+```
+
+### CUDA Crate Structure
+
+```
+crates/context-graph-cuda/
+├── src/
+│   ├── lib.rs                     # Exports: poincare, cone modules
+│   ├── poincare.rs                # poincare_distance_cpu(), poincare_distance_batch_cpu()
+│   │                              # (GPU: poincare_distance_batch_gpu with cuda feature)
+│   ├── cone.rs                    # cone_check_batch_cpu(), cone_membership_score_cpu()
+│   │                              # (GPU: cone_check_batch_gpu with cuda feature)
+│   ├── error.rs                   # CudaError enum
+│   ├── ops.rs                     # VectorOps trait
+│   └── stub.rs                    # StubVectorOps for CPU fallback
+└── tests/
+    └── (test files)
+```
+
+---
+
+## Correct Import Patterns
+
+### From `context_graph_graph` Crate Root
 
 ```rust
-// In crates/context-graph-graph/tests/integration_tests.rs
+// Config types
+use context_graph_graph::{IndexConfig, HyperbolicConfig, ConeConfig};
 
-//! Integration tests for Knowledge Graph Module 4
-//!
-//! These tests validate complete workflows and ensure all components
-//! work together correctly. Tests marked with #[requires_gpu] require
-//! CUDA-capable hardware and will be skipped in CI without GPU.
-//!
-//! IMPORTANT: Per REQ-KG-TEST, NO MOCK FAISS. All vector similarity
-//! tests use real FAISS GPU index.
+// Error types
+use context_graph_graph::{GraphError, GraphResult};
 
-mod common;
+// Hyperbolic
+use context_graph_graph::{PoincareBall, PoincarePoint};
 
-use std::time::{Duration, Instant};
-use tempfile::tempdir;
-
+// Entailment - CORRECT exports from lib.rs
 use context_graph_graph::{
-    config::{IndexConfig, HyperbolicConfig, ConeConfig},
-    error::GraphResult,
-    index::gpu_index::FaissGpuIndex,
-    storage::rocksdb::GraphStorage,
-    storage::edges::{GraphEdge, EdgeType, Domain, NeurotransmitterWeights},
-    hyperbolic::{PoincarePoint, PoincareBall},
-    entailment::cones::EntailmentCone,
-    search::{semantic_search, SearchFilters},
-    marblestone::{domain_aware_search, get_modulated_weight},
-    entailment::query::{entailment_query, EntailmentDirection, EntailmentQueryParams},
-    contradiction::detector::{contradiction_detect, ContradictionParams},
-    traversal::bfs::{bfs_traverse, BfsParams},
-    Vector1536,
+    EntailmentCone, entailment_query, EntailmentDirection,
+    EntailmentQueryParams, EntailmentResult, BatchEntailmentResult,
+    entailment_check_batch, entailment_score, is_entailed_by,
+    lowest_common_ancestor, LcaResult,
 };
 
-use common::{fixtures::*, helpers::*};
-
-/// Custom attribute for tests requiring GPU
-/// These tests will be skipped in CI environments without CUDA
-#[cfg(not(feature = "skip_gpu_tests"))]
-macro_rules! requires_gpu {
-    () => {};
-}
-
-// ============================================================
-// FAISS Index Lifecycle Tests
-// ============================================================
-
-mod faiss_lifecycle {
-    use super::*;
-
-    /// Test complete FAISS index workflow: create, train, add, search
-    #[test]
-    #[requires_gpu]
-    fn test_index_full_lifecycle() -> GraphResult<()> {
-        let config = IndexConfig::default();
-        let mut index = FaissGpuIndex::new(&config)?;
-
-        // Verify initial state
-        assert_eq!(index.ntotal(), 0);
-        assert!(!index.is_trained());
-
-        // Generate training data (minimum 4M for IVF16384)
-        let train_data = generate_training_vectors(4_194_304);
-
-        // Train index
-        let train_start = Instant::now();
-        index.train(&train_data)?;
-        let train_time = train_start.elapsed();
-        println!("Training time: {:?}", train_time);
-
-        assert!(index.is_trained());
-
-        // Add vectors
-        let vectors = generate_normalized_vectors(10_000);
-        let ids: Vec<i64> = (0..10_000).collect();
-
-        let add_start = Instant::now();
-        index.add_with_ids(&vectors, &ids)?;
-        let add_time = add_start.elapsed();
-        println!("Add time for 10K vectors: {:?}", add_time);
-
-        assert_eq!(index.ntotal(), 10_000);
-
-        // Search
-        let query = &vectors[0];
-        let k = 10;
-
-        let search_start = Instant::now();
-        let results = index.search(&[query.clone()], k)?;
-        let search_time = search_start.elapsed();
-        println!("Search time: {:?}", search_time);
-
-        // Verify self is top result
-        let (top_id, top_dist) = results.query_results(0).next().unwrap();
-        assert_eq!(top_id, 0);
-        assert!(top_dist < 0.01);
-
-        Ok(())
-    }
-
-    /// Test FAISS search performance meets NFR target
-    #[test]
-    #[requires_gpu]
-    fn test_search_performance_k100() -> GraphResult<()> {
-        let (index, _) = create_trained_index_with_vectors(1_000_000)?;
-
-        let query = generate_normalized_vectors(1)[0].clone();
-        let k = 100;
-
-        // Warm-up
-        let _ = index.search(&[query.clone()], k)?;
-
-        // Measure
-        let iterations = 100;
-        let start = Instant::now();
-        for _ in 0..iterations {
-            let _ = index.search(&[query.clone()], k)?;
-        }
-        let total_time = start.elapsed();
-        let avg_time = total_time / iterations;
-
-        println!("Average search time (k=100, 1M vectors): {:?}", avg_time);
-
-        // NFR target: <10ms for k=100 on 10M vectors
-        // For 1M vectors, should be well under
-        assert!(avg_time < Duration::from_millis(10),
-            "Search took {:?}, expected <10ms", avg_time);
-
-        Ok(())
-    }
-}
-
-// ============================================================
-// Hyperbolic Geometry Tests
-// ============================================================
-
-mod hyperbolic_tests {
-    use super::*;
-
-    /// Test CPU vs GPU Poincare distance computation
-    #[test]
-    #[requires_gpu]
-    fn test_poincare_distance_cpu_gpu_match() -> GraphResult<()> {
-        let config = HyperbolicConfig::default();
-        let ball = PoincareBall::new(&config);
-
-        let n_points = 100;
-        let points = generate_poincare_points(n_points);
-
-        // CPU computation
-        let mut cpu_distances = Vec::new();
-        for i in 0..n_points {
-            for j in 0..n_points {
-                let d = ball.distance(&points[i], &points[j]);
-                cpu_distances.push(d);
-            }
-        }
-
-        // GPU computation
-        let gpu_distances = poincare_distance_batch_gpu(&points, &points)?;
-
-        // Compare
-        for (i, (cpu, gpu)) in cpu_distances.iter().zip(gpu_distances.iter()).enumerate() {
-            let diff = (cpu - gpu).abs();
-            assert!(diff < 1e-5,
-                "Distance mismatch at {}: CPU={}, GPU={}, diff={}",
-                i, cpu, gpu, diff);
-        }
-
-        Ok(())
-    }
-
-    /// Test Poincare distance GPU performance
-    #[test]
-    #[requires_gpu]
-    fn test_poincare_distance_performance() -> GraphResult<()> {
-        let n_queries = 1000;
-        let n_database = 1000;
-
-        let queries = generate_poincare_points(n_queries);
-        let database = generate_poincare_points(n_database);
-
-        // Warm-up
-        let _ = poincare_distance_batch_gpu(&queries[..10], &database[..10])?;
-
-        // Measure
-        let start = Instant::now();
-        let _ = poincare_distance_batch_gpu(&queries, &database)?;
-        let elapsed = start.elapsed();
-
-        println!("1K x 1K Poincare distance: {:?}", elapsed);
-
-        // NFR target: <1ms
-        assert!(elapsed < Duration::from_millis(1),
-            "Poincare distance took {:?}, expected <1ms", elapsed);
-
-        Ok(())
-    }
-}
-
-// ============================================================
-// Entailment Cone Tests
-// ============================================================
-
-mod entailment_tests {
-    use super::*;
-
-    /// Test entailment hierarchy queries
-    #[test]
-    fn test_entailment_hierarchy() -> GraphResult<()> {
-        let dir = tempdir()?;
-        let storage = create_test_hierarchy(&dir)?;
-
-        // Query ancestors of "Dog"
-        let dog_id = 3;  // From fixture
-        let params = EntailmentQueryParams::default().max_depth(3);
-
-        let ancestors = entailment_query(
-            &storage,
-            dog_id,
-            EntailmentDirection::Ancestors,
-            params.clone(),
-        )?;
-
-        // Should find Mammal and Animal
-        let ancestor_ids: Vec<_> = ancestors.iter().map(|r| r.node_id).collect();
-        println!("Dog's ancestors: {:?}", ancestor_ids);
-
-        // Query descendants of "Animal"
-        let animal_id = 1;
-        let descendants = entailment_query(
-            &storage,
-            animal_id,
-            EntailmentDirection::Descendants,
-            params,
-        )?;
-
-        let descendant_ids: Vec<_> = descendants.iter().map(|r| r.node_id).collect();
-        println!("Animal's descendants: {:?}", descendant_ids);
-
-        // Membership scores should be in [0, 1]
-        for result in ancestors.iter().chain(descendants.iter()) {
-            assert!(result.membership_score >= 0.0);
-            assert!(result.membership_score <= 1.0);
-        }
-
-        Ok(())
-    }
-
-    /// Test cone membership GPU performance
-    #[test]
-    #[requires_gpu]
-    fn test_cone_membership_performance() -> GraphResult<()> {
-        let n_cones = 1000;
-        let n_points = 1000;
-
-        let cones = generate_entailment_cones(n_cones);
-        let points = generate_poincare_points(n_points);
-
-        // Warm-up
-        let _ = cone_check_batch_gpu(&cones[..10], &points[..10])?;
-
-        // Measure
-        let start = Instant::now();
-        let scores = cone_check_batch_gpu(&cones, &points)?;
-        let elapsed = start.elapsed();
-
-        println!("1K x 1K cone membership: {:?}", elapsed);
-
-        // NFR target: <2ms
-        assert!(elapsed < Duration::from_millis(2),
-            "Cone check took {:?}, expected <2ms", elapsed);
-
-        // Verify scores in valid range
-        for score in scores {
-            assert!(score >= 0.0 && score <= 1.0);
-        }
-
-        Ok(())
-    }
-}
-
-// ============================================================
-// Graph Traversal Tests
-// ============================================================
-
-mod traversal_tests {
-    use super::*;
-
-    /// Test BFS traversal with Marblestone modulation
-    #[test]
-    fn test_bfs_with_domain_modulation() -> GraphResult<()> {
-        let dir = tempdir()?;
-        let storage = create_test_graph_with_domains(&dir)?;
-
-        let start_node = 1;
-
-        // BFS with Code domain
-        let params = BfsParams::default()
-            .max_depth(3)
-            .domain(Domain::Code);
-
-        let result = bfs_traverse(&storage, start_node, params)?;
-
-        println!("BFS found {} nodes, {} edges", result.nodes.len(), result.edges.len());
-
-        // Verify depth distribution
-        for (depth, count) in result.depth_counts.iter() {
-            println!("Depth {}: {} nodes", depth, count);
-        }
-
-        // All nodes should be reachable within max_depth
-        assert!(!result.nodes.is_empty());
-
-        Ok(())
-    }
-
-    /// Test BFS performance on large graph
-    #[test]
-    fn test_bfs_performance() -> GraphResult<()> {
-        let dir = tempdir()?;
-        let storage = create_large_test_graph(&dir, 100_000, 6)?;  // 100K nodes, avg 6 edges
-
-        let start_node = 0;
-        let params = BfsParams::default().max_depth(6).max_nodes(10_000);
-
-        // Warm-up
-        let _ = bfs_traverse(&storage, start_node, params.clone())?;
-
-        // Measure
-        let start = Instant::now();
-        let result = bfs_traverse(&storage, start_node, params)?;
-        let elapsed = start.elapsed();
-
-        println!("BFS depth=6 on 100K graph: {:?}, found {} nodes", elapsed, result.nodes.len());
-
-        // NFR target: <100ms for depth=6 on 10M nodes
-        // For 100K nodes, should be much faster
-        assert!(elapsed < Duration::from_millis(100),
-            "BFS took {:?}, expected <100ms", elapsed);
-
-        Ok(())
-    }
-}
-
-// ============================================================
-// Domain-Aware Search Tests
-// ============================================================
-
-mod domain_search_tests {
-    use super::*;
-
-    /// Test domain-aware search re-ranking
-    #[test]
-    #[requires_gpu]
-    fn test_domain_aware_ranking() -> GraphResult<()> {
-        let dir = tempdir()?;
-        let (index, storage) = create_index_with_domain_nodes(&dir)?;
-
-        // Query with Code domain
-        let query = generate_normalized_vectors(1)[0].clone();
-
-        let results = domain_aware_search(
-            &index,
-            &storage,
-            &query,
-            Domain::Code,
-            20,
-            None,
-        )?;
-
-        // Verify modulation was applied
-        for result in &results {
-            // Modulated score should differ from base (unless General domain)
-            if result.node_domain == Domain::Code {
-                // Code domain should get boost
-                assert!(result.modulated_score >= result.base_similarity,
-                    "Code domain should be boosted");
-            }
-        }
-
-        // Results should be sorted by modulated score
-        for i in 1..results.len() {
-            assert!(results[i-1].modulated_score >= results[i].modulated_score,
-                "Results not sorted by modulated score");
-        }
-
-        Ok(())
-    }
-
-    /// Test domain-aware search performance
-    #[test]
-    #[requires_gpu]
-    fn test_domain_search_performance() -> GraphResult<()> {
-        let dir = tempdir()?;
-        let (index, storage) = create_index_with_domain_nodes(&dir)?;
-
-        let query = generate_normalized_vectors(1)[0].clone();
-
-        // Warm-up
-        let _ = domain_aware_search(&index, &storage, &query, Domain::Code, 10, None)?;
-
-        // Measure
-        let iterations = 100;
-        let start = Instant::now();
-        for _ in 0..iterations {
-            let _ = domain_aware_search(&index, &storage, &query, Domain::Code, 10, None)?;
-        }
-        let avg_time = start.elapsed() / iterations;
-
-        println!("Average domain-aware search time: {:?}", avg_time);
-
-        // NFR target: <10ms
-        assert!(avg_time < Duration::from_millis(10),
-            "Domain search took {:?}, expected <10ms", avg_time);
-
-        Ok(())
-    }
-}
-
-// ============================================================
-// Contradiction Detection Tests
-// ============================================================
-
-mod contradiction_tests {
-    use super::*;
-
-    /// Test contradiction detection with explicit edges
-    #[test]
-    #[requires_gpu]
-    fn test_contradiction_detection() -> GraphResult<()> {
-        let dir = tempdir()?;
-        let (index, storage) = create_index_with_contradictions(&dir)?;
-
-        let node_with_contradiction = 1;
-        let embedding = get_node_embedding(&storage, node_with_contradiction)?;
-
-        let results = contradiction_detect(
-            &index,
-            &storage,
-            node_with_contradiction,
-            &embedding,
-            ContradictionParams::default().threshold(0.5),
-        )?;
-
-        println!("Found {} contradictions", results.len());
-
-        // Should find at least the explicit contradiction
-        assert!(!results.is_empty(), "Should detect contradiction");
-
-        for result in &results {
-            assert!(result.confidence >= 0.5);
-            if result.has_explicit_edge {
-                println!("Explicit contradiction with node {}", result.contradicting_node_id);
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Test semantic similarity-based contradiction detection
-    #[test]
-    #[requires_gpu]
-    fn test_semantic_contradiction() -> GraphResult<()> {
-        let dir = tempdir()?;
-        let (index, storage) = create_index_with_similar_content(&dir)?;
-
-        let node_id = 1;
-        let embedding = get_node_embedding(&storage, node_id)?;
-
-        // High sensitivity to catch semantic contradictions
-        let results = contradiction_detect(
-            &index,
-            &storage,
-            node_id,
-            &embedding,
-            ContradictionParams::default()
-                .high_sensitivity()
-                .threshold(0.3),
-        )?;
-
-        // Should find semantically similar potential contradictions
-        for result in &results {
-            println!("Potential contradiction: node={}, sim={:.3}, conf={:.3}",
-                result.contradicting_node_id,
-                result.semantic_similarity,
-                result.confidence);
-        }
-
-        Ok(())
-    }
-}
-
-// ============================================================
-// End-to-End Integration Test
-// ============================================================
-
-mod e2e_tests {
-    use super::*;
-
-    /// Complete knowledge graph workflow test
-    #[test]
-    #[requires_gpu]
-    fn test_complete_workflow() -> GraphResult<()> {
-        let dir = tempdir()?;
-
-        // 1. Create infrastructure
-        let config = IndexConfig::default();
-        let mut index = FaissGpuIndex::new(&config)?;
-        let storage = GraphStorage::open_default(dir.path())?;
-
-        // 2. Train FAISS index
-        let train_data = generate_training_vectors(4_194_304);
-        index.train(&train_data)?;
-        assert!(index.is_trained());
-
-        // 3. Add knowledge nodes with embeddings
-        let n_nodes = 10_000;
-        let vectors = generate_normalized_vectors(n_nodes);
-        let ids: Vec<i64> = (0..n_nodes as i64).collect();
-        index.add_with_ids(&vectors, &ids)?;
-
-        // 4. Add hyperbolic coordinates and cones
-        let hyperbolic_config = HyperbolicConfig::default();
-        for id in 0..n_nodes {
-            let point = PoincarePoint::random(&hyperbolic_config);
-            storage.put_hyperbolic(id as i64, &point)?;
-
-            let cone = EntailmentCone::new(point, 0.8, 1.0, (id % 5) as u32);
-            storage.put_cone(id as i64, &cone)?;
-        }
-
-        // 5. Add graph edges with domains
-        for id in 0..n_nodes {
-            let mut edges = Vec::new();
-            for j in 1..=3 {
-                let target = (id + j * 100) % n_nodes;
-                let domain = match id % 4 {
-                    0 => Domain::Code,
-                    1 => Domain::Legal,
-                    2 => Domain::Medical,
-                    _ => Domain::General,
-                };
-                edges.push(GraphEdge::semantic(
-                    id as i64 * 100 + j as i64,
-                    id as i64,
-                    target as i64,
-                    0.7,
-                ));
-            }
-            storage.put_adjacency(id as i64, &edges)?;
-        }
-
-        // 6. Perform semantic search
-        let query = &vectors[0];
-        let search_results = semantic_search(&index, &storage, query, 10, None)?;
-        assert!(!search_results.is_empty());
-        println!("Semantic search found {} results", search_results.len());
-
-        // 7. Perform domain-aware search
-        let domain_results = domain_aware_search(
-            &index, &storage, query, Domain::Code, 10, None
-        )?;
-        println!("Domain search found {} results", domain_results.len());
-
-        // 8. Perform entailment query
-        let entailment_results = entailment_query(
-            &storage,
-            0,
-            EntailmentDirection::Descendants,
-            EntailmentQueryParams::default(),
-        )?;
-        println!("Entailment found {} descendants", entailment_results.len());
-
-        // 9. Perform BFS traversal
-        let bfs_results = bfs_traverse(
-            &storage,
-            0,
-            BfsParams::default().max_depth(3),
-        )?;
-        println!("BFS found {} nodes", bfs_results.nodes.len());
-
-        // 10. All operations completed successfully
-        println!("Complete workflow test PASSED");
-
-        Ok(())
-    }
-}
+// Index
+use context_graph_graph::{FaissGpuIndex, GpuResources, MetricType, SearchResult, SearchResultItem};
+
+// Search
+use context_graph_graph::{
+    semantic_search, semantic_search_simple, semantic_search_batch, semantic_search_batch_simple,
+    SearchFilters, SemanticSearchResult, SemanticSearchResultItem,
+    BatchSemanticSearchResult, SearchStats,
+};
+
+// Domain search (from search module)
+use context_graph_graph::search::{domain_aware_search, DomainSearchResult, DomainSearchResults};
+
+// Contradiction
+use context_graph_graph::{
+    contradiction_detect, check_contradiction, get_contradictions, mark_contradiction,
+    ContradictionParams, ContradictionResult, ContradictionType,
+};
+
+// Core types (re-exported from context_graph_core)
+use context_graph_graph::{Domain, EdgeType, NeurotransmitterWeights};
+use context_graph_graph::{EmbeddingVector, NodeId, DEFAULT_EMBEDDING_DIM};
+
+// Storage - IMPORTANT: These come from storage module
+use context_graph_graph::storage::{
+    GraphStorage, StorageConfig, PoincarePoint as StoragePoincarePoint,
+    EntailmentCone as StorageCone, LegacyGraphEdge, NodeId as StorageNodeId,
+    GraphEdge, EdgeId, Domain as StorageDomain, EdgeType as StorageEdgeType,
+    NeurotransmitterWeights as StorageNT,
+    SCHEMA_VERSION, MigrationInfo, Migrations,
+    CF_ADJACENCY, CF_HYPERBOLIC, CF_CONES, CF_FAISS_IDS, CF_NODES, CF_METADATA,
+    ALL_COLUMN_FAMILIES, get_column_family_descriptors, get_db_options,
+};
+
+// Traversal
+use context_graph_graph::traversal::{
+    bfs_traverse, bfs_shortest_path, bfs_neighborhood, bfs_domain_neighborhood,
+    BfsParams, BfsResult,
+    dfs_traverse, dfs_neighborhood, dfs_domain_neighborhood,
+    DfsParams, DfsResult, DfsIterator,
+    astar_search, astar_bidirectional, astar_path, astar_domain_path,
+    AstarParams, AstarResult,
+};
+
+// Marblestone
+use context_graph_graph::marblestone::DOMAIN_MATCH_BONUS;
+// Note: get_modulated_weight is in marblestone::mod.rs
 ```
+
+### From `context_graph_cuda` Crate
 
 ```rust
-// In crates/context-graph-graph/tests/common/mod.rs
+use context_graph_cuda::{
+    // Poincare CPU operations
+    PoincareCudaConfig, poincare_distance_cpu, poincare_distance_batch_cpu,
 
-pub mod fixtures;
-pub mod helpers;
+    // Cone CPU operations
+    ConeCudaConfig, ConeData, ConeKernelInfo,
+    cone_check_batch_cpu, cone_membership_score_cpu,
+    is_cone_gpu_available, get_cone_kernel_info,
+    CONE_DATA_DIM, POINT_DIM,
+
+    // Error types
+    CudaError, CudaResult,
+
+    // Stub for testing
+    StubVectorOps, VectorOps,
+};
+
+// GPU operations (only with cuda feature)
+#[cfg(feature = "cuda")]
+use context_graph_cuda::{
+    poincare_distance_batch_gpu, poincare_distance_single_gpu,
+    cone_check_batch_gpu, cone_check_single_gpu,
+};
 ```
 
+---
+
+## Constitution Performance Targets (NFR)
+
+| Operation | Target | Test Method |
+|-----------|--------|-------------|
+| FAISS k=100 search (1M vectors) | <2ms | Time 100 iterations, verify avg <2ms |
+| Poincare distance (GPU, 1K×1K) | <1ms | Use context-graph-cuda, verify <1ms |
+| Cone containment (GPU, 1K×1K) | <2ms | Use context-graph-cuda, verify <2ms |
+| BFS depth=6 (10M nodes) | <100ms | Create graph, measure traversal |
+| Domain-aware search | <10ms | Include NT modulation in timing |
+| Entailment query | <1ms/cone | Measure per-check latency |
+
+---
+
+## Test Categories Required
+
+### 1. Storage Lifecycle Tests ✓ (EXIST)
+- `test_storage_lifecycle_complete` - Create, migrate, CRUD
+- `test_storage_batch_operations` - Batch writes with timing
+
+### 2. Hyperbolic Geometry Tests ✓ (EXIST)
+- `test_poincare_point_invariants` - Origin, norm, boundary
+- `test_poincare_distance_properties` - Symmetry, triangle inequality
+
+### 3. Entailment Cone Tests (AUDIT NEEDED)
+- `test_entailment_cone_creation` - Apex, aperture validation
+- `test_cone_containment_logic` - Membership scoring
+- `test_entailment_hierarchy_query` - Ancestor/descendant queries
+
+### 4. Graph Traversal Tests (AUDIT NEEDED)
+- `test_bfs_depth_limits` - max_depth enforcement
+- `test_bfs_with_nt_modulation` - Domain preference affects order
+- `test_dfs_vs_bfs_coverage` - Both reach same nodes
+- `test_astar_optimal_path` - Finds shortest path
+
+### 5. Search Operation Tests (AUDIT NEEDED)
+- `test_semantic_search_basic` - k-NN returns k results
+- `test_domain_aware_search` - NT modulation affects ranking
+
+### 6. Contradiction Detection Tests (AUDIT NEEDED)
+- `test_explicit_contradiction` - EdgeType::Contradicts edges
+- `test_semantic_contradiction` - High similarity + opposite meaning
+
+### 7. End-to-End Workflow Tests (AUDIT NEEDED)
+- `test_complete_knowledge_graph_workflow` - All operations integrated
+
+### 8. Edge Case Tests (AUDIT NEEDED)
+- `test_empty_inputs` - Empty queries, missing nodes
+- `test_boundary_values` - Max norm, zero aperture
+- `test_nan_infinity_handling` - Invalid float handling
+
+---
+
+## Full State Verification Protocol
+
+### MANDATORY: After completing any implementation, you MUST perform:
+
+#### 1. Define the Source of Truth
+
+| Operation | Source of Truth | How to Verify |
+|-----------|-----------------|---------------|
+| Storage put | `storage.get_*()` | Retrieve what was stored |
+| Storage count | `storage.*_count()` | Compare counts before/after |
+| FAISS add | `index.ntotal()` | Assert equals vectors added |
+| Traversal | `BfsResult.visited_nodes` | Verify all nodes exist in storage |
+| Entailment query | Query results | Cross-check with storage cones |
+| Contradiction | `ContradictionResult` | Verify EdgeType::Contradicts in storage |
+
+#### 2. Execute & Inspect Pattern
+
+For EVERY test operation:
 ```rust
-// In crates/context-graph-graph/tests/common/fixtures.rs
+// 1. Capture state BEFORE
+let state_before = storage.hyperbolic_count().expect("Count failed");
+println!("BEFORE: count={}", state_before);
 
-//! Test data fixtures for integration tests
+// 2. Execute operation
+storage.put_hyperbolic(id, &point).expect("Put failed");
 
-use context_graph_graph::Vector1536;
-use context_graph_graph::hyperbolic::PoincarePoint;
-use rand::Rng;
+// 3. Read Source of Truth IMMEDIATELY
+let state_after = storage.hyperbolic_count().expect("Count failed");
+println!("AFTER: count={}", state_after);
 
-/// Generate normalized random vectors for FAISS
-pub fn generate_normalized_vectors(n: usize) -> Vec<Vector1536> {
-    (0..n).map(|_| random_normalized_vector()).collect()
-}
+// 4. Assert expected change
+assert_eq!(state_after, state_before + 1, "Count should increase by 1");
 
-/// Generate training vectors (larger dataset)
-pub fn generate_training_vectors(n: usize) -> Vec<Vector1536> {
-    generate_normalized_vectors(n)
-}
-
-/// Generate random Poincare points inside the ball
-pub fn generate_poincare_points(n: usize) -> Vec<PoincarePoint> {
-    (0..n).map(|_| random_poincare_point()).collect()
-}
-
-/// Generate entailment cones
-pub fn generate_entailment_cones(n: usize) -> Vec<ConeData> {
-    (0..n).map(|_| random_cone()).collect()
-}
-
-fn random_normalized_vector() -> Vector1536 {
-    let mut rng = rand::thread_rng();
-    let mut v = [0.0f32; 1536];
-    let mut norm = 0.0f32;
-
-    for x in v.iter_mut() {
-        *x = rng.gen_range(-1.0..1.0);
-        norm += *x * *x;
-    }
-
-    norm = norm.sqrt();
-    for x in v.iter_mut() {
-        *x /= norm;
-    }
-
-    Vector1536::from(v)
-}
-
-fn random_poincare_point() -> PoincarePoint {
-    let mut rng = rand::thread_rng();
-    let mut p = [0.0f32; 64];
-
-    loop {
-        let mut norm_sq = 0.0f32;
-        for x in &mut p {
-            *x = rng.gen_range(-1.0..1.0);
-            norm_sq += *x * *x;
-        }
-        if norm_sq < 0.81 {  // norm < 0.9
-            break;
-        }
-        let scale = 0.85 / norm_sq.sqrt();
-        for x in &mut p { *x *= scale; }
-        break;
-    }
-
-    PoincarePoint::from_coords(&p)
-}
-
-fn random_cone() -> ConeData {
-    let mut rng = rand::thread_rng();
-    let point = random_poincare_point();
-
-    ConeData {
-        apex: point.coords,
-        aperture: rng.gen_range(0.3..1.2),
-    }
-}
+// 5. Physical verification - read back the actual data
+let retrieved = storage.get_hyperbolic(id).expect("Get failed").expect("Should exist");
+assert_eq!(point.coords, retrieved.coords, "Data should match");
+println!("VERIFIED: Data stored and retrieved correctly");
 ```
 
-### Constraints
-- NO MOCK FAISS (per REQ-KG-TEST)
-- GPU tests marked with #[requires_gpu]
-- All NFR targets validated
-- Tests must be deterministic (use seeded RNG where needed)
-- Clean up temp directories after tests
+#### 3. Boundary & Edge Case Audit (3 Required)
 
-### Acceptance Criteria
-- [ ] FAISS search returns correct top-k in <10ms
-- [ ] Hyperbolic distance CPU/GPU match within tolerance
-- [ ] Entailment query finds correct hierarchy
-- [ ] BFS traversal respects depth limits
-- [ ] Domain-aware search re-ranks correctly
-- [ ] All tests use real FAISS index (no mocks per spec)
-- [ ] Tests marked #[requires_gpu] for CI skip on non-GPU
-- [ ] Compiles with `cargo build`
-- [ ] Tests pass with `cargo test`
-- [ ] No clippy warnings
+You MUST test these edge cases with state logging:
 
-## Verification
+**Edge Case 1: Empty Query**
+```rust
+println!("EDGE CASE 1: Empty query");
+println!("  BEFORE: storage has {} nodes", storage.hyperbolic_count()?);
+let result = bfs_traverse(&storage, nonexistent_node, &params);
+println!("  AFTER: result = {:?}", result);
+// Expected: Error or empty result, NOT panic
+```
 
-### Test Commands
+**Edge Case 2: Boundary Values**
+```rust
+println!("EDGE CASE 2: Point at max_norm boundary");
+let boundary_point = generate_poincare_point(seed, 0.99999);
+println!("  BEFORE: norm = {}", boundary_point.norm());
+storage.put_hyperbolic(id, &boundary_point)?;
+let retrieved = storage.get_hyperbolic(id)?.expect("Should exist");
+println!("  AFTER: retrieved norm = {}", retrieved.norm());
+assert!(retrieved.norm() < 1.0, "Point must be inside unit ball");
+```
+
+**Edge Case 3: Invalid Input Rejection**
+```rust
+println!("EDGE CASE 3: Invalid NT weights");
+let invalid_nt = NeurotransmitterWeights::new(f32::NAN, 0.5, 0.5);
+println!("  BEFORE: weights = {:?}", invalid_nt);
+let result = invalid_nt.validate();
+println!("  AFTER: validation = {:?}", result);
+assert!(result.is_err(), "NaN must be rejected");
+```
+
+#### 4. Evidence of Success Log
+
+Every test MUST print:
+```
+=== TEST: <test_name> ===
+SOURCE OF TRUTH: <what is being verified>
+BEFORE: <initial state>
+OPERATION: <what was executed>
+AFTER: <final state>
+PHYSICAL VERIFICATION: <proof data exists>
+RESULT: PASS
+=== END TEST ===
+```
+
+---
+
+## Test Commands
+
 ```bash
-# Run all integration tests
-cargo test -p context-graph-graph --test integration_tests
+# Compile check (DO THIS FIRST)
+cargo build -p context-graph-graph --test integration_tests
 
-# Run with GPU tests (requires CUDA)
-cargo test -p context-graph-graph --test integration_tests --features gpu
-
-# Skip GPU tests (for CI without GPU)
-cargo test -p context-graph-graph --test integration_tests --features skip_gpu_tests
+# Run all integration tests with output
+cargo test -p context-graph-graph --test integration_tests -- --nocapture
 
 # Run specific test
-cargo test -p context-graph-graph --test integration_tests test_complete_workflow
+cargo test -p context-graph-graph --test integration_tests test_storage_lifecycle_complete -- --nocapture
+
+# Run with verbose logging
+RUST_LOG=debug cargo test -p context-graph-graph --test integration_tests -- --nocapture
+
+# Run NFR performance tests (ignored by default)
+cargo test -p context-graph-graph --test integration_tests -- --ignored --nocapture
+
+# Check for compilation errors in all tests
+cargo test -p context-graph-graph --no-run
 ```
 
-### Manual Verification
-- [ ] All tests pass on GPU machine
-- [ ] Tests skip gracefully without GPU
-- [ ] Performance numbers printed match NFR targets
-- [ ] No memory leaks (run with valgrind on subset)
+---
+
+## Acceptance Criteria
+
+- [ ] `cargo build -p context-graph-graph --test integration_tests` compiles without errors
+- [ ] All CPU tests pass: `cargo test -p context-graph-graph --test integration_tests`
+- [ ] Every test prints state verification evidence (BEFORE/AFTER)
+- [ ] No mock data used (per REQ-KG-TEST)
+- [ ] No clippy warnings: `cargo clippy -p context-graph-graph --test integration_tests`
+- [ ] Edge cases handled with proper errors (no panics on invalid input)
+- [ ] 3 boundary edge cases tested and logged
+
+---
+
+## Sherlock-Holmes Forensic Verification
+
+**MANDATORY: After completing all fixes, spawn sherlock-holmes with this prompt:**
+
+```
+FORENSIC VERIFICATION TASK: M04-T25 Integration Tests
+
+EVIDENCE TO EXAMINE:
+1. Files exist at correct paths:
+   - crates/context-graph-graph/tests/integration_tests.rs
+   - crates/context-graph-graph/tests/common/mod.rs
+   - crates/context-graph-graph/tests/common/fixtures.rs
+   - crates/context-graph-graph/tests/common/helpers.rs
+
+2. Compilation succeeds:
+   cargo build -p context-graph-graph --test integration_tests 2>&1
+
+3. Tests pass:
+   cargo test -p context-graph-graph --test integration_tests -- --nocapture 2>&1
+
+VERIFICATION CHECKLIST:
+- [ ] All imports resolve correctly (no unresolved imports)
+- [ ] Tests use real storage (GraphStorage::new or similar)
+- [ ] Tests verify state BEFORE and AFTER operations
+- [ ] Tests print evidence of physical verification
+- [ ] No unwrap() without expect() context
+- [ ] No mock data generators (check fixtures.rs)
+- [ ] Edge cases covered (empty, boundary, invalid)
+
+CRITICAL ISSUES TO FLAG:
+- Compilation errors
+- Import resolution failures
+- Tests that always pass (no assertions)
+- Missing state verification
+- Panics instead of proper error handling
+
+Report ALL issues found with file:line references.
+```
+
+---
+
+## Common Errors and Fixes
+
+### Error: `unresolved import`
+**Cause**: Import path doesn't match actual module exports
+**Fix**: Check `lib.rs` re-exports, use correct path
+
+### Error: `type mismatch`
+**Cause**: Storage types vs hyperbolic types are different structs
+**Fix**: Use `storage::PoincarePoint` for storage ops, `hyperbolic::PoincarePoint` for math
+
+### Error: `no method named X`
+**Cause**: Method exists on different struct or in different module
+**Fix**: Check actual struct definition in source file
+
+### Error: Tests compile but always pass
+**Cause**: No assertions or assertions that can't fail
+**Fix**: Add `assert!()` with meaningful conditions, verify state changed
+
+---
+
+## Git History Context (Recent Commits)
+
+```
+6274f5e feat(cuda): complete M04-T24 cone membership CUDA kernel
+f303e17 feat(cuda): complete M04-T23 Poincare distance CUDA kernel
+4536e42 feat(graph): complete M04-T22 standalone modulation utilities
+11a4bb8 feat(graph): complete M04-T21 contradiction detection and M04-T26 EdgeType::Contradicts
+4fd5052 feat(graph): complete M04-T20 entailment query with full state verification
+f891496 feat(graph): complete M04-T19 domain-aware search with NT modulation
+f044c84 feat(graph): complete M04-T18 semantic search with FAISS GPU integration
+```
+
+All dependencies for M04-T25 are complete. The integration tests need to verify these implementations work together.
+
+---
+
+## Task NOT Complete Until
+
+1. `cargo test -p context-graph-graph --test integration_tests` passes
+2. sherlock-holmes confirms all evidence checks pass
+3. Every test prints BEFORE/AFTER state verification
+4. 3 edge cases are tested and logged

@@ -27,7 +27,7 @@ metadata:
 - **Foundation:** 12 tasks (M04-T00 to M04-T08a) - Sequences 1-12
 - **Logic:** 13 tasks (M04-T09 to M04-T17a, M04-T26) - Sequences 13-25
 - **Surface:** 11 tasks (M04-T18 to M04-T25, M04-T27 to M04-T29) - Sequences 26-36
-- **Current Progress:** 21/36 (58%) - Foundation: 12/12, Logic: 8/13, Surface: 1/11 complete
+- **Current Progress:** 33/36 (92%) - Foundation: 12/12, Logic: 13/13, Surface: 8/11 complete
 
 ### Atomic Task Files Created
 
@@ -45,9 +45,9 @@ All 36 atomic task files are located in `/home/cabdru/contextgraph/specs/tasks/m
 |-------|----------|-----------------|
 | `context-graph-graph` crate DOES NOT EXIST | CRITICAL | M04-T00 |
 | No FAISS FFI implementation exists | CRITICAL | M04-T09 |
-| ~~No CUDA kernels exist~~ RESOLVED | ~~HIGH~~ | M04-T23 COMPLETE, M04-T24 |
-| Vector1536 type not re-exported | HIGH | M04-T01a |
-| EdgeType::CONTRADICTS missing | HIGH | M04-T26 |
+| ~~No CUDA kernels exist~~ RESOLVED | ~~HIGH~~ | M04-T23 COMPLETE, M04-T24 COMPLETE |
+| ~~Vector1536 type not re-exported~~ RESOLVED | ~~HIGH~~ | M04-T01a COMPLETE |
+| ~~EdgeType::CONTRADICTS missing~~ RESOLVED | ~~HIGH~~ | M04-T26 COMPLETE |
 | Formula conflicts in containment | MEDIUM | M04-T27 |
 
 ---
@@ -196,21 +196,21 @@ graph TD
 | 18 | M04-T13a | **Implement Storage Schema Migrations** | logic | T13 | :white_check_mark: Complete | 2 |
 | 19 | M04-T14 | Integrate NeurotransmitterWeights for Edges | logic | - | :white_check_mark: Complete | 2 |
 | 20 | M04-T14a | **Implement NT Weight Range Validation** | logic | T14 | :white_check_mark: Complete | 1 |
-| 21 | M04-T15 | Implement GraphEdge with Marblestone Fields | logic | T14a | :hourglass: Ready | 3 |
-| 22 | M04-T16 | Implement BFS Graph Traversal | logic | T13, T15 | :no_entry: Blocked | 3 |
-| 23 | M04-T17 | Implement DFS Graph Traversal | logic | T13 | :hourglass: Ready | 2 |
-| 24 | M04-T17a | **Implement A* Hyperbolic Traversal** | logic | T17 | :no_entry: Blocked | 3 |
-| 25 | M04-T18 | Implement Semantic Search Operation | surface | T10, T11 | :hourglass: Ready | 3 |
-| 26 | M04-T19 | Implement Domain-Aware Search (Marblestone) | surface | T14a, T15, T18 | :no_entry: Blocked | 3 |
-| 27 | M04-T20 | Implement Entailment Query Operation | surface | T07, T13 | :hourglass: Ready | 4 |
-| 28 | M04-T21 | Implement Contradiction Detection | surface | T18, T16 | :no_entry: Blocked | 3 |
-| 29 | M04-T22 | Implement get_modulated_weight Function | surface | T15 | :no_entry: Blocked | 1 |
-| 30 | M04-T23 | Implement Poincare Distance CUDA Kernel | surface | T05 | :hourglass: Ready | 4 |
-| 31 | M04-T24 | Implement Cone Membership CUDA Kernel | surface | T07 | :hourglass: Ready | 4 |
-| 32 | M04-T26 | **Add EdgeType::CONTRADICTS Variant** | surface | T15 | :no_entry: Blocked | 1 |
+| 21 | M04-T15 | Implement GraphEdge with Marblestone Fields | logic | T14a | :white_check_mark: Complete | 3 |
+| 22 | M04-T16 | Implement BFS Graph Traversal | logic | T13, T15 | :white_check_mark: Complete | 3 |
+| 23 | M04-T17 | Implement DFS Graph Traversal | logic | T13 | :white_check_mark: Complete | 2 |
+| 24 | M04-T17a | **Implement A* Hyperbolic Traversal** | logic | T17 | :white_check_mark: Complete | 3 |
+| 25 | M04-T18 | Implement Semantic Search Operation | surface | T10, T11 | :white_check_mark: Complete | 3 |
+| 26 | M04-T19 | Implement Domain-Aware Search (Marblestone) | surface | T14a, T15, T18 | :white_check_mark: Complete | 3 |
+| 27 | M04-T20 | Implement Entailment Query Operation | surface | T07, T13 | :white_check_mark: Complete | 4 |
+| 28 | M04-T21 | Implement Contradiction Detection | surface | T18, T16 | :white_check_mark: Complete | 3 |
+| 29 | M04-T22 | Implement get_modulated_weight Function | surface | T15 | :white_check_mark: Complete | 1 |
+| 30 | M04-T23 | Implement Poincare Distance CUDA Kernel | surface | T05 | :white_check_mark: Complete | 4 |
+| 31 | M04-T24 | Implement Cone Membership CUDA Kernel | surface | T07 | :white_check_mark: Complete | 4 |
+| 32 | M04-T26 | **Add EdgeType::CONTRADICTS Variant** | surface | T15 | :white_check_mark: Complete | 1 |
 | 33 | M04-T27 | **Fix Containment Formula Conflicts** | surface | T07 | :hourglass: Ready | 2 |
-| 34 | M04-T28 | **Implement GPU Memory Manager** | surface | T10 | :no_entry: Blocked | 3 |
-| 35 | M04-T25 | Create Module Integration Tests | surface | T18-T24, T26, T27 | :no_entry: Blocked | 6 |
+| 34 | M04-T28 | **Implement GPU Memory Manager** | surface | T10 | :hourglass: Ready | 3 |
+| 35 | M04-T25 | Create Module Integration Tests | surface | T18-T24, T26, T27 | :arrows_counterclockwise: In Progress | 6 |
 | 36 | M04-T29 | **Create Performance Benchmark Suite** | surface | T25, T28 | :no_entry: Blocked | 4 |
 
 **Total Estimated Hours:** ~95 hours (~2.4 weeks full-time)
@@ -253,22 +253,22 @@ graph TD
 | M04-T13a | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: Storage migrations with sherlock verification |
 | M04-T14 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: NT weight integration |
 | M04-T14a | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: Result-returning validation wrapper |
-| M04-T15 | - | - | - | |
-| M04-T16 | - | - | - | |
-| M04-T17 | - | - | - | |
-| M04-T17a | - | - | - | NEW: A* traversal |
-| M04-T18 | - | - | - | |
-| M04-T19 | - | - | - | |
-| M04-T20 | - | - | - | |
-| M04-T21 | - | - | - | |
-| M04-T22 | - | - | - | |
-| M04-T23 | - | - | - | No CUDA kernels exist |
-| M04-T24 | - | - | - | No CUDA kernels exist |
-| M04-T25 | - | - | - | |
-| M04-T26 | - | - | - | NEW: Missing EdgeType |
-| M04-T27 | - | - | - | NEW: Formula fix |
-| M04-T28 | - | - | - | NEW: GPU memory |
-| M04-T29 | - | - | - | NEW: Benchmarks |
+| M04-T15 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: GraphEdge with NT weights (commit 627a6a9) |
+| M04-T16 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: BFS traversal (commit 627a6a9) |
+| M04-T17 | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: DFS traversal (commit 7ab2c51) |
+| M04-T17a | 2026-01-03 | 2026-01-03 | Yes | COMPLETE: A* traversal (commit 7ab2c51) |
+| M04-T18 | 2026-01-04 | 2026-01-04 | Yes | COMPLETE: Semantic search (commit f044c84) |
+| M04-T19 | 2026-01-04 | 2026-01-04 | Yes | COMPLETE: Domain-aware search (commit f891496) |
+| M04-T20 | 2026-01-04 | 2026-01-04 | Yes | COMPLETE: Entailment query (commit 4fd5052) |
+| M04-T21 | 2026-01-04 | 2026-01-04 | Yes | COMPLETE: Contradiction detection (commit 11a4bb8) |
+| M04-T22 | 2026-01-04 | 2026-01-04 | Yes | COMPLETE: get_modulated_weight (commit 4536e42) |
+| M04-T23 | 2026-01-04 | 2026-01-04 | Yes | COMPLETE: Poincare CUDA kernel (commit f303e17) |
+| M04-T24 | 2026-01-04 | 2026-01-04 | Yes | COMPLETE: Cone CUDA kernel (commit 6274f5e) |
+| M04-T25 | 2026-01-04 | - | - | IN PROGRESS: Test files exist, 24 tests pass |
+| M04-T26 | 2026-01-04 | 2026-01-04 | Yes | COMPLETE: EdgeType::Contradicts (commit 11a4bb8) |
+| M04-T27 | - | - | - | READY: Formula fix |
+| M04-T28 | - | - | - | READY: GPU memory |
+| M04-T29 | - | - | - | BLOCKED: Needs M04-T25, M04-T28 |
 
 ---
 
@@ -523,7 +523,7 @@ crates/context-graph-graph/
 
 ---
 
-*Generated: 2026-01-03*
+*Generated: 2026-01-04*
 *Module: 04 - Knowledge Graph*
 *Version: 1.2.0*
 *Total Tasks: 36 atomic tasks (individual task files in this directory)*
