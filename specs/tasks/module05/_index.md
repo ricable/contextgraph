@@ -25,7 +25,8 @@ cargo test -p context-graph-utl --lib 2>&1 | tail -3
 
 | Status | Count |
 |--------|-------|
-| Completed | 34 |
+| Completed | 33 |
+| Needs Implementation | 1 (M05-T12) |
 | Pending (MCP Integration) | 29 |
 | In Progress | 0 |
 | Blocked | 0 |
@@ -62,7 +63,7 @@ cargo test -p context-graph-utl --lib 2>&1 | tail -3
 | M05-T09 | Implement KL Divergence Computation | high | 2 | **COMPLETE** | M05-T02 |
 | M05-T10 | Implement Surprise Computation Methods | high | 2 | **COMPLETE** | M05-T09 |
 | M05-T11 | Implement SurpriseCalculator | high | 2.5 | **COMPLETE** | M05-T10 |
-| M05-T12 | Implement CoherenceEntry and Window | high | 1.5 | **COMPLETE** | M05-T03 |
+| M05-T12 | Implement CoherenceEntry and Window | high | 2.5 | **NEEDS IMPL** | M05-T03 |
 | M05-T13 | Implement CoherenceTracker | high | 2.5 | **COMPLETE** | M05-T12 |
 | M05-T14 | Implement Structural Coherence (Stub) | medium | 1.5 | **COMPLETE** | M05-T13 |
 | M05-T15 | Implement EmotionalState Struct | medium | 1 | **COMPLETE** | M05-T04 |
