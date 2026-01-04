@@ -45,6 +45,7 @@ pub mod coherence;
 pub mod emotional;
 pub mod johari;
 pub mod lifecycle;
+pub mod metrics;
 pub mod phase;
 pub mod processor;
 
@@ -66,6 +67,12 @@ pub use phase::{ConsolidationPhase, PhaseDetector, PhaseOscillator};
 
 // Re-export processor types for convenience
 pub use processor::{SessionContext, UtlProcessor};
+
+// Re-export metrics types for convenience
+pub use metrics::{
+    QuadrantDistribution, StageThresholds, ThresholdsResponse, UtlComputationMetrics, UtlStatus,
+    UtlStatusResponse,
+};
 
 /// Compute the learning magnitude using the UTL formula.
 ///
