@@ -3,17 +3,17 @@
 ## Overview
 
 **Module**: 05 - UTL Integration (Unified Temporal Learning)
-**Total Tasks**: 57
+**Total Tasks**: 63
 **Estimated Duration**: 7 weeks
 **Created**: 2025-12-31
 **Updated**: 2026-01-04
-**Version**: 1.2.0
+**Version**: 1.3.0
 
 ## Task Summary
 
 | Status | Count |
 |--------|-------|
-| Pending | 57 |
+| Pending | 63 |
 | In Progress | 0 |
 | Completed | 0 |
 | Blocked | 0 |
@@ -89,19 +89,24 @@
 | M05-T36 | Implement Steering Subsystem Hooks | high | 2.5 | pending | M05-T19, M05-T22 |
 | M05-T37 | Implement Johari to Verbosity Tier Mapping | medium | 1.5 | pending | M05-T18, M05-T28 |
 | M05-T39 | Implement UtlState Persistence to RocksDB | high | 3 | pending | M05-T21, M05-T19 |
+| [M05-T58](M05-T58.md) | Implement UTL Subscribable Pulse Resource | high | 2 | pending | M05-T22, M05-T28 |
+| [M05-T59](M05-T59.md) | Implement Priors Vibe Check UTL Integration | medium | 2.5 | pending | M05-T21, M05-T22 |
+| [M05-T60](M05-T60.md) | Implement Tool Gating Warning System | high | 2 | pending | M05-T22, M05-T18 |
+| [M05-T61](M05-T61.md) | Implement Conflict Alert Detection | high | 2.5 | pending | M05-T22 |
 
 ### Extended Integration Layer (Week 6)
 
 | Task ID | Title | Priority | Hours | Status | Dependencies |
 |---------|-------|----------|-------|--------|--------------|
-| M05-T38 | Implement inject_context UTL Integration | critical | 4 | pending | M05-T18, M05-T22, M05-T37, M05-T28 |
+| M05-T38 | Implement inject_context UTL Integration | critical | 4 | pending | M05-T18, M05-T22, M05-T37, M05-T28, M05-T60, M05-T61 |
 | [M05-T41](M05-T41.md) | Implement Neuromodulation Interface Stubs | medium | 2 | pending | M05-T22, M05-T36 |
-| [M05-T42](M05-T42.md) | Implement Entropy/Coherence Threshold Triggers | high | 3 | pending | M05-T22, M05-T28 |
+| [M05-T42](M05-T42.md) | Implement Entropy/Coherence Threshold Triggers | high | 3 | pending | M05-T22, M05-T28, M05-T62 |
 | [M05-T43](M05-T43.md) | Implement UTL-Aware Distillation Mode Selection | medium | 2 | pending | M05-T18, M05-T38 |
-| [M05-T44](M05-T44.md) | Implement UTL Resource Endpoints | medium | 3 | pending | M05-T22, M05-T26, M05-T39 |
-| M05-T45 | Implement store_memory UTL Validation and Steering Feedback | high | 3 | pending | M05-T22, M05-T19, M05-T36 |
+| [M05-T44](M05-T44.md) | Implement UTL Resource Endpoints | medium | 3 | pending | M05-T22, M05-T26, M05-T39, M05-T58 |
+| M05-T45 | Implement store_memory UTL Validation and Steering Feedback | high | 3 | pending | M05-T22, M05-T19, M05-T36, M05-T59 |
 | M05-T46 | Create UTL Chaos and Edge Case Tests | high | 4 | pending | M05-T25, M05-T22 |
 | M05-T47 | Implement UTL Validation Test Suite | high | 5 | pending | M05-T25, M05-T22, M05-T19 |
+| [M05-T62](M05-T62.md) | Implement Dynamic UTL Thresholds by Lifecycle Stage | high | 2 | pending | M05-T05, M05-T07, M05-T19 |
 
 ### Completion Layer (Week 7)
 
@@ -117,6 +122,7 @@
 | [M05-T55](M05-T55.md) | Implement Hyperbolic Entailment Interface Stubs | low | 2 | pending | M05-T22 |
 | [M05-T56](M05-T56.md) | Create API Documentation for Module 5 Public Types | medium | 3 | pending | M05-T22, M05-T24 |
 | [M05-T57](M05-T57.md) | Create Performance Benchmark CI/CD Integration | high | 3 | pending | M05-T25 |
+| [M05-T63](M05-T63.md) | Implement Synthetic Data Seeding Support | medium | 3 | pending | M05-T22, M05-T29 |
 
 ## Execution Order
 
@@ -171,16 +177,21 @@
 6. M05-T36: Steering subsystem hooks
 7. M05-T37: Johari to verbosity tier mapping
 8. M05-T39: UtlState persistence
+9. M05-T58: UTL subscribable pulse resource
+10. M05-T59: Priors vibe check UTL integration
+11. M05-T60: Tool gating warning system
+12. M05-T61: Conflict alert detection
 
 ### Phase 6: Extended Integration (Week 6)
-1. M05-T38: inject_context UTL Integration (CRITICAL)
-2. M05-T41: Neuromodulation interface stubs
-3. M05-T42: Entropy/Coherence threshold triggers
-4. M05-T43: UTL-aware distillation mode selection
-5. M05-T44: UTL resource endpoints
-6. M05-T45: store_memory UTL validation
-7. M05-T46: Chaos and edge case tests
-8. M05-T47: Validation test suite
+1. M05-T62: Dynamic UTL thresholds by lifecycle stage
+2. M05-T38: inject_context UTL Integration (CRITICAL) - depends on T60, T61
+3. M05-T41: Neuromodulation interface stubs
+4. M05-T42: Entropy/Coherence threshold triggers - depends on T62
+5. M05-T43: UTL-aware distillation mode selection
+6. M05-T44: UTL resource endpoints - depends on T58
+7. M05-T45: store_memory UTL validation - depends on T59
+8. M05-T46: Chaos and edge case tests
+9. M05-T47: Validation test suite
 
 ### Phase 7: Completion (Week 7)
 1. M05-T48: Salience update algorithm
@@ -193,6 +204,7 @@
 8. M05-T55: Hyperbolic entailment interface stubs
 9. M05-T56: API documentation
 10. M05-T57: Performance benchmark CI/CD integration
+11. M05-T63: Synthetic data seeding support
 
 ## Quality Gates
 
@@ -203,10 +215,10 @@
 | Logic Complete | M05-T09 through M05-T17, M05-T31 pass | Phase 3 start |
 | Surface Complete | M05-T18 through M05-T24, M05-T30 pass | Phase 4 start |
 | Testing Complete | M05-T25, M05-T34, M05-T40 pass, 90%+ coverage | Phase 5 start |
-| Integration Complete | M05-T26 through M05-T29, M05-T35-T37, M05-T39 pass | Phase 6 start |
-| Extended Integration | M05-T38, M05-T41-T45 complete, inject_context verified | Phase 7 start |
+| Integration Complete | M05-T26-T29, M05-T35-T37, M05-T39, M05-T58-T61 pass | Phase 6 start |
+| Extended Integration | M05-T38, M05-T41-T47, M05-T62 complete, inject_context verified | Phase 7 start |
 | Validation Complete | M05-T46, M05-T47 pass, chaos tests green, r > 0.7 | Completion start |
-| Module Complete | All 57 tasks complete, benchmarks pass, CI gates green | Module 6 ready |
+| Module Complete | All 63 tasks complete, benchmarks pass, CI gates green | Module 6 ready |
 
 ## Performance Targets
 
@@ -239,4 +251,5 @@
 
 *Index generated: 2026-01-04*
 *Module: 05 - UTL Integration*
-*Version: 1.2.0*
+*Version: 1.3.0*
+*Tasks added: M05-T58 through M05-T63 (PRD gap analysis)*
