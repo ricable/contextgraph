@@ -1,6 +1,8 @@
-# Ultimate Context Graph - Compressed PRD v2.0.0
+# Ultimate Context Graph - Compressed PRD v3.0.0 (Teleological)
 
-**Abbrev**: NT=Neurotransmitter, SS=Steering Subsystem, OI=Omnidirectional Inference, FV=Formal Verification, PC=Predictive Coding, HE=Hyperbolic Entailment
+**Abbrev**: NT=Neurotransmitter, SS=Steering Subsystem, OI=Omnidirectional Inference, FV=Formal Verification, PC=Predictive Coding, HE=Hyperbolic Entailment, TF=Teleological Fingerprint, PV=Purpose Vector, SF=Semantic Fingerprint
+
+**Paradigm**: Multi-Array Teleological Fingerprints — the 12-embedding array IS the teleological vector
 
 ---
 
@@ -153,20 +155,32 @@ When coherence < 0.4, the system can generate clarifying questions for you to as
 
 ## 2. ARCHITECTURE
 
-### 2.1 UTL Core
+### 2.1 UTL Core (Multi-Embedding Extension)
 ```
-L = f((ΔS × ΔC) · wₑ · cos φ)
-ΔS: entropy[0,1], ΔC: coherence[0,1], wₑ: emotional[0.5,1.5], φ: phase[0,π]
-Loss: J = 0.4·L_task + 0.3·L_semantic + 0.3·(1-L)
+Classic:  L = f((ΔS × ΔC) · wₑ · cos φ)
+Multi:    L_multi = sigmoid(2.0 · (Σᵢ τᵢλ_S·ΔSᵢ) · (Σⱼ τⱼλ_C·ΔCⱼ) · wₑ · cos φ)
+
+Where:
+  ΔSᵢ: entropy in embedding space i (i=1..12)
+  ΔCⱼ: coherence in embedding space j (j=1..12)
+  τᵢ: teleological weight (alignment to North Star) for space i
+  wₑ: emotional[0.5,1.5]
+  φ: phase sync across Kuramoto-coupled spaces
+
+Loss: J = 0.4·L_task + 0.3·L_semantic + 0.2·L_teleological + 0.1·(1-L)
 ```
 
-### 2.2 Johari Quadrants
-| ΔS | ΔC | Quadrant |
-|----|-----|----------|
-| Low | High | Open (direct recall) |
-| High | Low | Blind (discovery) |
-| Low | Low | Hidden (private) |
-| High | High | Unknown (frontier) |
+### 2.2 Johari Quadrants (Per-Embedder)
+Each of 12 embedding spaces has independent Johari classification:
+
+| ΔSᵢ | ΔCᵢ | Quadrant | Meaning |
+|-----|-----|----------|---------|
+| Low | High | Open | Aware in this space |
+| High | Low | Blind | Discovery opportunity |
+| Low | Low | Hidden | Latent in this space |
+| High | High | Unknown | Frontier in this space |
+
+**Cross-Space Insight**: Memory can be Open(semantic) but Blind(causal) — enables targeted learning
 
 ### 2.3 5-Layer Bio-Nervous
 | L | Function | Latency | Key |
@@ -186,32 +200,60 @@ Loss: J = 0.4·L_task + 0.3·L_semantic + 0.3·(1-L)
 
 ---
 
-## 3. 12-MODEL EMBEDDING
+## 3. 12-MODEL EMBEDDING → TELEOLOGICAL FINGERPRINT
 
-| ID | Model | Dim | Latency |
-|----|-------|-----|---------|
-| E1 | Semantic | 1024D | <5ms |
-| E2 | Temporal-Recent | 512D (exp decay) | <2ms |
-| E3 | Temporal-Periodic | 512D (Fourier) | <2ms |
-| E4 | Temporal-Positional | 512D (sin PE) | <2ms |
-| E5 | Causal | 768D (SCM) | <8ms |
-| E6 | Sparse | ~30K (5% active) | <3ms |
-| E7 | Code | 1536D (AST) | <10ms |
-| E8 | Graph/GNN | 1536D | <5ms |
-| E9 | HDC | 10K-bit (XOR/Hamming) | <1ms |
-| E10 | Multimodal | 1024D | <15ms |
-| E11 | Entity/TransE | 256D (h+r≈t) | <2ms |
-| E12 | Late-Interaction | 128D/tok (ColBERT) | <8ms |
+**Paradigm**: NO FUSION — Store all 12 embeddings. The array IS the teleological vector.
+**Storage**: ~46KB per memory (100% info preserved vs 33% with old fusion)
 
-**FuseMoE**: Laplace-smoothed gating, top-k=4 → unified 1536D
-**CAME-AB**: Cross-modality per-attention + bridge + residual
+| ID | Model | Dim | Latency | Purpose (V_goal) |
+|----|-------|-----|---------|------------------|
+| E1 | Semantic | 1024D | <5ms | V_meaning |
+| E2 | Temporal-Recent | 512D (exp decay) | <2ms | V_freshness |
+| E3 | Temporal-Periodic | 512D (Fourier) | <2ms | V_periodicity |
+| E4 | Temporal-Positional | 512D (sin PE) | <2ms | V_ordering |
+| E5 | Causal | 768D (SCM) | <8ms | V_causality |
+| E6 | Sparse | ~30K (5% active) | <3ms | V_selectivity |
+| E7 | Code | 1536D (AST) | <10ms | V_correctness |
+| E8 | Graph/GNN | 384D (MiniLM) | <5ms | V_connectivity |
+| E9 | HDC | 10K-bit→1024D | <1ms | V_robustness |
+| E10 | Multimodal | 768D | <15ms | V_multimodality |
+| E11 | Entity/TransE | 384D (h+r≈t) | <2ms | V_factuality |
+| E12 | Late-Interaction | 128D/tok (ColBERT) | <8ms | V_precision |
+
+**TeleologicalFingerprint** (replaces Vec1536):
+- `semantic_fingerprint`: [E1, E2, ..., E12] — all 12 preserved
+- `purpose_vector`: [A(E1,V), ..., A(E12,V)] — 12D teleological signature
+- `johari_quadrants`: Per-embedder awareness classification
+- `purpose_evolution`: How alignment changes over time
+
+**Similarity**: S(A,B) = Σᵢ wᵢ·cos(Aᵢ, Bᵢ) — query-adaptive weights, NOT gating
 
 ---
 
 ## 4. DATA MODEL
 
-### 4.1 KnowledgeNode
-`id:UUID, content:str[≤65536], embedding:Vec1536, created_at, last_accessed, importance:f32[0,1], access_count:u32, johari_quadrant, utl_state:{delta_s,delta_c,w_e,phi}, agent_id?, semantic_cluster?, priors_vibe_check:{assumption_embedding[128], domain_priors, prior_confidence}`
+### 4.1 KnowledgeNode (with TeleologicalFingerprint)
+```
+id: UUID
+content: str[≤65536]
+fingerprint: TeleologicalFingerprint {
+  embeddings: [E1..E12]           # All 12 embedding vectors
+  purpose_vector: f32[12]         # Per-embedder alignment to North Star
+  johari_quadrants: [JQ1..JQ12]   # Per-embedder awareness classification
+  johari_confidence: f32[12]      # Confidence per classification
+  north_star_alignment: f32       # Aggregate alignment score
+  dominant_embedder: u8           # 1-12, which space dominates
+  coherence_score: f32            # Kuramoto sync level
+}
+created_at: TIMESTAMPTZ
+last_accessed: TIMESTAMPTZ
+importance: f32[0,1]
+access_count: u32
+utl_state: {delta_s[12], delta_c[12], w_e, phi}  # Per-embedder ΔS/ΔC
+agent_id?: UUID
+semantic_cluster?: UUID
+priors_vibe_check: {assumption_embedding[128], domain_priors, prior_confidence}
+```
 
 ### 4.2 GraphEdge
 `source,target:UUID, edge_type:Semantic|Temporal|Causal|Hierarchical|Relational, weight,confidence:f32[0,1], nt_weights:{excitatory,inhibitory,modulatory}[0,1], is_amortized_shortcut:bool, steering_reward:f32[-1,1], domain:Code|Legal|Medical|Creative|Research|General`
@@ -222,6 +264,20 @@ Loss: J = 0.4·L_task + 0.3·L_semantic + 0.3·(1-L)
 ### 4.4 Hyperbolic (Poincare Ball)
 All nodes: ||x||<1, O(1) IS-A via entailment cones
 `d(x,y) = arcosh(1 + 2||x-y||²/((1-||x||²)(1-||y||²)))`
+
+### 4.5 Teleological Alignment (Royse 2026)
+```
+A(v, V) = cos(v, V) = (v · V) / (||v|| × ||V||)
+
+Thresholds:
+  θ ≥ 0.75     → Optimal alignment
+  θ ∈ [0.70, 0.75) → Acceptable
+  θ ∈ [0.55, 0.70) → Warning
+  θ < 0.55     → Critical misalignment
+  ΔA < -0.15   → Predicts failure 30-60s ahead
+
+Transitivity: If A(u,v)≥θ₁ and A(v,w)≥θ₂, then A(u,w)≥2θ₁θ₂-1
+```
 
 ---
 
@@ -387,9 +443,10 @@ L5→L1 feedback: prediction→error=obs-pred→only surprise propagates
 ## 9. HYPERBOLIC ENTAILMENT CONES
 
 O(1) hierarchy via cone containment
-`EntailmentCone: apex, aperture:f32(rad), axis:Vec1536`
+`EntailmentCone: apex, aperture:f32(rad), axis:Vector (per-space or E1 semantic)`
 `contains(point) = angle(tangent,axis) ≤ aperture`
 Ancestors=cones containing node, Descendants=within node's cone
+Note: Cones operate within individual embedding spaces (typically E1 semantic)
 
 ---
 
@@ -450,16 +507,19 @@ RTX 5090: 32GB GDDR7, 1792 GB/s, 21760 CUDA, 680 Tensor (5th gen), Compute 12.0,
 
 | Op | Target |
 |----|--------|
-| Single Embed | <10ms |
-| Batch Embed (64) | <50ms |
-| FAISS search (1M) | <2ms |
-| Hopfield | <1ms |
-| FuseMoE | <3ms |
+| Single Embed (all 12) | <30ms |
+| Batch Embed (64 × 12) | <100ms |
+| Per-Space HNSW search | <2ms |
+| Purpose Vector search | <1ms |
+| Multi-space weighted sim | <5ms |
+| Hopfield (per space) | <1ms |
 | Cache hit | <100μs |
-| inject_context P95 | <25ms |
+| inject_context P95 | <35ms |
 | Any tool P99 | <50ms |
 | Neuromod batch | <200μs |
 | Dream wake | <100ms |
+| Purpose evolution write | <5ms |
+| Teleological alignment | <1ms |
 
 ### Quality Gates
 | Metric | Threshold |
@@ -514,14 +574,98 @@ Soft delete default (30d recovery), permanent only: reason='user_requested'+soft
 
 ---
 
-## 18. REFERENCES
+## 18. TELEOLOGICAL STORAGE ARCHITECTURE
 
-**Internal**: UTL(2.1), 5-Layer(2.3), Embed(3), MCP(5), Dream(7.1), Neuromod(7.2), Immune(7.3), HE(9), Adversarial(10)
-**External**: NeuroDream(SSRN'25), SRC(NatComm), FEP(Wiki), ActiveInf(MIT), PC(Nature'25), Neuromod DNNs(TrendsNeuro), Homeostatic(eLife'25), BioLogicalNeuron(SciRep'25), HE Cones(ICML), Poincare(NeurIPS), UniGuardian(arXiv'25), OWASP LLM Top10
+### 18.1 3-Layer Storage Design
+```
+Layer 1: Primary (RocksDB/ScyllaDB)
+  └─ Complete TeleologicalFingerprint per memory
+  └─ All 12 embeddings + purpose vector + Johari quadrants
+
+Layer 2A: Per-Space Indexes (12× HNSW)
+  └─ Search within specific embedding spaces
+  └─ "Find causally similar" → E5 only
+
+Layer 2B: Purpose Pattern Index (12D HNSW)
+  └─ Find memories by teleological signature
+  └─ "Similar purpose" regardless of content
+
+Layer 2C: Goal Hierarchy Index
+  └─ Navigate North Star → Mid → Local alignments
+  └─ Tree structure with alignment scores
+
+Layer 3: Query Router
+  └─ Routes queries to appropriate indexes
+  └─ Query type → optimal index selection
+```
+
+### 18.2 Query Routing Examples
+| Query Type | Primary Index | Rerank With |
+|------------|---------------|-------------|
+| Semantic search | Layer2A[E1] | Full fingerprint |
+| Causal reasoning | Layer2A[E5] | E1, E11 |
+| Code search | Layer2A[E7] | E1, E8 |
+| Purpose search | Layer2B | Goal alignment |
+| Goal alignment | Layer2C | Threshold filter |
+
+### 18.3 Temporal Purpose Evolution
+```sql
+-- TimescaleDB hypertable for tracking purpose drift
+CREATE TABLE purpose_evolution (
+  memory_id UUID,
+  timestamp TIMESTAMPTZ,
+  purpose_vector REAL[12],
+  north_star_alignment REAL,
+  drift_magnitude REAL
+);
+SELECT create_hypertable('purpose_evolution', 'timestamp');
+
+-- Retention: 90 days continuous, then 1/day samples
+```
 
 ---
 
-## 19. TOOL PARAM REFERENCE
+## 19. META-UTL (Self-Aware Learning)
+
+### 19.1 What It Does
+Meta-UTL is a system that **learns about its own learning**:
+- Predicts storage impact before committing
+- Predicts retrieval quality before executing
+- Self-adjusts UTL parameters based on accuracy
+
+### 19.2 Prediction Models
+| Predictor | Input | Output | Accuracy |
+|-----------|-------|--------|----------|
+| Storage Impact | fingerprint + context | ΔL prediction | >0.85 |
+| Retrieval Quality | query + candidates | relevance score | >0.80 |
+| Alignment Drift | fingerprint + time | future alignment | 24h window |
+
+### 19.3 Self-Correction Protocol
+```
+IF prediction_error > 0.2:
+  → Log to meta_learning_events
+  → Adjust UTL parameters (λ_ΔS, λ_ΔC)
+  → Retrain predictor if persistent
+
+IF prediction_accuracy < 0.7 for 100 ops:
+  → Escalate to human review
+```
+
+### 19.4 Per-Embedder Meta-Analysis
+- Track which embedding spaces are most predictive
+- Adjust space weights in similarity based on accuracy
+- Tune per-space alignment thresholds empirically
+
+---
+
+## 20. REFERENCES
+
+**Internal**: UTL(2.1), 5-Layer(2.3), TeleologicalFingerprint(3), MCP(5), Dream(7.1), Neuromod(7.2), Immune(7.3), HE(9), Adversarial(10), projectionplan.md
+**External**: NeuroDream(SSRN'25), SRC(NatComm), FEP(Wiki), ActiveInf(MIT), PC(Nature'25), Neuromod DNNs(TrendsNeuro), Homeostatic(eLife'25), BioLogicalNeuron(SciRep'25), HE Cones(ICML), Poincare(NeurIPS), UniGuardian(arXiv'25), OWASP LLM Top10, **Royse Teleological Vectors(2026)**, **MOEE Multi-Embedding(ICLR'25)**, Modern Hopfield Networks(NeurIPS'20), Kanerva SDM(1988), Kuramoto Synchronization(Physica D)
+
+---
+
+## 21. TOOL PARAM REFERENCE
 
 ### inject_context
 `query:str[1-4096] REQ, max_tokens:int[100-8192]=2048, session_id:uuid, priority:low|normal|high|critical, distillation_mode:auto|raw|narrative|structured|code_focused, include_metadata:[causal_links,entailment_cones,neighborhood,conflicts], verbosity_level:0|1|2=1`

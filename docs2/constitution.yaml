@@ -1,13 +1,15 @@
-# Context Graph Constitution v1.1.0 (Marblestone)
+# Context Graph Constitution v2.0.0 (Teleological)
 # Bio-Nervous MCP Server | UTL Knowledge System
+# Teleological Vector Architecture | Multi-Embedding Semantic Fingerprints
 # ═══════════════════════════════════════════════
 
 meta:
-  v: "1.1.0"
-  spec: "2.1.0"
+  v: "2.0.0"
+  spec: "3.0.0"
   name: "Ultimate Context Graph"
-  desc: "5-layer bio-nervous UTL knowledge graph"
-  updated: "2025-12-31"
+  desc: "5-layer bio-nervous UTL knowledge graph with teleological vector architecture"
+  updated: "2026-01-04"
+  paradigm: "Multi-Array Teleological Fingerprints - the 12-embedding array IS the teleological vector"
 
 # ═══════════════════════════════════════════════
 # ABBREVIATIONS (used throughout)
@@ -18,7 +20,10 @@ meta:
 # NT=neurotransmitter, SS=Steering Subsystem
 # OI=Omnidirectional Inference, FV=Formal Verification
 # PC=Predictive Coding, HE=Hyperbolic Entailment
-# MHN=Modern Hopfield Network
+# MHN=Modern Hopfield Network, SDM=Sparse Distributed Memory
+# TF=Teleological Fingerprint, PV=Purpose Vector
+# SF=Semantic Fingerprint (12-array embedding)
+# A(v,V)=Teleological Alignment (cosine to North Star)
 
 # ═══════════════════════════════════════════════
 # TECH STACK
@@ -26,8 +31,12 @@ meta:
 stack:
   lang: { rust: "1.75+", edition: "2021", cuda: "13.1" }
   gpu: { target: "RTX 5090", vram: "32GB", compute: "12.0" }
-  deps: [tokio@1.35+, serde@1.0+, uuid@1.6+, chrono@0.4+, rmcp@0.1+, cudarc@0.10+, faiss@0.12+gpu]
-  db: { dev: sqlite, prod: postgres16+, vector: faiss_gpu, cache: redis7+ }
+  deps: [tokio@1.35+, serde@1.0+, uuid@1.6+, chrono@0.4+, rmcp@0.1+, cudarc@0.10+, faiss@0.12+gpu, rocksdb@0.21+, scylladb@1.0+]
+  db:
+    primary: { dev: rocksdb, prod: scylladb }  # Full TeleologicalFingerprint storage
+    vector_indexes: { per_embedder: "12× HNSW (E1-E12)", purpose: "12D HNSW", goal_hierarchy: "tree index" }
+    temporal: timescaledb  # Purpose evolution tracking
+    cache: redis7+
   embed_fallback: [openai/text-embedding-3-large, cohere/embed-english-v3.0]
 
 # ═══════════════════════════════════════════════
@@ -35,10 +44,11 @@ stack:
 # ═══════════════════════════════════════════════
 dirs:
   crates/:
-    context-graph-mcp/: "MCP server (tools/, resources/, handlers/)"
-    context-graph-core/: "Domain logic (graph/, search/, utl/, session/, curation/)"
-    context-graph-cuda/: "GPU (kernels/, faiss/, hopfield/, neuromod/)"
-    context-graph-embeddings/: "12-model pipeline (models/, fusion/, fuse_moe.rs, came_ab.rs)"
+    context-graph-mcp/: "MCP server (tools/, resources/, handlers/, adapters/)"
+    context-graph-core/: "Domain logic (graph/, search/, utl/, session/, curation/, teleological/)"
+    context-graph-cuda/: "GPU (kernels/, hnsw/, hopfield/, neuromod/)"
+    context-graph-embeddings/: "12-model pipeline (models/, fingerprint/, purpose_vector.rs, semantic_fingerprint.rs)"
+    context-graph-storage/: "Teleological storage (rocksdb/, scylla/, indexes/, temporal/)"
   specs/: [functional/, technical/, tasks/]
   tests/: [integration/, benchmarks/, fixtures/, chaos/, validation/]
   config/: [default.toml, production.toml, test.toml]
@@ -146,25 +156,86 @@ testing:
     pre-deploy: [integration pass, "bench regression<5%", chaos pass]
 
 # ═══════════════════════════════════════════════
-# UTL (Unified Theory of Learning)
+# UTL (Unified Theory of Learning) - Multi-Embedding Extension
 # ═══════════════════════════════════════════════
 utl:
-  formula: "L = f((ΔS × ΔC) · wₑ · cos φ)"
+  # Classic single-space formula
+  formula_classic: "L = f((ΔS × ΔC) · wₑ · cos φ)"
+
+  # Multi-Embedding UTL: Per-space entropy/coherence with teleological weighting
+  formula_multi: "L_multi = sigmoid(2.0 · (Σᵢ τᵢλ_S·ΔSᵢ) · (Σⱼ τⱼλ_C·ΔCⱼ) · wₑ · cos φ)"
+
   params:
-    ΔS: "[0,1] entropy/novelty"
-    ΔC: "[0,1] coherence/understanding"
+    ΔSᵢ: "[0,1] entropy in embedding space i (i=1..12)"
+    ΔCⱼ: "[0,1] coherence in embedding space j (j=1..12)"
+    τᵢ: "[0,1] teleological weight for space i (alignment to North Star)"
     wₑ: "[0.5,1.5] emotional weight"
-    φ: "[0,π] phase sync"
-  loss: "J = 0.4·L_task + 0.3·L_semantic + 0.3·(1-L)"
+    φ: "[0,π] phase sync across Kuramoto-coupled spaces"
+
+  loss: "J = 0.4·L_task + 0.3·L_semantic + 0.2·L_teleological + 0.1·(1-L)"
+
+  # Per-Embedder Johari Quadrants
   johari:
-    Open: "ΔS<0.5, ΔC>0.5 → direct recall"
-    Blind: "ΔS>0.5, ΔC<0.5 → discovery (epistemic_action/dream)"
-    Hidden: "ΔS<0.5, ΔC<0.5 → private (get_neighborhood)"
-    Unknown: "ΔS>0.5, ΔC>0.5 → frontier"
+    desc: "Each of 12 embedding spaces has independent Johari classification"
+    Open: "ΔSᵢ<0.5, ΔCᵢ>0.5 → aware in this space"
+    Blind: "ΔSᵢ>0.5, ΔCᵢ<0.5 → discovery opportunity in this space"
+    Hidden: "ΔSᵢ<0.5, ΔCᵢ<0.5 → latent in this space"
+    Unknown: "ΔSᵢ>0.5, ΔCᵢ>0.5 → frontier in this space"
+    cross_space: "Memory can be Open(semantic) but Blind(causal) - enables targeted learning"
+
   lifecycle:  # Marblestone λ weights
     infancy:  { n: "0-50",   ΔS_trig: 0.9, ΔC_trig: 0.2, λ_ΔS: 0.7, λ_ΔC: 0.3, stance: "capture-novelty" }
     growth:   { n: "50-500", ΔS_trig: 0.7, ΔC_trig: 0.4, λ_ΔS: 0.5, λ_ΔC: 0.5, stance: "balanced" }
     maturity: { n: "500+",  ΔS_trig: 0.6, ΔC_trig: 0.5, λ_ΔS: 0.3, λ_ΔC: 0.7, stance: "curation-coherence" }
+
+# ═══════════════════════════════════════════════
+# TELEOLOGICAL ARCHITECTURE (Royse 2026)
+# ═══════════════════════════════════════════════
+teleological:
+  desc: "The 12-embedding array IS the teleological vector - pattern across spaces reveals purpose"
+
+  # Core alignment formula
+  alignment: "A(v, V) = cos(v, V) = (v · V) / (||v|| × ||V||)"
+
+  # Purpose Vector: 12D signature of alignment to North Star per embedding space
+  purpose_vector:
+    formula: "PV = [A(E1,V), A(E2,V), ..., A(E12,V)]"
+    dimensions: 12
+    desc: "Each dimension = alignment of that embedder's output to North Star goal"
+    searchable: true  # The purpose vector itself can be indexed and searched
+
+  # Alignment thresholds (empirically validated)
+  thresholds:
+    optimal: "θ ≥ 0.75"
+    acceptable: "θ ∈ [0.70, 0.75)"
+    warning: "θ ∈ [0.55, 0.70)"
+    critical: "θ < 0.55"
+    failure_prediction: "ΔA < -0.15 predicts failure 30-60s ahead"
+
+  # Transitivity bound (Theorem 1)
+  transitivity: "If A(u,v) ≥ θ₁ and A(v,w) ≥ θ₂, then A(u,w) ≥ 2θ₁θ₂ - 1"
+
+  # Hierarchical North Star
+  goal_hierarchy:
+    V_global: "System-wide teleological goal (North Star)"
+    V_mid: "Mid-level goals (Retrieval, Storage, Reasoning)"
+    V_local: "Per-operation goals"
+    propagation: "Local aligns to mid, mid aligns to global"
+
+  # Per-Embedder Teleological Purposes
+  embedder_purposes:
+    E1_Semantic: { goal: "V_meaning", measure: "A(content, V_meaning)" }
+    E2_Temporal_Recent: { goal: "V_freshness", measure: "A(timestamp, V_freshness)" }
+    E3_Temporal_Periodic: { goal: "V_periodicity", measure: "A(pattern, V_periodicity)" }
+    E4_Temporal_Positional: { goal: "V_ordering", measure: "A(position, V_ordering)" }
+    E5_Causal: { goal: "V_causality", measure: "A(causation, V_causality)" }
+    E6_Sparse: { goal: "V_selectivity", measure: "A(activations, V_selectivity)" }
+    E7_Code: { goal: "V_correctness", measure: "A(ast, V_correctness)" }
+    E8_Graph: { goal: "V_connectivity", measure: "A(structure, V_connectivity)" }
+    E9_HDC: { goal: "V_robustness", measure: "A(hologram, V_robustness)" }
+    E10_Multimodal: { goal: "V_multimodality", measure: "A(grounding, V_multimodality)" }
+    E11_Entity: { goal: "V_factuality", measure: "A(triple, V_factuality)" }
+    E12_LateInteraction: { goal: "V_precision", measure: "A(tokens, V_precision)" }
 
 # ═══════════════════════════════════════════════
 # GRAPH EDGE MODEL (Marblestone NT)
@@ -198,7 +269,7 @@ layers:
 # ═══════════════════════════════════════════════
 neuromod:
   Dopamine:     { bio: "reward error", param: hopfield.beta, range: "[1,5]", effect: "↑=sharp retrieval" }
-  Serotonin:    { bio: "temporal discount", param: fuse_moe.top_k, range: "[2,8]", effect: "↑=more experts" }
+  Serotonin:    { bio: "temporal discount", param: similarity.space_weights, range: "[0,1]", effect: "↑=more spaces considered" }
   Noradrenaline: { bio: "arousal/surprise", param: attention.temp, range: "[0.5,2]", effect: "↑=flat attention" }
   Acetylcholine: { bio: "learning rate", param: utl.lr, range: "[0.001,0.002]", effect: "↑=faster update" }
 
@@ -302,25 +373,109 @@ mcp:
     verify_code_node: { params: "node_id,conditions", returns: "VerificationResult" }
 
 # ═══════════════════════════════════════════════
-# 12-MODEL EMBEDDING
+# 12-MODEL EMBEDDING → TELEOLOGICAL FINGERPRINT
 # ═══════════════════════════════════════════════
 embeddings:
+  paradigm: "NO FUSION - Store all 12 embeddings as TeleologicalFingerprint array"
+  storage_per_memory: "~46KB (all 12 preserved, vs 6KB fused with 67% info loss)"
+  info_preserved: "100% (vs 33% with top-k=4 FuseMoE)"
+
   models:
-    E1_Semantic: { dim: 1024, math: Dense_Transformer, hw: TensorCore_FP8, lat: "<5ms" }
-    E2_Temporal_Recent: { dim: 512, math: Exp_Decay, hw: VectorUnit, lat: "<2ms" }
-    E3_Temporal_Periodic: { dim: 512, math: Fourier, hw: FFT, lat: "<2ms" }
-    E4_Temporal_Positional: { dim: 512, math: Sin_PE, hw: CUDA, lat: "<2ms" }
-    E5_Causal: { dim: 768, math: SCM_Intervention, hw: TensorCore, lat: "<8ms" }
-    E6_Sparse: { dim: "~30K 5%active", math: TopK, hw: SparseTensor, lat: "<3ms" }
-    E7_Code: { dim: 1536, math: AST_Transformer, hw: TensorCore_FP16, lat: "<10ms" }
-    E8_Graph_MiniLM: { dim: 384, math: MeanPooling, hw: TensorCore, lat: "<5ms" }
-    E9_HDC: { dim: "10K-bit->1024", math: XOR_Hamming, hw: VectorUnit, lat: "<1ms" }
-    E10_Multimodal: { dim: 768, math: CrossAttention, hw: TensorCore, lat: "<15ms" }
-    E11_Entity_MiniLM: { dim: 384, math: "h+r≈t", hw: TensorCore, lat: "<2ms" }
-    E12_LateInteraction: { dim: "128D/tok", math: ColBERT_MaxSim, hw: CUDA_Tile, lat: "<8ms" }
-  fusion:
-    fuse_moe: { top_k: 4, laplace_alpha: 0.01 }
-    came_ab: { heads: 8, bridge_lr: 0.001 }
+    E1_Semantic: { dim: 1024, math: Dense_Transformer, hw: TensorCore_FP8, lat: "<5ms", purpose: "V_meaning" }
+    E2_Temporal_Recent: { dim: 512, math: Exp_Decay, hw: VectorUnit, lat: "<2ms", purpose: "V_freshness" }
+    E3_Temporal_Periodic: { dim: 512, math: Fourier, hw: FFT, lat: "<2ms", purpose: "V_periodicity" }
+    E4_Temporal_Positional: { dim: 512, math: Sin_PE, hw: CUDA, lat: "<2ms", purpose: "V_ordering" }
+    E5_Causal: { dim: 768, math: SCM_Intervention, hw: TensorCore, lat: "<8ms", purpose: "V_causality" }
+    E6_Sparse: { dim: "~30K 5%active", math: TopK, hw: SparseTensor, lat: "<3ms", purpose: "V_selectivity" }
+    E7_Code: { dim: 1536, math: AST_Transformer, hw: TensorCore_FP16, lat: "<10ms", purpose: "V_correctness" }
+    E8_Graph_MiniLM: { dim: 384, math: MeanPooling, hw: TensorCore, lat: "<5ms", purpose: "V_connectivity" }
+    E9_HDC: { dim: "10K-bit->1024", math: XOR_Hamming, hw: VectorUnit, lat: "<1ms", purpose: "V_robustness" }
+    E10_Multimodal: { dim: 768, math: CrossAttention, hw: TensorCore, lat: "<15ms", purpose: "V_multimodality" }
+    E11_Entity_MiniLM: { dim: 384, math: "h+r≈t", hw: TensorCore, lat: "<2ms", purpose: "V_factuality" }
+    E12_LateInteraction: { dim: "128D/tok", math: ColBERT_MaxSim, hw: CUDA_Tile, lat: "<8ms", purpose: "V_precision" }
+
+  # TeleologicalFingerprint: The complete memory representation
+  fingerprint:
+    semantic_fingerprint: "[E1, E2, ..., E12] - all 12 embeddings preserved"
+    purpose_vector: "[A(E1,V), ..., A(E12,V)] - 12D teleological signature"
+    johari_quadrants: "[JQ1, ..., JQ12] - per-embedder awareness classification"
+    purpose_evolution: "TimeSeries<PurposeSnapshot> - how alignment changes over time"
+
+  # Multi-Embedding Similarity (replaces FuseMoE gating)
+  similarity:
+    method: "Weighted per-space cosine with query-adaptive weights"
+    formula: "S(A,B) = Σᵢ wᵢ · cos(Aᵢ, Bᵢ) where wᵢ = f(query_type, τᵢ)"
+    query_types:
+      semantic_search: { w_semantic: 0.40, w_causal: 0.15, w_entity: 0.15, others: "balanced" }
+      causal_reasoning: { w_causal: 0.50, w_semantic: 0.20, w_entity: 0.15, others: "reduced" }
+      code_search: { w_code: 0.50, w_semantic: 0.20, w_graph: 0.15, others: "reduced" }
+      temporal_navigation: { w_temporal: 0.60, w_semantic: 0.20, others: "reduced" }
+      fact_checking: { w_entity: 0.50, w_causal: 0.25, w_semantic: 0.15, others: "reduced" }
+
+# ═══════════════════════════════════════════════
+# TELEOLOGICAL STORAGE ARCHITECTURE
+# ═══════════════════════════════════════════════
+storage:
+  desc: "3-layer storage enabling per-space search, purpose patterns, and temporal evolution"
+
+  # Layer 1: Primary Storage (Full Fingerprint)
+  layer1_primary:
+    dev: rocksdb
+    prod: scylladb
+    stores: "Complete TeleologicalFingerprint per memory"
+    schema:
+      id: UUID
+      embeddings: "[E1..E12 as BYTEA]"
+      purpose_vector: "REAL[12]"
+      johari_quadrants: "BYTEA (12 classifications)"
+      johari_confidence: "REAL[12]"
+      north_star_alignment: "REAL"
+      dominant_embedder: "INT (1-12)"
+      coherence_score: "REAL"
+      created_at: TIMESTAMPTZ
+      last_accessed: TIMESTAMPTZ
+
+  # Layer 2A: Per-Embedder HNSW Indexes (12 total)
+  layer2a_per_embedder:
+    desc: "Search within specific embedding spaces"
+    indexes: "12× HNSW (one per Eᵢ)"
+    use_case: "Find memories causally similar (E5 only) or code-similar (E7 only)"
+    hnsw_params: { M: 16, ef_construction: 200, ef_search: 100 }
+
+  # Layer 2B: Purpose Pattern Index
+  layer2b_purpose:
+    desc: "Search by teleological signature"
+    index: "12D HNSW on PurposeVector"
+    use_case: "Find memories with similar purpose patterns regardless of content"
+
+  # Layer 2C: Goal Hierarchy Index
+  layer2c_goals:
+    desc: "Navigate North Star → Mid → Local alignments"
+    index: "Tree structure with alignment scores"
+    use_case: "Find all memories aligned with goal V_mid[2]"
+
+  # Layer 3: Query Router
+  layer3_router:
+    desc: "Routes queries to appropriate indexes based on query type"
+    routing:
+      semantic_search: "Layer2A[E1] + rerank with full fingerprint"
+      causal_query: "Layer2A[E5] primary"
+      purpose_search: "Layer2B"
+      goal_alignment: "Layer2C + filter by threshold"
+      hybrid: "Layer2A[dominant] + Layer2B + merge"
+
+  # Temporal Purpose Evolution (TimescaleDB)
+  temporal:
+    engine: timescaledb
+    hypertable: purpose_evolution
+    schema:
+      memory_id: UUID
+      timestamp: TIMESTAMPTZ
+      purpose_vector: "REAL[12]"
+      north_star_alignment: REAL
+      drift_magnitude: REAL
+    retention: "90 days continuous, then 1/day samples"
+    use_case: "Track how memory's purpose alignment changes over time"
 
 # ═══════════════════════════════════════════════
 # VERBOSITY LEVELS
@@ -373,10 +528,76 @@ agent:
     - "Add decisions to decisionLog.md"
 
 # ═══════════════════════════════════════════════
+# META-UTL (Self-Aware Learning System)
+# ═══════════════════════════════════════════════
+meta_utl:
+  desc: "System that learns about its own learning - predicts and optimizes UTL performance"
+
+  # Self-Awareness Metrics
+  awareness:
+    storage_prediction: "Predict impact of storing memory before committing"
+    retrieval_prediction: "Predict quality of retrieval before executing"
+    parameter_optimization: "Self-adjust UTL parameters based on outcome accuracy"
+
+  # Learning About Learning
+  meta_learning:
+    track: "success_rate, prediction_accuracy, parameter_drift"
+    adapt: "Adjust λ_ΔS, λ_ΔC based on domain and lifecycle"
+    report: "Surface meta-insights to agent for behavioral adjustment"
+
+  # Per-Embedder Meta-Analysis
+  per_space_meta:
+    desc: "Track which embedding spaces are most/least predictive"
+    adjust: "Increase/decrease space weight in similarity based on accuracy"
+    threshold_tuning: "Per-space alignment thresholds based on empirical performance"
+
+  # Prediction Models
+  predictors:
+    storage_impact: { input: "fingerprint + context", output: "ΔL prediction", accuracy: ">0.85" }
+    retrieval_quality: { input: "query + top_k candidates", output: "relevance prediction", accuracy: ">0.80" }
+    alignment_drift: { input: "fingerprint + time", output: "future alignment", window: "24h" }
+
+  # Self-Correction
+  correction:
+    threshold: "prediction_error > 0.2"
+    action: "Log to meta_learning_events, adjust parameters, retrain predictor if persistent"
+    escalate: "prediction_accuracy < 0.7 for 100 operations → human review"
+
+# ═══════════════════════════════════════════════
+# MATHEMATICAL MEMORY FOUNDATIONS
+# ═══════════════════════════════════════════════
+memory_math:
+  desc: "Theoretical foundations for multi-embedding memory storage"
+
+  # Modern Hopfield Networks (Per Embedding Space)
+  hopfield:
+    formula: "E = -Σᵢ log(Σⱼ exp(xᵢᵀξⱼ)) per space"
+    capacity: "Exponential in dimension d: C ∝ exp(d)"
+    application: "12 parallel Hopfield networks, one per embedding space"
+    retrieval: "Pattern completion within each space, then Kuramoto sync"
+
+  # Sparse Distributed Memory (Kanerva)
+  sdm:
+    desc: "High-dimensional address space with distributed storage"
+    address_space: "2^d possible addresses, only ~√(2^d) hard locations"
+    write: "Activate locations within Hamming radius r of address"
+    read: "Sum counters at activated locations, threshold"
+    noise_tolerance: ">20% bit flips recoverable"
+
+  # Phase-Coherent Binding (Kuramoto Synchronization)
+  kuramoto:
+    desc: "How 12 representations become one unified memory"
+    formula: "dθᵢ/dt = ωᵢ + (K/N)Σⱼ sin(θⱼ - θᵢ)"
+    coupling: "K = coupling strength between embedding spaces"
+    order_param: "r = (1/N)|Σⱼ exp(iθⱼ)| measures synchronization"
+    sync_threshold: "r > 0.8 → memory is coherent"
+    desync_detection: "r < 0.5 → memory fragmentation alert"
+
+# ═══════════════════════════════════════════════
 # REFERENCES
 # ═══════════════════════════════════════════════
 refs:
-  internal: [vision_and_layers.md, technical_engine.md, execution_and_mcp.md, execution_and_mcp2.md, contextprd.md, implementationplan.md]
+  internal: [vision_and_layers.md, technical_engine.md, execution_and_mcp.md, execution_and_mcp2.md, contextprd.md, implementationplan.md, projectionplan.md]
   external:
     - "NeuroDream: SSRN'25"
     - "SRC: NatComm"
@@ -390,4 +611,9 @@ refs:
     - "UniGuardian: arXiv'25"
     - "OWASP LLM Top10"
     - "Marblestone AGI Arch: arXiv 2309.02427"
+    - "Royse Teleological Vectors: 2026"
+    - "MOEE Multi-Embedding: ICLR'25"
+    - "Modern Hopfield Networks: NeurIPS'20"
+    - "Kanerva SDM: 1988"
+    - "Kuramoto Synchronization: Physica D"
 # END
