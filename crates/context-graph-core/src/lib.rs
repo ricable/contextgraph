@@ -25,6 +25,7 @@
 pub mod config;
 pub mod error;
 pub mod marblestone;
+pub mod purpose;
 pub mod retrieval;
 pub mod stubs;
 pub mod traits;
