@@ -34,8 +34,8 @@ impl McpServer {
         let memory_store: Arc<dyn MemoryStore> = Arc::new(InMemoryStore::new());
         let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
 
-        // BLOCKED: EmbeddingProviderAdapter removed with FusedEmbeddingProvider (TASK-F006).
-        // Using StubEmbeddingProvider until TASK-F007 implements multi-array provider.
+        // BLOCKED: Waiting for TASK-F007 to implement multi-array embedding provider.
+        // Using StubEmbeddingProvider until then.
         // TODO(TASK-F007): Replace with real multi-array embedding provider
         let embedding_provider: Arc<dyn EmbeddingProvider> = Arc::new(StubEmbeddingProvider::new());
 

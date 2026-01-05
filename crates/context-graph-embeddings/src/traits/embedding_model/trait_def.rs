@@ -6,7 +6,7 @@ use async_trait::async_trait;
 
 /// Core trait for embedding model implementations.
 ///
-/// All 12 embedding models in the fusion pipeline must implement this trait.
+/// All 12 embedding models in the Multi-Array Storage pipeline must implement this trait.
 /// The trait provides a unified async interface for:
 /// - Querying model capabilities (ID, supported input types, dimensions)
 /// - Generating embeddings from multi-modal inputs
@@ -185,13 +185,13 @@ pub trait EmbeddingModel: Send + Sync {
         self.model_id().dimension()
     }
 
-    /// Returns the projected dimension for the concatenated embedding.
+    /// Returns the projected dimension for Multi-Array Storage.
     ///
     /// Some models (Sparse, Code, HDC) project their outputs to
-    /// different dimensions for the fusion pipeline.
+    /// different dimensions for per-space storage.
     ///
     /// # Returns
-    /// The projected dimension used in concatenation.
+    /// The projected dimension for Multi-Array Storage.
     ///
     /// # Example
     ///

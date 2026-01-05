@@ -1,59 +1,58 @@
-//! Core struct and basic operations for ConcatenatedEmbedding.
+//! Core struct for Multi-Array Embedding Storage (Teleological Fingerprints).
 //!
-//! Contains the `ConcatenatedEmbedding` struct definition and fundamental
-//! methods for managing the collection of model embeddings.
+//! Contains the `MultiArrayEmbedding` struct and fundamental methods for
+//! managing the collection of model embeddings as separate arrays.
 
 use crate::types::dimensions::MODEL_COUNT;
 use crate::types::{ModelEmbedding, ModelId};
 
-/// Aggregates outputs from all 12 embedding models.
+/// Multi-Array Storage for all 12 embedding models (E1-E12).
 ///
-/// This struct collects individual `ModelEmbedding` outputs and concatenates
-/// them into a single 8320D vector for multi-array storage input.
+/// This struct collects individual `ModelEmbedding` outputs and stores them
+/// as SEPARATE arrays for multi-array teleological storage. Each embedding
+/// maintains its native dimension for per-space indexing and similarity.
+///
+/// # Architecture
+/// - Each embedding is stored in `embeddings[model_id]` as a separate vector
+/// - Per-space indexing: Each space has its own HNSW index
+/// - Similarity: RRF fusion of per-space scores
+/// - The 13-embedding array IS the teleological vector
 ///
 /// # Invariants
 /// - `embeddings` is indexed by `ModelId as u8` (0-11)
 /// - `is_complete()` returns true only when all 12 slots are filled
-/// - `concatenated` vector is built in model order (E1-E12)
 /// - `content_hash` is deterministic: same embeddings → same hash
 ///
 /// # Fail-Fast Behavior
 /// - `set()` panics if embedding dimension doesn't match projected dimension
-/// - `concatenate()` panics if not all 12 slots are filled
 /// - No fallbacks or workarounds - errors must be addressed
 #[derive(Debug, Clone)]
-pub struct ConcatenatedEmbedding {
+pub struct MultiArrayEmbedding {
     /// Individual model embeddings indexed by `ModelId as u8`.
     /// Array of 12 slots, each `Option<ModelEmbedding>`.
+    /// Each embedding is stored SEPARATELY at its native dimension.
     pub embeddings: [Option<ModelEmbedding>; MODEL_COUNT],
-
-    /// The concatenated 8320D vector (built by `concatenate()`).
-    /// Empty until `concatenate()` is called.
-    pub concatenated: Vec<f32>,
 
     /// Sum of all individual model latencies in microseconds.
     /// Updated incrementally as embeddings are set.
     pub total_latency_us: u64,
 
-    /// xxHash64 of concatenated vector bytes for caching.
-    /// Zero until `concatenate()` is called.
+    /// xxHash64 of embeddings for caching and deduplication.
     pub content_hash: u64,
 }
 
-impl ConcatenatedEmbedding {
-    /// Creates a new `ConcatenatedEmbedding` with all slots empty.
+impl MultiArrayEmbedding {
+    /// Creates a new `MultiArrayEmbedding` with all slots empty.
     ///
     /// # Returns
     /// A new instance with:
     /// - All 12 embedding slots set to `None`
-    /// - Empty `concatenated` vector
     /// - `total_latency_us = 0`
     /// - `content_hash = 0`
     #[must_use]
     pub fn new() -> Self {
         Self {
             embeddings: std::array::from_fn(|_| None),
-            concatenated: Vec::new(),
             total_latency_us: 0,
             content_hash: 0,
         }
@@ -71,19 +70,6 @@ impl ConcatenatedEmbedding {
     /// # Panics
     /// Panics if `embedding.vector.len() != embedding.model_id.projected_dimension()`.
     /// This is a fail-fast design - incorrect dimensions must be fixed, not worked around.
-    ///
-    /// # Example
-    /// ```
-    /// use context_graph_embeddings::types::{ConcatenatedEmbedding, ModelEmbedding, ModelId};
-    ///
-    /// let mut concat = ConcatenatedEmbedding::new();
-    /// let model_id = ModelId::Semantic;
-    /// let dim = model_id.projected_dimension();
-    /// let mut emb = ModelEmbedding::new(model_id, vec![0.1; dim], 1000);
-    /// emb.set_projected(true);
-    /// concat.set(emb);
-    /// assert_eq!(concat.filled_count(), 1);
-    /// ```
     pub fn set(&mut self, embedding: ModelEmbedding) {
         let model_id = embedding.model_id;
         let expected_dim = model_id.projected_dimension();
@@ -93,7 +79,7 @@ impl ConcatenatedEmbedding {
         assert!(
             actual_dim == expected_dim,
             "Dimension mismatch for {:?}: expected {}, got {}. \
-             Embeddings must be projected to projected_dimension() before concatenation.",
+             Embeddings must be projected to projected_dimension() before storage.",
             model_id,
             expected_dim,
             actual_dim
@@ -128,8 +114,6 @@ impl ConcatenatedEmbedding {
     }
 
     /// Returns `true` only if all 12 slots are filled.
-    ///
-    /// This is a prerequisite for calling `concatenate()`.
     #[inline]
     #[must_use]
     pub fn is_complete(&self) -> bool {
@@ -159,7 +143,7 @@ impl ConcatenatedEmbedding {
     }
 }
 
-impl Default for ConcatenatedEmbedding {
+impl Default for MultiArrayEmbedding {
     fn default() -> Self {
         Self::new()
     }

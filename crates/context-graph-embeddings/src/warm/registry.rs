@@ -29,7 +29,7 @@
 //! | `E7_Code` | Code/programming embeddings |
 //! | `E8_Graph` | Graph structure embeddings |
 //! | `E9_HDC` | Hyperdimensional computing embeddings |
-//! | `E10_Multimodal` | Multimodal fusion embeddings |
+//! | `E10_Multimodal` | Multimodal embeddings (CLIP) |
 //! | `E11_Entity` | Named entity embeddings |
 //! | `E12_LateInteraction` | Late interaction embeddings |
 //!

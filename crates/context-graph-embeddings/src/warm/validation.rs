@@ -115,7 +115,7 @@ pub enum TestInput {
     Text(String),
     /// Tokenized input (e.g., BERT token IDs).
     Tokens(Vec<u32>),
-    /// Pre-computed embeddings (for fusion models).
+    /// Pre-computed embeddings (for projection models).
     Embeddings(Vec<f32>),
 }
 

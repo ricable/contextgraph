@@ -14,8 +14,7 @@
 //!
 //! # Blocked Adapters
 //!
-//! - `EmbeddingProviderAdapter`: Removed with FusedEmbeddingProvider (TASK-F006).
-//!   MCP embedding integration blocked until TASK-F007 implements multi-array provider.
+//! - `EmbeddingProviderAdapter`: Blocked until TASK-F007 implements multi-array provider.
 
 pub mod adapters;
 pub mod handlers;

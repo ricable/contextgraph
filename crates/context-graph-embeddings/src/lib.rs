@@ -58,7 +58,7 @@ pub mod traits;
 pub mod types;
 pub mod warm;
 
-// NOTE: cache module removed - depended on FusedEmbedding which no longer exists
+// NOTE: cache module removed - now handled by context-graph-teleology crate
 
 pub use config::{
     BatchConfig, CacheConfig, EmbeddingConfig, EvictionPolicy, GpuConfig,
@@ -73,8 +73,8 @@ pub use traits::{
 
 // Type re-exports for public API
 pub use types::{
-    ConcatenatedEmbedding, ImageFormat, InputType,
-    ModelEmbedding, ModelId, ModelInput, TokenizerFamily,
+    ImageFormat, InputType, ModelEmbedding, ModelId, ModelInput,
+    MultiArrayEmbedding, TokenizerFamily,
 };
 
 // Re-export dimensions module for constant access

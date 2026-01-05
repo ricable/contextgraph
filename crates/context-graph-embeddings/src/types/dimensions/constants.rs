@@ -2,7 +2,7 @@
 //!
 //! This module defines the exact dimensions for each model in the ensemble:
 //! - Native dimensions: Raw model output sizes
-//! - Projected dimensions: Normalized sizes for concatenated embedding
+//! - Projected dimensions: Target sizes for Multi-Array Storage
 
 // =============================================================================
 // NATIVE OUTPUT DIMENSIONS (before any projection)
@@ -45,7 +45,7 @@ pub const ENTITY_NATIVE: usize = 384;
 pub const LATE_INTERACTION_NATIVE: usize = 128;
 
 // =============================================================================
-// PROJECTED DIMENSIONS (for multi-array concatenation)
+// PROJECTED DIMENSIONS (for Multi-Array Storage)
 // =============================================================================
 
 /// E1: Semantic projected dimension (no projection needed)

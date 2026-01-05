@@ -2,20 +2,24 @@
 //!
 //! These constants define the exact dimensions used throughout the embedding pipeline:
 //! - Native dimensions: Raw model output sizes
-//! - Projected dimensions: Normalized sizes for concatenated embedding
-//! - TOTAL_CONCATENATED: Sum of all projected dimensions (8320D)
+//! - Projected dimensions: Target sizes for Multi-Array Storage
+//! - TOTAL_DIMENSION: Sum of all projected dimensions (8320D)
+//!
+//! # Multi-Array Storage
+//!
+//! All 12 embeddings are stored SEPARATELY at their native dimensions.
+//! The 12-embedding array IS the teleological vector (Royse 2026).
 //!
 //! # Usage
 //!
 //! ```rust
 //! use context_graph_embeddings::types::dimensions;
 //!
-//! // Static buffer sizing
-//! let concat_buffer = vec![0.0f32; dimensions::TOTAL_CONCATENATED];
-//! assert_eq!(concat_buffer.len(), 8320);
+//! // Total dimension for memory calculations
+//! assert_eq!(dimensions::TOTAL_DIMENSION, 8320);
 //!
 //! // Compile-time validation
-//! const _: () = assert!(dimensions::TOTAL_CONCATENATED == 8320);
+//! const _: () = assert!(dimensions::TOTAL_DIMENSION == 8320);
 //! ```
 
 mod aggregates;
@@ -41,7 +45,7 @@ pub use constants::{
 };
 
 // Aggregate dimensions
-pub use aggregates::{MODEL_COUNT, TOTAL_CONCATENATED};
+pub use aggregates::{MODEL_COUNT, TOTAL_DIMENSION};
 
 // Helper functions
 pub use helpers::{native_dimension_by_index, offset_by_index, projected_dimension_by_index};
@@ -58,7 +62,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_total_concatenated_sum() {
+    fn test_total_dimension_sum() {
         // Manually verify sum
         let sum = SEMANTIC
             + TEMPORAL_RECENT
@@ -72,8 +76,8 @@ mod tests {
             + MULTIMODAL
             + ENTITY
             + LATE_INTERACTION;
-        assert_eq!(sum, TOTAL_CONCATENATED);
-        assert_eq!(TOTAL_CONCATENATED, 8320);
+        assert_eq!(sum, TOTAL_DIMENSION);
+        assert_eq!(TOTAL_DIMENSION, 8320);
     }
 
 
@@ -112,7 +116,7 @@ mod tests {
         // E5 starts after all temporals
         assert_eq!(offset_by_index(4), 1024 + 512 + 512 + 512);
         // Last offset + last dimension should equal TOTAL
-        assert_eq!(offset_by_index(11) + LATE_INTERACTION, TOTAL_CONCATENATED);
+        assert_eq!(offset_by_index(11) + LATE_INTERACTION, TOTAL_DIMENSION);
     }
 
     #[test]
@@ -121,9 +125,9 @@ mod tests {
         assert_eq!(PROJECTED_DIMENSIONS[5], SPARSE);
         assert_eq!(PROJECTED_DIMENSIONS[11], LATE_INTERACTION);
 
-        // Sum of array equals TOTAL_CONCATENATED
+        // Sum of array equals TOTAL_DIMENSION
         let sum: usize = PROJECTED_DIMENSIONS.iter().sum();
-        assert_eq!(sum, TOTAL_CONCATENATED);
+        assert_eq!(sum, TOTAL_DIMENSION);
     }
 
     #[test]
@@ -184,11 +188,11 @@ mod tests {
 
         let computed_total = last_offset + last_dim;
         println!(
-            "After: computed_total={}, TOTAL_CONCATENATED={}",
-            computed_total, TOTAL_CONCATENATED
+            "After: computed_total={}, TOTAL_DIMENSION={}",
+            computed_total, TOTAL_DIMENSION
         );
 
-        assert_eq!(computed_total, TOTAL_CONCATENATED);
+        assert_eq!(computed_total, TOTAL_DIMENSION);
         println!("Edge Case 3 PASSED: offset boundary calculation correct");
     }
 }

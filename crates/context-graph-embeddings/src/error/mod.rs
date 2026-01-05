@@ -6,7 +6,7 @@
 //! |----------|----------|-------------------|
 //! | Model | ModelNotFound, ModelLoadError, NotInitialized | Retry with different config |
 //! | Validation | InvalidDimension, InvalidValue, EmptyInput, InputTooLong | Fix input data |
-//! | Processing | BatchError, FusionError, TokenizationError | Retry or fallback model |
+//! | Processing | BatchError, TokenizationError | Retry or fallback model |
 //! | Infrastructure | GpuError, CacheError, IoError, Timeout | Retry or degrade |
 //! | Configuration | ConfigError, UnsupportedModality | Fix configuration |
 //! | Serialization | SerializationError | Fix data format |

@@ -41,7 +41,7 @@ pub const NATIVE_DIMENSIONS: [usize; MODEL_COUNT] = [
     LATE_INTERACTION_NATIVE,
 ];
 
-/// All offsets into concatenated vector in order (E1-E12).
+/// All offsets for each model in order (E1-E12).
 pub const OFFSETS: [usize; MODEL_COUNT] = [
     offset_by_index(0),
     offset_by_index(1),

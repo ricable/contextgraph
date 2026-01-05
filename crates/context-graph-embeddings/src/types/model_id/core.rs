@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::tokenizer::TokenizerFamily;
 
-/// Identifies one of the 12 embedding models in the fusion pipeline.
+/// Identifies one of the 12 embedding models in the Multi-Array Storage pipeline.
 ///
 /// # Variants
 ///

@@ -86,8 +86,9 @@ fn default_max_bytes() -> usize {
 ///
 /// # Capacity Calculation
 /// ```text
-/// Single concatenated embedding: 8320 * 4 bytes = 33,280 bytes
-/// 100K entries: 100,000 * 6,144 = 614,400,000 bytes (~614 MB)
+/// Multi-Array Storage: 13 embeddings at native dimensions
+/// Average entry: ~6KB (varies by embedding combination)
+/// 100K entries: ~600 MB
 /// With metadata overhead: ~1 GB
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]

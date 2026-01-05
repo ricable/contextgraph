@@ -1,7 +1,7 @@
 //! Core trait for embedding model implementations.
 //!
 //! The `EmbeddingModel` trait defines the contract that all 12 embedding models
-//! in the fusion pipeline must implement. Each model (E1-E12) has different
+//! in the embedding pipeline must implement. Each model (E1-E12) has different
 //! input requirements, dimensions, and processing characteristics.
 //!
 //! # Model Compatibility Matrix

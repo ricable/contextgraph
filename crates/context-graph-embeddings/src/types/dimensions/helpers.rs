@@ -61,9 +61,9 @@ pub const fn native_dimension_by_index(index: usize) -> usize {
     }
 }
 
-/// Returns the byte offset into a concatenated embedding vector for model at index.
+/// Returns the byte offset for model at index within the total dimension space.
 ///
-/// Used for zero-copy slicing into the 8320D concatenated vector.
+/// Used for memory calculations and index offsets (8320D total).
 ///
 /// # Example
 /// ```rust
