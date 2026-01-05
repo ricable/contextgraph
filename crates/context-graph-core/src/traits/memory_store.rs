@@ -209,4 +209,70 @@ pub trait MemoryStore: Send + Sync {
 
     /// Compact storage (remove tombstones, optimize indices).
     async fn compact(&self) -> CoreResult<()>;
+
+    // =========================================================================
+    // Persistence Operations
+    // =========================================================================
+
+    /// Flush any buffered writes to stable storage.
+    ///
+    /// For in-memory backends, this is a no-op.
+    /// For disk-backed backends, ensures all writes are persisted.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CoreError::StorageError` if flush fails due to I/O issues.
+    async fn flush(&self) -> CoreResult<()>;
+
+    /// Create a checkpoint/snapshot for recovery.
+    ///
+    /// Returns the path to the checkpoint. For in-memory backends,
+    /// serializes to a temp file for testing purposes.
+    ///
+    /// # Returns
+    ///
+    /// Path to the checkpoint that can be used with `restore()`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CoreError::StorageError` if checkpoint creation fails.
+    async fn checkpoint(&self) -> CoreResult<PathBuf>;
+
+    /// Restore from a previously created checkpoint.
+    ///
+    /// Replaces current store contents with checkpoint data.
+    ///
+    /// # Arguments
+    ///
+    /// * `checkpoint` - Path returned by a previous `checkpoint()` call
+    ///
+    /// # Errors
+    ///
+    /// Returns `CoreError::StorageError` if:
+    /// - Checkpoint file does not exist
+    /// - Checkpoint data is corrupted
+    /// - I/O error during restore
+    async fn restore(&self, checkpoint: &Path) -> CoreResult<()>;
+
+    // =========================================================================
+    // Statistics (Sync for efficiency)
+    // =========================================================================
+
+    /// Get the current node count synchronously.
+    ///
+    /// This is a sync method for efficiency in hot paths.
+    /// May return an approximate count for large stores.
+    /// Excludes soft-deleted nodes.
+    fn node_count_sync(&self) -> usize;
+
+    /// Get the approximate storage size in bytes.
+    ///
+    /// For in-memory backends, returns estimated memory usage.
+    /// For disk backends, returns actual disk usage.
+    fn storage_size_bytes(&self) -> usize;
+
+    /// Get the backend type this store uses.
+    ///
+    /// Allows callers to make decisions based on backend capabilities.
+    fn backend_type(&self) -> StorageBackend;
 }

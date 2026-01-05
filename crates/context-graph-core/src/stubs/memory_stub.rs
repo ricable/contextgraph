@@ -2,11 +2,13 @@
 
 use async_trait::async_trait;
 use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::error::CoreResult;
-use crate::traits::{MemoryStore, SearchOptions};
+use crate::error::{CoreError, CoreResult};
+use crate::traits::{MemoryStore, SearchOptions, StorageBackend};
 use crate::types::{MemoryNode, NodeId};
 
 /// In-memory store for Ghost System phase.
@@ -153,6 +155,79 @@ impl MemoryStore for InMemoryStore {
         let mut nodes = self.nodes.write().await;
         nodes.retain(|_, n| !n.metadata.deleted);
         Ok(())
+    }
+
+    // =========================================================================
+    // Persistence Operations
+    // =========================================================================
+
+    async fn flush(&self) -> CoreResult<()> {
+        // In-memory: no-op, all writes are immediately visible
+        Ok(())
+    }
+
+    async fn checkpoint(&self) -> CoreResult<PathBuf> {
+        // In-memory: serialize to temp file for testing
+        let nodes = self.nodes.read().await;
+        let data = serde_json::to_vec(&*nodes)
+            .map_err(|e| CoreError::StorageError(format!("Failed to serialize checkpoint: {}", e)))?;
+
+        let path = std::env::temp_dir().join(format!(
+            "inmemory_checkpoint_{}.json",
+            chrono::Utc::now().timestamp_millis()
+        ));
+
+        std::fs::File::create(&path)
+            .and_then(|mut f| f.write_all(&data))
+            .map_err(|e| CoreError::StorageError(format!("Failed to write checkpoint file: {}", e)))?;
+
+        Ok(path)
+    }
+
+    async fn restore(&self, checkpoint: &Path) -> CoreResult<()> {
+        let mut data = Vec::new();
+        std::fs::File::open(checkpoint)
+            .and_then(|mut f| f.read_to_end(&mut data))
+            .map_err(|e| CoreError::StorageError(format!("Failed to read checkpoint file: {}", e)))?;
+
+        let restored: HashMap<NodeId, MemoryNode> =
+            serde_json::from_slice(&data)
+                .map_err(|e| CoreError::StorageError(format!("Failed to deserialize checkpoint: {}", e)))?;
+
+        let mut nodes = self.nodes.write().await;
+        *nodes = restored;
+        Ok(())
+    }
+
+    // =========================================================================
+    // Statistics (Sync)
+    // =========================================================================
+
+    fn node_count_sync(&self) -> usize {
+        // Use try_read for sync access - may undercount during writes
+        self.nodes
+            .try_read()
+            .map(|n| n.values().filter(|n| !n.metadata.deleted).count())
+            .unwrap_or(0)
+    }
+
+    fn storage_size_bytes(&self) -> usize {
+        // Estimate: each node is roughly content_len + embedding_len * 4 + metadata
+        self.nodes
+            .try_read()
+            .map(|nodes| {
+                nodes
+                    .values()
+                    .map(|n| {
+                        n.content.len() + (n.embedding.len() * 4) + 256 // 256 for metadata overhead
+                    })
+                    .sum()
+            })
+            .unwrap_or(0)
+    }
+
+    fn backend_type(&self) -> StorageBackend {
+        StorageBackend::InMemory
     }
 }
 
@@ -469,5 +544,196 @@ mod tests {
             "Perfect match similarity should be ~1.0, got {}",
             results[0].1
         );
+    }
+
+    // =========================================================================
+    // M06-T03: Persistence Operations Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_flush_is_noop() {
+        let store = InMemoryStore::new();
+        // Should complete without error
+        store.flush().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_checkpoint_restore() {
+        println!("=== CHECKPOINT RESTORE TEST ===");
+        let store = InMemoryStore::new();
+
+        // Store some nodes
+        let embedding = vec![0.5; 1536];
+        let node1 = MemoryNode::new("content 1".to_string(), embedding.clone());
+        let node2 = MemoryNode::new("content 2".to_string(), embedding);
+        let id1 = node1.id;
+        let id2 = node2.id;
+
+        store.store(node1).await.unwrap();
+        store.store(node2).await.unwrap();
+
+        println!("BEFORE CHECKPOINT: count = {}", store.count().await.unwrap());
+        assert_eq!(store.count().await.unwrap(), 2);
+
+        // Create checkpoint
+        let checkpoint_path = store.checkpoint().await.unwrap();
+        println!("CHECKPOINT PATH: {:?}", checkpoint_path);
+        assert!(checkpoint_path.exists(), "Checkpoint file must exist");
+
+        // Verify checkpoint file has content
+        let metadata = std::fs::metadata(&checkpoint_path).unwrap();
+        assert!(metadata.len() > 0, "Checkpoint file must not be empty");
+        println!("CHECKPOINT FILE SIZE: {} bytes", metadata.len());
+
+        // Clear the store by hard deleting
+        store.delete(id1, false).await.unwrap();
+        store.delete(id2, false).await.unwrap();
+        assert_eq!(
+            store.count().await.unwrap(),
+            0,
+            "Store should be empty after delete"
+        );
+        println!("AFTER DELETE: count = {}", store.count().await.unwrap());
+
+        // Restore from checkpoint
+        store.restore(&checkpoint_path).await.unwrap();
+        println!("AFTER RESTORE: count = {}", store.count().await.unwrap());
+
+        // Verify restoration
+        assert_eq!(
+            store.count().await.unwrap(),
+            2,
+            "Store should have 2 nodes after restore"
+        );
+        assert!(
+            store.retrieve(id1).await.unwrap().is_some(),
+            "Node 1 should exist"
+        );
+        assert!(
+            store.retrieve(id2).await.unwrap().is_some(),
+            "Node 2 should exist"
+        );
+
+        // Cleanup
+        std::fs::remove_file(&checkpoint_path).ok();
+        println!("RESULT: PASS - Checkpoint/restore works correctly");
+    }
+
+    #[tokio::test]
+    async fn test_checkpoint_restore_empty_store() {
+        // Edge case: checkpoint empty store
+        let store = InMemoryStore::new();
+        assert_eq!(store.count().await.unwrap(), 0);
+
+        let checkpoint_path = store.checkpoint().await.unwrap();
+        assert!(checkpoint_path.exists());
+
+        // Restore empty checkpoint
+        store.restore(&checkpoint_path).await.unwrap();
+        assert_eq!(store.count().await.unwrap(), 0);
+
+        // Cleanup
+        std::fs::remove_file(&checkpoint_path).ok();
+    }
+
+    #[tokio::test]
+    async fn test_restore_invalid_path() {
+        let store = InMemoryStore::new();
+        let invalid_path = std::path::Path::new("/nonexistent/path/checkpoint.json");
+
+        let result = store.restore(invalid_path).await;
+        assert!(result.is_err(), "Restore from invalid path must fail");
+
+        if let Err(e) = result {
+            let error_msg = e.to_string();
+            assert!(
+                error_msg.contains("Storage error"),
+                "Error should be StorageError, got: {}",
+                error_msg
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_checkpoint_with_empty_content() {
+        // Edge case: node with empty content
+        let store = InMemoryStore::new();
+
+        let node = MemoryNode::new(String::new(), vec![0.0; 1536]);
+        let id = node.id;
+        store.store(node).await.unwrap();
+
+        let checkpoint_path = store.checkpoint().await.unwrap();
+
+        // Clear and restore
+        store.delete(id, false).await.unwrap();
+        store.restore(&checkpoint_path).await.unwrap();
+
+        let retrieved = store.retrieve(id).await.unwrap().unwrap();
+        assert_eq!(retrieved.content, "");
+
+        // Cleanup
+        std::fs::remove_file(&checkpoint_path).ok();
+    }
+
+    // =========================================================================
+    // M06-T03: Statistics Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_node_count_sync() {
+        let store = InMemoryStore::new();
+
+        // Initially empty
+        assert_eq!(store.node_count_sync(), 0);
+
+        // Add nodes
+        for i in 0..5 {
+            let embedding = vec![i as f32 / 10.0; 1536];
+            let node = MemoryNode::new(format!("content {}", i), embedding);
+            store.store(node).await.unwrap();
+        }
+
+        assert_eq!(store.node_count_sync(), 5);
+
+        // Soft delete should reduce count
+        let embedding = vec![0.1; 1536];
+        let node_to_delete = MemoryNode::new("to delete".to_string(), embedding);
+        let delete_id = node_to_delete.id;
+        store.store(node_to_delete).await.unwrap();
+        assert_eq!(store.node_count_sync(), 6);
+
+        store.delete(delete_id, true).await.unwrap();
+        assert_eq!(store.node_count_sync(), 5);
+    }
+
+    #[tokio::test]
+    async fn test_storage_size_bytes() {
+        let store = InMemoryStore::new();
+
+        // Initially zero
+        let initial_size = store.storage_size_bytes();
+        assert_eq!(initial_size, 0);
+
+        // Add a node
+        let embedding = vec![0.1; 1536];
+        let node = MemoryNode::new("test content".to_string(), embedding);
+        store.store(node).await.unwrap();
+
+        let size = store.storage_size_bytes();
+        // Should be at least content (12) + embedding (1536 * 4) + metadata (256) = ~6412
+        let expected_min = 12 + (1536 * 4) + 256;
+        assert!(
+            size >= expected_min,
+            "Size should be >= {}, got {}",
+            expected_min,
+            size
+        );
+    }
+
+    #[tokio::test]
+    async fn test_backend_type() {
+        let store = InMemoryStore::new();
+        assert_eq!(store.backend_type(), StorageBackend::InMemory);
     }
 }
