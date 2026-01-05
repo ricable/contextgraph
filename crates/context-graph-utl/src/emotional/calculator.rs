@@ -330,7 +330,7 @@ mod tests {
         let weight = calc.compute_emotional_weight("The sky is blue.", EmotionalState::Neutral);
 
         // Should be close to 1.0 (within arousal contribution)
-        assert!(weight >= 0.9 && weight <= 1.1);
+        assert!((0.9..=1.1).contains(&weight));
     }
 
     #[test]
@@ -397,8 +397,8 @@ mod tests {
             EmotionalState::Fatigued,
         );
 
-        assert!(very_positive >= 0.5 && very_positive <= 1.5);
-        assert!(very_negative >= 0.5 && very_negative <= 1.5);
+        assert!((0.5..=1.5).contains(&very_positive));
+        assert!((0.5..=1.5).contains(&very_negative));
     }
 
     #[test]
@@ -408,7 +408,7 @@ mod tests {
         // Empty text should give weight based purely on state
         let weight = calc.compute_emotional_weight("", EmotionalState::Curious);
 
-        assert!(weight >= 0.5 && weight <= 1.5);
+        assert!((0.5..=1.5).contains(&weight));
     }
 
     #[test]
@@ -459,7 +459,7 @@ mod tests {
         for state in states {
             let weight = calc.compute_emotional_weight(text, state);
             assert!(
-                weight >= 0.5 && weight <= 1.5,
+                (0.5..=1.5).contains(&weight),
                 "State {:?} produced invalid weight {}",
                 state,
                 weight
@@ -520,7 +520,7 @@ mod tests {
                 EmotionalState::Confused,
             ] {
                 let weight = calc.compute_emotional_weight(text, state);
-                assert!(weight >= 0.5 && weight <= 1.5);
+                assert!((0.5..=1.5).contains(&weight));
             }
         }
     }

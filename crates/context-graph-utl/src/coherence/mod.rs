@@ -60,7 +60,7 @@ mod tests {
         let node_id = uuid::Uuid::new_v4();
 
         let coherence = compute_structural_coherence(node_id, &neighbor_embeddings);
-        assert!(coherence >= 0.0 && coherence <= 1.0);
+        assert!((0.0..=1.0).contains(&coherence));
     }
 
     #[test]
@@ -84,7 +84,7 @@ mod tests {
         let coherence = tracker.compute_coherence(&current, &embeddings);
 
         // High coherence expected since embeddings are similar
-        assert!(coherence >= 0.0 && coherence <= 1.0);
+        assert!((0.0..=1.0).contains(&coherence));
         assert!(
             coherence > 0.5,
             "Expected high coherence for similar embeddings, got {}",

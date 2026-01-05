@@ -92,11 +92,11 @@ fn generate_test_point(seed: u32, max_norm: f32) -> [f32; 64] {
     let mut point = [0.0f32; 64];
     let mut hash = seed;
 
-    for i in 0..64 {
+    for p in &mut point {
         // Simple LCG for deterministic "randomness"
         hash = hash.wrapping_mul(1103515245).wrapping_add(12345);
         let val = ((hash >> 16) & 0x7FFF) as f32 / 32767.0;
-        point[i] = (val - 0.5) * 2.0 * max_norm / (64.0_f32).sqrt();
+        *p = (val - 0.5) * 2.0 * max_norm / (64.0_f32).sqrt();
     }
 
     // Ensure norm is within bounds

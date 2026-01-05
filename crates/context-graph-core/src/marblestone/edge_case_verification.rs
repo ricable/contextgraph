@@ -214,7 +214,7 @@ mod edge_case_tests {
         // But compute_effective_weight still clamps the output
         let base = 0.5;
         let effective = weights.compute_effective_weight(base);
-        assert!(effective >= 0.0 && effective <= 1.0,
+        assert!((0.0..=1.0).contains(&effective),
                 "compute_effective_weight must always return clamped value");
 
         println!("  effective_weight (clamped output): {}", effective);

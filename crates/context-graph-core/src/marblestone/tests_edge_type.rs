@@ -86,7 +86,7 @@ fn test_edge_type_weights_in_valid_range() {
     for edge_type in EdgeType::all() {
         let weight = edge_type.default_weight();
         assert!(
-            weight >= 0.0 && weight <= 1.0,
+            (0.0..=1.0).contains(&weight),
             "Weight {} for {:?} out of range",
             weight,
             edge_type
@@ -160,7 +160,7 @@ fn test_edge_type_serde_invalid_variant_fails() {
 #[test]
 fn test_edge_type_clone() {
     let edge = EdgeType::Temporal;
-    let cloned = edge.clone();
+    let cloned = edge;
     assert_eq!(edge, cloned);
 }
 

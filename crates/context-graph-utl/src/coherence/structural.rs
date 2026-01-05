@@ -339,7 +339,7 @@ mod tests {
         let neighbors = vec![vec![0.12, 0.22, 0.28, 0.38], vec![0.11, 0.21, 0.29, 0.39]];
 
         let coherence = calc.compute(&node_emb, &neighbors);
-        assert!(coherence >= 0.0 && coherence <= 1.0);
+        assert!((0.0..=1.0).contains(&coherence));
         assert!(
             coherence > 0.7,
             "Expected high coherence for similar neighbors"
@@ -356,7 +356,7 @@ mod tests {
         ];
 
         let coherence = calc.compute(&node_emb, &neighbors);
-        assert!(coherence >= 0.0 && coherence <= 1.0);
+        assert!((0.0..=1.0).contains(&coherence));
         // Low similarity but not zero due to min_similarity filtering
     }
 
@@ -380,7 +380,7 @@ mod tests {
         ];
 
         let coherence = calc.compute_weighted(&node_emb, &weighted);
-        assert!(coherence >= 0.0 && coherence <= 1.0);
+        assert!((0.0..=1.0).contains(&coherence));
         // Should be biased toward high coherence due to weights
         assert!(coherence > 0.7);
     }
@@ -413,7 +413,7 @@ mod tests {
         ];
 
         let coherence = compute_structural_coherence(node_id, &neighbors);
-        assert!(coherence >= 0.0 && coherence <= 1.0);
+        assert!((0.0..=1.0).contains(&coherence));
         assert!(
             coherence > 0.8,
             "Expected high coherence for similar neighbors"
@@ -430,7 +430,7 @@ mod tests {
         ];
 
         let coherence = compute_structural_coherence(node_id, &neighbors);
-        assert!(coherence >= 0.0 && coherence <= 1.0);
+        assert!((0.0..=1.0).contains(&coherence));
         // Orthogonal neighbors should have lower coherence
         assert!(
             coherence < 0.6,
@@ -504,7 +504,7 @@ mod tests {
         for neighbors in scenarios {
             let coherence1 = compute_structural_coherence(node_id, &neighbors);
             assert!(
-                coherence1 >= 0.0 && coherence1 <= 1.0,
+                (0.0..=1.0).contains(&coherence1),
                 "compute_structural_coherence output {} out of range",
                 coherence1
             );
@@ -513,7 +513,7 @@ mod tests {
                 let node_emb = vec![0.5, 0.5, 0.5];
                 let coherence2 = calc.compute(&node_emb, &neighbors);
                 assert!(
-                    coherence2 >= 0.0 && coherence2 <= 1.0,
+                    (0.0..=1.0).contains(&coherence2),
                     "Calculator.compute output {} out of range",
                     coherence2
                 );

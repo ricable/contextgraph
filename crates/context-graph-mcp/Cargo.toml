@@ -52,11 +52,10 @@ tokio-test = "0.4"
 tempfile = "3.10"
 
 [features]
-# GPU-first architecture: candle is now mandatory for context-graph-embeddings
-# context-graph-cuda still supports stub for gradual migration
-default = ["candle"]
+# GPU-first architecture: CUDA is REQUIRED (RTX 5090 / Blackwell)
+# No fallback stubs - system fails fast if CUDA unavailable
+default = ["cuda"]
 candle = ["context-graph-embeddings/candle"]
 cuda = ["context-graph-cuda/cuda", "candle"]
-stub = ["context-graph-cuda/stub"]  # Only for context-graph-cuda, embeddings requires candle
 # Integration tests requiring real GPU/model files
 integration = []

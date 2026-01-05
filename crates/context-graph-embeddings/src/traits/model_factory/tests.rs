@@ -3,6 +3,7 @@
 //! Contains test implementations and integration tests.
 
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;

@@ -177,7 +177,7 @@ fn test_modality_all_variants() {
 #[test]
 fn test_modality_clone_copy() {
     let original = Modality::Code;
-    let cloned = original.clone();
+    let cloned = original;
     let copied = original;
     assert_eq!(original, cloned);
     assert_eq!(original, copied);

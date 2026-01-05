@@ -180,15 +180,15 @@ async fn test_get_memetic_status_utl_values_in_valid_range() {
     let learning_score = utl["learningScore"].as_f64().expect("learningScore must be f64");
 
     assert!(
-        entropy >= 0.0 && entropy <= 1.0,
+        (0.0..=1.0).contains(&entropy),
         "entropy {} not in [0,1]", entropy
     );
     assert!(
-        coherence >= 0.0 && coherence <= 1.0,
+        (0.0..=1.0).contains(&coherence),
         "coherence {} not in [0,1]", coherence
     );
     assert!(
-        learning_score >= 0.0 && learning_score <= 1.0,
+        (0.0..=1.0).contains(&learning_score),
         "learningScore {} not in [0,1]", learning_score
     );
 }

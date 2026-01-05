@@ -56,7 +56,7 @@ fn test_transition_trigger_serde_snake_case() {
 fn test_transition_trigger_copy() {
     let original = TransitionTrigger::ExplicitShare;
     let copied = original;
-    let cloned = original.clone();
+    let cloned = original;
     assert_eq!(original, copied);
     assert_eq!(original, cloned);
 }

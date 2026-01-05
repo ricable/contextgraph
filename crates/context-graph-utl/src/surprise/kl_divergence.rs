@@ -401,7 +401,7 @@ mod tests {
         let q = vec![0.1, 0.2, 0.3, 0.4];
 
         let normalized = calc.compute_normalized(&p, &q).unwrap();
-        assert!(normalized >= 0.0 && normalized <= 1.0);
+        assert!((0.0..=1.0).contains(&normalized));
     }
 
     #[test]

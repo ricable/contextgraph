@@ -418,7 +418,7 @@ mod tests {
         let history = vec![vec![0.1, 0.2, 0.3, 0.4]]; // Identical
 
         let coherence = tracker.compute_coherence(&current, &history);
-        assert!(coherence >= 0.0 && coherence <= 1.0);
+        assert!((0.0..=1.0).contains(&coherence));
         // Identical vectors should have high coherence
         assert!(
             coherence > 0.7,
@@ -438,7 +438,7 @@ mod tests {
         ];
 
         let coherence = tracker.compute_coherence(&current, &history);
-        assert!(coherence >= 0.0 && coherence <= 1.0);
+        assert!((0.0..=1.0).contains(&coherence));
         // Similar vectors should have high coherence
         assert!(
             coherence > 0.6,
@@ -453,7 +453,7 @@ mod tests {
         let history = vec![vec![-0.4, -0.3, -0.2, -0.1], vec![0.9, 0.1, 0.0, 0.0]];
 
         let coherence = tracker.compute_coherence(&current, &history);
-        assert!(coherence >= 0.0 && coherence <= 1.0);
+        assert!((0.0..=1.0).contains(&coherence));
         // Dissimilar vectors should have lower coherence
         assert!(
             coherence < 0.7,
@@ -479,12 +479,12 @@ mod tests {
 
         // First update - no history yet
         let c1 = tracker.update_and_compute(&[0.1, 0.2, 0.3, 0.4]);
-        assert!(c1 >= 0.0 && c1 <= 1.0);
+        assert!((0.0..=1.0).contains(&c1));
         assert_eq!(tracker.history_len(), 1);
 
         // Second update - has history
         let c2 = tracker.update_and_compute(&[0.12, 0.22, 0.28, 0.38]);
-        assert!(c2 >= 0.0 && c2 <= 1.0);
+        assert!((0.0..=1.0).contains(&c2));
         assert_eq!(tracker.history_len(), 2);
 
         // EMA should be applied
@@ -613,14 +613,14 @@ mod tests {
         tracker.update(&[0.1, 0.2, 0.3, 0.4]);
 
         // First computation
-        let c1 = tracker.update_and_compute(&[0.1, 0.2, 0.3, 0.4]);
+        let _c1 = tracker.update_and_compute(&[0.1, 0.2, 0.3, 0.4]);
 
         // Second computation with different data
-        let c2 = tracker.update_and_compute(&[0.5, 0.6, 0.7, 0.8]);
+        let _c2 = tracker.update_and_compute(&[0.5, 0.6, 0.7, 0.8]);
 
         // EMA should smooth the transition
         let smoothed = tracker.smoothed_coherence().unwrap();
-        assert!(smoothed >= 0.0 && smoothed <= 1.0);
+        assert!((0.0..=1.0).contains(&smoothed));
 
         // The smoothed value should be between the raw values
         // (approximately, due to EMA)

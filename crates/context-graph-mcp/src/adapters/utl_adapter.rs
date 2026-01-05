@@ -21,6 +21,9 @@
 //! let score = adapter.compute_learning_score("test input", &context).await?;
 //! ```
 
+// This adapter is prepared for future use but not yet wired up
+#![allow(dead_code)]
+
 use async_trait::async_trait;
 use std::sync::Arc;
 use std::sync::RwLock;
@@ -363,7 +366,7 @@ mod tests {
         let score = adapter.compute_learning_score("test input", &context).await;
         assert!(score.is_ok());
         let score = score.unwrap();
-        assert!(score >= 0.0 && score <= 1.0, "Score {} not in [0,1]", score);
+        assert!((0.0..=1.0).contains(&score), "Score {} not in [0,1]", score);
     }
 
     #[tokio::test]
@@ -441,7 +444,7 @@ mod tests {
         let result = adapter.compute_learning_score("test", &context).await;
         // Should either succeed or return meaningful error, NEVER panic
         match result {
-            Ok(score) => assert!(score >= 0.0 && score <= 1.0),
+            Ok(score) => assert!((0.0..=1.0).contains(&score)),
             Err(e) => assert!(!e.to_string().is_empty(), "Error must have message"),
         }
     }
@@ -510,8 +513,8 @@ mod tests {
             .unwrap();
 
         // Both should be valid scores
-        assert!(score1 >= 0.0 && score1 <= 1.0);
-        assert!(score2 >= 0.0 && score2 <= 1.0);
+        assert!((0.0..=1.0).contains(&score1));
+        assert!((0.0..=1.0).contains(&score2));
     }
 
     #[tokio::test]

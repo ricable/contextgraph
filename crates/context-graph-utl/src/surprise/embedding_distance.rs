@@ -459,7 +459,7 @@ mod tests {
 
         for (a, b) in pairs {
             let dist = compute_cosine_distance(&a, &b);
-            assert!(dist >= 0.0 && dist <= 1.0, "Distance should be in [0, 1]");
+            assert!((0.0..=1.0).contains(&dist), "Distance should be in [0, 1]");
         }
     }
 
@@ -507,7 +507,7 @@ mod tests {
         let result = calc.compute_surprise(&current, &history);
         assert!(result.is_ok());
         let surprise = result.unwrap();
-        assert!(surprise >= 0.0 && surprise <= 1.0);
+        assert!((0.0..=1.0).contains(&surprise));
     }
 
     #[test]
@@ -545,7 +545,7 @@ mod tests {
         let result = calc.compute_surprise(&current, &history);
         assert!(result.is_ok());
         let surprise = result.unwrap();
-        assert!(surprise >= 0.0 && surprise <= 1.0);
+        assert!((0.0..=1.0).contains(&surprise));
     }
 
     #[test]
@@ -577,7 +577,7 @@ mod tests {
 
     #[test]
     fn test_no_nan_infinity() {
-        let calc = EmbeddingDistanceCalculator::default();
+        let _calc = EmbeddingDistanceCalculator::default();
 
         // Edge cases that might produce NaN
         let zero = vec![0.0, 0.0, 0.0];
@@ -607,6 +607,6 @@ mod tests {
 
         // With recency weighting, recent items matter more
         let surprise = calc.compute_surprise(&current, &history).unwrap();
-        assert!(surprise >= 0.0 && surprise <= 1.0);
+        assert!((0.0..=1.0).contains(&surprise));
     }
 }

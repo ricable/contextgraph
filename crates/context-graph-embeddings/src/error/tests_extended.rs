@@ -88,7 +88,7 @@ fn test_all_17_variants_can_be_created() {
     };
     let _e2 = EmbeddingError::ModelLoadError {
         model_id: ModelId::Code,
-        source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, "test")),
+        source: Box::new(std::io::Error::other("test")),
     };
     let _e3 = EmbeddingError::NotInitialized {
         model_id: ModelId::Graph,
@@ -125,7 +125,7 @@ fn test_all_17_variants_can_be_created() {
     let _e11 = EmbeddingError::CacheError {
         message: "test".to_string(),
     };
-    let _e12 = EmbeddingError::IoError(std::io::Error::new(std::io::ErrorKind::Other, "test"));
+    let _e12 = EmbeddingError::IoError(std::io::Error::other("test"));
     let _e13 = EmbeddingError::Timeout { timeout_ms: 1000 };
 
     // Configuration Errors (2)

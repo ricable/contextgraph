@@ -28,7 +28,7 @@
 
 use context_graph_cuda::cone::{
     cone_check_batch_cpu, cone_membership_score_cpu, is_cone_gpu_available,
-    ConeCudaConfig, ConeData, ConeKernelInfo, CONE_DATA_DIM, POINT_DIM,
+    ConeCudaConfig, ConeData, CONE_DATA_DIM, POINT_DIM,
 };
 use context_graph_cuda::CudaError;
 
@@ -126,8 +126,8 @@ fn test_integration_cone_data_rejects_nan_aperture() {
 fn test_integration_cone_data_gpu_format_roundtrip() {
     // Create cone with varied apex values - ensure norm < 1
     let mut apex = [0.0f32; 64];
-    for i in 0..64 {
-        apex[i] = ((i as f32 * 0.01) - 0.3) * 0.1; // Scale down to keep inside ball
+    for (i, a) in apex.iter_mut().enumerate() {
+        *a = ((i as f32 * 0.01) - 0.3) * 0.1; // Scale down to keep inside ball
     }
     let aperture = 0.789;
 
@@ -144,8 +144,8 @@ fn test_integration_cone_data_gpu_format_roundtrip() {
 
     // Verify roundtrip
     assert!((restored.aperture - aperture).abs() < 1e-6);
-    for i in 0..64 {
-        assert!((restored.apex[i] - apex[i]).abs() < 1e-6,
+    for (i, (restored_val, original_val)) in restored.apex.iter().zip(apex.iter()).enumerate() {
+        assert!((restored_val - original_val).abs() < 1e-6,
             "Mismatch at index {}", i);
     }
 }
@@ -159,10 +159,10 @@ fn generate_test_point(seed: u32, max_norm: f32) -> [f32; 64] {
     let mut point = [0.0f32; 64];
     let mut hash = seed;
 
-    for i in 0..64 {
+    for p in &mut point {
         hash = hash.wrapping_mul(1103515245).wrapping_add(12345);
         let val = ((hash >> 16) & 0x7FFF) as f32 / 32767.0;
-        point[i] = (val - 0.5) * 2.0 * max_norm / (64.0_f32).sqrt();
+        *p = (val - 0.5) * 2.0 * max_norm / (64.0_f32).sqrt();
     }
 
     // Ensure norm is within bounds
@@ -222,7 +222,7 @@ fn test_integration_cpu_score_bounded_01() {
         let score = cone_membership_score_cpu(&apex, aperture, &point, -1.0);
 
         assert!(
-            score >= 0.0 && score <= 1.0,
+            (0.0..=1.0).contains(&score),
             "Score must be in [0,1], got {} for seed {}",
             score,
             seed
@@ -310,8 +310,8 @@ fn test_integration_cpu_score_canonical_formula() {
     );
 
     // Just verify scores are valid and follow expected pattern
-    assert!(score_in >= 0.0 && score_in <= 1.0);
-    assert!(score_out >= 0.0 && score_out <= 1.0);
+    assert!((0.0..=1.0).contains(&score_in));
+    assert!((0.0..=1.0).contains(&score_out));
 }
 
 #[test]
@@ -328,9 +328,9 @@ fn test_integration_cpu_score_different_curvatures() {
     let score_c2 = cone_membership_score_cpu(&apex, 0.5, &point, -2.0);
 
     // All scores should be valid
-    assert!(score_c1.is_finite() && score_c1 >= 0.0 && score_c1 <= 1.0);
-    assert!(score_c05.is_finite() && score_c05 >= 0.0 && score_c05 <= 1.0);
-    assert!(score_c2.is_finite() && score_c2 >= 0.0 && score_c2 <= 1.0);
+    assert!(score_c1.is_finite() && (0.0..=1.0).contains(&score_c1));
+    assert!(score_c05.is_finite() && (0.0..=1.0).contains(&score_c05));
+    assert!(score_c2.is_finite() && (0.0..=1.0).contains(&score_c2));
 
     // Different curvatures should give different results
     // (unless the point happens to be exactly on the cone boundary)
@@ -400,7 +400,7 @@ fn test_integration_edge_case_boundary_apex() {
         let point = generate_test_point(seed, 0.5);
         let score = cone_membership_score_cpu(&apex, 0.5, &point, -1.0);
         assert!(
-            score.is_finite() && score >= 0.0 && score <= 1.0,
+            score.is_finite() && (0.0..=1.0).contains(&score),
             "Score should be valid for boundary apex: got {}",
             score
         );
@@ -418,7 +418,7 @@ fn test_integration_edge_case_boundary_point() {
 
     let score = cone_membership_score_cpu(&apex, 0.5, &boundary_point, -1.0);
     assert!(
-        score.is_finite() && score >= 0.0 && score <= 1.0,
+        score.is_finite() && (0.0..=1.0).contains(&score),
         "Boundary point score should be valid: {}",
         score
     );
@@ -445,7 +445,7 @@ fn test_integration_edge_case_very_close_points() {
 
     let score_nearby = cone_membership_score_cpu(&apex, 0.5, &nearby, -1.0);
     assert!(
-        score_nearby.is_finite() && score_nearby >= 0.0 && score_nearby <= 1.0,
+        score_nearby.is_finite() && (0.0..=1.0).contains(&score_nearby),
         "Nearby point should have valid score: {}",
         score_nearby
     );
@@ -545,7 +545,7 @@ fn test_integration_batch_cpu_100x100() {
     // All scores must be valid
     for (idx, &s) in scores.iter().enumerate() {
         assert!(
-            s >= 0.0 && s <= 1.0 && s.is_finite(),
+            (0.0..=1.0).contains(&s) && s.is_finite(),
             "Invalid score at {}: {}",
             idx,
             s
@@ -677,7 +677,7 @@ fn test_integration_numerical_stability_large_curvature() {
 
     let score = cone_membership_score_cpu(&apex, 0.5, &point, -100.0);
     assert!(
-        score.is_finite() && score >= 0.0 && score <= 1.0,
+        score.is_finite() && (0.0..=1.0).contains(&score),
         "Large curvature should give valid score: {}",
         score
     );
@@ -690,7 +690,7 @@ fn test_integration_numerical_stability_small_curvature() {
 
     let score = cone_membership_score_cpu(&apex, 0.5, &point, -0.001);
     assert!(
-        score.is_finite() && score >= 0.0 && score <= 1.0,
+        score.is_finite() && (0.0..=1.0).contains(&score),
         "Small curvature should give valid score: {}",
         score
     );

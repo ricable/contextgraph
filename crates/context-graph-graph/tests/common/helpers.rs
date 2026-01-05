@@ -10,6 +10,8 @@
 //! - `measure_latency()` - NFR-compliant timing measurement
 //! - `gpu_available()` - Check CUDA availability
 
+#![allow(dead_code)]
+
 use std::time::{Duration, Instant};
 
 use context_graph_graph::{

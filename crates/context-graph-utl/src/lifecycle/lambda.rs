@@ -400,6 +400,7 @@ impl Default for LifecycleLambdaWeights {
 }
 
 #[cfg(test)]
+#[allow(clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
 
@@ -590,7 +591,7 @@ mod tests {
     #[test]
     fn test_clone_and_copy() {
         let weights = LifecycleLambdaWeights::for_stage(LifecycleStage::Growth);
-        let cloned = weights.clone();
+        let cloned = weights;
         let copied = weights;
 
         assert_eq!(weights, cloned);

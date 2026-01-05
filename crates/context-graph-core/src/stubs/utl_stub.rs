@@ -264,7 +264,7 @@ mod tests {
                 .await
                 .unwrap();
             assert!(
-                score >= 0.0 && score <= 1.0,
+                (0.0..=1.0).contains(&score),
                 "Learning score {} for '{}' must be in [0.0, 1.0]",
                 score,
                 input
@@ -328,7 +328,7 @@ mod tests {
         ] {
             let surprise = processor.compute_surprise(input, &context).await.unwrap();
             assert!(
-                surprise >= 0.0 && surprise <= 1.0,
+                (0.0..=1.0).contains(&surprise),
                 "Surprise {} for '{}' must be in [0.0, 1.0]",
                 surprise,
                 input
@@ -353,7 +353,7 @@ mod tests {
                 .await
                 .unwrap();
             assert!(
-                coherence >= 0.0 && coherence <= 1.0,
+                (0.0..=1.0).contains(&coherence),
                 "Coherence change {} for '{}' must be in [0.0, 1.0]",
                 coherence,
                 input
@@ -375,7 +375,7 @@ mod tests {
         ] {
             let alignment = processor.compute_alignment(input, &context).await.unwrap();
             assert!(
-                alignment >= -1.0 && alignment <= 1.0,
+                (-1.0..=1.0).contains(&alignment),
                 "Alignment {} for '{}' must be in [-1.0, 1.0]",
                 alignment,
                 input
@@ -408,7 +408,7 @@ mod tests {
                 .await
                 .unwrap();
             assert!(
-                weight >= 0.5 && weight <= 1.5,
+                (0.5..=1.5).contains(&weight),
                 "Emotional weight {} for {:?} must be in [0.5, 1.5]",
                 weight,
                 state

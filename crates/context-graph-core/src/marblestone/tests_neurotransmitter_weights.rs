@@ -126,7 +126,7 @@ fn test_nt_compute_effective_weight_always_in_range() {
                     let weights = NeurotransmitterWeights::new(exc, inh, modul);
                     let effective = weights.compute_effective_weight(base);
                     assert!(
-                        effective >= 0.0 && effective <= 1.0,
+                        (0.0..=1.0).contains(&effective),
                         "Out of range: exc={}, inh={}, mod={}, base={} -> {}",
                         exc, inh, modul, base, effective
                     );
@@ -228,7 +228,7 @@ fn test_nt_default_is_valid() {
 #[test]
 fn test_nt_clone() {
     let weights = NeurotransmitterWeights::new(0.6, 0.3, 0.4);
-    let cloned = weights.clone();
+    let cloned = weights;
     assert_eq!(weights, cloned);
 }
 

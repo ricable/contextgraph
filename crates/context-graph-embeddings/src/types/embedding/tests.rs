@@ -1,6 +1,7 @@
 //! Tests for ModelEmbedding.
 
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod tests {
     use crate::error::EmbeddingError;
     use crate::types::embedding::ModelEmbedding;

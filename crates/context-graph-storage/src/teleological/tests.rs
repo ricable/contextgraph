@@ -292,8 +292,8 @@ fn test_e1_matryoshka_roundtrip() {
     println!("=== TEST: E1 Matryoshka 128D vector round-trip ===");
 
     let mut original = [0.0f32; 128];
-    for i in 0..128 {
-        original[i] = (i as f32) * 0.01;
+    for (i, val) in original.iter_mut().enumerate() {
+        *val = (i as f32) * 0.01;
     }
     println!(
         "BEFORE: 128D vector, first 5 elements: {:?}",
@@ -416,8 +416,8 @@ fn edge_case_purpose_vector_extreme_values() {
         -1e38,
         std::f32::consts::PI,
         std::f32::consts::E,
-        0.123456789,
-        -0.987654321,
+        0.123_456_79,
+        -0.987_654_3,
     ];
     println!("BEFORE: Extreme values including MIN, MAX, EPSILON, PI, E");
     for (i, v) in original.iter().enumerate() {

@@ -21,5 +21,3 @@ pub mod fixtures;
 pub mod helpers;
 
 // Re-exports for convenience
-pub use fixtures::*;
-pub use helpers::*;

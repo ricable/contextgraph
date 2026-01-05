@@ -55,7 +55,7 @@ fn test_record_access_saturating() {
 fn test_compute_decay_in_valid_range() {
     let node = MemoryNode::new("test".to_string(), vec![0.0; 1536]);
     let decay = node.compute_decay();
-    assert!(decay >= 0.0 && decay <= 1.0, "Decay {} must be in [0,1]", decay);
+    assert!((0.0..=1.0).contains(&decay), "Decay {} must be in [0,1]", decay);
 }
 
 #[test]
@@ -63,7 +63,7 @@ fn test_compute_decay_high_access_count() {
     let mut node = MemoryNode::new("test".to_string(), vec![0.0; 1536]);
     node.access_count = 1000;
     let decay = node.compute_decay();
-    assert!(decay >= 0.0 && decay <= 1.0);
+    assert!((0.0..=1.0).contains(&decay));
 }
 
 #[test]

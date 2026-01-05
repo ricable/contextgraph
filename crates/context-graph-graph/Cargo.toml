@@ -55,3 +55,4 @@ tokio = { version = "1.35", features = ["full", "test-util"] }
 [[bench]]
 name = "benchmark_suite"
 harness = false
+path = "benches/benchmark_suite/main.rs"

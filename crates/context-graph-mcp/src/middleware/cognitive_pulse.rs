@@ -66,6 +66,7 @@ pub struct CognitivePulse {
 /// FAIL FAST philosophy - no fallbacks, no workarounds.
 /// All failures are logged with full context.
 #[derive(Debug, Clone, Error)]
+#[allow(dead_code)] // Variants prepared for future UTL integration
 pub enum CognitivePulseError {
     /// Generic computation failure
     #[error("Computation failed: {0}")]
@@ -221,6 +222,7 @@ impl CognitivePulse {
     ///
     /// * `Ok(CognitivePulse)` - Valid pulse
     /// * `Err(CognitivePulseError)` - Validation failed
+    #[allow(dead_code)] // Prepared for test and direct construction use cases
     pub fn from_values(
         entropy: f32,
         coherence: f32,

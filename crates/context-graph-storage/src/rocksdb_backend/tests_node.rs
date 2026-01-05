@@ -160,16 +160,16 @@ fn edge_case_quadrant_transition() {
     db.store_node(&node).expect("store failed");
 
     let cf_open = db.get_cf(cf_names::JOHARI_OPEN).unwrap();
-    let before_open = db.db().get_cf(cf_open, &node_key).unwrap();
+    let before_open = db.db().get_cf(cf_open, node_key).unwrap();
     println!("BEFORE: johari_open entry exists = {}", before_open.is_some());
     assert!(before_open.is_some());
 
     node.quadrant = JohariQuadrant::Hidden;
     db.update_node(&node).expect("update failed");
 
-    let after_open = db.db().get_cf(cf_open, &node_key).unwrap();
+    let after_open = db.db().get_cf(cf_open, node_key).unwrap();
     let cf_hidden = db.get_cf(cf_names::JOHARI_HIDDEN).unwrap();
-    let after_hidden = db.db().get_cf(cf_hidden, &node_key).unwrap();
+    let after_hidden = db.db().get_cf(cf_hidden, node_key).unwrap();
 
     println!("AFTER: johari_open={}, johari_hidden={}",
         after_open.is_some(), after_hidden.is_some());
@@ -221,15 +221,15 @@ fn evidence_store_node_creates_all_indexes() {
 
     // Verify node exists
     let cf_nodes = db.get_cf(cf_names::NODES).unwrap();
-    assert!(db.db().get_cf(cf_nodes, &node_key).unwrap().is_some());
+    assert!(db.db().get_cf(cf_nodes, node_key).unwrap().is_some());
 
     // Verify embedding
     let cf_emb = db.get_cf(cf_names::EMBEDDINGS).unwrap();
-    assert!(db.db().get_cf(cf_emb, &node_key).unwrap().is_some());
+    assert!(db.db().get_cf(cf_emb, node_key).unwrap().is_some());
 
     // Verify johari index
     let cf_johari = db.get_cf(node.quadrant.column_family()).unwrap();
-    assert!(db.db().get_cf(cf_johari, &node_key).unwrap().is_some());
+    assert!(db.db().get_cf(cf_johari, node_key).unwrap().is_some());
 
     // Verify temporal index
     let cf_temporal = db.get_cf(cf_names::TEMPORAL).unwrap();

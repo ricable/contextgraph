@@ -28,6 +28,7 @@ pub mod error;
 pub mod handle;
 pub mod health;
 pub mod integration;
+// loader is now a directory module
 pub mod loader;
 pub mod memory_pool;
 pub mod registry;

@@ -133,12 +133,13 @@ mod tests {
     #[test]
     fn test_offsets_array_consistency() {
         // Verify OFFSETS array matches offset_by_index function
-        for i in 0..MODEL_COUNT {
-            assert_eq!(OFFSETS[i], offset_by_index(i), "Mismatch at index {}", i);
+        for (i, &offset) in OFFSETS.iter().enumerate().take(MODEL_COUNT) {
+            assert_eq!(offset, offset_by_index(i), "Mismatch at index {}", i);
         }
     }
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn test_sparse_projection_ratio() {
         // SPLADE projects from 30K sparse to 1536 dense
         assert!(SPARSE_NATIVE > SPARSE);
@@ -147,6 +148,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn test_hdc_projection_ratio() {
         // HDC projects from 10K-bit to 1024
         assert!(HDC_NATIVE > HDC);
@@ -155,6 +157,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn test_code_projection_ratio() {
         // CodeT5p projects from 256 embed to 768 (expansion)
         assert!(CODE > CODE_NATIVE);

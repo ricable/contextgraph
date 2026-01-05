@@ -39,7 +39,7 @@ pub const MAX_SPARSE_ACTIVE: usize = 1_526; // floor(30522 * 0.05)
 /// # Example
 ///
 /// ```
-/// use context_graph_core::types::fingerprint::sparse::{SparseVector, SPARSE_VOCAB_SIZE};
+/// use context_graph_core::types::fingerprint::{SparseVector, SPARSE_VOCAB_SIZE};
 ///
 /// // Create a sparse vector with 3 active positions
 /// let sv = SparseVector::new(vec![10, 100, 500], vec![0.5, 0.3, 0.8]).unwrap();
@@ -73,7 +73,7 @@ impl SparseVector {
     /// # Example
     ///
     /// ```
-    /// use context_graph_core::types::fingerprint::sparse::SparseVector;
+    /// use context_graph_core::types::fingerprint::SparseVector;
     ///
     /// // Valid construction
     /// let sv = SparseVector::new(vec![1, 10, 100], vec![0.1, 0.2, 0.3]).unwrap();
@@ -156,7 +156,7 @@ impl SparseVector {
     /// # Example
     ///
     /// ```
-    /// use context_graph_core::types::fingerprint::sparse::SparseVector;
+    /// use context_graph_core::types::fingerprint::SparseVector;
     ///
     /// let a = SparseVector::new(vec![1, 3, 5], vec![1.0, 2.0, 3.0]).unwrap();
     /// let b = SparseVector::new(vec![2, 3, 5], vec![4.0, 5.0, 6.0]).unwrap();

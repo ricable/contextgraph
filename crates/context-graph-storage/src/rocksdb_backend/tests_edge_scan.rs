@@ -149,7 +149,8 @@ fn test_edge_crud_multiple_edge_types_same_nodes() {
     }
 
     let edges = db.get_edges_from(&source).expect("get_edges_from failed");
-    assert_eq!(edges.len(), 4);
+    // EdgeType::all() returns 5 types: Semantic, Temporal, Causal, Entailment, Contradiction
+    assert_eq!(edges.len(), 5);
 }
 
 // =========================================================================

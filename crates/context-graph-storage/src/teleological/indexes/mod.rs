@@ -41,6 +41,7 @@
 //! let dist = compute_distance(&a, &b, DistanceMetric::Cosine);
 //! ```
 
+// hnsw_config is now a directory module (hnsw_config/mod.rs)
 pub mod hnsw_config;
 pub mod metrics;
 

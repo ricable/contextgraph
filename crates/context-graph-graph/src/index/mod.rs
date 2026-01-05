@@ -38,7 +38,7 @@
 //! - Compute Capability 12.0
 
 pub mod faiss_ffi;
-pub mod gpu_index;
+pub mod gpu_index;  // Now a directory module
 pub mod gpu_memory;
 pub mod search_result;
 

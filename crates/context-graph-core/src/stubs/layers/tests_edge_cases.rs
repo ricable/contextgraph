@@ -52,7 +52,7 @@ async fn test_edge_case_empty_input_all_layers() {
 
     for (layer, name) in layers {
         let input = LayerInput::new("test".to_string(), "".to_string());
-        let output = layer.process(input).await.expect(&format!("{} should handle empty input", name));
+        let output = layer.process(input).await.unwrap_or_else(|_| panic!("{} should handle empty input", name));
 
         println!("{}: success={}, entropy={:.4}, coherence={:.4}",
             name, output.result.success, output.pulse.entropy, output.pulse.coherence);

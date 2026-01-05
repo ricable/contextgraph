@@ -524,11 +524,9 @@ mod tests {
         assert!(LifecycleStage::Growth < LifecycleStage::Maturity);
         assert!(LifecycleStage::Infancy < LifecycleStage::Maturity);
 
-        let mut stages = vec![
-            LifecycleStage::Maturity,
+        let mut stages = [LifecycleStage::Maturity,
             LifecycleStage::Infancy,
-            LifecycleStage::Growth,
-        ];
+            LifecycleStage::Growth];
         stages.sort();
         assert_eq!(stages[0], LifecycleStage::Infancy);
         assert_eq!(stages[1], LifecycleStage::Growth);
@@ -566,7 +564,7 @@ mod tests {
     #[test]
     fn test_clone_and_copy() {
         let stage = LifecycleStage::Growth;
-        let cloned = stage.clone();
+        let cloned = stage;
         let copied = stage;
 
         assert_eq!(stage, cloned);

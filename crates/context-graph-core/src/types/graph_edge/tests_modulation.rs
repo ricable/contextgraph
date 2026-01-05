@@ -68,7 +68,7 @@ fn test_get_modulated_weight_always_in_range() {
                 edge.steering_reward = sr;
                 let modulated = edge.get_modulated_weight();
                 assert!(
-                    modulated >= 0.0 && modulated <= 1.0,
+                    (0.0..=1.0).contains(&modulated),
                     "Out of range: domain={:?}, edge_type={:?}, sr={}, modulated={}",
                     domain,
                     edge_type,

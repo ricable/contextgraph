@@ -51,11 +51,11 @@ fn test_delete_node_hard_delete() {
     db.store_node(&node).expect("store failed");
 
     let cf_nodes = db.get_cf(cf_names::NODES).unwrap();
-    assert!(db.db().get_cf(cf_nodes, &node_key).unwrap().is_some());
+    assert!(db.db().get_cf(cf_nodes, node_key).unwrap().is_some());
 
     db.delete_node(&id, false).expect("hard delete failed");
 
-    assert!(db.db().get_cf(cf_nodes, &node_key).unwrap().is_none());
+    assert!(db.db().get_cf(cf_nodes, node_key).unwrap().is_none());
     let result = db.get_node(&id);
     assert!(matches!(result, Err(StorageError::NotFound { .. })));
 }

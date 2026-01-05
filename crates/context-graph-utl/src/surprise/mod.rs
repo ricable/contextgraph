@@ -63,6 +63,6 @@ mod tests {
         assert!(kl >= 0.0);
 
         let dist = compute_cosine_distance(&a, &b);
-        assert!(dist >= 0.0 && dist <= 1.0);
+        assert!((0.0..=1.0).contains(&dist));
     }
 }

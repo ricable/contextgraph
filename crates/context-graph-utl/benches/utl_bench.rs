@@ -143,7 +143,7 @@ fn bench_emotional_weight_empty(c: &mut Criterion) {
 
 fn bench_coherence_tracking(c: &mut Criterion) {
     let config = CoherenceConfig::default();
-    let mut tracker = CoherenceTracker::new(&config);
+    let tracker = CoherenceTracker::new(&config);
     let embedding = generate_embedding(1536, 42);
     let context = generate_context(50, 1536);
 

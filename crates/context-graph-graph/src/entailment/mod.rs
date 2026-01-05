@@ -31,7 +31,7 @@
 //! CUDA kernels for batch containment checks: TODO: M04-T24
 
 pub mod cones;
-pub mod query;
+pub mod query; // Now a directory module
 
 pub use cones::EntailmentCone;
 pub use query::{

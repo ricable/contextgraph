@@ -313,6 +313,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::field_reassign_with_default)]
     fn test_validate_zero_budget() {
         let mut config = WarmConfig::default();
         config.vram_budget_bytes = 0;

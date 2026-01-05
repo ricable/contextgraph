@@ -119,7 +119,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  NT Weights: E={:.3}, I={:.3}, M={:.3}", nt.excitatory, nt.inhibitory, nt.modulatory);
     println!("  Steering reward: {:.3}", edge1.steering_reward);
     println!("  Modulated weight: {:.3}", modulated);
-    assert!(modulated >= 0.0 && modulated <= 1.0, "Modulated weight should be in [0, 1]");
+    assert!((0.0..=1.0).contains(&modulated), "Modulated weight should be in [0, 1]");
     println!("  ✓ Modulation calculation verified\n");
 
     // ========================================

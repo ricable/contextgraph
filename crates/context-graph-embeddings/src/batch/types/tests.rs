@@ -3,6 +3,8 @@
 //! This module contains all unit and integration tests for the batch
 //! processing infrastructure.
 
+#![allow(clippy::field_reassign_with_default)]
+
 use super::*;
 use crate::config::BatchConfig;
 use crate::error::EmbeddingResult;

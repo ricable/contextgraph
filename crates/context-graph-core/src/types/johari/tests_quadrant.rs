@@ -199,7 +199,7 @@ fn test_description_not_empty() {
 #[test]
 fn test_clone_and_copy() {
     let original = JohariQuadrant::Open;
-    let cloned = original.clone();
+    let cloned = original;
     let copied = original;
     assert_eq!(original, cloned);
     assert_eq!(original, copied);

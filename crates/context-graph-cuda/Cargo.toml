@@ -28,10 +28,9 @@ tracing = { workspace = true }
 tokio-test = "0.4"
 
 [features]
-default = ["stub"]
-stub = []
-cuda = []  # Future: cudarc bindings
-cudnn = []  # Future: cuDNN support
+default = ["cuda"]
+cuda = []  # REQUIRED: RTX 5090 Blackwell CUDA support
+cudnn = ["cuda"]  # Future: cuDNN support (requires cuda)
 
 [build-dependencies]
 # Future: cc = "1.0"

@@ -20,4 +20,6 @@
 
 pub mod utl_adapter;
 
+// UtlProcessorAdapter is prepared for future use when UTL integration is enabled
+#[allow(unused_imports)]
 pub use utl_adapter::UtlProcessorAdapter;

@@ -125,10 +125,12 @@ fn test_memory_node_optional_fields_none_serialization() {
 
 #[test]
 fn test_node_metadata_serialization_isolated() {
-    let mut metadata = NodeMetadata::default();
-    metadata.source = Some("isolated-test".to_string());
-    metadata.tags = vec!["a".to_string(), "b".to_string()];
-    metadata.utl_score = Some(0.5);
+    let metadata = NodeMetadata {
+        source: Some("isolated-test".to_string()),
+        tags: vec!["a".to_string(), "b".to_string()],
+        utl_score: Some(0.5),
+        ..NodeMetadata::default()
+    };
 
     let json_str = serde_json::to_string(&metadata).unwrap();
     let restored: NodeMetadata = serde_json::from_str(&json_str).unwrap();

@@ -40,9 +40,11 @@ fn main() {
         compile_cuda_kernels();
     }
 
+    // CUDA is ALWAYS required - no stub implementations
+    // RTX 5090 / Blackwell architecture mandated by constitution
     #[cfg(not(feature = "cuda"))]
     {
-        println!("cargo:warning=CUDA feature disabled, using stub implementations");
+        panic!("CUDA feature is required. RTX 5090 GPU must be available. No fallback stubs.");
     }
 }
 
@@ -104,7 +106,7 @@ fn find_nvcc() -> PathBuf {
 }
 
 #[cfg(feature = "cuda")]
-fn compile_kernel(nvcc: &PathBuf, source: &str, name: &str, arch: &str, out_dir: &PathBuf) {
+fn compile_kernel(nvcc: &std::path::Path, source: &str, name: &str, arch: &str, out_dir: &std::path::Path) {
     let obj_path = out_dir.join(format!("{}.o", name));
     let lib_path = out_dir.join(format!("lib{}.a", name));
 
@@ -181,6 +183,10 @@ fn compile_kernel(nvcc: &PathBuf, source: &str, name: &str, arch: &str, out_dir:
 
     // Also link math library for transcendental functions
     println!("cargo:rustc-link-lib=m");
+
+    // Link C++ standard library for CUDA runtime symbols
+    // Required for __cxa_guard_acquire, __cxa_guard_release, __gxx_personality_v0
+    println!("cargo:rustc-link-lib=stdc++");
 
     // Add CUDA library path for cudart
     if let Ok(cuda_path) = env::var("CUDA_PATH") {

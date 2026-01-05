@@ -511,7 +511,7 @@ mod tests {
     #[test]
     fn test_clone() {
         let ct = ContradictionType::TemporalConflict;
-        let cloned = ct.clone();
+        let cloned = ct;
         assert_eq!(ct, cloned);
     }
 

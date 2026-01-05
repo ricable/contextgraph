@@ -21,4 +21,4 @@
 
 mod cognitive_pulse;
 
-pub use cognitive_pulse::{CognitivePulse, CognitivePulseError};
+pub use cognitive_pulse::CognitivePulse;

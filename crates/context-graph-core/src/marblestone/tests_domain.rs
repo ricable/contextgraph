@@ -152,7 +152,7 @@ fn test_serde_snake_case_format() {
 #[test]
 fn test_clone() {
     let domain = Domain::Medical;
-    let cloned = domain.clone();
+    let cloned = domain;
     assert_eq!(domain, cloned);
 }
 

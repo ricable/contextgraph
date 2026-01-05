@@ -94,7 +94,6 @@ pub use context_graph_core::types::{EmbeddingVector, NodeId, DEFAULT_EMBEDDING_D
 ///     vec![0.0f32; DEFAULT_EMBEDDING_DIM]  // 1536 dimensions
 /// }
 /// ```
-
 #[cfg(test)]
 mod lib_tests {
     use super::*;

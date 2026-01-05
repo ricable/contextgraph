@@ -26,6 +26,7 @@
 pub mod config;
 pub mod error;
 pub mod marblestone;
+pub mod memory;
 pub mod stubs;
 pub mod traits;
 pub mod types;

@@ -79,7 +79,7 @@ fn test_get_nodes_by_quadrant_with_limit() {
     for i in 0..5 {
         let mut node = create_valid_test_node();
         node.quadrant = JohariQuadrant::Open;
-        db.store_node(&node).expect(&format!("store {}", i));
+        db.store_node(&node).unwrap_or_else(|_| panic!("store {}", i));
     }
 
     println!("BEFORE: Stored 5 nodes, querying with limit=3");
@@ -98,7 +98,7 @@ fn test_get_nodes_by_quadrant_with_offset() {
     for i in 0..5 {
         let mut node = create_valid_test_node();
         node.quadrant = JohariQuadrant::Open;
-        db.store_node(&node).expect(&format!("store {}", i));
+        db.store_node(&node).unwrap_or_else(|_| panic!("store {}", i));
     }
 
     println!("BEFORE: Stored 5 nodes, querying with offset=2");
@@ -117,7 +117,7 @@ fn test_get_nodes_by_quadrant_all_quadrants() {
     for quadrant in JohariQuadrant::all() {
         let mut node = create_valid_test_node();
         node.quadrant = quadrant;
-        db.store_node(&node).expect(&format!("store {:?}", quadrant));
+        db.store_node(&node).unwrap_or_else(|_| panic!("store {:?}", quadrant));
     }
 
     // Query each quadrant
@@ -186,7 +186,7 @@ fn test_get_nodes_by_tag_with_pagination() {
     for i in 0..10 {
         let node = create_node_with_tags(vec!["paginated"]);
         all_ids.push(node.id);
-        db.store_node(&node).expect(&format!("store {}", i));
+        db.store_node(&node).unwrap_or_else(|_| panic!("store {}", i));
     }
 
     println!("BEFORE: Stored 10 nodes with tag 'paginated'");
@@ -401,7 +401,7 @@ fn test_get_nodes_in_time_range_with_pagination() {
         if first_time.is_none() {
             first_time = Some(node.created_at);
         }
-        db.store_node(&node).expect(&format!("store {}", i));
+        db.store_node(&node).unwrap_or_else(|_| panic!("store {}", i));
     }
 
     let start = first_time.unwrap() - Duration::seconds(1);

@@ -10,6 +10,8 @@
 //! 3. **Scalable**: Can generate from 1 to 1M+ test items
 //! 4. **Documented**: Each fixture documents its invariants
 
+#![allow(dead_code)]
+
 use context_graph_graph::{
     Domain, NeurotransmitterWeights,
     storage::{PoincarePoint, EntailmentCone, NodeId},
@@ -55,10 +57,10 @@ pub fn generate_poincare_point(seed: u32, max_norm: f32) -> PoincarePoint {
     let mut hash = seed;
 
     // Generate raw coordinates
-    for i in 0..POINCARE_DIM {
+    for (i, c) in coords.iter_mut().enumerate() {
         hash = deterministic_hash(hash.wrapping_add(i as u32));
         let val = ((hash >> 16) & 0x7FFF) as f32 / 32767.0;
-        coords[i] = (val - 0.5) * 2.0;
+        *c = (val - 0.5) * 2.0;
     }
 
     // Normalize to max_norm
