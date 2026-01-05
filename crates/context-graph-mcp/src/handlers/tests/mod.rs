@@ -3,6 +3,7 @@
 //! Tests verify compliance with MCP protocol version 2024-11-05
 //! Reference: https://spec.modelcontextprotocol.io/specification/2024-11-05/
 
+mod cognitive_pulse;
 mod error_codes;
 mod initialize;
 mod memory;

@@ -8,6 +8,10 @@ license = "MIT"
 repository = "https://github.com/contextgraph/contextgraph"
 keywords = ["mcp", "jsonrpc", "server", "context-graph"]
 
+[lib]
+name = "context_graph_mcp"
+path = "src/lib.rs"
+
 [[bin]]
 name = "context-graph-mcp"
 path = "src/main.rs"
@@ -16,6 +20,7 @@ path = "src/main.rs"
 context-graph-core = { path = "../context-graph-core" }
 context-graph-cuda = { path = "../context-graph-cuda" }
 context-graph-embeddings = { path = "../context-graph-embeddings" }
+context-graph-utl = { path = "../context-graph-utl" }
 
 # Async runtime
 tokio = { workspace = true }

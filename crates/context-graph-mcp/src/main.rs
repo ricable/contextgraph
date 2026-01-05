@@ -22,6 +22,7 @@
 //! ```
 
 mod handlers;
+mod middleware;
 mod protocol;
 mod server;
 mod tools;
