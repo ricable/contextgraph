@@ -73,4 +73,10 @@ pub use teleological::{
     serialize_e1_matryoshka_128, deserialize_e1_matryoshka_128,
     serialize_memory_id_list, deserialize_memory_id_list,
     TELEOLOGICAL_VERSION,
+    // HNSW index configuration types (TASK-F005)
+    all_hnsw_configs, get_hnsw_config, get_inverted_index_config,
+    DistanceMetric, EmbedderIndex, HnswConfig, InvertedIndexConfig,
+    E1_DIM, E1_MATRYOSHKA_DIM, E2_DIM, E3_DIM, E4_DIM, E5_DIM,
+    E6_SPARSE_VOCAB, E7_DIM, E8_DIM, E9_DIM, E10_DIM, E11_DIM,
+    E12_TOKEN_DIM, E13_SPLADE_VOCAB, NUM_EMBEDDERS, PURPOSE_VECTOR_DIM,
 };

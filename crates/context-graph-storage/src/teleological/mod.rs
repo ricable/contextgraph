@@ -20,6 +20,7 @@
 //! This ensures data integrity and makes bugs immediately visible.
 
 pub mod column_families;
+pub mod indexes;
 pub mod schema;
 pub mod serialization;
 
@@ -44,4 +45,19 @@ pub use serialization::{
     deserialize_e1_matryoshka_128, deserialize_memory_id_list, deserialize_purpose_vector,
     deserialize_teleological_fingerprint, serialize_e1_matryoshka_128, serialize_memory_id_list,
     serialize_purpose_vector, serialize_teleological_fingerprint, TELEOLOGICAL_VERSION,
+};
+
+// Re-export index configuration types (TASK-F005)
+pub use indexes::{
+    // Enums
+    DistanceMetric, EmbedderIndex,
+    // Structs
+    HnswConfig, InvertedIndexConfig,
+    // Config functions
+    all_hnsw_configs, get_hnsw_config, get_inverted_index_config,
+    // Metric functions
+    compute_distance, cosine_similarity, distance_to_similarity, recommended_metric,
+    // Dimension constants
+    E1_DIM, E1_MATRYOSHKA_DIM, E2_DIM, E3_DIM, E4_DIM, E5_DIM, E6_SPARSE_VOCAB, E7_DIM, E8_DIM,
+    E9_DIM, E10_DIM, E11_DIM, E12_TOKEN_DIM, E13_SPLADE_VOCAB, NUM_EMBEDDERS, PURPOSE_VECTOR_DIM,
 };

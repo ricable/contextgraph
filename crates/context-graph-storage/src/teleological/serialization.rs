@@ -79,7 +79,7 @@ pub fn serialize_teleological_fingerprint(fp: &TeleologicalFingerprint) -> Vec<u
 
     // Verify size is in expected range
     let size = result.len();
-    if size < MIN_FINGERPRINT_SIZE || size > MAX_FINGERPRINT_SIZE {
+    if !(MIN_FINGERPRINT_SIZE..=MAX_FINGERPRINT_SIZE).contains(&size) {
         panic!(
             "SERIALIZATION ERROR: TeleologicalFingerprint size {} bytes outside expected range \
              [{}, {}]. Fingerprint ID: {:?}. Evolution snapshots: {}. \
