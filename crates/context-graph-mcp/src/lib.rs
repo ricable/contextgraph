@@ -22,6 +22,7 @@ pub mod middleware;
 pub mod protocol;
 pub mod server;
 pub mod tools;
+pub mod weights;
 
 // Re-export adapters for convenient access
 pub use adapters::UtlProcessorAdapter;

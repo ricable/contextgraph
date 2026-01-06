@@ -15,6 +15,7 @@
 mod core;
 mod lifecycle;
 mod memory;
+mod search;
 mod system;
 mod tools;
 mod utl;

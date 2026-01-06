@@ -9,9 +9,11 @@
 mod cognitive_pulse;
 mod error_codes;
 mod full_state_verification;
+mod full_state_verification_search;
 mod initialize;
 mod memory;
 mod meta_cognitive;
+mod search;
 mod tools_list;
 mod tools_call;
 mod utl;

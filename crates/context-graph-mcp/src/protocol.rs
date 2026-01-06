@@ -139,6 +139,12 @@ pub mod methods {
     pub const MEMORY_SEARCH: &str = "memory/search";
     pub const MEMORY_DELETE: &str = "memory/delete";
 
+    // Search operations (TASK-S002)
+    pub const SEARCH_MULTI: &str = "search/multi";
+    pub const SEARCH_SINGLE_SPACE: &str = "search/single_space";
+    pub const SEARCH_BY_PURPOSE: &str = "search/by_purpose";
+    pub const SEARCH_WEIGHT_PROFILES: &str = "search/weight_profiles";
+
     // Graph operations
     pub const GRAPH_CONNECT: &str = "graph/connect";
     pub const GRAPH_TRAVERSE: &str = "graph/traverse";

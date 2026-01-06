@@ -69,6 +69,19 @@ impl Handlers {
             }
             methods::MEMORY_SEARCH => self.handle_memory_search(request.id, request.params).await,
             methods::MEMORY_DELETE => self.handle_memory_delete(request.id, request.params).await,
+
+            // Search operations (TASK-S002)
+            methods::SEARCH_MULTI => self.handle_search_multi(request.id, request.params).await,
+            methods::SEARCH_SINGLE_SPACE => {
+                self.handle_search_single_space(request.id, request.params)
+                    .await
+            }
+            methods::SEARCH_BY_PURPOSE => {
+                self.handle_search_by_purpose(request.id, request.params)
+                    .await
+            }
+            methods::SEARCH_WEIGHT_PROFILES => self.handle_get_weight_profiles(request.id).await,
+
             methods::UTL_COMPUTE => self.handle_utl_compute(request.id, request.params).await,
             methods::UTL_METRICS => self.handle_utl_metrics(request.id, request.params).await,
             methods::SYSTEM_STATUS => self.handle_system_status(request.id).await,

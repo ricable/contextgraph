@@ -27,6 +27,7 @@ mod middleware;
 mod protocol;
 mod server;
 mod tools;
+mod weights;
 
 use std::env;
 use std::io;
