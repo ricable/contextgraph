@@ -129,7 +129,7 @@ impl WarmLoader {
 
         // Step 2: Initialize CUDA allocator
         match initialize_cuda_allocator(&self.config) {
-            Ok(allocator) => self.cuda_allocator = allocator,
+            Ok(allocator) => self.cuda_allocator = Some(allocator),
             Err(e) => Self::handle_fatal_error(&e),
         }
 
@@ -301,7 +301,7 @@ impl WarmLoader {
         // Initialize CUDA allocator (real Candle-based allocation)
         match initialize_cuda_allocator(&self.config) {
             Ok(allocator) => {
-                self.cuda_allocator = allocator;
+                self.cuda_allocator = Some(allocator);
                 Ok(())
             }
             Err(e) => Err(e),
