@@ -1,593 +1,756 @@
-# TASK-S004: New MCP Handlers for Johari Quadrant Operations
+# TASK-S004: MCP Handlers for Johari Quadrant Operations
 
 ```yaml
 metadata:
   id: "TASK-S004"
-  title: "New MCP Handlers for Johari Quadrant Operations"
+  title: "MCP Handlers for Johari Quadrant Operations"
   layer: "surface"
   priority: "P1"
   estimated_hours: 6
   created: "2026-01-04"
-  status: "pending"
+  updated: "2026-01-05"
+  status: "completed"
   dependencies:
-    - "TASK-F003"  # JohariFingerprint struct
-    - "TASK-L004"  # Johari Transition Manager
+    - "TASK-F003"  # JohariFingerprint struct - COMPLETED
+    - "TASK-L004"  # Johari Transition Manager - COMPLETED
   traces_to:
     - "FR-203"  # JohariFingerprint Per Embedder
 ```
 
+## Critical Context for Implementation
+
+### What Already Exists (DO NOT RECREATE)
+
+The following components are **fully implemented** and ready to use:
+
+1. **`JohariFingerprint`** (`crates/context-graph-core/src/types/fingerprint/johari/`)
+   - `core.rs`: 13-embedder quadrant weights, confidence, transition matrices
+   - `analysis.rs`: `find_blind_spots()`, `predict_transition()`, `openness()`, `is_aware()`
+   - `classify.rs`: `classify_quadrant()`, `dominant_quadrant()`, `set_quadrant()`
+   - Constants: `NUM_EMBEDDERS = 13`, `OPEN_IDX=0`, `HIDDEN_IDX=1`, `BLIND_IDX=2`, `UNKNOWN_IDX=3`
+
+2. **`JohariTransitionManager` Trait** (`crates/context-graph-core/src/johari/manager.rs`)
+   - `classify()`: Classify SemanticFingerprint → JohariFingerprint
+   - `transition()`: Single embedder transition with validation
+   - `transition_batch()`: Atomic multi-embedder transitions
+   - `find_by_quadrant()`: Query memories by quadrant pattern
+   - `discover_blind_spots()`: Find blind spots from external signals
+   - `get_transition_stats()`, `get_transition_history()`
+
+3. **`DefaultJohariManager`** (`crates/context-graph-core/src/johari/default_manager.rs`)
+   - Full implementation using `TeleologicalMemoryStore`
+   - All-or-nothing batch semantics
+   - Validates transitions via `JohariQuadrant::can_transition_to()`
+
+4. **`JohariQuadrant`** (`crates/context-graph-core/src/types/johari/quadrant.rs`)
+   - `Open`, `Hidden`, `Blind`, `Unknown` variants
+   - `valid_transitions()`, `can_transition_to()`, `transition_to()`
+   - `is_self_aware()`, `is_other_aware()`, `default_retrieval_weight()`
+
+5. **`TransitionTrigger`** (`crates/context-graph-core/src/types/johari/transition.rs`)
+   - `ExplicitShare`, `SelfRecognition`, `PatternDiscovery`, `Privatize`, `ExternalObservation`, `DreamConsolidation`
+
+6. **`JohariError`** (`crates/context-graph-core/src/johari/error.rs`)
+   - `NotFound`, `InvalidTransition`, `InvalidEmbedderIndex`, `StorageError`, `BatchValidationFailed`, `InvalidTrigger`
+
+7. **MCP Handler Infrastructure** (`crates/context-graph-mcp/src/handlers/`)
+   - `Handlers` struct in `core.rs` with `dispatch()` method
+   - Purpose handlers in `purpose.rs` (TASK-S003) - use as template
+   - Full state verification tests in `tests/full_state_verification_purpose.rs`
+
+### Established Patterns (MUST FOLLOW)
+
+#### Handler Pattern (from `purpose.rs`)
+```rust
+#[instrument(skip(self, params), fields(method = "johari/get_distribution"))]
+pub(super) async fn handle_johari_get_distribution(
+    &self,
+    id: Option<JsonRpcId>,
+    params: Option<serde_json::Value>,
+) -> JsonRpcResponse {
+    let params = match params {
+        Some(p) => p,
+        None => {
+            error!("johari/get_distribution: Missing parameters");
+            return JsonRpcResponse::error(
+                id,
+                error_codes::INVALID_PARAMS,
+                "Missing parameters - memory_id required",
+            );
+        }
+    };
+    // ... implementation
+}
+```
+
+#### Error Code Range (from `protocol.rs`)
+```rust
+// Johari-specific error codes (-32030 to -32039) - TASK-S004
+pub const JOHARI_INVALID_EMBEDDER_INDEX: i32 = -32030;
+pub const JOHARI_INVALID_QUADRANT: i32 = -32031;
+pub const JOHARI_INVALID_SOFT_CLASSIFICATION: i32 = -32032;
+pub const JOHARI_TRANSITION_ERROR: i32 = -32033;
+pub const JOHARI_BATCH_ERROR: i32 = -32034;
+```
+
+---
+
 ## Problem Statement
 
-Create new MCP handlers for Johari Window operations including per-embedder quadrant queries, quadrant distribution analysis, and transition state updates.
+Create MCP handlers exposing `JohariTransitionManager` operations via JSON-RPC. These handlers provide per-embedder quadrant queries, distribution analysis, transition execution, and cross-space blind spot discovery.
 
-## Context
+## UTL-Johari Quadrant Mapping (from constitution.yaml)
 
-The Johari Window model classifies each embedding space into four quadrants:
-- **Open**: Low entropy, High coherence (aware in this space)
-- **Blind**: High entropy, Low coherence (discovery opportunity)
-- **Hidden**: Low entropy, Low coherence (latent in this space)
-- **Unknown**: High entropy, High coherence (frontier in this space)
+```
+         Coherence (ΔC)
+             High
+              │
+   Hidden     │    Open
+   (ΔS<0.5,   │   (ΔS<0.5,
+    ΔC<0.5)   │    ΔC>0.5)
+              │
+Low ──────────┼────────── High Entropy (ΔS)
+              │
+   Blind      │   Unknown
+   (ΔS>0.5,   │   (ΔS>0.5,
+    ΔC<0.5)   │    ΔC>0.5)
+              │
+             Low
+```
 
-Cross-space Johari analysis enables targeted learning. A memory can be Open(semantic) but Blind(causal), indicating an opportunity for causal understanding.
+- **Open**: Low entropy (ΔS<0.5), High coherence (ΔC>0.5) → Direct recall
+- **Hidden**: Low entropy (ΔS<0.5), Low coherence (ΔC<0.5) → Private knowledge
+- **Blind**: High entropy (ΔS>0.5), Low coherence (ΔC<0.5) → Discovery opportunity
+- **Unknown**: High entropy (ΔS>0.5), High coherence (ΔC>0.5) → Frontier
 
-**These are NEW handlers - no legacy equivalents exist.**
+---
 
 ## Technical Specification
 
-### MCP Handler Function Signatures
+### New File: `crates/context-graph-mcp/src/handlers/johari.rs`
 
 ```rust
-/// Get Johari quadrant distribution for a memory
-pub async fn handle_johari_get_distribution(
-    request: JohariDistributionRequest,
-    store: Arc<dyn TeleologicalMemoryStore>,
-) -> Result<JohariDistributionResponse, McpError>;
+//! Johari quadrant handlers.
+//!
+//! TASK-S004: MCP handlers for JohariTransitionManager operations.
+//!
+//! # Methods
+//!
+//! - `johari/get_distribution`: Get per-embedder quadrant distribution for a memory
+//! - `johari/find_by_quadrant`: Find memories by quadrant for specific embedder
+//! - `johari/transition`: Execute validated transition with trigger
+//! - `johari/transition_batch`: Atomic multi-embedder transitions
+//! - `johari/cross_space_analysis`: Blind spots, learning opportunities
+//! - `johari/transition_probabilities`: Get transition matrix for embedder
+//!
+//! # Error Handling
+//!
+//! FAIL FAST: All errors return immediately with detailed error codes.
+//! NO fallbacks, NO default values, NO mock data.
 
-/// Find memories by Johari quadrant for specific embedder
-pub async fn handle_johari_find_by_quadrant(
-    request: JohariFindByQuadrantRequest,
-    store: Arc<dyn TeleologicalMemoryStore>,
-) -> Result<JohariFindByQuadrantResponse, McpError>;
+use serde_json::json;
+use tracing::{debug, error, instrument};
 
-/// Update Johari classification for a memory
-pub async fn handle_johari_update(
-    request: JohariUpdateRequest,
-    transition_mgr: Arc<dyn JohariTransitionManager>,
-) -> Result<JohariUpdateResponse, McpError>;
+use context_graph_core::johari::{
+    DefaultJohariManager, JohariTransitionManager, ClassificationContext,
+    QuadrantPattern, TimeRange, NUM_EMBEDDERS,
+};
+use context_graph_core::types::{JohariQuadrant, TransitionTrigger};
+use context_graph_core::types::fingerprint::JohariFingerprint;
 
-/// Get cross-space Johari analysis (blind spots, opportunities)
-pub async fn handle_johari_cross_space_analysis(
-    request: JohariCrossSpaceRequest,
-    store: Arc<dyn TeleologicalMemoryStore>,
-) -> Result<JohariCrossSpaceResponse, McpError>;
+use crate::protocol::{error_codes, JsonRpcId, JsonRpcResponse};
 
-/// Get Johari transition probabilities for embedder
-pub async fn handle_johari_transition_probabilities(
-    request: JohariTransitionRequest,
-    transition_mgr: Arc<dyn JohariTransitionManager>,
-) -> Result<JohariTransitionResponse, McpError>;
+use super::Handlers;
 ```
 
-### Request/Response JSON Schemas
+### Handler 1: `johari/get_distribution`
 
-#### JohariDistributionRequest
+**Purpose**: Get complete Johari quadrant distribution for a memory's 13 embedders.
 
+**Request**:
 ```json
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "required": ["memory_id"],
-  "properties": {
-    "memory_id": {
-      "type": "string",
-      "format": "uuid"
+  "method": "johari/get_distribution",
+  "params": {
+    "memory_id": "uuid-string",
+    "include_confidence": true,
+    "include_transition_predictions": false
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "memory_id": "uuid-string",
+  "per_embedder_quadrants": [
+    {
+      "embedder_index": 0,
+      "embedder_name": "E1_semantic",
+      "quadrant": "open",
+      "soft_classification": { "open": 1.0, "hidden": 0.0, "blind": 0.0, "unknown": 0.0 },
+      "confidence": 0.95,
+      "predicted_next_quadrant": "hidden"
     },
-    "include_confidence": {
-      "type": "boolean",
-      "default": true,
-      "description": "Include confidence scores per classification"
-    },
-    "include_transition_predictions": {
-      "type": "boolean",
-      "default": false,
-      "description": "Include predicted next quadrant per embedder"
+    // ... 12 more embedders (indices 1-12)
+  ],
+  "summary": {
+    "open_count": 5,
+    "hidden_count": 3,
+    "blind_count": 2,
+    "unknown_count": 3,
+    "average_confidence": 0.82
+  }
+}
+```
+
+**Implementation Notes**:
+- Retrieve `TeleologicalFingerprint` via `self.teleological_store.retrieve(uuid)`
+- Access `fingerprint.johari` for quadrant data
+- Use `johari.dominant_quadrant(embedder_idx)` for hard classification
+- Use `johari.quadrants[embedder_idx]` for soft weights
+- Use `johari.confidence[embedder_idx]` for confidence
+- Use `johari.predict_transition(embedder_idx, current)` for predictions
+
+**Error Codes**:
+- `-32602` (INVALID_PARAMS): Missing `memory_id`
+- `-32010` (FINGERPRINT_NOT_FOUND): UUID not found
+
+### Handler 2: `johari/find_by_quadrant`
+
+**Purpose**: Find memories where a specific embedder is in a target quadrant.
+
+**Request**:
+```json
+{
+  "method": "johari/find_by_quadrant",
+  "params": {
+    "embedder_index": 0,
+    "quadrant": "blind",
+    "min_confidence": 0.7,
+    "top_k": 100
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "embedder_index": 0,
+  "embedder_name": "E1_semantic",
+  "quadrant": "blind",
+  "memories": [
+    {
+      "id": "uuid-1",
+      "confidence": 0.92,
+      "soft_classification": [0.0, 0.0, 0.92, 0.08]
     }
+  ],
+  "total_count": 42
+}
+```
+
+**Implementation Notes**:
+- Create `QuadrantPattern::Exact` or use `QuadrantPattern::AtLeast`
+- Call `johari_manager.find_by_quadrant(pattern, top_k)`
+- Filter results by `min_confidence` in post-processing
+
+**Error Codes**:
+- `-32030` (JOHARI_INVALID_EMBEDDER_INDEX): `embedder_index >= 13`
+- `-32031` (JOHARI_INVALID_QUADRANT): Invalid quadrant string
+
+### Handler 3: `johari/transition`
+
+**Purpose**: Execute a single validated Johari transition.
+
+**Request**:
+```json
+{
+  "method": "johari/transition",
+  "params": {
+    "memory_id": "uuid-string",
+    "embedder_index": 5,
+    "to_quadrant": "open",
+    "trigger": "dream_consolidation"
   }
 }
 ```
 
-#### JohariDistributionResponse
-
+**Response**:
 ```json
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "required": ["memory_id", "per_embedder_quadrants"],
-  "properties": {
-    "memory_id": { "type": "string", "format": "uuid" },
-    "per_embedder_quadrants": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["embedder_index", "embedder_name", "quadrant"],
-        "properties": {
-          "embedder_index": { "type": "integer", "minimum": 0, "maximum": 11 },
-          "embedder_name": { "type": "string" },
-          "quadrant": {
-            "type": "string",
-            "enum": ["open", "hidden", "blind", "unknown"]
-          },
-          "soft_classification": {
-            "type": "object",
-            "properties": {
-              "open": { "type": "number" },
-              "hidden": { "type": "number" },
-              "blind": { "type": "number" },
-              "unknown": { "type": "number" }
-            },
-            "description": "Probability distribution across quadrants"
-          },
-          "confidence": { "type": "number" },
-          "predicted_next_quadrant": {
-            "type": "string",
-            "enum": ["open", "hidden", "blind", "unknown"]
-          }
-        }
-      },
-      "minItems": 12,
-      "maxItems": 12
-    },
-    "summary": {
-      "type": "object",
-      "properties": {
-        "open_count": { "type": "integer" },
-        "hidden_count": { "type": "integer" },
-        "blind_count": { "type": "integer" },
-        "unknown_count": { "type": "integer" },
-        "average_confidence": { "type": "number" }
-      }
+  "memory_id": "uuid-string",
+  "embedder_index": 5,
+  "from_quadrant": "unknown",
+  "to_quadrant": "open",
+  "trigger": "dream_consolidation",
+  "success": true,
+  "updated_johari": {
+    "quadrants": [[...], ...],
+    "confidence": [...]
+  }
+}
+```
+
+**Valid Transition Rules** (from `JohariQuadrant::valid_transitions()`):
+- `Open → Hidden` via `Privatize`
+- `Hidden → Open` via `ExplicitShare`
+- `Blind → Open` via `SelfRecognition`
+- `Blind → Hidden` via `SelfRecognition`
+- `Unknown → Open` via `DreamConsolidation` or `PatternDiscovery`
+- `Unknown → Hidden` via `DreamConsolidation`
+- `Unknown → Blind` via `ExternalObservation`
+
+**Implementation Notes**:
+- Parse `trigger` string to `TransitionTrigger` enum
+- Call `johari_manager.transition(uuid, embedder_idx, to_quadrant, trigger)`
+- Return error if transition is invalid (no fallback!)
+
+**Error Codes**:
+- `-32033` (JOHARI_TRANSITION_ERROR): Invalid transition or trigger
+
+### Handler 4: `johari/transition_batch`
+
+**Purpose**: Execute multiple transitions atomically (all-or-nothing).
+
+**Request**:
+```json
+{
+  "method": "johari/transition_batch",
+  "params": {
+    "memory_id": "uuid-string",
+    "transitions": [
+      { "embedder_index": 0, "to_quadrant": "open", "trigger": "dream_consolidation" },
+      { "embedder_index": 5, "to_quadrant": "blind", "trigger": "external_observation" }
+    ]
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "memory_id": "uuid-string",
+  "success": true,
+  "transitions_applied": 2,
+  "updated_johari": { ... }
+}
+```
+
+**Implementation Notes**:
+- Convert request to `Vec<(usize, JohariQuadrant, TransitionTrigger)>`
+- Call `johari_manager.transition_batch(uuid, transitions)`
+- If ANY fails, return error and apply NONE
+
+**Error Codes**:
+- `-32034` (JOHARI_BATCH_ERROR): Batch validation failed at index N
+
+### Handler 5: `johari/cross_space_analysis`
+
+**Purpose**: Analyze cross-space patterns (blind spots, learning opportunities).
+
+**Request**:
+```json
+{
+  "method": "johari/cross_space_analysis",
+  "params": {
+    "memory_ids": ["uuid-1", "uuid-2"],
+    "analysis_type": "blind_spots"
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "blind_spots": [
+    {
+      "memory_id": "uuid-1",
+      "aware_space": 0,
+      "aware_space_name": "E1_semantic",
+      "blind_space": 4,
+      "blind_space_name": "E5_causal",
+      "description": "Semantic understanding without causal insight",
+      "learning_suggestion": "Explore causal relationships via dream consolidation"
     }
-  }
-}
-```
-
-#### JohariFindByQuadrantRequest
-
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "required": ["embedder_index", "quadrant"],
-  "properties": {
-    "embedder_index": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 11,
-      "description": "Which embedding space to filter by"
-    },
-    "quadrant": {
-      "type": "string",
-      "enum": ["open", "hidden", "blind", "unknown"]
-    },
-    "min_confidence": {
-      "type": "number",
-      "minimum": 0.0,
-      "maximum": 1.0,
-      "default": 0.5
-    },
-    "top_k": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 1000,
-      "default": 100
+  ],
+  "learning_opportunities": [
+    {
+      "memory_id": "uuid-2",
+      "unknown_spaces": [7, 8, 9],
+      "potential": "high"
     }
+  ],
+  "quadrant_correlation": {
+    "E1_semantic_vs_E5_causal": 0.42
   }
 }
 ```
 
-#### JohariFindByQuadrantResponse
+**Implementation Notes**:
+- Use `johari.find_blind_spots()` which compares E1 Open weight × other embedder Blind weight
+- For learning opportunities, find memories with >5 Unknown embedders
+- Quadrant correlation requires scanning all memories and computing correlation matrix
 
+### Handler 6: `johari/transition_probabilities`
+
+**Purpose**: Get transition probability matrix for an embedder.
+
+**Request**:
 ```json
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "required": ["embedder_index", "quadrant", "memories"],
-  "properties": {
-    "embedder_index": { "type": "integer" },
-    "embedder_name": { "type": "string" },
-    "quadrant": { "type": "string" },
-    "memories": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "confidence": { "type": "number" },
-          "soft_classification": {
-            "type": "array",
-            "items": { "type": "number" },
-            "minItems": 4,
-            "maxItems": 4
-          }
-        }
-      }
-    },
-    "total_count": { "type": "integer" }
+  "method": "johari/transition_probabilities",
+  "params": {
+    "embedder_index": 0,
+    "memory_id": "uuid-string"
   }
 }
 ```
 
-#### JohariUpdateRequest
-
+**Response**:
 ```json
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "required": ["memory_id"],
-  "properties": {
-    "memory_id": {
-      "type": "string",
-      "format": "uuid"
-    },
-    "updates": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["embedder_index"],
-        "properties": {
-          "embedder_index": { "type": "integer", "minimum": 0, "maximum": 11 },
-          "new_quadrant": {
-            "type": "string",
-            "enum": ["open", "hidden", "blind", "unknown"]
-          },
-          "soft_classification": {
-            "type": "object",
-            "properties": {
-              "open": { "type": "number" },
-              "hidden": { "type": "number" },
-              "blind": { "type": "number" },
-              "unknown": { "type": "number" }
-            }
-          },
-          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
-        }
-      },
-      "description": "Updates per embedder (partial update allowed)"
-    },
-    "trigger_event": {
-      "type": "string",
-      "description": "What triggered this update (for evolution tracking)"
-    }
-  }
+  "embedder_index": 0,
+  "embedder_name": "E1_semantic",
+  "transition_matrix": {
+    "from_open": { "to_open": 0.7, "to_hidden": 0.3, "to_blind": 0.0, "to_unknown": 0.0 },
+    "from_hidden": { "to_open": 0.6, "to_hidden": 0.4, "to_blind": 0.0, "to_unknown": 0.0 },
+    "from_blind": { "to_open": 0.5, "to_hidden": 0.3, "to_blind": 0.2, "to_unknown": 0.0 },
+    "from_unknown": { "to_open": 0.25, "to_hidden": 0.25, "to_blind": 0.25, "to_unknown": 0.25 }
+  },
+  "sample_size": 150
 }
 ```
 
-#### JohariCrossSpaceRequest
+**Implementation Notes**:
+- Access `fingerprint.johari.transition_probs[embedder_idx]` for the 4x4 matrix
+- Each row corresponds to a source quadrant, each column to a target
 
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "properties": {
-    "memory_ids": {
-      "type": "array",
-      "items": { "type": "string", "format": "uuid" },
-      "description": "Specific memories to analyze (null for system-wide)"
-    },
-    "analysis_type": {
-      "type": "string",
-      "enum": ["blind_spots", "learning_opportunities", "quadrant_correlation", "all"],
-      "default": "all"
-    }
-  }
+---
+
+## Files to Modify
+
+### 1. `crates/context-graph-mcp/src/handlers/mod.rs`
+
+Add:
+```rust
+mod johari;
+```
+
+### 2. `crates/context-graph-mcp/src/handlers/core.rs`
+
+Add to `Handlers` struct:
+```rust
+/// Johari transition manager - manages Johari quadrant transitions.
+/// TASK-S004: Required for johari/* handlers.
+pub(super) johari_manager: Arc<dyn JohariTransitionManager>,
+```
+
+Add to `new()` and `with_shared_hierarchy()`:
+```rust
+use context_graph_core::johari::DefaultJohariManager;
+
+// Create Johari manager
+let johari_manager: Arc<dyn JohariTransitionManager> =
+    Arc::new(DefaultJohariManager::new(teleological_store.clone()));
+```
+
+Add to `dispatch()`:
+```rust
+// Johari operations (TASK-S004)
+methods::JOHARI_GET_DISTRIBUTION => {
+    self.handle_johari_get_distribution(request.id, request.params).await
+}
+methods::JOHARI_FIND_BY_QUADRANT => {
+    self.handle_johari_find_by_quadrant(request.id, request.params).await
+}
+methods::JOHARI_TRANSITION => {
+    self.handle_johari_transition(request.id, request.params).await
+}
+methods::JOHARI_TRANSITION_BATCH => {
+    self.handle_johari_transition_batch(request.id, request.params).await
+}
+methods::JOHARI_CROSS_SPACE_ANALYSIS => {
+    self.handle_johari_cross_space_analysis(request.id, request.params).await
+}
+methods::JOHARI_TRANSITION_PROBABILITIES => {
+    self.handle_johari_transition_probabilities(request.id, request.params).await
 }
 ```
 
-#### JohariCrossSpaceResponse
+### 3. `crates/context-graph-mcp/src/protocol.rs`
 
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "properties": {
-    "blind_spots": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "memory_id": { "type": "string", "format": "uuid" },
-          "aware_space": { "type": "integer" },
-          "blind_space": { "type": "integer" },
-          "description": { "type": "string" },
-          "learning_suggestion": { "type": "string" }
-        }
-      },
-      "description": "Memories that are Open in one space but Blind in another"
-    },
-    "learning_opportunities": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "memory_id": { "type": "string", "format": "uuid" },
-          "unknown_spaces": { "type": "array", "items": { "type": "integer" } },
-          "potential": { "type": "string", "enum": ["high", "medium", "low"] }
-        }
-      },
-      "description": "Memories with Unknown quadrants (frontiers)"
-    },
-    "quadrant_correlation": {
-      "type": "object",
-      "description": "Correlation matrix between embedder quadrant assignments",
-      "additionalProperties": {
-        "type": "object",
-        "additionalProperties": { "type": "number" }
-      }
-    }
-  }
-}
+Add to `error_codes` module:
+```rust
+// Johari-specific error codes (-32030 to -32039) - TASK-S004
+/// Invalid embedder index (must be 0-12)
+pub const JOHARI_INVALID_EMBEDDER_INDEX: i32 = -32030;
+/// Invalid quadrant string (must be open/hidden/blind/unknown)
+pub const JOHARI_INVALID_QUADRANT: i32 = -32031;
+/// Soft classification weights don't sum to 1.0
+pub const JOHARI_INVALID_SOFT_CLASSIFICATION: i32 = -32032;
+/// Transition validation failed
+pub const JOHARI_TRANSITION_ERROR: i32 = -32033;
+/// Batch transition failed (all-or-nothing)
+pub const JOHARI_BATCH_ERROR: i32 = -32034;
 ```
 
-#### JohariTransitionRequest
-
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "required": ["embedder_index"],
-  "properties": {
-    "embedder_index": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 11
-    },
-    "memory_id": {
-      "type": "string",
-      "format": "uuid",
-      "description": "Get memory-specific probabilities (null for global)"
-    }
-  }
-}
+Add to `methods` module:
+```rust
+// Johari operations (TASK-S004)
+/// Get per-embedder Johari quadrant distribution
+pub const JOHARI_GET_DISTRIBUTION: &str = "johari/get_distribution";
+/// Find memories by quadrant for specific embedder
+pub const JOHARI_FIND_BY_QUADRANT: &str = "johari/find_by_quadrant";
+/// Execute single Johari transition
+pub const JOHARI_TRANSITION: &str = "johari/transition";
+/// Execute batch Johari transitions (atomic)
+pub const JOHARI_TRANSITION_BATCH: &str = "johari/transition_batch";
+/// Cross-space Johari analysis (blind spots, opportunities)
+pub const JOHARI_CROSS_SPACE_ANALYSIS: &str = "johari/cross_space_analysis";
+/// Get transition probability matrix
+pub const JOHARI_TRANSITION_PROBABILITIES: &str = "johari/transition_probabilities";
 ```
 
-#### JohariTransitionResponse
+---
 
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "required": ["embedder_index", "transition_matrix"],
-  "properties": {
-    "embedder_index": { "type": "integer" },
-    "embedder_name": { "type": "string" },
-    "transition_matrix": {
-      "type": "object",
-      "properties": {
-        "from_open": {
-          "type": "object",
-          "properties": {
-            "to_open": { "type": "number" },
-            "to_hidden": { "type": "number" },
-            "to_blind": { "type": "number" },
-            "to_unknown": { "type": "number" }
-          }
-        },
-        "from_hidden": { "$ref": "#/definitions/TransitionRow" },
-        "from_blind": { "$ref": "#/definitions/TransitionRow" },
-        "from_unknown": { "$ref": "#/definitions/TransitionRow" }
-      },
-      "description": "4x4 transition probability matrix"
-    },
-    "sample_size": {
-      "type": "integer",
-      "description": "Number of transitions used to compute probabilities"
-    }
-  }
-}
-```
+## Test File: `crates/context-graph-mcp/src/handlers/tests/full_state_verification_johari.rs`
 
-### Error Handling
+### Required Test Structure
+
+Tests MUST follow the Full State Verification pattern from `full_state_verification_purpose.rs`:
 
 ```rust
-#[derive(Debug, Clone, Serialize)]
-pub enum McpJohariError {
-    /// Invalid embedder index
-    InvalidEmbedderIndex { index: usize, max: usize },
-    /// Invalid quadrant name
-    InvalidQuadrant { quadrant: String },
-    /// Soft classification doesn't sum to 1.0
-    InvalidSoftClassification { sum: f32 },
-    /// Memory not found
-    MemoryNotFound { id: Uuid },
-    /// Confidence out of range
-    ConfidenceOutOfRange { value: f32 },
+//! Full State Verification Tests for Johari Handlers
+//!
+//! TASK-S004: Comprehensive verification that directly inspects the Source of Truth.
+//!
+//! ## Verification Methodology
+//!
+//! 1. Define Source of Truth: InMemoryTeleologicalStore + JohariTransitionManager
+//! 2. Execute & Inspect: Run handlers, then directly query stores to verify
+//! 3. Edge Case Audit: Test 3+ edge cases with BEFORE/AFTER state logging
+//! 4. Evidence of Success: Print actual data residing in the system
+
+use std::sync::Arc;
+use context_graph_core::johari::DefaultJohariManager;
+use context_graph_core::stubs::InMemoryTeleologicalStore;
+// ... additional imports
+
+/// Create test handlers with SHARED access for direct verification.
+fn create_verifiable_handlers() -> (
+    Handlers,
+    Arc<InMemoryTeleologicalStore>,
+    Arc<dyn JohariTransitionManager>,
+) {
+    let store = Arc::new(InMemoryTeleologicalStore::new());
+    let johari_manager: Arc<dyn JohariTransitionManager> =
+        Arc::new(DefaultJohariManager::new(store.clone()));
+    // ... setup handlers with shared johari_manager
+    (handlers, store, johari_manager)
 }
 ```
 
-## Implementation Requirements
+### Required Tests
 
-### Prerequisites
+1. **`test_full_state_verification_distribution_cycle`**
+   - Store memory → Get distribution → Verify all 13 embedders present
+   - BEFORE/AFTER state logging
+   - Direct `store.retrieve(uuid)` to verify
 
-- [ ] TASK-F003 complete (JohariFingerprint struct)
-- [ ] TASK-L004 complete (Johari Transition Manager)
+2. **`test_full_state_verification_transition_persistence`**
+   - Store memory with Unknown quadrant
+   - Execute transition Unknown→Open via `DreamConsolidation`
+   - Verify via `store.retrieve(uuid)` that quadrant changed
+   - Print BEFORE/AFTER johari state
 
-### Scope
+3. **`test_full_state_verification_batch_all_or_nothing`**
+   - Store memory with multiple Unknown embedders
+   - Submit batch with one INVALID transition
+   - Verify ALL embedders unchanged (all-or-nothing)
+   - Direct store inspection
 
-#### In Scope
+4. **Edge Case Tests** (3 minimum):
+   - `edge_case_1_embedder_index_13`: Invalid index must return `-32030`
+   - `edge_case_2_invalid_quadrant_string`: Must return `-32031`
+   - `edge_case_3_boundary_classification_0_5_0_5`: At threshold (Blind per spec)
 
-- Per-memory Johari distribution queries
-- Find memories by quadrant per embedder
-- Johari classification updates with evolution tracking
-- Cross-space analysis (blind spots, opportunities)
-- Transition probability queries
-- Soft classification support (probability distributions)
+---
 
-#### Out of Scope
+## Full State Verification Requirements
 
-- Purpose operations (TASK-S003)
-- Search operations (TASK-S002)
-- Storage operations (TASK-S001)
+After completing the logic, you MUST perform Full State Verification:
 
-### Constraints
+### 1. Define the Source of Truth
 
-- All 12 embedders must have quadrant data
-- Soft classifications must sum to 1.0
-- Confidence must be in [0, 1]
-- Transition updates trigger evolution snapshots
+For Johari handlers, the Source of Truth is:
+- **`InMemoryTeleologicalStore`**: Contains `TeleologicalFingerprint` with `johari: JohariFingerprint`
+- **`JohariFingerprint.quadrants[embedder_idx]`**: The actual soft weights
+- **`JohariFingerprint.confidence[embedder_idx]`**: Confidence per embedder
+
+### 2. Execute & Inspect
+
+For EVERY handler test:
+```rust
+// Execute handler
+let response = handlers.dispatch(request).await;
+
+// MUST verify in Source of Truth (not just return value)
+let stored = store.retrieve(uuid).await.unwrap().unwrap();
+assert_eq!(
+    stored.johari.dominant_quadrant(embedder_idx),
+    JohariQuadrant::Open,
+    "[VERIFICATION FAILED] Transition not persisted to store"
+);
+
+println!("[VERIFIED] Transition persisted: {:?} → {:?}",
+    before_quadrant, after_quadrant);
+```
+
+### 3. Boundary & Edge Case Audit
+
+Simulate and verify these 3 edge cases:
+
+**Edge Case 1: Empty transitions array**
+```rust
+// BEFORE: Print current johari state
+let before = store.retrieve(id).await.unwrap().unwrap();
+println!("[STATE BEFORE] quadrants: {:?}", before.johari.quadrants);
+
+// ACTION: Submit empty transitions array
+let response = handlers.dispatch(batch_with_empty).await;
+
+// AFTER: Verify state unchanged
+let after = store.retrieve(id).await.unwrap().unwrap();
+assert_eq!(before.johari.quadrants, after.johari.quadrants);
+println!("[EDGE CASE 1 PASSED] Empty transitions handled correctly");
+```
+
+**Edge Case 2: Maximum embedder index (12 = valid, 13 = invalid)**
+```rust
+// Valid max index
+let valid = manager.transition(id, 12, Open, DreamConsolidation).await;
+assert!(valid.is_ok());
+
+// Invalid index
+let invalid = manager.transition(id, 13, Open, DreamConsolidation).await;
+assert!(matches!(invalid, Err(JohariError::InvalidEmbedderIndex(13))));
+println!("[EDGE CASE 2 PASSED] Boundary embedder index validated");
+```
+
+**Edge Case 3: Soft classification sum check (must equal 1.0)**
+```rust
+// Verify all stored soft classifications sum to 1.0
+let stored = store.retrieve(id).await.unwrap().unwrap();
+for (i, weights) in stored.johari.quadrants.iter().enumerate() {
+    let sum: f32 = weights.iter().sum();
+    assert!((sum - 1.0).abs() < 0.001,
+        "E{} weights sum to {} (expected 1.0)", i+1, sum);
+}
+println!("[EDGE CASE 3 PASSED] All soft classifications sum to 1.0");
+```
+
+### 4. Evidence of Success
+
+Every test MUST print a summary:
+```rust
+println!("======================================================================");
+println!("EVIDENCE OF SUCCESS - Johari Handler Verification");
+println!("======================================================================");
+println!("Source of Truth: InMemoryTeleologicalStore");
+println!("  - Fingerprint ID: {}", uuid);
+println!("  - E1 quadrant: {:?}", stored.johari.dominant_quadrant(0));
+println!("  - E5 quadrant: {:?}", stored.johari.dominant_quadrant(4));
+println!("Physical Evidence:");
+println!("  - Transition executed: {:?} → {:?}", from, to);
+println!("  - Persisted to store: YES (verified via retrieve)");
+println!("======================================================================");
+```
+
+---
+
+## Verification Commands
+
+```bash
+# Run all Johari handler tests
+cargo test -p context-graph-mcp johari --nocapture
+
+# Run full state verification tests only
+cargo test -p context-graph-mcp full_state_verification_johari --nocapture
+
+# Run edge case tests
+cargo test -p context-graph-mcp edge_case --nocapture
+
+# Verify transition persistence
+cargo test -p context-graph-mcp test_full_state_verification_transition_persistence --nocapture
+```
+
+---
 
 ## Definition of Done
 
 ### Implementation Checklist
 
-- [ ] `handle_johari_get_distribution` with soft classification
-- [ ] `handle_johari_find_by_quadrant` with confidence filter
-- [ ] `handle_johari_update` with evolution tracking
-- [ ] `handle_johari_cross_space_analysis` for insights
-- [ ] `handle_johari_transition_probabilities` for prediction
-- [ ] All error cases with context
+- [ ] `johari.rs` handler file created with all 6 handlers
+- [ ] `mod.rs` updated with `mod johari;`
+- [ ] `core.rs` updated with `johari_manager` field and dispatch cases
+- [ ] `protocol.rs` updated with error codes and method constants
+- [ ] All handlers use `tracing::instrument` for logging
+- [ ] All handlers return proper error codes (no generic errors)
 
-### Testing Requirements
+### Testing Checklist (Full State Verification)
 
-Tests MUST use REAL Johari classifications from actual entropy/coherence measurements.
+- [ ] `test_full_state_verification_distribution_cycle` - Store→Get→Verify
+- [ ] `test_full_state_verification_transition_persistence` - Transition persists to store
+- [ ] `test_full_state_verification_batch_all_or_nothing` - Failed batch preserves state
+- [ ] `edge_case_1_embedder_index_13` - Returns `-32030`
+- [ ] `edge_case_2_invalid_quadrant_string` - Returns `-32031`
+- [ ] `edge_case_3_boundary_classification` - Correct behavior at threshold
+- [ ] All tests print BEFORE/AFTER state
+- [ ] All tests verify via direct store access (not just handler response)
+- [ ] Evidence of success printed for each test
 
-```rust
-#[cfg(test)]
-mod tests {
-    use crate::test_fixtures::load_real_johari_fingerprints;
+### NO Backwards Compatibility
 
-    #[tokio::test]
-    async fn test_johari_distribution() {
-        let memory = store_memory_with_real_johari();
+- NO fallback to default values on error
+- NO mock data in tests (use real `InMemoryTeleologicalStore`)
+- NO workarounds for invalid inputs (fail fast with error code)
+- NO tests that pass when the system is broken
 
-        let request = JohariDistributionRequest {
-            memory_id: memory.id,
-            include_confidence: true,
-            include_transition_predictions: true,
-        };
+---
 
-        let response = handle_johari_get_distribution(request, store.clone()).await.unwrap();
+## Embedder Name Reference
 
-        assert_eq!(response.per_embedder_quadrants.len(), 12);
+| Index | Name | Domain |
+|-------|------|--------|
+| 0 | E1_semantic | General semantic |
+| 1 | E2_episodic | Episode/temporal |
+| 2 | E3_procedural | Procedures/how-to |
+| 3 | E4_conceptual | Concepts/taxonomy |
+| 4 | E5_causal | Cause-effect |
+| 5 | E6_emotional | Emotional context |
+| 6 | E7_metacognitive | Meta-awareness |
+| 7 | E8_spatial | Spatial/structural |
+| 8 | E9_linguistic | Language patterns |
+| 9 | E10_social | Social relationships |
+| 10 | E11_contextual | Context awareness |
+| 11 | E12_predictive | Predictions/forecasts |
+| 12 | E13_sparse | SPLADE sparse vectors |
 
-        // Verify all quadrants are valid
-        for eq in &response.per_embedder_quadrants {
-            assert!(["open", "hidden", "blind", "unknown"].contains(&eq.quadrant.as_str()));
-            assert!(eq.confidence >= 0.0 && eq.confidence <= 1.0);
-        }
-
-        // Verify summary
-        let sum = response.summary.open_count
-            + response.summary.hidden_count
-            + response.summary.blind_count
-            + response.summary.unknown_count;
-        assert_eq!(sum, 12);
-    }
-
-    #[tokio::test]
-    async fn test_johari_find_by_quadrant() {
-        // Store memories with known Johari patterns
-        let semantic_open_memories = store_semantic_open_memories(5);
-
-        let request = JohariFindByQuadrantRequest {
-            embedder_index: 0, // E1 semantic
-            quadrant: "open".into(),
-            min_confidence: 0.7,
-            top_k: 10,
-        };
-
-        let response = handle_johari_find_by_quadrant(request, store.clone()).await.unwrap();
-
-        // All returned memories should have E1 in Open quadrant
-        for mem in &response.memories {
-            assert!(mem.confidence >= 0.7);
-        }
-        assert!(response.total_count >= 5);
-    }
-
-    #[tokio::test]
-    async fn test_johari_cross_space_blind_spots() {
-        // Memory that is Open(E1) but Blind(E5)
-        let blind_spot_memory = create_semantic_open_causal_blind_memory();
-
-        let request = JohariCrossSpaceRequest {
-            memory_ids: Some(vec![blind_spot_memory.id]),
-            analysis_type: "blind_spots".into(),
-        };
-
-        let response = handle_johari_cross_space_analysis(request, store.clone()).await.unwrap();
-
-        assert!(!response.blind_spots.is_empty());
-        let spot = &response.blind_spots[0];
-        assert_eq!(spot.aware_space, 0);  // E1 semantic
-        assert_eq!(spot.blind_space, 4);  // E5 causal
-    }
-
-    #[tokio::test]
-    async fn test_johari_update_triggers_evolution() {
-        let memory = store_memory_with_real_johari();
-        let initial_evolution_count = memory.purpose_evolution.len();
-
-        let request = JohariUpdateRequest {
-            memory_id: memory.id,
-            updates: vec![JohariEmbedderUpdate {
-                embedder_index: 2,
-                new_quadrant: Some("open".into()),
-                confidence: Some(0.9),
-                ..Default::default()
-            }],
-            trigger_event: Some("awareness_gained".into()),
-        };
-
-        let response = handle_johari_update(request, mgr.clone()).await.unwrap();
-
-        // Verify evolution snapshot was created
-        let updated = store.retrieve(memory.id).await.unwrap().unwrap();
-        assert!(updated.purpose_evolution.len() > initial_evolution_count);
-    }
-}
-```
-
-### Verification Commands
-
-```bash
-# Run Johari handler tests
-cargo test -p context-graph-mcp johari_handlers
-
-# Verify cross-space analysis
-cargo test -p context-graph-mcp cross_space_analysis
-
-# Test transition matrix
-cargo test -p context-graph-mcp johari_transitions
-```
-
-## Files to Create
-
-| File | Description |
-|------|-------------|
-| `crates/context-graph-mcp/src/handlers/johari.rs` | Johari quadrant handlers |
-| `crates/context-graph-mcp/src/schemas/johari_distribution.json` | Distribution schema |
-| `crates/context-graph-mcp/src/schemas/johari_cross_space.json` | Cross-space schema |
-
-## Files to Modify
-
-| File | Change |
-|------|--------|
-| `crates/context-graph-mcp/src/handlers/mod.rs` | Export johari handlers |
-| `crates/context-graph-mcp/src/router.rs` | Register johari routes |
-| `crates/context-graph-mcp/src/error.rs` | Add McpJohariError |
+---
 
 ## Traceability
 
 | Requirement | Source | Coverage |
 |-------------|--------|----------|
 | FR-203 | FUNC-SPEC-001 | Johari per embedder |
-| AC-203.1 | FUNC-SPEC-001 | All 12 spaces classified |
+| AC-203.1 | FUNC-SPEC-001 | All 13 spaces classified |
 | AC-203.2 | FUNC-SPEC-001 | Confidence scores |
 | AC-203.3 | FUNC-SPEC-001 | Transition probabilities |
-| AC-203.4 | FUNC-SPEC-001 | Bitmap index queries |
+| AC-203.4 | FUNC-SPEC-001 | Pattern-based queries |
 
 ---
 
-*Task created: 2026-01-04*
+*Task updated: 2026-01-05*
 *Layer: Surface*
 *Priority: P1 - Awareness features*

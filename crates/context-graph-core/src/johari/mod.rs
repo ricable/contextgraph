@@ -73,7 +73,7 @@ mod manager;
 mod stats;
 
 // Re-export main types
-pub use default_manager::DefaultJohariManager;
+pub use default_manager::{DefaultJohariManager, DynDefaultJohariManager};
 pub use error::JohariError;
 pub use external_signal::{BlindSpotCandidate, ExternalSignal};
 pub use manager::{

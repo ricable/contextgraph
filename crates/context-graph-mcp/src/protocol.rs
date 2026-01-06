@@ -120,6 +120,28 @@ pub mod error_codes {
     pub const CHECKPOINT_ERROR: i32 = -32017;
     /// Batch operation failed
     pub const BATCH_OPERATION_ERROR: i32 = -32018;
+
+    // Goal/alignment specific error codes (-32020 to -32029) - TASK-S003
+    /// Goal not found in hierarchy
+    pub const GOAL_NOT_FOUND: i32 = -32020;
+    /// North Star goal not configured in hierarchy
+    pub const NORTH_STAR_NOT_CONFIGURED: i32 = -32021;
+    /// Alignment computation failed
+    pub const ALIGNMENT_COMPUTATION_ERROR: i32 = -32022;
+    /// Goal hierarchy operation failed
+    pub const GOAL_HIERARCHY_ERROR: i32 = -32023;
+
+    // Johari-specific error codes (-32030 to -32039) - TASK-S004
+    /// Invalid embedder index (must be 0-12)
+    pub const JOHARI_INVALID_EMBEDDER_INDEX: i32 = -32030;
+    /// Invalid quadrant string (must be open/hidden/blind/unknown)
+    pub const JOHARI_INVALID_QUADRANT: i32 = -32031;
+    /// Soft classification weights don't sum to 1.0
+    pub const JOHARI_INVALID_SOFT_CLASSIFICATION: i32 = -32032;
+    /// Transition validation failed
+    pub const JOHARI_TRANSITION_ERROR: i32 = -32033;
+    /// Batch transition failed (all-or-nothing)
+    pub const JOHARI_BATCH_ERROR: i32 = -32034;
 }
 
 /// MCP method names.
@@ -156,6 +178,34 @@ pub mod methods {
     // System operations
     pub const SYSTEM_STATUS: &str = "system/status";
     pub const SYSTEM_HEALTH: &str = "system/health";
+
+    // Purpose/goal operations (TASK-S003)
+    /// Query memories by 13D purpose vector similarity
+    pub const PURPOSE_QUERY: &str = "purpose/query";
+    /// Check alignment to North Star goal with threshold classification
+    pub const PURPOSE_NORTH_STAR_ALIGNMENT: &str = "purpose/north_star_alignment";
+    /// Navigate goal hierarchy (get_children, get_ancestors, get_subtree, get_aligned_memories)
+    pub const GOAL_HIERARCHY_QUERY: &str = "goal/hierarchy_query";
+    /// Find memories aligned to a specific goal
+    pub const GOAL_ALIGNED_MEMORIES: &str = "goal/aligned_memories";
+    /// Detect alignment drift in memories
+    pub const PURPOSE_DRIFT_CHECK: &str = "purpose/drift_check";
+    /// Update the North Star goal
+    pub const NORTH_STAR_UPDATE: &str = "purpose/north_star_update";
+
+    // Johari operations (TASK-S004)
+    /// Get per-embedder Johari quadrant distribution
+    pub const JOHARI_GET_DISTRIBUTION: &str = "johari/get_distribution";
+    /// Find memories by quadrant for specific embedder
+    pub const JOHARI_FIND_BY_QUADRANT: &str = "johari/find_by_quadrant";
+    /// Execute single Johari transition
+    pub const JOHARI_TRANSITION: &str = "johari/transition";
+    /// Execute batch Johari transitions (atomic)
+    pub const JOHARI_TRANSITION_BATCH: &str = "johari/transition_batch";
+    /// Cross-space Johari analysis (blind spots, opportunities)
+    pub const JOHARI_CROSS_SPACE_ANALYSIS: &str = "johari/cross_space_analysis";
+    /// Get transition probability matrix
+    pub const JOHARI_TRANSITION_PROBABILITIES: &str = "johari/transition_probabilities";
 }
 
 #[cfg(test)]

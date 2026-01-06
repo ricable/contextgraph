@@ -1,0 +1,1407 @@
+//! Purpose Handler Tests
+//!
+//! TASK-S003: Tests for purpose/query, purpose/north_star_alignment, goal/hierarchy_query,
+//! goal/aligned_memories, purpose/drift_check, and purpose/north_star_update handlers.
+//!
+//! NO MOCK DATA - uses InMemoryTeleologicalStore with StubMultiArrayProvider and real GoalHierarchy.
+//!
+//! Tests verify:
+//! - purpose/query with 13D purpose vector similarity
+//! - purpose/north_star_alignment with threshold classification
+//! - goal/hierarchy_query operations (get_all, get_goal, get_children, get_ancestors, get_subtree)
+//! - goal/aligned_memories for finding memories aligned to specific goals
+//! - purpose/drift_check for detecting alignment drift
+//! - purpose/north_star_update for setting/replacing North Star goal
+//! - Error handling for invalid parameters
+
+use serde_json::json;
+
+use crate::protocol::JsonRpcId;
+use context_graph_core::types::fingerprint::NUM_EMBEDDERS;
+
+use super::{create_test_handlers, create_test_handlers_no_north_star, make_request};
+
+// =============================================================================
+// purpose/query Tests
+// =============================================================================
+
+/// Test purpose/query with valid 13-element purpose vector.
+#[tokio::test]
+async fn test_purpose_query_valid_vector() {
+    let handlers = create_test_handlers();
+
+    // First store some content to search
+    let store_params = json!({
+        "content": "Machine learning enables computers to learn from data",
+        "importance": 0.9
+    });
+    let store_request = make_request("memory/store", Some(JsonRpcId::Number(1)), Some(store_params));
+    handlers.dispatch(store_request).await;
+
+    // Query with 13D purpose vector
+    let purpose_vector: Vec<f64> = vec![
+        0.8, 0.5, 0.3, 0.3, 0.6, 0.2, 0.7, 0.5, 0.4, 0.3, 0.5, 0.3, 0.2,
+    ];
+
+    let query_params = json!({
+        "purpose_vector": purpose_vector,
+        "topK": 10
+    });
+    let query_request = make_request("purpose/query", Some(JsonRpcId::Number(2)), Some(query_params));
+    let response = handlers.dispatch(query_request).await;
+
+    assert!(response.error.is_none(), "purpose/query should succeed");
+    let result = response.result.expect("Should have result");
+
+    // Verify response structure
+    assert!(result.get("results").is_some(), "Should have results array");
+    assert!(result.get("count").is_some(), "Should have count");
+    assert!(result.get("query_metadata").is_some(), "Should have query_metadata");
+
+    // Verify query_metadata structure
+    let metadata = result.get("query_metadata").unwrap();
+    assert!(
+        metadata.get("purpose_vector_used").is_some(),
+        "Should include purpose_vector_used"
+    );
+    assert!(
+        metadata.get("dominant_embedder").is_some(),
+        "Should include dominant_embedder"
+    );
+    assert!(
+        metadata.get("query_coherence").is_some(),
+        "Should include query_coherence"
+    );
+    assert!(
+        metadata.get("search_time_ms").is_some(),
+        "Should report search_time_ms"
+    );
+
+    // Verify purpose_vector_used has 13 elements
+    let pv_used = metadata
+        .get("purpose_vector_used")
+        .and_then(|v| v.as_array());
+    assert!(pv_used.is_some(), "purpose_vector_used must be array");
+    assert_eq!(
+        pv_used.unwrap().len(),
+        NUM_EMBEDDERS,
+        "purpose_vector_used must have 13 elements"
+    );
+}
+
+/// Test purpose/query fails with missing purpose_vector.
+#[tokio::test]
+async fn test_purpose_query_missing_vector_fails() {
+    let handlers = create_test_handlers();
+
+    let query_params = json!({
+        "topK": 10
+    });
+    let query_request = make_request("purpose/query", Some(JsonRpcId::Number(1)), Some(query_params));
+    let response = handlers.dispatch(query_request).await;
+
+    assert!(
+        response.error.is_some(),
+        "purpose/query must fail without purpose_vector"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32602, "Should return INVALID_PARAMS error code");
+    assert!(
+        error.message.contains("purpose_vector"),
+        "Error should mention missing purpose_vector"
+    );
+}
+
+/// Test purpose/query fails with 12-element purpose vector (must be 13).
+#[tokio::test]
+async fn test_purpose_query_wrong_vector_size_fails() {
+    let handlers = create_test_handlers();
+
+    // Only 12 elements (WRONG - must be 13!)
+    let invalid_vector: Vec<f64> = vec![0.5; 12];
+
+    let query_params = json!({
+        "purpose_vector": invalid_vector
+    });
+    let query_request = make_request("purpose/query", Some(JsonRpcId::Number(1)), Some(query_params));
+    let response = handlers.dispatch(query_request).await;
+
+    assert!(
+        response.error.is_some(),
+        "purpose/query must fail with 12-element vector"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32602, "Should return INVALID_PARAMS error code");
+    assert!(
+        error.message.contains("13") || error.message.contains("elements"),
+        "Error should mention 13 elements required"
+    );
+}
+
+/// Test purpose/query fails with out-of-range values.
+#[tokio::test]
+async fn test_purpose_query_out_of_range_values_fails() {
+    let handlers = create_test_handlers();
+
+    // Value > 1.0 is invalid
+    let mut invalid_vector: Vec<f64> = vec![0.5; 13];
+    invalid_vector[5] = 1.5; // Out of range!
+
+    let query_params = json!({
+        "purpose_vector": invalid_vector
+    });
+    let query_request = make_request("purpose/query", Some(JsonRpcId::Number(1)), Some(query_params));
+    let response = handlers.dispatch(query_request).await;
+
+    assert!(
+        response.error.is_some(),
+        "purpose/query must fail with out-of-range value"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32602, "Should return INVALID_PARAMS error code");
+    assert!(
+        error.message.contains("range") || error.message.contains("0.0") || error.message.contains("1.0"),
+        "Error should mention valid range [0.0, 1.0]"
+    );
+}
+
+/// Test purpose/query with min_alignment filter.
+#[tokio::test]
+async fn test_purpose_query_min_alignment_filter() {
+    let handlers = create_test_handlers();
+
+    // Store content
+    let store_params = json!({
+        "content": "Purpose alignment testing content",
+        "importance": 0.8
+    });
+    let store_request = make_request("memory/store", Some(JsonRpcId::Number(1)), Some(store_params));
+    handlers.dispatch(store_request).await;
+
+    let purpose_vector: Vec<f64> = vec![0.7; 13];
+
+    let query_params = json!({
+        "purpose_vector": purpose_vector,
+        "minAlignment": 0.5,
+        "topK": 5
+    });
+    let query_request = make_request("purpose/query", Some(JsonRpcId::Number(2)), Some(query_params));
+    let response = handlers.dispatch(query_request).await;
+
+    assert!(response.error.is_none(), "purpose/query should succeed");
+    let result = response.result.expect("Should have result");
+
+    // Verify min_alignment_filter is reported
+    let metadata = result.get("query_metadata").unwrap();
+    let min_filter = metadata.get("min_alignment_filter").and_then(|v| v.as_f64());
+    assert_eq!(min_filter, Some(0.5), "Should report min_alignment_filter");
+}
+
+// =============================================================================
+// purpose/north_star_alignment Tests
+// =============================================================================
+
+/// Test purpose/north_star_alignment with valid fingerprint.
+#[tokio::test]
+async fn test_north_star_alignment_valid_fingerprint() {
+    let handlers = create_test_handlers();
+
+    // Store content first
+    let store_params = json!({
+        "content": "Building the best ML learning system for education",
+        "importance": 0.9
+    });
+    let store_request = make_request("memory/store", Some(JsonRpcId::Number(1)), Some(store_params));
+    let store_response = handlers.dispatch(store_request).await;
+    let fingerprint_id = store_response
+        .result
+        .unwrap()
+        .get("fingerprintId")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Check alignment
+    let align_params = json!({
+        "fingerprint_id": fingerprint_id,
+        "include_breakdown": true,
+        "include_patterns": true
+    });
+    let align_request = make_request(
+        "purpose/north_star_alignment",
+        Some(JsonRpcId::Number(2)),
+        Some(align_params),
+    );
+    let response = handlers.dispatch(align_request).await;
+
+    assert!(
+        response.error.is_none(),
+        "purpose/north_star_alignment should succeed"
+    );
+    let result = response.result.expect("Should have result");
+
+    // Verify response structure
+    assert_eq!(
+        result.get("fingerprint_id").and_then(|v| v.as_str()),
+        Some(fingerprint_id.as_str()),
+        "Should return fingerprint_id"
+    );
+
+    let alignment = result.get("alignment").expect("Should have alignment");
+    assert!(
+        alignment.get("composite_score").is_some(),
+        "Should have composite_score"
+    );
+    assert!(
+        alignment.get("threshold").is_some(),
+        "Should have threshold classification"
+    );
+    assert!(
+        alignment.get("is_healthy").is_some(),
+        "Should have is_healthy"
+    );
+    assert!(
+        alignment.get("needs_attention").is_some(),
+        "Should have needs_attention"
+    );
+    assert!(alignment.get("severity").is_some(), "Should have severity");
+
+    // Verify level breakdown
+    let breakdown = result.get("level_breakdown").expect("Should have level_breakdown");
+    assert!(breakdown.get("north_star").is_some(), "Should have north_star level");
+    assert!(breakdown.get("strategic").is_some(), "Should have strategic level");
+    assert!(breakdown.get("tactical").is_some(), "Should have tactical level");
+    assert!(breakdown.get("immediate").is_some(), "Should have immediate level");
+
+    // Verify flags
+    let flags = result.get("flags").expect("Should have flags");
+    assert!(
+        flags.get("tactical_without_strategic").is_some(),
+        "Should have tactical_without_strategic flag"
+    );
+    assert!(
+        flags.get("needs_intervention").is_some(),
+        "Should have needs_intervention flag"
+    );
+
+    assert!(
+        result.get("computation_time_ms").is_some(),
+        "Should report computation_time_ms"
+    );
+}
+
+/// Test purpose/north_star_alignment fails with missing fingerprint_id.
+#[tokio::test]
+async fn test_north_star_alignment_missing_id_fails() {
+    let handlers = create_test_handlers();
+
+    let align_params = json!({
+        "include_breakdown": true
+    });
+    let align_request = make_request(
+        "purpose/north_star_alignment",
+        Some(JsonRpcId::Number(1)),
+        Some(align_params),
+    );
+    let response = handlers.dispatch(align_request).await;
+
+    assert!(
+        response.error.is_some(),
+        "purpose/north_star_alignment must fail without fingerprint_id"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32602, "Should return INVALID_PARAMS error code");
+    assert!(
+        error.message.contains("fingerprint_id"),
+        "Error should mention missing fingerprint_id"
+    );
+}
+
+/// Test purpose/north_star_alignment fails with invalid UUID.
+#[tokio::test]
+async fn test_north_star_alignment_invalid_uuid_fails() {
+    let handlers = create_test_handlers();
+
+    let align_params = json!({
+        "fingerprint_id": "not-a-valid-uuid"
+    });
+    let align_request = make_request(
+        "purpose/north_star_alignment",
+        Some(JsonRpcId::Number(1)),
+        Some(align_params),
+    );
+    let response = handlers.dispatch(align_request).await;
+
+    assert!(
+        response.error.is_some(),
+        "purpose/north_star_alignment must fail with invalid UUID"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32602, "Should return INVALID_PARAMS error code");
+}
+
+/// Test purpose/north_star_alignment fails with non-existent fingerprint.
+#[tokio::test]
+async fn test_north_star_alignment_not_found_fails() {
+    let handlers = create_test_handlers();
+
+    let align_params = json!({
+        "fingerprint_id": "00000000-0000-0000-0000-000000000000"
+    });
+    let align_request = make_request(
+        "purpose/north_star_alignment",
+        Some(JsonRpcId::Number(1)),
+        Some(align_params),
+    );
+    let response = handlers.dispatch(align_request).await;
+
+    assert!(
+        response.error.is_some(),
+        "purpose/north_star_alignment must fail with non-existent fingerprint"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(
+        error.code, -32010,
+        "Should return FINGERPRINT_NOT_FOUND error code"
+    );
+}
+
+/// Test purpose/north_star_alignment fails without North Star configured.
+#[tokio::test]
+async fn test_north_star_alignment_no_north_star_fails() {
+    let handlers = create_test_handlers_no_north_star();
+
+    // Store content
+    let store_params = json!({
+        "content": "Test content",
+        "importance": 0.8
+    });
+    let store_request = make_request("memory/store", Some(JsonRpcId::Number(1)), Some(store_params));
+    let store_response = handlers.dispatch(store_request).await;
+    let fingerprint_id = store_response
+        .result
+        .unwrap()
+        .get("fingerprintId")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let align_params = json!({
+        "fingerprint_id": fingerprint_id
+    });
+    let align_request = make_request(
+        "purpose/north_star_alignment",
+        Some(JsonRpcId::Number(2)),
+        Some(align_params),
+    );
+    let response = handlers.dispatch(align_request).await;
+
+    assert!(
+        response.error.is_some(),
+        "purpose/north_star_alignment must fail without North Star configured"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(
+        error.code, -32021,
+        "Should return NORTH_STAR_NOT_CONFIGURED error code"
+    );
+}
+
+// =============================================================================
+// goal/hierarchy_query Tests
+// =============================================================================
+
+/// Test goal/hierarchy_query get_all operation.
+#[tokio::test]
+async fn test_goal_hierarchy_get_all() {
+    let handlers = create_test_handlers();
+
+    let query_params = json!({
+        "operation": "get_all"
+    });
+    let query_request = make_request(
+        "goal/hierarchy_query",
+        Some(JsonRpcId::Number(1)),
+        Some(query_params),
+    );
+    let response = handlers.dispatch(query_request).await;
+
+    assert!(
+        response.error.is_none(),
+        "goal/hierarchy_query get_all should succeed"
+    );
+    let result = response.result.expect("Should have result");
+
+    let goals = result.get("goals").and_then(|v| v.as_array());
+    assert!(goals.is_some(), "Should have goals array");
+    assert!(
+        !goals.unwrap().is_empty(),
+        "Should have at least one goal (North Star)"
+    );
+
+    let stats = result.get("hierarchy_stats").expect("Should have hierarchy_stats");
+    assert!(stats.get("total_goals").is_some(), "Should have total_goals");
+    assert!(stats.get("has_north_star").is_some(), "Should have has_north_star");
+    assert!(stats.get("level_counts").is_some(), "Should have level_counts");
+}
+
+/// Test goal/hierarchy_query get_goal operation.
+#[tokio::test]
+async fn test_goal_hierarchy_get_goal() {
+    let handlers = create_test_handlers();
+
+    let query_params = json!({
+        "operation": "get_goal",
+        "goal_id": "ns_ml_system"
+    });
+    let query_request = make_request(
+        "goal/hierarchy_query",
+        Some(JsonRpcId::Number(1)),
+        Some(query_params),
+    );
+    let response = handlers.dispatch(query_request).await;
+
+    assert!(
+        response.error.is_none(),
+        "goal/hierarchy_query get_goal should succeed"
+    );
+    let result = response.result.expect("Should have result");
+
+    let goal = result.get("goal").expect("Should have goal");
+    assert_eq!(
+        goal.get("id").and_then(|v| v.as_str()),
+        Some("ns_ml_system"),
+        "Should return correct goal"
+    );
+    assert_eq!(
+        goal.get("level").and_then(|v| v.as_str()),
+        Some("NorthStar"),
+        "Should be NorthStar level"
+    );
+    assert_eq!(
+        goal.get("is_north_star").and_then(|v| v.as_bool()),
+        Some(true),
+        "Should be marked as North Star"
+    );
+}
+
+/// Test goal/hierarchy_query get_children operation.
+#[tokio::test]
+async fn test_goal_hierarchy_get_children() {
+    let handlers = create_test_handlers();
+
+    let query_params = json!({
+        "operation": "get_children",
+        "goal_id": "ns_ml_system"
+    });
+    let query_request = make_request(
+        "goal/hierarchy_query",
+        Some(JsonRpcId::Number(1)),
+        Some(query_params),
+    );
+    let response = handlers.dispatch(query_request).await;
+
+    assert!(
+        response.error.is_none(),
+        "goal/hierarchy_query get_children should succeed"
+    );
+    let result = response.result.expect("Should have result");
+
+    assert_eq!(
+        result.get("parent_goal_id").and_then(|v| v.as_str()),
+        Some("ns_ml_system"),
+        "Should return parent_goal_id"
+    );
+
+    let children = result.get("children").and_then(|v| v.as_array());
+    assert!(children.is_some(), "Should have children array");
+
+    // From test hierarchy, ns_ml_system has 2 strategic children
+    let children = children.unwrap();
+    assert_eq!(children.len(), 2, "North Star should have 2 strategic children");
+}
+
+/// Test goal/hierarchy_query get_ancestors operation.
+#[tokio::test]
+async fn test_goal_hierarchy_get_ancestors() {
+    let handlers = create_test_handlers();
+
+    // Get ancestors of immediate goal i1_vector
+    let query_params = json!({
+        "operation": "get_ancestors",
+        "goal_id": "i1_vector"
+    });
+    let query_request = make_request(
+        "goal/hierarchy_query",
+        Some(JsonRpcId::Number(1)),
+        Some(query_params),
+    );
+    let response = handlers.dispatch(query_request).await;
+
+    assert!(
+        response.error.is_none(),
+        "goal/hierarchy_query get_ancestors should succeed"
+    );
+    let result = response.result.expect("Should have result");
+
+    let ancestors = result.get("ancestors").and_then(|v| v.as_array());
+    assert!(ancestors.is_some(), "Should have ancestors array");
+
+    // Path should be: i1_vector -> t1_semantic -> s1_retrieval -> ns_ml_system
+    let ancestors = ancestors.unwrap();
+    assert!(
+        ancestors.len() >= 3,
+        "Should have at least 3 ancestors (including self)"
+    );
+}
+
+/// Test goal/hierarchy_query get_subtree operation.
+#[tokio::test]
+async fn test_goal_hierarchy_get_subtree() {
+    let handlers = create_test_handlers();
+
+    // Get subtree rooted at s1_retrieval
+    let query_params = json!({
+        "operation": "get_subtree",
+        "goal_id": "s1_retrieval"
+    });
+    let query_request = make_request(
+        "goal/hierarchy_query",
+        Some(JsonRpcId::Number(1)),
+        Some(query_params),
+    );
+    let response = handlers.dispatch(query_request).await;
+
+    assert!(
+        response.error.is_none(),
+        "goal/hierarchy_query get_subtree should succeed"
+    );
+    let result = response.result.expect("Should have result");
+
+    assert_eq!(
+        result.get("root_goal_id").and_then(|v| v.as_str()),
+        Some("s1_retrieval"),
+        "Should return root_goal_id"
+    );
+
+    let subtree = result.get("subtree").and_then(|v| v.as_array());
+    assert!(subtree.is_some(), "Should have subtree array");
+
+    // Subtree of s1_retrieval includes: s1_retrieval, t1_semantic, i1_vector
+    let subtree = subtree.unwrap();
+    assert!(subtree.len() >= 3, "Subtree should have at least 3 nodes");
+}
+
+/// Test goal/hierarchy_query fails with missing operation.
+#[tokio::test]
+async fn test_goal_hierarchy_missing_operation_fails() {
+    let handlers = create_test_handlers();
+
+    let query_params = json!({
+        "goal_id": "ns_ml_system"
+    });
+    let query_request = make_request(
+        "goal/hierarchy_query",
+        Some(JsonRpcId::Number(1)),
+        Some(query_params),
+    );
+    let response = handlers.dispatch(query_request).await;
+
+    assert!(
+        response.error.is_some(),
+        "goal/hierarchy_query must fail without operation"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32602, "Should return INVALID_PARAMS error code");
+    assert!(
+        error.message.contains("operation"),
+        "Error should mention missing operation"
+    );
+}
+
+/// Test goal/hierarchy_query fails with unknown operation.
+#[tokio::test]
+async fn test_goal_hierarchy_unknown_operation_fails() {
+    let handlers = create_test_handlers();
+
+    let query_params = json!({
+        "operation": "invalid_op"
+    });
+    let query_request = make_request(
+        "goal/hierarchy_query",
+        Some(JsonRpcId::Number(1)),
+        Some(query_params),
+    );
+    let response = handlers.dispatch(query_request).await;
+
+    assert!(
+        response.error.is_some(),
+        "goal/hierarchy_query must fail with unknown operation"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32602, "Should return INVALID_PARAMS error code");
+}
+
+/// Test goal/hierarchy_query fails with non-existent goal.
+#[tokio::test]
+async fn test_goal_hierarchy_goal_not_found_fails() {
+    let handlers = create_test_handlers();
+
+    let query_params = json!({
+        "operation": "get_goal",
+        "goal_id": "nonexistent_goal"
+    });
+    let query_request = make_request(
+        "goal/hierarchy_query",
+        Some(JsonRpcId::Number(1)),
+        Some(query_params),
+    );
+    let response = handlers.dispatch(query_request).await;
+
+    assert!(
+        response.error.is_some(),
+        "goal/hierarchy_query must fail with non-existent goal"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32020, "Should return GOAL_NOT_FOUND error code");
+}
+
+// =============================================================================
+// goal/aligned_memories Tests
+// =============================================================================
+
+/// Test goal/aligned_memories with valid goal.
+#[tokio::test]
+async fn test_goal_aligned_memories_valid() {
+    let handlers = create_test_handlers();
+
+    // Store content
+    let store_params = json!({
+        "content": "Improving retrieval accuracy through semantic search",
+        "importance": 0.9
+    });
+    let store_request = make_request("memory/store", Some(JsonRpcId::Number(1)), Some(store_params));
+    handlers.dispatch(store_request).await;
+
+    // Find memories aligned to strategic goal s1_retrieval
+    let aligned_params = json!({
+        "goal_id": "s1_retrieval",
+        "topK": 10
+    });
+    let aligned_request = make_request(
+        "goal/aligned_memories",
+        Some(JsonRpcId::Number(2)),
+        Some(aligned_params),
+    );
+    let response = handlers.dispatch(aligned_request).await;
+
+    assert!(
+        response.error.is_none(),
+        "goal/aligned_memories should succeed"
+    );
+    let result = response.result.expect("Should have result");
+
+    let goal = result.get("goal").expect("Should have goal");
+    assert_eq!(
+        goal.get("id").and_then(|v| v.as_str()),
+        Some("s1_retrieval"),
+        "Should return correct goal"
+    );
+
+    assert!(result.get("results").is_some(), "Should have results array");
+    assert!(result.get("count").is_some(), "Should have count");
+    assert!(result.get("search_time_ms").is_some(), "Should report search_time_ms");
+}
+
+/// Test goal/aligned_memories fails with missing goal_id.
+#[tokio::test]
+async fn test_goal_aligned_memories_missing_id_fails() {
+    let handlers = create_test_handlers();
+
+    let aligned_params = json!({
+        "topK": 10
+    });
+    let aligned_request = make_request(
+        "goal/aligned_memories",
+        Some(JsonRpcId::Number(1)),
+        Some(aligned_params),
+    );
+    let response = handlers.dispatch(aligned_request).await;
+
+    assert!(
+        response.error.is_some(),
+        "goal/aligned_memories must fail without goal_id"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32602, "Should return INVALID_PARAMS error code");
+    assert!(
+        error.message.contains("goal_id"),
+        "Error should mention missing goal_id"
+    );
+}
+
+/// Test goal/aligned_memories fails with non-existent goal.
+#[tokio::test]
+async fn test_goal_aligned_memories_goal_not_found_fails() {
+    let handlers = create_test_handlers();
+
+    let aligned_params = json!({
+        "goal_id": "nonexistent_goal"
+    });
+    let aligned_request = make_request(
+        "goal/aligned_memories",
+        Some(JsonRpcId::Number(1)),
+        Some(aligned_params),
+    );
+    let response = handlers.dispatch(aligned_request).await;
+
+    assert!(
+        response.error.is_some(),
+        "goal/aligned_memories must fail with non-existent goal"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32020, "Should return GOAL_NOT_FOUND error code");
+}
+
+// =============================================================================
+// purpose/drift_check Tests
+// =============================================================================
+
+/// Test purpose/drift_check with valid fingerprints.
+#[tokio::test]
+async fn test_drift_check_valid_fingerprints() {
+    let handlers = create_test_handlers();
+
+    // Store multiple fingerprints
+    let mut fingerprint_ids = Vec::new();
+    for i in 0..3 {
+        let store_params = json!({
+            "content": format!("Drift check test content number {}", i),
+            "importance": 0.7
+        });
+        let store_request = make_request(
+            "memory/store",
+            Some(JsonRpcId::Number(i as i64 + 1)),
+            Some(store_params),
+        );
+        let store_response = handlers.dispatch(store_request).await;
+        let fp_id = store_response
+            .result
+            .unwrap()
+            .get("fingerprintId")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .to_string();
+        fingerprint_ids.push(fp_id);
+    }
+
+    // Check drift
+    let drift_params = json!({
+        "fingerprint_ids": fingerprint_ids,
+        "threshold": 0.1
+    });
+    let drift_request = make_request(
+        "purpose/drift_check",
+        Some(JsonRpcId::Number(10)),
+        Some(drift_params),
+    );
+    let response = handlers.dispatch(drift_request).await;
+
+    assert!(
+        response.error.is_none(),
+        "purpose/drift_check should succeed"
+    );
+    let result = response.result.expect("Should have result");
+
+    // Verify response structure
+    let drift_analysis = result.get("drift_analysis").and_then(|v| v.as_array());
+    assert!(drift_analysis.is_some(), "Should have drift_analysis array");
+    assert_eq!(
+        drift_analysis.unwrap().len(),
+        3,
+        "Should have 3 drift results"
+    );
+
+    let summary = result.get("summary").expect("Should have summary");
+    assert_eq!(
+        summary.get("total_checked").and_then(|v| v.as_u64()),
+        Some(3),
+        "Should report total_checked"
+    );
+    assert!(
+        summary.get("drifted_count").is_some(),
+        "Should report drifted_count"
+    );
+    assert!(
+        summary.get("average_drift").is_some(),
+        "Should report average_drift"
+    );
+    assert!(
+        summary.get("check_time_ms").is_some(),
+        "Should report check_time_ms"
+    );
+}
+
+/// Test purpose/drift_check fails with missing fingerprint_ids.
+#[tokio::test]
+async fn test_drift_check_missing_ids_fails() {
+    let handlers = create_test_handlers();
+
+    let drift_params = json!({
+        "threshold": 0.1
+    });
+    let drift_request = make_request(
+        "purpose/drift_check",
+        Some(JsonRpcId::Number(1)),
+        Some(drift_params),
+    );
+    let response = handlers.dispatch(drift_request).await;
+
+    assert!(
+        response.error.is_some(),
+        "purpose/drift_check must fail without fingerprint_ids"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32602, "Should return INVALID_PARAMS error code");
+    assert!(
+        error.message.contains("fingerprint_ids"),
+        "Error should mention missing fingerprint_ids"
+    );
+}
+
+/// Test purpose/drift_check fails with empty fingerprint_ids array.
+#[tokio::test]
+async fn test_drift_check_empty_ids_fails() {
+    let handlers = create_test_handlers();
+
+    let drift_params = json!({
+        "fingerprint_ids": []
+    });
+    let drift_request = make_request(
+        "purpose/drift_check",
+        Some(JsonRpcId::Number(1)),
+        Some(drift_params),
+    );
+    let response = handlers.dispatch(drift_request).await;
+
+    assert!(
+        response.error.is_some(),
+        "purpose/drift_check must fail with empty fingerprint_ids"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32602, "Should return INVALID_PARAMS error code");
+}
+
+/// Test purpose/drift_check fails without North Star configured.
+#[tokio::test]
+async fn test_drift_check_no_north_star_fails() {
+    let handlers = create_test_handlers_no_north_star();
+
+    // Store content
+    let store_params = json!({
+        "content": "Test content",
+        "importance": 0.8
+    });
+    let store_request = make_request("memory/store", Some(JsonRpcId::Number(1)), Some(store_params));
+    let store_response = handlers.dispatch(store_request).await;
+    let fingerprint_id = store_response
+        .result
+        .unwrap()
+        .get("fingerprintId")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let drift_params = json!({
+        "fingerprint_ids": [fingerprint_id]
+    });
+    let drift_request = make_request(
+        "purpose/drift_check",
+        Some(JsonRpcId::Number(2)),
+        Some(drift_params),
+    );
+    let response = handlers.dispatch(drift_request).await;
+
+    assert!(
+        response.error.is_some(),
+        "purpose/drift_check must fail without North Star configured"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(
+        error.code, -32021,
+        "Should return NORTH_STAR_NOT_CONFIGURED error code"
+    );
+}
+
+/// Test purpose/drift_check handles not-found fingerprints gracefully.
+#[tokio::test]
+async fn test_drift_check_not_found_fingerprints() {
+    let handlers = create_test_handlers();
+
+    let drift_params = json!({
+        "fingerprint_ids": [
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000000002"
+        ]
+    });
+    let drift_request = make_request(
+        "purpose/drift_check",
+        Some(JsonRpcId::Number(1)),
+        Some(drift_params),
+    );
+    let response = handlers.dispatch(drift_request).await;
+
+    // Should succeed but report not_found status for each fingerprint
+    assert!(
+        response.error.is_none(),
+        "purpose/drift_check should succeed even with not-found fingerprints"
+    );
+    let result = response.result.expect("Should have result");
+
+    let drift_analysis = result
+        .get("drift_analysis")
+        .and_then(|v| v.as_array())
+        .expect("Should have drift_analysis");
+
+    for analysis in drift_analysis {
+        assert_eq!(
+            analysis.get("status").and_then(|v| v.as_str()),
+            Some("not_found"),
+            "Should report not_found status"
+        );
+    }
+}
+
+// =============================================================================
+// purpose/north_star_update Tests
+// =============================================================================
+
+/// Test purpose/north_star_update creates new North Star.
+#[tokio::test]
+async fn test_north_star_update_create() {
+    let handlers = create_test_handlers_no_north_star();
+
+    let update_params = json!({
+        "description": "Build the best AI assistant for developers",
+        "keywords": ["ai", "assistant", "developer"]
+    });
+    let update_request = make_request(
+        "purpose/north_star_update",
+        Some(JsonRpcId::Number(1)),
+        Some(update_params),
+    );
+    let response = handlers.dispatch(update_request).await;
+
+    assert!(
+        response.error.is_none(),
+        "purpose/north_star_update should succeed"
+    );
+    let result = response.result.expect("Should have result");
+
+    assert_eq!(
+        result.get("status").and_then(|v| v.as_str()),
+        Some("created"),
+        "Should report created status"
+    );
+
+    let goal = result.get("goal").expect("Should have goal");
+    assert_eq!(
+        goal.get("level").and_then(|v| v.as_str()),
+        Some("NorthStar"),
+        "Should be NorthStar level"
+    );
+    assert_eq!(
+        goal.get("is_north_star").and_then(|v| v.as_bool()),
+        Some(true),
+        "Should be marked as North Star"
+    );
+}
+
+/// Test purpose/north_star_update fails with existing North Star and replace=false.
+#[tokio::test]
+async fn test_north_star_update_exists_no_replace_fails() {
+    let handlers = create_test_handlers();
+
+    let update_params = json!({
+        "description": "New North Star goal",
+        "replace": false
+    });
+    let update_request = make_request(
+        "purpose/north_star_update",
+        Some(JsonRpcId::Number(1)),
+        Some(update_params),
+    );
+    let response = handlers.dispatch(update_request).await;
+
+    assert!(
+        response.error.is_some(),
+        "purpose/north_star_update must fail when North Star exists and replace=false"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(
+        error.code, -32023,
+        "Should return GOAL_HIERARCHY_ERROR error code"
+    );
+    assert!(
+        error.message.contains("replace"),
+        "Error should mention replace=true"
+    );
+}
+
+/// Test purpose/north_star_update replaces existing North Star.
+#[tokio::test]
+async fn test_north_star_update_replace() {
+    let handlers = create_test_handlers();
+
+    let update_params = json!({
+        "description": "New improved North Star goal",
+        "keywords": ["improved", "goal"],
+        "replace": true
+    });
+    let update_request = make_request(
+        "purpose/north_star_update",
+        Some(JsonRpcId::Number(1)),
+        Some(update_params),
+    );
+    let response = handlers.dispatch(update_request).await;
+
+    assert!(
+        response.error.is_none(),
+        "purpose/north_star_update with replace=true should succeed"
+    );
+    let result = response.result.expect("Should have result");
+
+    assert_eq!(
+        result.get("status").and_then(|v| v.as_str()),
+        Some("replaced"),
+        "Should report replaced status"
+    );
+
+    // Verify previous North Star is reported
+    assert!(
+        result.get("previous_north_star").is_some(),
+        "Should report previous_north_star"
+    );
+}
+
+/// Test purpose/north_star_update fails with missing description.
+#[tokio::test]
+async fn test_north_star_update_missing_description_fails() {
+    let handlers = create_test_handlers_no_north_star();
+
+    let update_params = json!({
+        "keywords": ["test"]
+    });
+    let update_request = make_request(
+        "purpose/north_star_update",
+        Some(JsonRpcId::Number(1)),
+        Some(update_params),
+    );
+    let response = handlers.dispatch(update_request).await;
+
+    assert!(
+        response.error.is_some(),
+        "purpose/north_star_update must fail without description"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32602, "Should return INVALID_PARAMS error code");
+    assert!(
+        error.message.contains("description"),
+        "Error should mention missing description"
+    );
+}
+
+/// Test purpose/north_star_update fails with empty description.
+#[tokio::test]
+async fn test_north_star_update_empty_description_fails() {
+    let handlers = create_test_handlers_no_north_star();
+
+    let update_params = json!({
+        "description": ""
+    });
+    let update_request = make_request(
+        "purpose/north_star_update",
+        Some(JsonRpcId::Number(1)),
+        Some(update_params),
+    );
+    let response = handlers.dispatch(update_request).await;
+
+    assert!(
+        response.error.is_some(),
+        "purpose/north_star_update must fail with empty description"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32602, "Should return INVALID_PARAMS error code");
+}
+
+/// Test purpose/north_star_update fails with wrong embedding dimensions.
+#[tokio::test]
+async fn test_north_star_update_wrong_embedding_dims_fails() {
+    let handlers = create_test_handlers_no_north_star();
+
+    // 768 dimensions instead of 1024
+    let wrong_embedding: Vec<f64> = vec![0.5; 768];
+
+    let update_params = json!({
+        "description": "Test North Star",
+        "embedding": wrong_embedding
+    });
+    let update_request = make_request(
+        "purpose/north_star_update",
+        Some(JsonRpcId::Number(1)),
+        Some(update_params),
+    );
+    let response = handlers.dispatch(update_request).await;
+
+    assert!(
+        response.error.is_some(),
+        "purpose/north_star_update must fail with wrong embedding dimensions"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32602, "Should return INVALID_PARAMS error code");
+    assert!(
+        error.message.contains("1024"),
+        "Error should mention 1024 dimensions"
+    );
+}
+
+// =============================================================================
+// Full State Verification Test
+// =============================================================================
+
+/// FULL STATE VERIFICATION: Complete purpose workflow test.
+///
+/// Tests the full purpose lifecycle with real data:
+/// 1. Create handlers with test hierarchy
+/// 2. Verify hierarchy exists via goal/hierarchy_query get_all
+/// 3. Store content and verify storage
+/// 4. Query via purpose/query with 13D vector
+/// 5. Check alignment via purpose/north_star_alignment
+/// 6. Find aligned memories via goal/aligned_memories
+/// 7. Check drift via purpose/drift_check
+///
+/// NO MOCKS - uses real GoalHierarchy and InMemoryTeleologicalStore.
+#[tokio::test]
+async fn test_full_state_verification_purpose_workflow() {
+    let handlers = create_test_handlers();
+
+    // =========================================================================
+    // STEP 1: Verify hierarchy exists via goal/hierarchy_query get_all
+    // =========================================================================
+    let hierarchy_request = make_request(
+        "goal/hierarchy_query",
+        Some(JsonRpcId::Number(1)),
+        Some(json!({ "operation": "get_all" })),
+    );
+    let hierarchy_response = handlers.dispatch(hierarchy_request).await;
+
+    assert!(
+        hierarchy_response.error.is_none(),
+        "goal/hierarchy_query get_all must succeed"
+    );
+    let hierarchy_result = hierarchy_response.result.expect("Must have result");
+
+    let stats = hierarchy_result
+        .get("hierarchy_stats")
+        .expect("Must have stats");
+    assert_eq!(
+        stats.get("has_north_star").and_then(|v| v.as_bool()),
+        Some(true),
+        "Must have North Star configured"
+    );
+
+    let goals = hierarchy_result
+        .get("goals")
+        .and_then(|v| v.as_array())
+        .expect("Must have goals");
+    assert!(!goals.is_empty(), "Must have at least one goal");
+
+    println!(
+        "[FSV] STEP 1 VERIFIED: Hierarchy has {} goals with North Star",
+        goals.len()
+    );
+
+    // =========================================================================
+    // STEP 2: Store multiple fingerprints with different content
+    // =========================================================================
+    let contents = [
+        "Machine learning algorithms for predictive analytics",
+        "Improving retrieval accuracy through semantic embeddings",
+        "Knowledge graph construction for entity linking",
+    ];
+
+    let mut stored_ids: Vec<String> = Vec::new();
+    for (i, content) in contents.iter().enumerate() {
+        let store_params = json!({
+            "content": content,
+            "importance": 0.7 + (i as f64 * 0.1)
+        });
+        let store_request = make_request(
+            "memory/store",
+            Some(JsonRpcId::Number(10 + i as i64)),
+            Some(store_params),
+        );
+        let store_response = handlers.dispatch(store_request).await;
+        assert!(store_response.error.is_none(), "Store {} must succeed", i);
+
+        let fp_id = store_response
+            .result
+            .unwrap()
+            .get("fingerprintId")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .to_string();
+        stored_ids.push(fp_id);
+    }
+
+    assert_eq!(stored_ids.len(), 3, "Must have stored 3 fingerprints");
+    println!("[FSV] STEP 2 VERIFIED: Stored {} fingerprints", stored_ids.len());
+
+    // =========================================================================
+    // STEP 3: Query via purpose/query with 13D vector
+    // =========================================================================
+    let purpose_vector: Vec<f64> = vec![
+        0.8, 0.5, 0.3, 0.3, 0.6, 0.2, 0.7, 0.5, 0.4, 0.3, 0.5, 0.3, 0.2,
+    ];
+
+    let purpose_query_params = json!({
+        "purpose_vector": purpose_vector,
+        "topK": 10,
+        "include_scores": true
+    });
+    let purpose_query_request = make_request(
+        "purpose/query",
+        Some(JsonRpcId::Number(20)),
+        Some(purpose_query_params),
+    );
+    let purpose_query_response = handlers.dispatch(purpose_query_request).await;
+
+    assert!(
+        purpose_query_response.error.is_none(),
+        "purpose/query must succeed"
+    );
+    let purpose_result = purpose_query_response.result.expect("Must have result");
+    let purpose_results = purpose_result
+        .get("results")
+        .and_then(|v| v.as_array())
+        .expect("Must have results");
+
+    println!(
+        "[FSV] STEP 3 VERIFIED: purpose/query returned {} results",
+        purpose_results.len()
+    );
+
+    // =========================================================================
+    // STEP 4: Check alignment via purpose/north_star_alignment
+    // =========================================================================
+    let align_params = json!({
+        "fingerprint_id": &stored_ids[0],
+        "include_breakdown": true,
+        "include_patterns": true
+    });
+    let align_request = make_request(
+        "purpose/north_star_alignment",
+        Some(JsonRpcId::Number(30)),
+        Some(align_params),
+    );
+    let align_response = handlers.dispatch(align_request).await;
+
+    assert!(
+        align_response.error.is_none(),
+        "purpose/north_star_alignment must succeed"
+    );
+    let align_result = align_response.result.expect("Must have result");
+
+    let alignment = align_result.get("alignment").expect("Must have alignment");
+    let composite_score = alignment
+        .get("composite_score")
+        .and_then(|v| v.as_f64())
+        .expect("Must have composite_score");
+    let threshold = alignment
+        .get("threshold")
+        .and_then(|v| v.as_str())
+        .expect("Must have threshold");
+
+    println!(
+        "[FSV] STEP 4 VERIFIED: Alignment composite_score={:.4}, threshold={}",
+        composite_score, threshold
+    );
+
+    // =========================================================================
+    // STEP 5: Find aligned memories via goal/aligned_memories
+    // =========================================================================
+    let aligned_params = json!({
+        "goal_id": "s1_retrieval",
+        "topK": 10
+    });
+    let aligned_request = make_request(
+        "goal/aligned_memories",
+        Some(JsonRpcId::Number(40)),
+        Some(aligned_params),
+    );
+    let aligned_response = handlers.dispatch(aligned_request).await;
+
+    assert!(
+        aligned_response.error.is_none(),
+        "goal/aligned_memories must succeed"
+    );
+    let aligned_result = aligned_response.result.expect("Must have result");
+    let aligned_count = aligned_result
+        .get("count")
+        .and_then(|v| v.as_u64())
+        .expect("Must have count");
+
+    println!(
+        "[FSV] STEP 5 VERIFIED: goal/aligned_memories found {} memories",
+        aligned_count
+    );
+
+    // =========================================================================
+    // STEP 6: Check drift via purpose/drift_check
+    // =========================================================================
+    let drift_params = json!({
+        "fingerprint_ids": &stored_ids,
+        "threshold": 0.1
+    });
+    let drift_request = make_request(
+        "purpose/drift_check",
+        Some(JsonRpcId::Number(50)),
+        Some(drift_params),
+    );
+    let drift_response = handlers.dispatch(drift_request).await;
+
+    assert!(
+        drift_response.error.is_none(),
+        "purpose/drift_check must succeed"
+    );
+    let drift_result = drift_response.result.expect("Must have result");
+
+    let summary = drift_result.get("summary").expect("Must have summary");
+    let total_checked = summary
+        .get("total_checked")
+        .and_then(|v| v.as_u64())
+        .expect("Must have total_checked");
+    let drifted_count = summary
+        .get("drifted_count")
+        .and_then(|v| v.as_u64())
+        .expect("Must have drifted_count");
+
+    assert_eq!(total_checked, 3, "Must check all 3 fingerprints");
+
+    println!(
+        "[FSV] STEP 6 VERIFIED: drift_check checked {} fingerprints, {} drifted",
+        total_checked, drifted_count
+    );
+
+    // =========================================================================
+    // VERIFICATION COMPLETE
+    // =========================================================================
+    println!("\n======================================================================");
+    println!("[FSV] FULL STATE VERIFICATION COMPLETE - All purpose handlers working");
+    println!("======================================================================\n");
+}

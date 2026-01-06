@@ -9,12 +9,17 @@
 //! - `lifecycle`: MCP lifecycle handlers (initialize, shutdown)
 //! - `tools`: MCP tool call handlers
 //! - `memory`: Legacy memory operation handlers
+//! - `search`: Multi-embedding weighted search handlers (TASK-S002)
+//! - `purpose`: Purpose and goal alignment handlers (TASK-S003)
+//! - `johari`: Johari quadrant handlers (TASK-S004)
 //! - `utl`: UTL computation handlers
 //! - `system`: System status and health handlers
 
 mod core;
+mod johari;
 mod lifecycle;
 mod memory;
+mod purpose;
 mod search;
 mod system;
 mod tools;

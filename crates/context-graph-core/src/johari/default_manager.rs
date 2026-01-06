@@ -61,21 +61,61 @@ impl<S: TeleologicalMemoryStore> DefaultJohariManager<S> {
         self.blind_spot_threshold = threshold;
         self
     }
+}
 
-    /// Set quadrant weights based on the quadrant.
-    ///
-    /// Sets 100% weight to the specified quadrant (hard classification).
-    fn set_quadrant_weights(
-        johari: &mut JohariFingerprint,
-        embedder_idx: usize,
-        quadrant: JohariQuadrant,
-    ) {
-        match quadrant {
-            JohariQuadrant::Open => johari.set_quadrant(embedder_idx, 1.0, 0.0, 0.0, 0.0, 1.0),
-            JohariQuadrant::Hidden => johari.set_quadrant(embedder_idx, 0.0, 1.0, 0.0, 0.0, 1.0),
-            JohariQuadrant::Blind => johari.set_quadrant(embedder_idx, 0.0, 0.0, 1.0, 0.0, 1.0),
-            JohariQuadrant::Unknown => johari.set_quadrant(embedder_idx, 0.0, 0.0, 0.0, 1.0, 1.0),
+/// Set quadrant weights based on the quadrant.
+///
+/// Sets 100% weight to the specified quadrant (hard classification).
+fn set_quadrant_weights(
+    johari: &mut JohariFingerprint,
+    embedder_idx: usize,
+    quadrant: JohariQuadrant,
+) {
+    match quadrant {
+        JohariQuadrant::Open => johari.set_quadrant(embedder_idx, 1.0, 0.0, 0.0, 0.0, 1.0),
+        JohariQuadrant::Hidden => johari.set_quadrant(embedder_idx, 0.0, 1.0, 0.0, 0.0, 1.0),
+        JohariQuadrant::Blind => johari.set_quadrant(embedder_idx, 0.0, 0.0, 1.0, 0.0, 1.0),
+        JohariQuadrant::Unknown => johari.set_quadrant(embedder_idx, 0.0, 0.0, 0.0, 1.0, 1.0),
+    }
+}
+
+/// Dynamic (type-erased) version of DefaultJohariManager.
+///
+/// Use this when working with `Arc<dyn TeleologicalMemoryStore>` trait objects,
+/// such as in the MCP Handlers struct.
+///
+/// TASK-S004: Required for johari/* handlers in context-graph-mcp.
+pub struct DynDefaultJohariManager {
+    /// The storage backend for teleological fingerprints (trait object)
+    store: Arc<dyn TeleologicalMemoryStore>,
+
+    /// Threshold for blind spot detection (default: 0.5)
+    blind_spot_threshold: f32,
+
+    /// Maximum transition history per memory (default: 100)
+    #[allow(dead_code)]
+    max_history_per_memory: usize,
+}
+
+impl DynDefaultJohariManager {
+    /// Create a new DynDefaultJohariManager with a trait object store.
+    pub fn new(store: Arc<dyn TeleologicalMemoryStore>) -> Self {
+        Self {
+            store,
+            blind_spot_threshold: 0.5,
+            max_history_per_memory: 100,
         }
+    }
+
+    /// Set the blind spot detection threshold.
+    pub fn with_blind_spot_threshold(mut self, threshold: f32) -> Self {
+        assert!(
+            (0.0..=1.0).contains(&threshold),
+            "threshold must be [0,1], got {}",
+            threshold
+        );
+        self.blind_spot_threshold = threshold;
+        self
     }
 }
 
@@ -105,7 +145,7 @@ impl<S: TeleologicalMemoryStore + 'static> JohariTransitionManager for DefaultJo
             };
 
             // Set hard classification (100% weight to one quadrant)
-            Self::set_quadrant_weights(&mut fingerprint, embedder_idx, final_quadrant);
+            set_quadrant_weights(&mut fingerprint, embedder_idx, final_quadrant);
         }
 
         Ok(fingerprint)
@@ -154,7 +194,7 @@ impl<S: TeleologicalMemoryStore + 'static> JohariTransitionManager for DefaultJo
         }
 
         // Apply transition (set 100% weight to new quadrant)
-        Self::set_quadrant_weights(&mut johari, embedder_idx, to_quadrant);
+        set_quadrant_weights(&mut johari, embedder_idx, to_quadrant);
 
         // Update stored fingerprint
         let mut updated = current;
@@ -223,7 +263,271 @@ impl<S: TeleologicalMemoryStore + 'static> JohariTransitionManager for DefaultJo
 
         // Apply all transitions (all validated)
         for (embedder_idx, to_quadrant, _trigger) in transitions {
-            Self::set_quadrant_weights(&mut johari, embedder_idx, to_quadrant);
+            set_quadrant_weights(&mut johari, embedder_idx, to_quadrant);
+        }
+
+        // Persist
+        let mut updated = current;
+        updated.johari = johari.clone();
+
+        self.store
+            .update(updated)
+            .await
+            .map_err(|e| JohariError::StorageError(e.to_string()))?;
+
+        Ok(johari)
+    }
+
+    async fn find_by_quadrant(
+        &self,
+        pattern: QuadrantPattern,
+        limit: usize,
+    ) -> Result<Vec<(MemoryId, JohariFingerprint)>, JohariError> {
+        // Scan using semantic search with empty query
+        let empty_query = SemanticFingerprint::zeroed();
+        let options = TeleologicalSearchOptions::quick(limit * 10);
+
+        let results = self
+            .store
+            .search_semantic(&empty_query, options)
+            .await
+            .map_err(|e| JohariError::StorageError(e.to_string()))?;
+
+        let matches: Vec<_> = results
+            .into_iter()
+            .filter(|r| matches_pattern(&r.fingerprint.johari, &pattern))
+            .take(limit)
+            .map(|r| (r.fingerprint.id, r.fingerprint.johari))
+            .collect();
+
+        Ok(matches)
+    }
+
+    async fn discover_blind_spots(
+        &self,
+        memory_id: MemoryId,
+        external_signals: &[ExternalSignal],
+    ) -> Result<Vec<BlindSpotCandidate>, JohariError> {
+        let current = self
+            .store
+            .retrieve(memory_id)
+            .await
+            .map_err(|e| JohariError::StorageError(e.to_string()))?
+            .ok_or(JohariError::NotFound(memory_id))?;
+
+        let johari = &current.johari;
+        let mut candidates = Vec::new();
+
+        for embedder_idx in 0..NUM_EMBEDDERS {
+            let current_quadrant = johari.dominant_quadrant(embedder_idx);
+
+            // Only consider Unknown or Hidden as potential blind spots
+            if current_quadrant != JohariQuadrant::Unknown
+                && current_quadrant != JohariQuadrant::Hidden
+            {
+                continue;
+            }
+
+            // Aggregate signal strength for this embedder
+            let mut signal_strength = 0.0f32;
+            let mut sources = Vec::new();
+
+            for signal in external_signals {
+                if signal.embedder_idx == embedder_idx {
+                    signal_strength += signal.strength;
+                    sources.push(signal.source.clone());
+                }
+            }
+
+            if signal_strength > self.blind_spot_threshold {
+                candidates.push(BlindSpotCandidate::new(
+                    embedder_idx,
+                    current_quadrant,
+                    signal_strength,
+                    sources,
+                ));
+            }
+        }
+
+        // Sort by signal strength descending
+        candidates.sort_by(|a, b| {
+            b.signal_strength
+                .partial_cmp(&a.signal_strength)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        Ok(candidates)
+    }
+
+    async fn get_transition_stats(
+        &self,
+        _time_range: TimeRange,
+    ) -> Result<TransitionStats, JohariError> {
+        // In a full implementation, this would query a transitions log table
+        // For now, return empty stats (transitions aren't persisted to a log yet)
+        Ok(TransitionStats::default())
+    }
+
+    async fn get_transition_history(
+        &self,
+        _memory_id: MemoryId,
+        _limit: usize,
+    ) -> Result<Vec<JohariTransition>, JohariError> {
+        // In a full implementation, this would query stored transitions
+        // For now, return empty (transitions aren't persisted to history yet)
+        Ok(Vec::new())
+    }
+}
+
+/// Implementation of JohariTransitionManager for DynDefaultJohariManager.
+///
+/// This is identical to the generic implementation but uses trait object store.
+/// TASK-S004: Required for MCP handlers that use `Arc<dyn TeleologicalMemoryStore>`.
+#[async_trait]
+impl JohariTransitionManager for DynDefaultJohariManager {
+    async fn classify(
+        &self,
+        _semantic: &SemanticFingerprint,
+        context: &ClassificationContext,
+    ) -> Result<JohariFingerprint, JohariError> {
+        let mut fingerprint = JohariFingerprint::zeroed();
+
+        for embedder_idx in 0..NUM_EMBEDDERS {
+            let delta_s = context.delta_s[embedder_idx];
+            let delta_c = context.delta_c[embedder_idx];
+
+            // Use existing classification logic from JohariFingerprint
+            let quadrant = JohariFingerprint::classify_quadrant(delta_s, delta_c);
+
+            // Apply disclosure intent override: if hidden intent, force Hidden
+            let final_quadrant = if !context.disclosure_intent[embedder_idx]
+                && quadrant == JohariQuadrant::Open
+            {
+                JohariQuadrant::Hidden
+            } else {
+                quadrant
+            };
+
+            // Set hard classification (100% weight to one quadrant)
+            set_quadrant_weights(&mut fingerprint, embedder_idx, final_quadrant);
+        }
+
+        Ok(fingerprint)
+    }
+
+    async fn transition(
+        &self,
+        memory_id: MemoryId,
+        embedder_idx: usize,
+        to_quadrant: JohariQuadrant,
+        trigger: TransitionTrigger,
+    ) -> Result<JohariFingerprint, JohariError> {
+        // Validate embedder index (FAIL FAST)
+        if embedder_idx >= NUM_EMBEDDERS {
+            return Err(JohariError::InvalidEmbedderIndex(embedder_idx));
+        }
+
+        // Retrieve current state
+        let current = self
+            .store
+            .retrieve(memory_id)
+            .await
+            .map_err(|e| JohariError::StorageError(e.to_string()))?
+            .ok_or(JohariError::NotFound(memory_id))?;
+
+        let mut johari = current.johari.clone();
+        let current_quadrant = johari.dominant_quadrant(embedder_idx);
+
+        // Validate transition using existing state machine
+        if !current_quadrant.can_transition_to(to_quadrant) {
+            return Err(JohariError::InvalidTransition {
+                from: current_quadrant,
+                to: to_quadrant,
+                embedder_idx,
+            });
+        }
+
+        // Validate trigger is valid for this transition
+        let valid_transition = current_quadrant.transition_to(to_quadrant, trigger);
+        if valid_transition.is_err() {
+            return Err(JohariError::InvalidTrigger {
+                from: current_quadrant,
+                to: to_quadrant,
+                trigger,
+            });
+        }
+
+        // Apply transition (set 100% weight to new quadrant)
+        set_quadrant_weights(&mut johari, embedder_idx, to_quadrant);
+
+        // Update stored fingerprint
+        let mut updated = current;
+        updated.johari = johari.clone();
+
+        self.store
+            .update(updated)
+            .await
+            .map_err(|e| JohariError::StorageError(e.to_string()))?;
+
+        Ok(johari)
+    }
+
+    async fn transition_batch(
+        &self,
+        memory_id: MemoryId,
+        transitions: Vec<(usize, JohariQuadrant, TransitionTrigger)>,
+    ) -> Result<JohariFingerprint, JohariError> {
+        // Retrieve current state
+        let current = self
+            .store
+            .retrieve(memory_id)
+            .await
+            .map_err(|e| JohariError::StorageError(e.to_string()))?
+            .ok_or(JohariError::NotFound(memory_id))?;
+
+        let mut johari = current.johari.clone();
+
+        // Validate ALL transitions first (all-or-nothing)
+        for (idx, (embedder_idx, to_quadrant, trigger)) in transitions.iter().enumerate() {
+            // Check embedder index bounds
+            if *embedder_idx >= NUM_EMBEDDERS {
+                return Err(JohariError::BatchValidationFailed {
+                    idx,
+                    reason: format!("Invalid embedder index: {}", embedder_idx),
+                });
+            }
+
+            let current_quadrant = johari.dominant_quadrant(*embedder_idx);
+
+            // Check transition validity
+            if !current_quadrant.can_transition_to(*to_quadrant) {
+                return Err(JohariError::BatchValidationFailed {
+                    idx,
+                    reason: format!(
+                        "Invalid transition {:?} → {:?} for embedder {}",
+                        current_quadrant, to_quadrant, embedder_idx
+                    ),
+                });
+            }
+
+            // Check trigger validity
+            if current_quadrant
+                .transition_to(*to_quadrant, *trigger)
+                .is_err()
+            {
+                return Err(JohariError::BatchValidationFailed {
+                    idx,
+                    reason: format!(
+                        "Invalid trigger {:?} for {:?} → {:?}",
+                        trigger, current_quadrant, to_quadrant
+                    ),
+                });
+            }
+        }
+
+        // Apply all transitions (all validated)
+        for (embedder_idx, to_quadrant, _trigger) in transitions {
+            set_quadrant_weights(&mut johari, embedder_idx, to_quadrant);
         }
 
         // Persist

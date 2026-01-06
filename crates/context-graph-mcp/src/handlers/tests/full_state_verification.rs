@@ -12,6 +12,8 @@ use std::sync::Arc;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
+use context_graph_core::alignment::{DefaultAlignmentCalculator, GoalAlignmentCalculator};
+use context_graph_core::purpose::GoalHierarchy;
 use context_graph_core::stubs::{InMemoryTeleologicalStore, StubMultiArrayProvider, StubUtlProcessor};
 use context_graph_core::traits::{MultiArrayEmbeddingProvider, TeleologicalMemoryStore, UtlProcessor};
 
@@ -19,6 +21,8 @@ use crate::handlers::Handlers;
 use crate::protocol::{JsonRpcId, JsonRpcRequest};
 
 /// Create test handlers AND return direct access to the store for verification.
+///
+/// TASK-S003: Updated to include GoalAlignmentCalculator and GoalHierarchy.
 fn create_handlers_with_store_access() -> (
     Handlers,
     Arc<dyn TeleologicalMemoryStore>,
@@ -29,11 +33,16 @@ fn create_handlers_with_store_access() -> (
     let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
     let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
         Arc::new(StubMultiArrayProvider::new());
+    let alignment_calculator: Arc<dyn GoalAlignmentCalculator> =
+        Arc::new(DefaultAlignmentCalculator::new());
+    let goal_hierarchy = GoalHierarchy::new();
 
     let handlers = Handlers::new(
         Arc::clone(&teleological_store),
         Arc::clone(&utl_processor),
         Arc::clone(&multi_array_provider),
+        alignment_calculator,
+        goal_hierarchy,
     );
 
     (handlers, teleological_store, multi_array_provider)

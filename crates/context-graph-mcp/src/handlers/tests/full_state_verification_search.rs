@@ -21,6 +21,8 @@ use std::sync::Arc;
 use serde_json::json;
 use uuid::Uuid;
 
+use context_graph_core::alignment::{DefaultAlignmentCalculator, GoalAlignmentCalculator};
+use context_graph_core::purpose::GoalHierarchy;
 use context_graph_core::stubs::{InMemoryTeleologicalStore, StubMultiArrayProvider, StubUtlProcessor};
 use context_graph_core::traits::{
     MultiArrayEmbeddingProvider, TeleologicalMemoryStore, UtlProcessor,
@@ -34,16 +36,26 @@ use super::make_request;
 
 /// Create test handlers with SHARED access to the store for direct verification.
 ///
+/// TASK-S003: Updated to include GoalAlignmentCalculator and GoalHierarchy.
 /// Returns (Handlers, Arc<InMemoryTeleologicalStore>) so tests can directly query the store.
 fn create_verifiable_handlers() -> (Handlers, Arc<InMemoryTeleologicalStore>) {
     let store = Arc::new(InMemoryTeleologicalStore::new());
     let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
     let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
         Arc::new(StubMultiArrayProvider::new());
+    let alignment_calculator: Arc<dyn GoalAlignmentCalculator> =
+        Arc::new(DefaultAlignmentCalculator::new());
+    let goal_hierarchy = GoalHierarchy::new();
 
     // Create handlers with our store (need to clone for both uses)
     let store_for_handlers: Arc<dyn TeleologicalMemoryStore> = store.clone();
-    let handlers = Handlers::new(store_for_handlers, utl_processor, multi_array_provider);
+    let handlers = Handlers::new(
+        store_for_handlers,
+        utl_processor,
+        multi_array_provider,
+        alignment_calculator,
+        goal_hierarchy,
+    );
 
     (handlers, store)
 }

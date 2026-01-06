@@ -569,6 +569,7 @@ dependencies = [
  "context-graph-embeddings",
  "context-graph-utl",
  "hex",
+ "parking_lot",
  "serde",
  "serde_json",
  "sha2",

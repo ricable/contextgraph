@@ -1,6 +1,7 @@
 //! MCP Server implementation.
 //!
 //! TASK-S001: Updated to use TeleologicalMemoryStore and MultiArrayEmbeddingProvider.
+//! TASK-S003: Added GoalAlignmentCalculator and GoalHierarchy for purpose operations.
 //! NO BACKWARDS COMPATIBILITY with legacy MemoryStore.
 
 use std::io::{self, BufRead, Write};
@@ -10,7 +11,9 @@ use anyhow::Result;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
+use context_graph_core::alignment::{DefaultAlignmentCalculator, GoalAlignmentCalculator};
 use context_graph_core::config::Config;
+use context_graph_core::purpose::GoalHierarchy;
 use context_graph_core::stubs::{InMemoryTeleologicalStore, StubMultiArrayProvider, StubUtlProcessor};
 use context_graph_core::traits::{MultiArrayEmbeddingProvider, TeleologicalMemoryStore, UtlProcessor};
 
@@ -52,10 +55,18 @@ impl McpServer {
             Arc::new(StubMultiArrayProvider::new());
         info!("Created StubMultiArrayProvider (13 embedder slots)");
 
+        // TASK-S003: Create alignment calculator and empty goal hierarchy
+        let alignment_calculator: Arc<dyn GoalAlignmentCalculator> =
+            Arc::new(DefaultAlignmentCalculator::new());
+        let goal_hierarchy = GoalHierarchy::new();
+        info!("Created DefaultAlignmentCalculator and empty GoalHierarchy");
+
         let handlers = Handlers::new(
             Arc::clone(&teleological_store),
             Arc::clone(&utl_processor),
             Arc::clone(&multi_array_provider),
+            alignment_calculator,
+            goal_hierarchy,
         );
 
         info!("MCP Server initialization complete - TeleologicalFingerprint mode active");
