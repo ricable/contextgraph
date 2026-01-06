@@ -31,7 +31,7 @@ pub mod teleological;
 // Re-export column family types for storage consumers
 pub use column_families::{
     cf_names, edges_options, embeddings_options, get_column_family_descriptors, index_options,
-    nodes_options, system_options,
+    nodes_options, system_options, get_all_column_family_descriptors, TOTAL_COLUMN_FAMILIES,
 };
 
 // Re-export RocksDB backend types (TASK-M02-016, TASK-M02-025)
@@ -79,4 +79,12 @@ pub use teleological::{
     E1_DIM, E1_MATRYOSHKA_DIM, E2_DIM, E3_DIM, E4_DIM, E5_DIM,
     E6_SPARSE_VOCAB, E7_DIM, E8_DIM, E9_DIM, E10_DIM, E11_DIM,
     E12_TOKEN_DIM, E13_SPLADE_VOCAB, NUM_EMBEDDERS, PURPOSE_VECTOR_DIM,
+    // Quantized embedder column families (TASK-EMB-022)
+    quantized_embedder_cf_options, get_quantized_embedder_cf_descriptors,
+    get_all_teleological_cf_descriptors,
+    CF_EMB_0, CF_EMB_1, CF_EMB_2, CF_EMB_3, CF_EMB_4, CF_EMB_5, CF_EMB_6,
+    CF_EMB_7, CF_EMB_8, CF_EMB_9, CF_EMB_10, CF_EMB_11, CF_EMB_12,
+    QUANTIZED_EMBEDDER_CFS, QUANTIZED_EMBEDDER_CF_COUNT,
+    // Quantized fingerprint storage trait (TASK-EMB-022)
+    QuantizedFingerprintStorage, QuantizedStorageError, QuantizedStorageResult,
 };

@@ -592,6 +592,7 @@ dependencies = [
  "bincode",
  "chrono",
  "context-graph-core",
+ "context-graph-embeddings",
  "rmp-serde",
  "rocksdb",
  "serde",

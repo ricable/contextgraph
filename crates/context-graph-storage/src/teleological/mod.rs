@@ -1,16 +1,35 @@
 //! Teleological fingerprint storage extensions.
 //!
-//! Adds 4 column families for ~63KB TeleologicalFingerprint storage
-//! and 5-stage pipeline indexing.
+//! Adds 17 column families for TeleologicalFingerprint storage:
+//! - 4 core teleological CFs (~63KB fingerprints, purpose vectors, indexes)
+//! - 13 quantized embedder CFs (per-embedder quantized storage)
 //!
-//! # Column Families (4 new, 16 total)
+//! # Column Families (17 new, 29 total with base 12)
 //!
+//! ## Core Teleological (4 CFs)
 //! | Name | Purpose | Key Format | Value Size |
 //! |------|---------|------------|------------|
 //! | fingerprints | Primary ~63KB TeleologicalFingerprints | UUID (16 bytes) | ~63KB |
 //! | purpose_vectors | 13D purpose vectors | UUID (16 bytes) | 52 bytes |
 //! | e13_splade_inverted | Inverted index for E13 SPLADE | term_id (2 bytes) | Vec<UUID> |
 //! | e1_matryoshka_128 | E1 Matryoshka 128D truncated vectors | UUID (16 bytes) | 512 bytes |
+//!
+//! ## Quantized Embedder (13 CFs)
+//! | Name | Purpose | Key Format | Value Size |
+//! |------|---------|------------|------------|
+//! | emb_0 | E1_Semantic quantized (PQ-8) | UUID (16 bytes) | ~8 bytes |
+//! | emb_1 | E2_TemporalRecent quantized (Float8) | UUID (16 bytes) | ~512 bytes |
+//! | emb_2 | E3_TemporalPeriodic quantized (Float8) | UUID (16 bytes) | ~512 bytes |
+//! | emb_3 | E4_TemporalPositional quantized (Float8) | UUID (16 bytes) | ~512 bytes |
+//! | emb_4 | E5_Causal quantized (PQ-8) | UUID (16 bytes) | ~8 bytes |
+//! | emb_5 | E6_Sparse quantized (SparseNative) | UUID (16 bytes) | ~2KB |
+//! | emb_6 | E7_Code quantized (PQ-8) | UUID (16 bytes) | ~8 bytes |
+//! | emb_7 | E8_Graph quantized (Float8) | UUID (16 bytes) | ~384 bytes |
+//! | emb_8 | E9_HDC quantized (Binary) | UUID (16 bytes) | ~1250 bytes |
+//! | emb_9 | E10_Multimodal quantized (PQ-8) | UUID (16 bytes) | ~8 bytes |
+//! | emb_10 | E11_Entity quantized (Float8) | UUID (16 bytes) | ~384 bytes |
+//! | emb_11 | E12_LateInteraction quantized (TokenPruning) | UUID (16 bytes) | ~2KB |
+//! | emb_12 | E13_SPLADE quantized (SparseNative) | UUID (16 bytes) | ~2KB |
 //!
 //! # Design Philosophy
 //!
@@ -21,6 +40,7 @@
 
 pub mod column_families;
 pub mod indexes;
+pub mod quantized;
 pub mod schema;
 pub mod serialization;
 
@@ -32,6 +52,17 @@ pub use column_families::{
     e1_matryoshka_128_cf_options, e13_splade_inverted_cf_options, fingerprint_cf_options,
     get_teleological_cf_descriptors, purpose_vector_cf_options, CF_E1_MATRYOSHKA_128,
     CF_E13_SPLADE_INVERTED, CF_FINGERPRINTS, CF_PURPOSE_VECTORS, TELEOLOGICAL_CFS,
+    // Quantized embedder column families (TASK-EMB-022)
+    quantized_embedder_cf_options, get_quantized_embedder_cf_descriptors,
+    get_all_teleological_cf_descriptors,
+    CF_EMB_0, CF_EMB_1, CF_EMB_2, CF_EMB_3, CF_EMB_4, CF_EMB_5, CF_EMB_6,
+    CF_EMB_7, CF_EMB_8, CF_EMB_9, CF_EMB_10, CF_EMB_11, CF_EMB_12,
+    QUANTIZED_EMBEDDER_CFS, QUANTIZED_EMBEDDER_CF_COUNT,
+};
+
+// Re-export quantized storage types (TASK-EMB-022)
+pub use quantized::{
+    QuantizedFingerprintStorage, QuantizedStorageError, QuantizedStorageResult,
 };
 
 // Re-export schema types

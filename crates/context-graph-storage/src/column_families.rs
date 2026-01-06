@@ -249,6 +249,40 @@ pub fn get_column_family_descriptors(block_cache: &Cache) -> Vec<ColumnFamilyDes
     ]
 }
 
+/// Get ALL column family descriptors: base (12) + teleological (4) + quantized embedder (13).
+///
+/// Returns 29 total column families for a fully configured Context Graph database.
+///
+/// # Arguments
+/// * `block_cache` - Shared block cache (recommended: 256MB via `Cache::new_lru_cache`)
+///
+/// # Returns
+/// Vector of 29 `ColumnFamilyDescriptor`s:
+/// - 12 base CFs (nodes, edges, embeddings, etc.)
+/// - 4 teleological CFs (fingerprints, purpose_vectors, etc.)
+/// - 13 quantized embedder CFs (emb_0 through emb_12)
+///
+/// # Example
+/// ```ignore
+/// use rocksdb::Cache;
+/// use context_graph_storage::column_families::get_all_column_family_descriptors;
+///
+/// let cache = Cache::new_lru_cache(256 * 1024 * 1024); // 256MB
+/// let descriptors = get_all_column_family_descriptors(&cache);
+/// assert_eq!(descriptors.len(), 29);
+/// ```
+pub fn get_all_column_family_descriptors(block_cache: &Cache) -> Vec<ColumnFamilyDescriptor> {
+    use crate::teleological::get_all_teleological_cf_descriptors;
+
+    let mut descriptors = get_column_family_descriptors(block_cache);
+    descriptors.extend(get_all_teleological_cf_descriptors(block_cache));
+    descriptors
+}
+
+/// Total number of column families in a fully configured Context Graph database.
+/// Base (12) + Teleological (4) + Quantized Embedder (13) = 29
+pub const TOTAL_COLUMN_FAMILIES: usize = 29;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -547,5 +581,78 @@ mod tests {
         assert!(cf_names::ALL.contains(&"tags"));
         assert!(cf_names::ALL.contains(&"sources"));
         assert!(cf_names::ALL.contains(&"system"));
+    }
+
+    // =========================================================================
+    // TASK-EMB-022: Full Column Family Count Tests
+    // =========================================================================
+
+    #[test]
+    fn test_total_column_families_constant() {
+        // Verify the constant is correct: 12 base + 4 teleological + 13 quantized = 29
+        assert_eq!(
+            TOTAL_COLUMN_FAMILIES, 29,
+            "Total column families should be 29 (12 base + 4 teleological + 13 quantized)"
+        );
+    }
+
+    #[test]
+    fn test_get_all_column_family_descriptors_returns_29() {
+        let cache = Cache::new_lru_cache(256 * 1024 * 1024);
+        let descriptors = get_all_column_family_descriptors(&cache);
+
+        assert_eq!(
+            descriptors.len(),
+            TOTAL_COLUMN_FAMILIES,
+            "get_all_column_family_descriptors should return {} CFs, got {}",
+            TOTAL_COLUMN_FAMILIES,
+            descriptors.len()
+        );
+    }
+
+    #[test]
+    fn test_all_cf_descriptors_have_unique_names() {
+        use std::collections::HashSet;
+
+        let cache = Cache::new_lru_cache(256 * 1024 * 1024);
+        let descriptors = get_all_column_family_descriptors(&cache);
+
+        let names: HashSet<_> = descriptors.iter().map(|d| d.name()).collect();
+        assert_eq!(
+            names.len(),
+            TOTAL_COLUMN_FAMILIES,
+            "All {} CF names must be unique",
+            TOTAL_COLUMN_FAMILIES
+        );
+    }
+
+    #[test]
+    fn test_all_cf_descriptors_includes_quantized_embedder_cfs() {
+        let cache = Cache::new_lru_cache(256 * 1024 * 1024);
+        let descriptors = get_all_column_family_descriptors(&cache);
+        let names: Vec<_> = descriptors.iter().map(|d| d.name()).collect();
+
+        // Verify all 13 quantized embedder CFs are present
+        for i in 0..13 {
+            let cf_name = format!("emb_{}", i);
+            assert!(
+                names.contains(&cf_name.as_str()),
+                "Missing quantized embedder CF: {}",
+                cf_name
+            );
+        }
+    }
+
+    #[test]
+    fn test_all_cf_descriptors_includes_teleological_cfs() {
+        let cache = Cache::new_lru_cache(256 * 1024 * 1024);
+        let descriptors = get_all_column_family_descriptors(&cache);
+        let names: Vec<_> = descriptors.iter().map(|d| d.name()).collect();
+
+        // Verify all 4 teleological CFs are present
+        assert!(names.contains(&"fingerprints"), "Missing CF: fingerprints");
+        assert!(names.contains(&"purpose_vectors"), "Missing CF: purpose_vectors");
+        assert!(names.contains(&"e13_splade_inverted"), "Missing CF: e13_splade_inverted");
+        assert!(names.contains(&"e1_matryoshka_128"), "Missing CF: e1_matryoshka_128");
     }
 }
