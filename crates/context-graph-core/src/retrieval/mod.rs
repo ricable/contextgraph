@@ -81,8 +81,11 @@
 mod aggregation;
 mod executor;
 mod in_memory_executor;
+mod pipeline;
 mod query;
 mod result;
+mod teleological_query;
+mod teleological_result;
 
 #[cfg(test)]
 mod tests;
@@ -91,8 +94,13 @@ mod tests;
 pub use aggregation::AggregationStrategy;
 pub use executor::{IndexType, MultiEmbeddingQueryExecutor, SpaceInfo};
 pub use in_memory_executor::InMemoryMultiEmbeddingExecutor;
+pub use pipeline::{DefaultTeleologicalPipeline, PipelineHealth, TeleologicalRetrievalPipeline};
 pub use query::{EmbeddingSpaceMask, MultiEmbeddingQuery, PipelineStageConfig};
 pub use result::{
     AggregatedMatch, MultiEmbeddingResult, PipelineStageTiming, ScoredMatch, SpaceContribution,
     SpaceSearchResult,
+};
+pub use teleological_query::TeleologicalQuery;
+pub use teleological_result::{
+    AlignmentLevel, PipelineBreakdown, ScoredMemory, TeleologicalRetrievalResult,
 };

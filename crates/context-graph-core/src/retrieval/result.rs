@@ -165,7 +165,7 @@ impl MultiEmbeddingResult {
 }
 
 /// Timing breakdown for 5-stage pipeline.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct PipelineStageTiming {
     /// Stage 1: SPLADE sparse retrieval.
     pub stage1_splade: Duration,

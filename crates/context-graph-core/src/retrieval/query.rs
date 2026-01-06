@@ -165,7 +165,7 @@ impl MultiEmbeddingQuery {
 /// - Stage 3 (Full HNSW): <20ms, 100 candidates
 /// - Stage 4 (Teleological): <10ms, 50 candidates
 /// - Stage 5 (Late Interaction): <15ms, final ranking
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct PipelineStageConfig {
     /// Stage 1: SPLADE sparse retrieval candidate count.
     /// Default: 1000
@@ -207,6 +207,79 @@ impl Default for PipelineStageConfig {
             rrf_k: 60.0,
             min_alignment_threshold: 0.55,
         }
+    }
+}
+
+impl PipelineStageConfig {
+    /// Validate pipeline configuration. FAILS FAST on invalid values.
+    ///
+    /// # Validation Rules
+    ///
+    /// 1. All candidate counts must be > 0
+    /// 2. rrf_k must be > 0
+    /// 3. min_alignment_threshold must be in [0.0, 1.0]
+    /// 4. Stage limits should form a decreasing funnel
+    ///
+    /// # Errors
+    ///
+    /// Returns `CoreError::ValidationError` if any rule is violated.
+    pub fn validate(&self) -> crate::error::CoreResult<()> {
+        // Rule 1: All candidate counts must be > 0
+        if self.splade_candidates == 0 {
+            return Err(crate::error::CoreError::ValidationError {
+                field: "splade_candidates".to_string(),
+                message: "Stage 1 SPLADE candidates must be > 0".to_string(),
+            });
+        }
+
+        if self.matryoshka_128d_limit == 0 {
+            return Err(crate::error::CoreError::ValidationError {
+                field: "matryoshka_128d_limit".to_string(),
+                message: "Stage 2 Matryoshka limit must be > 0".to_string(),
+            });
+        }
+
+        if self.full_search_limit == 0 {
+            return Err(crate::error::CoreError::ValidationError {
+                field: "full_search_limit".to_string(),
+                message: "Stage 3 full search limit must be > 0".to_string(),
+            });
+        }
+
+        if self.teleological_limit == 0 {
+            return Err(crate::error::CoreError::ValidationError {
+                field: "teleological_limit".to_string(),
+                message: "Stage 4 teleological limit must be > 0".to_string(),
+            });
+        }
+
+        if self.late_interaction_limit == 0 {
+            return Err(crate::error::CoreError::ValidationError {
+                field: "late_interaction_limit".to_string(),
+                message: "Stage 5 late interaction limit must be > 0".to_string(),
+            });
+        }
+
+        // Rule 2: rrf_k must be > 0
+        if self.rrf_k <= 0.0 {
+            return Err(crate::error::CoreError::ValidationError {
+                field: "rrf_k".to_string(),
+                message: "RRF k parameter must be > 0".to_string(),
+            });
+        }
+
+        // Rule 3: min_alignment_threshold must be in [0.0, 1.0]
+        if !(0.0..=1.0).contains(&self.min_alignment_threshold) {
+            return Err(crate::error::CoreError::ValidationError {
+                field: "min_alignment_threshold".to_string(),
+                message: format!(
+                    "Alignment threshold must be in [0.0, 1.0], got {}",
+                    self.min_alignment_threshold
+                ),
+            });
+        }
+
+        Ok(())
     }
 }
 
