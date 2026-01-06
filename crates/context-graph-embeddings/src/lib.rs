@@ -89,3 +89,9 @@ pub use quantization::{
 
 // Model registry re-exports
 pub use models::{MemoryTracker, ModelRegistry, ModelRegistryConfig, RegistryStats};
+
+// Storage re-exports
+pub use storage::{
+    StoredQuantizedFingerprint, IndexEntry, EmbedderQueryResult, MultiSpaceQueryResult,
+    EXPECTED_QUANTIZED_SIZE_BYTES, MAX_QUANTIZED_SIZE_BYTES, STORAGE_VERSION, RRF_K,
+};

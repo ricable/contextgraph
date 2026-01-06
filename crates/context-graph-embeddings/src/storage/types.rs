@@ -1,119 +1,3 @@
-# TASK-EMB-005: Create Quantized Storage Types for Per-Embedder Indexing
-
-<task_spec id="TASK-EMB-005" version="3.0" updated="2026-01-06">
-
-## Metadata
-
-| Field | Value |
-|-------|-------|
-| **Task ID** | TASK-EMB-005 |
-| **Title** | Create Quantized Storage Data Types |
-| **Status** | ready |
-| **Layer** | foundation |
-| **Sequence** | 5 |
-| **Implements** | REQ-EMB-006 |
-| **Depends On** | TASK-EMB-004 (COMPLETED - quantization types exist) |
-| **Estimated Complexity** | medium |
-| **Constitution Ref** | `storage.layer1_primary`, `storage.layer2c_per_embedder` |
-
----
-
-## Critical Context: What Actually Exists vs What's Needed
-
-### IMPORTANT: The Original Task Document Was WRONG
-
-The original task asked to create `StoredFingerprint` in `context-graph-embeddings/src/storage/`. This is **incorrect** for several reasons:
-
-1. **`TeleologicalFingerprint` already exists** at `crates/context-graph-core/src/types/fingerprint/teleological/types.rs`
-   - This is the ~63KB UNQUANTIZED primary storage format
-   - It's serialized/deserialized via `crates/context-graph-storage/src/teleological/serialization.rs`
-
-2. **This task should create QUANTIZED storage types** for per-embedder HNSW indexing
-   - These are SEPARATE from TeleologicalFingerprint
-   - They enable lazy loading (only fetch needed embedders)
-   - Target: ~17KB per fingerprint AFTER quantization (Constitution requirement)
-
-### What This Task Actually Creates
-
-This task creates types for **Stage 3 multi-space reranking** in the 5-stage retrieval pipeline:
-- `StoredQuantizedFingerprint` - Complete fingerprint with quantized embeddings (HashMap<u8, QuantizedEmbedding>)
-- `IndexEntry` - Entry in per-embedder HNSW index (dequantized vector + metadata)
-- `EmbedderQueryResult` - Result from single embedder search
-- `MultiSpaceQueryResult` - RRF-fused result from multi-space retrieval
-
----
-
-## Current Codebase State (Verified 2026-01-06)
-
-### Existing Files (DO NOT MODIFY)
-
-| File | Purpose | Status |
-|------|---------|--------|
-| `crates/context-graph-core/src/types/fingerprint/teleological/types.rs` | `TeleologicalFingerprint` (~63KB unquantized) | ✅ EXISTS |
-| `crates/context-graph-storage/src/teleological/serialization.rs` | Serialization for TeleologicalFingerprint | ✅ EXISTS |
-| `crates/context-graph-embeddings/src/quantization/types.rs` | `QuantizedEmbedding`, `QuantizationMethod`, `QuantizationMetadata` | ✅ EXISTS (TASK-EMB-004) |
-| `crates/context-graph-embeddings/src/storage/mod.rs` | Empty placeholder module | ⚠️ Needs types.rs |
-
-### Files to CREATE
-
-| File | Purpose |
-|------|---------|
-| `crates/context-graph-embeddings/src/storage/types.rs` | Quantized storage types for per-embedder indexing |
-
-### Files to MODIFY
-
-| File | Change |
-|------|--------|
-| `crates/context-graph-embeddings/src/storage/mod.rs` | Add `mod types; pub use types::*;` |
-| `crates/context-graph-embeddings/src/lib.rs` | Re-export storage types |
-
----
-
-## Constitution Reference (Source of Truth)
-
-From `/home/cabdru/contextgraph/docs2/constitution.yaml`:
-
-```yaml
-storage:
-  layer1_primary:
-    dev: rocksdb
-    prod: scylladb
-    stores: "Complete TeleologicalFingerprint per memory (quantized ~17KB)"
-    schema:
-      id: UUID
-      embeddings: "[E1..E13 as BYTEA, quantized per-embedder]"
-      purpose_vector: "REAL[13] -- 13D teleological signature"
-      # ... other fields
-
-  layer2c_per_embedder:
-    desc: "Full-dimension per-space indexes for Stage 3 reranking"
-    indexes: "13× HNSW (E1-E13, one per embedder, quantized)"
-    use_case: "Multi-space reranking with RRF fusion across 13 spaces"
-    hnsw_params: { M: 16, ef_construction: 200, ef_search: 100 }
-
-embeddings:
-  storage_per_memory: "~17KB (quantized) vs 46KB uncompressed - 63% reduction via PQ-8/Float8/Binary"
-
-  retrieval_pipeline:
-    stage_3_multispace_rerank:
-      desc: "RRF fusion across 13 spaces"
-      input: "1,000 candidates (1K candidates)"
-      output: "Top 100 candidates"
-      latency: "<20ms"
-      uses: [E1, E2, E3, E4, E5, E6, E7, E8, E9, E10, E11, E12, E13]
-      method: "Per-space cosine → RRF fusion across 13 spaces"
-      rrf_formula: "RRF(d) = Σᵢ 1/(k + rankᵢ(d)) where k=60"
-```
-
----
-
-## Exact Implementation Required
-
-### Step 1: Create Storage Types File
-
-**Create file:** `crates/context-graph-embeddings/src/storage/types.rs`
-
-```rust
 //! Quantized storage types for per-embedder HNSW indexing.
 //!
 //! These types support the Constitution's 5-stage retrieval pipeline, specifically:
@@ -134,6 +18,7 @@ embeddings:
 //! - This 17KB target achieved via per-embedder quantization
 
 use crate::quantization::{QuantizationMethod, QuantizedEmbedding};
+use crate::types::ModelId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -402,10 +287,8 @@ impl StoredQuantizedFingerprint {
     /// `true` if all embeddings match their Constitution-assigned methods.
     #[must_use]
     pub fn validate_quantization_methods(&self) -> bool {
-        use crate::types::ModelId;
-
         for (idx, qe) in &self.embeddings {
-            if let Some(model_id) = ModelId::from_index(*idx as usize) {
+            if let Ok(model_id) = ModelId::try_from(*idx) {
                 let expected = QuantizationMethod::for_model_id(model_id);
                 if qe.method != expected {
                     return false;
@@ -850,258 +733,171 @@ mod tests {
         assert!(size > 1000, "Size too small: {}", size);
         assert!(size < MAX_QUANTIZED_SIZE_BYTES, "Size too large: {}", size);
     }
+
+    // =============================================================================
+    // EDGE CASE TESTS
+    // =============================================================================
+
+    /// Edge Case 1: Creating fingerprint with only 12 embedders MUST PANIC
+    #[test]
+    #[should_panic(expected = "CONSTRUCTION ERROR")]
+    fn test_edge_case_missing_embedder_panics() {
+        let mut embeddings = create_test_embeddings();
+        embeddings.remove(&5); // Remove E6
+
+        // This MUST panic with "CONSTRUCTION ERROR"
+        StoredQuantizedFingerprint::new(
+            Uuid::new_v4(),
+            embeddings,
+            [0.5f32; 13],
+            [0.25f32; 4],
+            [0u8; 32],
+        );
+    }
+
+    /// Edge Case 2: Zero-norm vector in IndexEntry
+    #[test]
+    fn test_edge_case_zero_norm_vector() {
+        // Test: Creating index entry with zero vector
+        let entry = IndexEntry::new(Uuid::new_v4(), 0, vec![0.0, 0.0, 0.0]);
+
+        // Normalized should return zero vector (not NaN/Inf)
+        let normalized = entry.normalized();
+        assert!(normalized.iter().all(|&x| x == 0.0), "Expected zero vector for normalized");
+        assert_eq!(normalized.len(), 3);
+
+        // Cosine similarity with zero vector should be 0.0
+        let sim = entry.cosine_similarity(&[1.0, 0.0, 0.0]);
+        assert_eq!(sim, 0.0, "Expected 0.0 similarity for zero vector");
+
+        // Verify norm is zero
+        assert!(entry.norm.abs() < f32::EPSILON, "Expected zero norm");
+    }
+
+    /// Edge Case 3: RRF contribution at high rank
+    #[test]
+    fn test_edge_case_rrf_high_rank() {
+        // Test: RRF contribution diminishes at high ranks
+        let result_rank_0 = EmbedderQueryResult::from_similarity(Uuid::new_v4(), 0, 0.9, 0);
+        let result_rank_1000 = EmbedderQueryResult::from_similarity(Uuid::new_v4(), 0, 0.9, 1000);
+
+        let rrf_0 = result_rank_0.rrf_contribution();     // 1/60 = 0.0167
+        let rrf_1000 = result_rank_1000.rrf_contribution(); // 1/1060 = 0.00094
+
+        // Verify actual values
+        let expected_rrf_0 = 1.0 / 60.0;
+        let expected_rrf_1000 = 1.0 / 1060.0;
+
+        assert!((rrf_0 - expected_rrf_0).abs() < f32::EPSILON,
+            "Expected rrf_0={}, got {}", expected_rrf_0, rrf_0);
+        assert!((rrf_1000 - expected_rrf_1000).abs() < f32::EPSILON,
+            "Expected rrf_1000={}, got {}", expected_rrf_1000, rrf_1000);
+
+        // Rank 0 contributes 10x+ more than rank 1000
+        assert!(rrf_0 > rrf_1000 * 10.0,
+            "Rank 0 ({}) should be >10x rank 1000 ({})", rrf_0, rrf_1000);
+    }
+
+    /// Test that invalid embedder index in embeddings map panics
+    #[test]
+    #[should_panic(expected = "CONSTRUCTION ERROR")]
+    fn test_invalid_embedder_index() {
+        let mut embeddings = create_test_embeddings();
+        // Remove valid key 12 and add invalid key 13
+        embeddings.remove(&12);
+        embeddings.insert(13, QuantizedEmbedding {
+            method: QuantizationMethod::SparseNative,
+            original_dim: 30522,
+            data: vec![0u8; 100],
+            metadata: QuantizationMetadata::Sparse {
+                vocab_size: 30522,
+                nnz: 50,
+            },
+        });
+
+        StoredQuantizedFingerprint::new(
+            Uuid::new_v4(),
+            embeddings,
+            [0.5f32; 13],
+            [0.25f32; 4],
+            [0u8; 32],
+        );
+    }
+
+    /// Test get_embedding panics for missing index
+    #[test]
+    #[should_panic(expected = "STORAGE ERROR")]
+    fn test_get_embedding_missing_index() {
+        let fp = StoredQuantizedFingerprint::new(
+            Uuid::new_v4(),
+            create_test_embeddings(),
+            [0.5f32; 13],
+            [0.25f32; 4],
+            [0u8; 32],
+        );
+
+        // This should panic because 15 is not a valid index
+        fp.get_embedding(15);
+    }
+
+    /// Test cosine similarity panics on dimension mismatch
+    #[test]
+    #[should_panic(expected = "SIMILARITY ERROR")]
+    fn test_cosine_similarity_dimension_mismatch() {
+        let entry = IndexEntry::new(Uuid::new_v4(), 0, vec![1.0, 0.0, 0.0]);
+
+        // This should panic because query has 2 dims, entry has 3
+        entry.cosine_similarity(&[1.0, 0.0]);
+    }
+
+    /// Test MultiSpaceQueryResult panics on empty results
+    #[test]
+    #[should_panic(expected = "AGGREGATION ERROR")]
+    fn test_multi_space_empty_results() {
+        MultiSpaceQueryResult::from_embedder_results(
+            Uuid::new_v4(),
+            &[], // Empty results
+            0.75,
+        );
+    }
+
+    /// Test validate_quantization_methods
+    #[test]
+    fn test_validate_quantization_methods() {
+        let fp = StoredQuantizedFingerprint::new(
+            Uuid::new_v4(),
+            create_test_embeddings(),
+            [0.5f32; 13],
+            [0.25f32; 4],
+            [0u8; 32],
+        );
+
+        // Our test embeddings use the correct methods per Constitution
+        assert!(fp.validate_quantization_methods(), "Test embeddings should use correct quantization methods");
+    }
+
+    /// Test dominant quadrant calculation
+    #[test]
+    fn test_dominant_quadrant_calculation() {
+        // Open quadrant dominant
+        let fp1 = StoredQuantizedFingerprint::new(
+            Uuid::new_v4(),
+            create_test_embeddings(),
+            [0.5f32; 13],
+            [0.6, 0.2, 0.1, 0.1], // Open=0.6 is dominant
+            [0u8; 32],
+        );
+        assert_eq!(fp1.dominant_quadrant, 0); // Open
+        assert!((fp1.johari_confidence - 0.6).abs() < f32::EPSILON);
+
+        // Unknown quadrant dominant
+        let fp2 = StoredQuantizedFingerprint::new(
+            Uuid::new_v4(),
+            create_test_embeddings(),
+            [0.5f32; 13],
+            [0.1, 0.1, 0.2, 0.6], // Unknown=0.6 is dominant
+            [0u8; 32],
+        );
+        assert_eq!(fp2.dominant_quadrant, 3); // Unknown
+    }
 }
-```
-
-### Step 2: Update mod.rs
-
-**Modify file:** `crates/context-graph-embeddings/src/storage/mod.rs`
-
-**Replace entire contents with:**
-
-```rust
-//! Storage types for quantized embeddings.
-//!
-//! This module provides types for storing and indexing quantized embeddings
-//! as specified in the Constitution's storage architecture.
-//!
-//! # Key Types
-//!
-//! - `StoredQuantizedFingerprint`: Complete fingerprint with quantized embeddings (~17KB)
-//! - `IndexEntry`: Entry in per-embedder HNSW index (dequantized for search)
-//! - `EmbedderQueryResult`: Result from single embedder search
-//! - `MultiSpaceQueryResult`: RRF-fused result from multi-space retrieval
-//!
-//! # Relationship to Other Types
-//!
-//! - `TeleologicalFingerprint` (context-graph-core): ~63KB unquantized, used for computation
-//! - `StoredQuantizedFingerprint` (this module): ~17KB quantized, used for storage
-//!
-//! The conversion between these types happens in the Logic Layer (TASK-EMB-022).
-
-mod types;
-
-pub use types::{
-    // Constants
-    EXPECTED_QUANTIZED_SIZE_BYTES,
-    MAX_QUANTIZED_SIZE_BYTES,
-    MIN_QUANTIZED_SIZE_BYTES,
-    NUM_EMBEDDERS,
-    STORAGE_VERSION,
-    RRF_K,
-    // Types
-    StoredQuantizedFingerprint,
-    IndexEntry,
-    EmbedderQueryResult,
-    MultiSpaceQueryResult,
-};
-```
-
-### Step 3: Update lib.rs Re-exports
-
-**Modify file:** `crates/context-graph-embeddings/src/lib.rs`
-
-**Add after the quantization re-exports (around line 88):**
-
-```rust
-// Storage re-exports
-pub use storage::{
-    StoredQuantizedFingerprint, IndexEntry, EmbedderQueryResult, MultiSpaceQueryResult,
-    EXPECTED_QUANTIZED_SIZE_BYTES, MAX_QUANTIZED_SIZE_BYTES, STORAGE_VERSION, RRF_K,
-};
-```
-
----
-
-## Verification Commands
-
-Execute these in order. ALL must pass.
-
-```bash
-# 1. Verify file exists
-test -f crates/context-graph-embeddings/src/storage/types.rs && echo "types.rs EXISTS" || echo "MISSING"
-
-# 2. Compile check
-cargo check -p context-graph-embeddings 2>&1 | tail -5
-
-# 3. Run storage tests
-cargo test -p context-graph-embeddings storage::types::tests -- --nocapture
-
-# 4. Verify exports work
-cargo doc -p context-graph-embeddings --no-deps 2>&1 | grep -E "storage|StoredQuantizedFingerprint|error"
-```
-
----
-
-## Full State Verification Protocol
-
-### Source of Truth Locations
-
-| Data | Location | How to Verify |
-|------|----------|---------------|
-| Types file exists | `src/storage/types.rs` | `stat crates/context-graph-embeddings/src/storage/types.rs` |
-| Module updated | `src/storage/mod.rs` | `grep "StoredQuantizedFingerprint" crates/context-graph-embeddings/src/storage/mod.rs` |
-| Types exported | `src/lib.rs` | `grep "StoredQuantizedFingerprint" crates/context-graph-embeddings/src/lib.rs` |
-| Tests pass | cargo test output | All tests must print "ok" |
-
-### Evidence of Success Required
-
-After completing, provide this exact verification log:
-
-```
-[VERIFICATION LOG - TASK-EMB-005]
-1. Files:
-   $ test -f crates/context-graph-embeddings/src/storage/types.rs && echo "EXISTS"
-   EXISTS
-
-2. Compilation:
-   $ cargo check -p context-graph-embeddings
-   Finished dev [unoptimized + debuginfo] target(s) in X.XXs
-
-3. Tests:
-   $ cargo test -p context-graph-embeddings storage::types::tests
-   running 9 tests
-   test storage::types::tests::test_stored_fingerprint_creation ... ok
-   test storage::types::tests::test_stored_fingerprint_missing_embeddings ... ok
-   test storage::types::tests::test_index_entry_normalized ... ok
-   test storage::types::tests::test_index_entry_cosine_similarity ... ok
-   test storage::types::tests::test_embedder_query_result_rrf ... ok
-   test storage::types::tests::test_multi_space_result_aggregation ... ok
-   test storage::types::tests::test_alignment_filter ... ok
-   test storage::types::tests::test_serde_roundtrip ... ok
-   test storage::types::tests::test_estimated_size ... ok
-
-4. Type Export Verified:
-   $ grep "StoredQuantizedFingerprint" crates/context-graph-embeddings/src/lib.rs
-   pub use storage::{StoredQuantizedFingerprint, ...
-```
-
----
-
-## Edge Cases to Manually Verify
-
-### Edge Case 1: Missing Embedder (MUST PANIC)
-
-```rust
-// Test: Creating fingerprint with only 12 embedders
-let mut embeddings = create_test_embeddings();
-embeddings.remove(&5); // Remove E6
-
-// This MUST panic with "CONSTRUCTION ERROR"
-StoredQuantizedFingerprint::new(
-    Uuid::new_v4(),
-    embeddings,
-    [0.5f32; 13],
-    [0.25f32; 4],
-    [0u8; 32],
-);
-
-// EXPECTED: Panic with message containing "CONSTRUCTION ERROR" and "Missing embedder indices: [5]"
-```
-
-**Before state:** HashMap has 12 entries
-**After state:** Panic occurs (no fingerprint created)
-**Log output:** Error message listing missing index [5]
-
-### Edge Case 2: Zero-Norm Vector in IndexEntry
-
-```rust
-// Test: Creating index entry with zero vector
-let entry = IndexEntry::new(Uuid::new_v4(), 0, vec![0.0, 0.0, 0.0]);
-
-// Normalized should return zero vector (not NaN/Inf)
-let normalized = entry.normalized();
-assert!(normalized.iter().all(|&x| x == 0.0));
-
-// Cosine similarity with zero vector should be 0.0
-let sim = entry.cosine_similarity(&[1.0, 0.0, 0.0]);
-assert_eq!(sim, 0.0);
-```
-
-**Before state:** Zero vector
-**After state:** Returns zero vector (no division by zero)
-**Log output:** normalized = [0.0, 0.0, 0.0], similarity = 0.0
-
-### Edge Case 3: RRF Contribution at High Rank
-
-```rust
-// Test: RRF contribution diminishes at high ranks
-let result_rank_0 = EmbedderQueryResult::from_similarity(Uuid::new_v4(), 0, 0.9, 0);
-let result_rank_1000 = EmbedderQueryResult::from_similarity(Uuid::new_v4(), 0, 0.9, 1000);
-
-let rrf_0 = result_rank_0.rrf_contribution();     // 1/60 = 0.0167
-let rrf_1000 = result_rank_1000.rrf_contribution(); // 1/1060 = 0.00094
-
-assert!(rrf_0 > rrf_1000 * 10.0); // Rank 0 contributes 10x+ more than rank 1000
-```
-
-**Before state:** Two results at different ranks
-**After state:** RRF contribution correctly computed
-**Log output:** rrf_0 = 0.0167, rrf_1000 = 0.00094
-
----
-
-## Scope Boundaries
-
-### In Scope (This Task)
-- Create `StoredQuantizedFingerprint` struct
-- Create `IndexEntry` struct
-- Create `EmbedderQueryResult` struct
-- Create `MultiSpaceQueryResult` struct
-- Add Constitution constants (EXPECTED_SIZE, RRF_K, etc.)
-- Add validation methods
-- Add unit tests with real logic (no mocks)
-- Update module exports
-
-### Out of Scope (Logic Layer)
-- Actual quantization/dequantization logic (TASK-EMB-016, 017, 018)
-- Conversion between `TeleologicalFingerprint` ↔ `StoredQuantizedFingerprint` (TASK-EMB-022)
-- RocksDB/ScyllaDB storage implementation
-- HNSW index management
-- Stage 3 pipeline implementation
-
----
-
-## Trigger Events and Outcome Verification
-
-### Trigger Event
-Running `cargo test -p context-graph-embeddings storage::types::tests` triggers test execution.
-
-### Observable Outcomes (Sources of Truth)
-
-1. **Test output shows all 9 tests passing** - Verify by reading terminal output
-2. **Files exist at specified paths** - Verify with `ls -la`
-3. **Types compile successfully** - Verify with `cargo check`
-4. **Types are importable** - Verify by checking `cargo doc` output
-
-### How to Verify Each Outcome
-
-```bash
-# Outcome 1: Tests pass
-cargo test -p context-graph-embeddings storage::types::tests 2>&1 | grep -E "^test.*ok|running"
-
-# Outcome 2: File exists
-ls -la crates/context-graph-embeddings/src/storage/types.rs
-
-# Outcome 3: Compiles
-cargo check -p context-graph-embeddings 2>&1 | grep -E "Finished|error"
-
-# Outcome 4: Exported
-grep -n "StoredQuantizedFingerprint" crates/context-graph-embeddings/src/lib.rs
-```
-
-If ANY verification command fails, the task is NOT complete.
-
----
-
-## Traceability
-
-| Requirement | Constitution Section | Implementation |
-|-------------|---------------------|----------------|
-| ~17KB quantized storage | `embeddings.storage_per_memory` | `EXPECTED_QUANTIZED_SIZE_BYTES = 17_000` |
-| Per-embedder indexing | `storage.layer2c_per_embedder` | `IndexEntry` with `embedder_idx` |
-| RRF fusion k=60 | `embeddings.retrieval_pipeline.stage_3` | `RRF_K = 60.0` |
-| Stage 4 alignment filter | `storage.layer2d_purpose` | `passes_alignment_filter(0.55)` |
-| 13 embedders required | `embeddings.models` | Panic if `embeddings.len() != 13` |
-
-</task_spec>

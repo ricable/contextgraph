@@ -16,6 +16,9 @@
 
 mod types;
 
+#[cfg(test)]
+mod edge_case_verification;
+
 pub use types::{
     BinaryEncoder, Float8Encoder, PQ8Codebook, QuantizationMetadata, QuantizationMethod,
     QuantizedEmbedding,

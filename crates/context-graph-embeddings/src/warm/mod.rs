@@ -71,6 +71,9 @@ pub use cuda_alloc::{
 // Re-export loader types for convenient access
 pub use loader::{LoadingSummary, WarmLoader};
 
+// Re-export warm loading data types (TASK-EMB-006)
+pub use loader::types::{LoadedModelWeights, TensorMetadata, WarmLoadResult};
+
 // Re-export health check types for convenient access
 pub use health::{WarmHealthCheck, WarmHealthChecker, WarmHealthStatus};
 

@@ -23,6 +23,7 @@ mod helpers;
 mod operations;
 mod preflight;
 mod summary;
+pub mod types;
 
 #[cfg(test)]
 mod tests;
@@ -32,3 +33,6 @@ pub use constants::{DEFAULT_EMBEDDING_DIMENSION, GB, MODEL_SIZES};
 pub use engine::WarmLoader;
 pub use helpers::format_bytes;
 pub use summary::LoadingSummary;
+
+// Re-export warm loading types (TASK-EMB-006)
+pub use types::{LoadedModelWeights, TensorMetadata, WarmLoadResult};
