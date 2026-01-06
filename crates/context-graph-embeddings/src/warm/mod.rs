@@ -14,6 +14,7 @@
 //! - `loader`: WarmLoader main orchestrator for warm model loading
 //! - `diagnostics`: WarmDiagnostics for comprehensive diagnostic reporting
 //! - `integration`: WarmEmbeddingPipeline for unified pipeline access
+//! - `inference`: InferenceEngine for GPU inference validation (TASK-EMB-015)
 //!
 //! # Requirements
 //!
@@ -27,6 +28,7 @@ pub mod diagnostics;
 pub mod error;
 pub mod handle;
 pub mod health;
+pub mod inference;
 pub mod integration;
 // loader is now a directory module
 pub mod loader;
@@ -85,3 +87,6 @@ pub use diagnostics::{
 
 // Re-export integration types for convenient access
 pub use integration::WarmEmbeddingPipeline;
+
+// Re-export inference types for convenient access (TASK-EMB-015)
+pub use inference::InferenceEngine;

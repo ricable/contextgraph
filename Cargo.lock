@@ -513,6 +513,7 @@ dependencies = [
  "chrono",
  "context-graph-core",
  "context-graph-cuda",
+ "hex",
  "image",
  "linked-hash-map",
  "once_cell",

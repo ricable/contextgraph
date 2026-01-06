@@ -1,48 +1,98 @@
-# TASK-EMB-005: Create Storage Types
+# TASK-EMB-015: Replace Fake Inference Validation with Real GPU Model Inference
 
-<task_spec id="TASK-EMB-005" version="1.0">
+<task_spec id="TASK-EMB-015" version="2.0">
 
 ## Metadata
 
 | Field | Value |
 |-------|-------|
-| **Title** | Create Storage Types |
+| **Title** | Replace Fake Inference Validation with Real GPU Model Inference |
 | **Status** | ready |
-| **Layer** | foundation |
-| **Sequence** | 5 |
-| **Implements** | REQ-EMB-006 |
-| **Depends On** | TASK-EMB-004 |
-| **Estimated Complexity** | medium |
-| **Parallel Group** | C |
+| **Layer** | warm-loading |
+| **Sequence** | 15 |
+| **Implements** | Constitution AP-007 (No stub data in production) |
+| **Depends On** | TASK-EMB-013 (COMPLETE), TASK-EMB-014 (COMPLETE) |
+| **Estimated Complexity** | high |
+| **Parallel Group** | None (sequential after EMB-014) |
+
+---
+
+## ⚠️ CRITICAL CONSTITUTION VIOLATION TO FIX
+
+**Current Code Contains FORBIDDEN Fake Data:**
+
+```rust
+// FILE: crates/context-graph-embeddings/src/warm/loader/operations.rs
+// LINES 405-408 - THIS CODE MUST BE DELETED:
+
+// Simulate test inference output   ← FORBIDDEN COMMENT
+let output: Vec<f32> = (0..expected_dimension)
+    .map(|i| (i as f32 * 0.001).sin())   // ← FAKE SIN-WAVE PATTERN - VIOLATES AP-007
+    .collect();
+```
+
+**Constitution AP-007 States:**
+> "Stub data in prod -> use tests/fixtures/"
+
+The sin-wave pattern is stub data masquerading as inference output. This MUST be replaced with real model inference on GPU-resident weights.
 
 ---
 
 ## Context
 
-Constitution v4.0.0 `storage` section specifies:
-- Layer 1: Primary storage (RocksDB dev, ScyllaDB prod)
-- Layer 2a-f: Various indexes (sparse, matryoshka, per-embedder, purpose, goal, late-interaction)
-- Total storage per fingerprint: ~17KB quantized
+### Dependency Chain (Source of Truth)
 
-This task creates foundational types for the storage module. Implementation is in Surface Layer (TASK-EMB-022).
+| Task | Status | What It Does |
+|------|--------|--------------|
+| **TASK-EMB-013** | ✅ COMPLETE | Real weight loading from SafeTensors files with SHA256 checksums |
+| **TASK-EMB-014** | ✅ COMPLETE | Real CUDA allocation via `WarmCudaAllocator::allocate_protected()` |
+| **TASK-EMB-015** | 🔴 THIS TASK | Replace fake sin-wave validation with real inference |
+
+After TASK-EMB-013 and TASK-EMB-014, weights are:
+1. Loaded from real `.safetensors` files
+2. Allocated in real VRAM via `cudaMalloc`
+3. But validation uses FAKE sin-wave output instead of running the model
+
+### Hardware Target (from constitution.yaml)
+
+```yaml
+hardware:
+  gpu: RTX 5090
+  vram: 32GB
+  cuda_version: "13.1"
+```
+
+### Stack Requirements (from constitution.yaml)
+
+```yaml
+stack:
+  rust: "1.75+"
+  cuda: "13.1"
+  inference: "candle-core"  # GPU inference library
+```
 
 ---
 
-## Input Context Files
+## Input Context Files (MUST READ)
 
-| Purpose | File Path |
-|---------|-----------|
-| Constitution | `docs2/constitution.yaml` section `storage` |
-| Quantization types | `crates/context-graph-embeddings/src/quantization/types.rs` (TASK-EMB-004) |
-| Tech spec | `docs2/codecheck/embeddingissues/TECH-EMB-004-storage-module.md` |
+| Purpose | File Path | What to Extract |
+|---------|-----------|-----------------|
+| **Constitution** | `docs2/constitution.yaml` | AP-007, hardware specs, stack requirements |
+| **Fake Code Location** | `crates/context-graph-embeddings/src/warm/loader/operations.rs` | Lines 388-418, specifically line 407 |
+| **Validator Interface** | `crates/context-graph-embeddings/src/warm/validation/validator.rs` | `WarmValidator` struct and methods |
+| **Test Config** | `crates/context-graph-embeddings/src/warm/validation/config.rs` | `TestInferenceConfig` struct |
+| **Model Handle** | `crates/context-graph-embeddings/src/warm/handle.rs` | `ModelHandle` with VRAM pointer |
+| **CUDA Allocator** | `crates/context-graph-embeddings/src/warm/cuda_alloc.rs` | `WarmCudaAllocator` interface |
 
 ---
 
 ## Prerequisites
 
-- [ ] TASK-EMB-004 completed (QuantizedEmbedding types exist)
-- [ ] Read Constitution `storage` section
-- [ ] Understand 5-stage retrieval pipeline
+- [x] TASK-EMB-013 completed (real SafeTensors weight loading)
+- [x] TASK-EMB-014 completed (real CUDA allocation)
+- [ ] Read Constitution section `principles.AP-007`
+- [ ] Verify `candle-core` and `candle-nn` are in Cargo.toml
+- [ ] Understand how ModelHandle provides VRAM pointer
 
 ---
 
@@ -50,265 +100,400 @@ This task creates foundational types for the storage module. Implementation is i
 
 ### In Scope
 
-- `TeleologicalFingerprint` complete struct (per Constitution)
-- `EmbedderStorage` trait for per-embedder indexes
-- `StorageBackend` enum (RocksDB/ScyllaDB)
-- `StorageConfig` with layer configurations
-- Index query types for each layer
+1. **DELETE** the fake sin-wave validation code at `operations.rs:405-408`
+2. **IMPLEMENT** real inference using Candle on GPU-resident weights
+3. **CREATE** `InferenceEngine` struct that wraps Candle model
+4. **UPDATE** `validate_model()` to call real inference
+5. **ADD** comprehensive error handling with EMB-E011 error codes
+6. **WRITE** integration tests using real model files (NO MOCK DATA)
 
 ### Out of Scope
 
-- RocksDB/ScyllaDB implementation (TASK-EMB-022)
-- Index building (TASK-EMB-022)
-- Search algorithms (TASK-EMB-023)
+- Creating new model architectures (use existing embedder configs)
+- Changing the WarmValidator public API
+- Modifying TASK-EMB-013 or TASK-EMB-014 code
 
 ---
 
 ## Definition of Done
 
-### Signatures
+### Code to DELETE (operations.rs:405-408)
 
 ```rust
-// File: crates/context-graph-core/src/storage/types.rs
+// DELETE THIS ENTIRE BLOCK:
+// Simulate test inference output
+let output: Vec<f32> = (0..expected_dimension)
+    .map(|i| (i as f32 * 0.001).sin())
+    .collect();
+```
 
-use uuid::Uuid;
-use chrono::{DateTime, Utc};
-use crate::quantization::{QuantizedEmbedding, QuantizationStrategy};
-use crate::config::constants::*;
+### Code to IMPLEMENT
 
-/// Complete teleological fingerprint for a memory.
-/// Constitution: `storage.layer1_primary.schema`
+#### 1. InferenceEngine Struct (NEW FILE)
+
+```rust
+// File: crates/context-graph-embeddings/src/warm/inference/engine.rs
+
+use candle_core::{Device, Tensor};
+use candle_nn::VarBuilder;
+use crate::warm::error::{WarmError, WarmResult};
+use crate::warm::handle::ModelHandle;
+
+/// Real GPU inference engine using Candle.
 ///
-/// This is the COMPLETE representation of a memory's semantic identity
-/// across all 13 embedding spaces.
-#[derive(Debug, Clone)]
-pub struct TeleologicalFingerprint {
-    /// Unique memory identifier
-    pub id: Uuid,
-
-    /// All 13 embeddings (quantized per Constitution)
-    /// Index 0-12 = E1-E13
-    pub embeddings: [QuantizedEmbedding; EMBEDDER_COUNT],
-
-    /// Optional raw embeddings (cold storage, full precision)
-    /// Used for recomputation if quantization strategy changes
-    pub embeddings_raw: Option<[Vec<f32>; EMBEDDER_COUNT]>,
-
-    /// 13D teleological purpose vector
-    /// Each dimension = alignment of that embedder to North Star
-    pub purpose_vector: [f32; PURPOSE_VECTOR_DIM],
-
-    /// Per-embedder Johari quadrant classification
-    /// Values: Open, Blind, Hidden, Unknown
-    pub johari_quadrants: [JohariQuadrant; EMBEDDER_COUNT],
-
-    /// Confidence in Johari classification
-    pub johari_confidence: [f32; EMBEDDER_COUNT],
-
-    /// Overall alignment to North Star goal
-    pub north_star_alignment: f32,
-
-    /// Index of embedder with highest alignment
-    pub dominant_embedder: u8,
-
-    /// Kuramoto synchronization score across spaces
-    pub coherence_score: f32,
-
-    /// Creation timestamp
-    pub created_at: DateTime<Utc>,
-
-    /// Last access timestamp
-    pub last_accessed: DateTime<Utc>,
+/// Constitution AP-007 Compliance: This performs REAL inference
+/// on GPU-resident weights. NO fake data patterns allowed.
+pub struct InferenceEngine {
+    device: Device,
+    model_id: String,
 }
 
-impl TeleologicalFingerprint {
-    /// Calculate total byte size of this fingerprint.
-    pub fn byte_size(&self) -> usize {
-        let embedding_size: usize = self.embeddings.iter()
-            .map(|e| e.byte_size())
-            .sum();
+impl InferenceEngine {
+    /// Create inference engine for a loaded model.
+    ///
+    /// # Arguments
+    /// * `model_id` - Model identifier (e.g., "E1_Semantic")
+    /// * `handle` - ModelHandle with VRAM pointer from TASK-EMB-014
+    ///
+    /// # Errors
+    /// - `WarmError::InferenceInitFailed` - Candle initialization failed
+    pub fn new(model_id: &str, handle: &ModelHandle) -> WarmResult<Self> {
+        // Initialize CUDA device
+        let device = Device::cuda_if_available(handle.device_id() as usize)
+            .map_err(|e| WarmError::InferenceInitFailed {
+                model_id: model_id.to_string(),
+                reason: format!("CUDA device init failed: {}", e),
+            })?;
 
-        let raw_size = self.embeddings_raw.as_ref()
-            .map(|raw| raw.iter().map(|v| v.len() * 4).sum())
-            .unwrap_or(0);
+        tracing::info!(
+            "[EMB-I015] InferenceEngine initialized for {} on device {}",
+            model_id,
+            handle.device_id()
+        );
 
-        // Fixed fields: id(16) + purpose(52) + johari(13) + confidence(52) +
-        //               alignment(4) + dominant(1) + coherence(4) + timestamps(16)
-        let fixed_size = 16 + 52 + 13 + 52 + 4 + 1 + 4 + 16;
-
-        embedding_size + raw_size + fixed_size
+        Ok(Self {
+            device,
+            model_id: model_id.to_string(),
+        })
     }
 
-    /// Check if fingerprint is under Constitution size budget (~17KB).
-    pub fn within_budget(&self) -> bool {
-        self.byte_size() <= 17 * 1024
+    /// Run test inference with a sample input.
+    ///
+    /// # CRITICAL: Real Inference
+    /// This runs actual GPU computation. The output vector contains
+    /// real embedding values, NOT synthetic patterns.
+    ///
+    /// # Arguments
+    /// * `handle` - ModelHandle with VRAM pointer
+    /// * `test_input` - Sample text for inference
+    /// * `expected_dim` - Expected output dimension
+    ///
+    /// # Returns
+    /// Real embedding vector from GPU inference
+    ///
+    /// # Errors
+    /// - `WarmError::InferenceFailed` - Forward pass failed
+    /// - `WarmError::ModelDimensionMismatch` - Output dimension wrong
+    pub fn run_test_inference(
+        &self,
+        handle: &ModelHandle,
+        test_input: &str,
+        expected_dim: usize,
+    ) -> WarmResult<Vec<f32>> {
+        let start = std::time::Instant::now();
+
+        // Tokenize input (placeholder - integrate with actual tokenizer)
+        let input_ids = self.tokenize(test_input)?;
+
+        // Create input tensor on GPU
+        let input_tensor = Tensor::new(&input_ids[..], &self.device)
+            .map_err(|e| WarmError::InferenceFailed {
+                model_id: self.model_id.clone(),
+                reason: format!("Input tensor creation failed: {}", e),
+                input_hash: Self::hash_input(test_input),
+            })?;
+
+        // Run forward pass using weights at handle.vram_ptr()
+        // This is where real GPU computation happens
+        let output = self.forward_pass(handle, &input_tensor, expected_dim)?;
+
+        let duration = start.elapsed();
+        tracing::info!(
+            "[EMB-I015] Test inference for {} completed in {:?}, output dim={}",
+            self.model_id,
+            duration,
+            output.len()
+        );
+
+        Ok(output)
     }
 
-    /// Get quantization strategies used.
-    pub fn quantization_strategies(&self) -> [QuantizationStrategy; EMBEDDER_COUNT] {
-        let mut strategies = [QuantizationStrategy::None; EMBEDDER_COUNT];
-        for (i, emb) in self.embeddings.iter().enumerate() {
-            strategies[i] = emb.strategy();
-        }
-        strategies
-    }
-}
-
-/// Johari window quadrant classification.
-/// Constitution: `delta_sc_computation.johari_classification`
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum JohariQuadrant {
-    /// ΔS ≤ 0.5, ΔC > 0.5 — Well-understood
-    Open = 0,
-    /// ΔS > 0.5, ΔC ≤ 0.5 — Discovery opportunity
-    Blind = 1,
-    /// ΔS ≤ 0.5, ΔC ≤ 0.5 — Dormant
-    Hidden = 2,
-    /// ΔS > 0.5, ΔC > 0.5 — Frontier
-    Unknown = 3,
-}
-
-impl JohariQuadrant {
-    /// Classify based on ΔS and ΔC values.
-    pub fn classify(delta_s: f32, delta_c: f32) -> Self {
-        match (delta_s > 0.5, delta_c > 0.5) {
-            (false, true) => Self::Open,
-            (true, false) => Self::Blind,
-            (false, false) => Self::Hidden,
-            (true, true) => Self::Unknown,
-        }
+    /// Tokenize input text.
+    fn tokenize(&self, input: &str) -> WarmResult<Vec<u32>> {
+        // Use model-specific tokenizer
+        // For now, simple byte-level tokenization
+        Ok(input.bytes().map(|b| b as u32).collect())
     }
 
-    /// Get learning priority for this quadrant.
-    pub fn learning_priority(&self) -> f32 {
-        match self {
-            Self::Unknown => 1.0,   // Frontier - highest priority
-            Self::Blind => 0.8,     // Discovery opportunity
-            Self::Open => 0.3,      // Already understood
-            Self::Hidden => 0.2,    // Dormant
-        }
-    }
-}
+    /// Execute forward pass on GPU.
+    fn forward_pass(
+        &self,
+        handle: &ModelHandle,
+        input: &Tensor,
+        expected_dim: usize,
+    ) -> WarmResult<Vec<f32>> {
+        // Load weights from VRAM pointer
+        // handle.vram_ptr() points to real cudaMalloc'd memory
 
-/// Storage backend selection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StorageBackend {
-    /// Development: RocksDB local
-    RocksDB,
-    /// Production: ScyllaDB distributed
-    ScyllaDB,
-}
+        // For embedding models: simple matrix multiply
+        // weights @ input -> output
 
-impl StorageBackend {
-    /// Select backend based on environment.
-    pub fn from_env() -> Self {
-        if std::env::var("PRODUCTION").is_ok() {
-            Self::ScyllaDB
-        } else {
-            Self::RocksDB
-        }
-    }
-}
+        // This is a simplified implementation
+        // Real implementation needs model architecture specifics
+        let output_size = expected_dim;
+        let mut output = vec![0.0f32; output_size];
 
-/// Index layer configuration per Constitution.
-#[derive(Debug, Clone)]
-pub struct IndexConfig {
-    /// Layer 2a: SPLADE sparse inverted index
-    pub sparse_index: SparseIndexConfig,
-    /// Layer 2b: Matryoshka 128D HNSW
-    pub matryoshka_index: HnswConfig,
-    /// Layer 2c: Per-embedder full dimension HNSW
-    pub per_embedder_indexes: [HnswConfig; EMBEDDER_COUNT],
-    /// Layer 2d: Purpose vector 13D HNSW
-    pub purpose_index: HnswConfig,
-    /// Layer 2f: Late interaction token index
-    pub late_interaction_index: HnswConfig,
-}
+        // TODO: Implement actual Candle forward pass using handle.vram_ptr()
+        // This requires integrating Candle's unsafe CUDA tensor from raw pointer
 
-/// HNSW index configuration.
-#[derive(Debug, Clone, Copy)]
-pub struct HnswConfig {
-    /// M parameter: max connections per layer
-    pub m: usize,
-    /// efConstruction: size of dynamic candidate list
-    pub ef_construction: usize,
-    /// efSearch: size of search candidate list
-    pub ef_search: usize,
-}
+        // TEMPORARY: Return zeros to indicate "not yet implemented"
+        // This is DIFFERENT from fake sin-wave - it's an honest placeholder
+        // that will fail validation until properly implemented
 
-impl Default for HnswConfig {
-    fn default() -> Self {
-        Self {
-            m: 16,
-            ef_construction: 200,
-            ef_search: 100,
-        }
-    }
-}
+        tracing::warn!(
+            "[EMB-W015] Forward pass returning zeros - IMPLEMENT CANDLE INTEGRATION"
+        );
 
-impl HnswConfig {
-    /// High-recall configuration for Matryoshka fast search.
-    pub fn matryoshka() -> Self {
-        Self {
-            m: 32,
-            ef_construction: 256,
-            ef_search: 128,
-        }
+        Ok(output)
     }
 
-    /// Standard configuration for per-embedder indexes.
-    pub fn per_embedder() -> Self {
-        Self::default()
+    /// Hash input for error logging.
+    fn hash_input(input: &str) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        input.hash(&mut hasher);
+        hasher.finish()
     }
 }
+```
 
-/// Sparse inverted index configuration.
-#[derive(Debug, Clone)]
-pub struct SparseIndexConfig {
-    /// Vocabulary size (SPLADE)
-    pub vocab_size: usize,
-    /// Minimum value to index
-    pub min_value_threshold: f32,
-}
+#### 2. Update validate_model() in operations.rs
 
-impl Default for SparseIndexConfig {
-    fn default() -> Self {
-        Self {
-            vocab_size: 30522,
-            min_value_threshold: 0.0,
-        }
+```rust
+// File: crates/context-graph-embeddings/src/warm/loader/operations.rs
+// REPLACE the validate_model function (lines 388-418)
+
+use crate::warm::inference::InferenceEngine;
+
+/// Validate a model after loading using REAL inference.
+///
+/// # CRITICAL: Constitution AP-007 Compliance
+/// This function runs REAL GPU inference. The previous sin-wave
+/// fake data has been DELETED as it violated AP-007.
+///
+/// # Arguments
+/// * `model_id` - Model identifier
+/// * `expected_dimension` - Expected embedding dimension
+/// * `config` - Warm loading configuration
+/// * `validator` - Model validator
+/// * `handle` - ModelHandle with VRAM pointer (from TASK-EMB-014)
+pub fn validate_model(
+    model_id: &str,
+    expected_dimension: usize,
+    config: &WarmConfig,
+    validator: &WarmValidator,
+    handle: &ModelHandle,
+) -> WarmResult<()> {
+    if !config.enable_test_inference {
+        tracing::info!(
+            "[EMB-I015] Skipping validation for {} (disabled in config)",
+            model_id
+        );
+        return Ok(());
     }
-}
 
-/// Query for storage operations.
-#[derive(Debug, Clone)]
-pub struct StorageQuery {
-    /// Embedding space(s) to search
-    pub embedder_ids: Vec<usize>,
-    /// Query vector (varies by search type)
-    pub vector: Vec<f32>,
-    /// Maximum results
-    pub k: usize,
-    /// Minimum alignment threshold
-    pub min_alignment: Option<f32>,
-    /// Filter by Johari quadrant
-    pub johari_filter: Option<Vec<JohariQuadrant>>,
+    tracing::info!("[EMB-I015] Validating model {} with REAL inference", model_id);
+
+    // Create inference engine
+    let engine = InferenceEngine::new(model_id, handle)?;
+
+    // Run REAL test inference
+    let test_input = "The quick brown fox jumps over the lazy dog.";
+    let output = engine.run_test_inference(handle, test_input, expected_dimension)?;
+
+    // Validate dimensions
+    validator.validate_dimensions(model_id, expected_dimension, output.len())?;
+
+    // Validate no NaN/Inf in output
+    validator.validate_weights_finite_for_model(model_id, &output)?;
+
+    // Validate output is not all zeros (catches unimplemented forward pass)
+    let non_zero_count = output.iter().filter(|&&v| v != 0.0).count();
+    if non_zero_count == 0 {
+        return Err(WarmError::ModelValidationFailed {
+            model_id: model_id.to_string(),
+            reason: "Inference output is all zeros - forward pass not implemented".to_string(),
+            expected_output: Some("non-zero embedding values".to_string()),
+            actual_output: Some("all zeros".to_string()),
+        });
+    }
+
+    // Validate output is normalized (for embedding models)
+    let norm: f32 = output.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if (norm - 1.0).abs() > 0.1 {
+        tracing::warn!(
+            "[EMB-W015] Output norm {} differs from expected 1.0 for {}",
+            norm,
+            model_id
+        );
+    }
+
+    tracing::info!(
+        "[EMB-I015] Model {} validation PASSED (dim={}, norm={:.4})",
+        model_id,
+        output.len(),
+        norm
+    );
+
+    Ok(())
 }
+```
+
+#### 3. Update Error Types
+
+```rust
+// Add to: crates/context-graph-embeddings/src/warm/error.rs
+
+/// Inference initialization failed.
+/// Error code: EMB-E011
+#[error("[EMB-E011] Inference initialization failed for {model_id}: {reason}")]
+InferenceInitFailed {
+    model_id: String,
+    reason: String,
+},
+
+/// Inference execution failed.
+/// Error code: EMB-E011
+#[error("[EMB-E011] Inference failed for {model_id}: {reason} (input_hash=0x{input_hash:016x})")]
+InferenceFailed {
+    model_id: String,
+    reason: String,
+    input_hash: u64,
+},
 ```
 
 ### Constraints
 
-- `TeleologicalFingerprint` MUST store all 13 embeddings
-- Byte size MUST be calculable for budget enforcement
-- `JohariQuadrant` classification MUST match Constitution formula
-- Index configs MUST match Constitution `storage.layer2*` sections
+- **NO BACKWARDS COMPATIBILITY** - The fake sin-wave code must be completely removed
+- **FAIL FAST** - Any inference failure must return an error immediately
+- **NO MOCK DATA** - Tests must use real `.safetensors` model files
+- **REAL CUDA** - Must use weights from `ModelHandle::vram_ptr()` allocated by TASK-EMB-014
 
-### Verification
+---
 
-- Fingerprint byte_size() calculation is accurate
-- JohariQuadrant::classify() matches Constitution
-- Default HNSW configs match Constitution
+## Full State Verification
+
+### Source of Truth
+
+| Component | Source File | Verification Method |
+|-----------|-------------|---------------------|
+| Model weights loaded | `loader/operations.rs:load_weights()` | Check SHA256 checksum matches |
+| VRAM allocated | `cuda_alloc.rs:allocate_protected()` | Check `vram_ptr != 0` |
+| Inference runs | `inference/engine.rs:run_test_inference()` | Check output non-zero |
+| Validation passes | `validation/validator.rs` | Check all assertions pass |
+
+### Execute & Inspect Protocol
+
+After each operation, you MUST verify:
+
+```bash
+# 1. Verify weights loaded
+cargo test -p context-graph-embeddings warm::loader::tests::test_load_weights -- --nocapture
+# INSPECT: Log shows "Loaded weights for E1_Semantic ... checksum XX..."
+
+# 2. Verify CUDA allocation
+cargo test -p context-graph-embeddings warm::cuda_alloc::tests::test_allocate_protected -- --nocapture
+# INSPECT: Log shows "Allocated X bytes at 0x... (REAL cudaMalloc)"
+
+# 3. Verify inference runs
+cargo test -p context-graph-embeddings warm::inference::tests::test_inference_engine -- --nocapture
+# INSPECT: Log shows "Test inference completed in Xms, output dim=1024"
+
+# 4. Full integration test
+cargo test -p context-graph-embeddings warm::loader::tests::test_load_and_validate -- --nocapture
+# INSPECT: Log shows "Model E1_Semantic validation PASSED"
+```
+
+### Boundary & Edge Case Audit
+
+#### Edge Case 1: Empty Input
+
+```rust
+#[test]
+fn test_inference_empty_input() {
+    let engine = create_test_engine();
+    let result = engine.run_test_inference(&handle, "", 1024);
+
+    // EXPECTED: Error, not crash
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(matches!(err, WarmError::InferenceFailed { .. }));
+}
+```
+
+#### Edge Case 2: Dimension Mismatch
+
+```rust
+#[test]
+fn test_inference_wrong_dimension() {
+    let engine = create_test_engine();
+    // Request 512-dim from 1024-dim model
+    let result = engine.run_test_inference(&handle, "test", 512);
+
+    // EXPECTED: Dimension mismatch error
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(matches!(err, WarmError::ModelDimensionMismatch { .. }));
+}
+```
+
+#### Edge Case 3: Invalid VRAM Pointer
+
+```rust
+#[test]
+fn test_inference_null_vram_ptr() {
+    let bad_handle = ModelHandle::new(0, 1024, 0, 0); // null ptr
+    let engine = InferenceEngine::new("E1_Semantic", &bad_handle);
+
+    // EXPECTED: Error on inference, not panic
+    assert!(engine.is_err() || {
+        let eng = engine.unwrap();
+        eng.run_test_inference(&bad_handle, "test", 1024).is_err()
+    });
+}
+```
+
+### Evidence of Success Logs
+
+When this task is complete, running the test suite MUST produce:
+
+```
+[EMB-I015] InferenceEngine initialized for E1_Semantic on device 0
+[EMB-I015] Test inference for E1_Semantic completed in 12ms, output dim=1024
+[EMB-I015] Validating model E1_Semantic with REAL inference
+[EMB-I015] Model E1_Semantic validation PASSED (dim=1024, norm=0.9998)
+```
+
+The following log patterns MUST NOT appear:
+
+```
+# FORBIDDEN - indicates fake data:
+"Simulate test inference"
+".sin()"
+"0x7f80"  # fake pointer pattern
+"DEAD_BEEF"
+```
 
 ---
 
@@ -316,25 +501,30 @@ pub struct StorageQuery {
 
 | File Path | Description |
 |-----------|-------------|
-| `crates/context-graph-core/src/storage/types.rs` | Storage type definitions |
-| `crates/context-graph-core/src/storage/mod.rs` | Module declaration |
+| `crates/context-graph-embeddings/src/warm/inference/mod.rs` | Module declaration |
+| `crates/context-graph-embeddings/src/warm/inference/engine.rs` | InferenceEngine implementation |
+| `crates/context-graph-embeddings/tests/inference_integration.rs` | Integration tests |
 
 ## Files to Modify
 
 | File Path | Change |
 |-----------|--------|
-| `crates/context-graph-core/src/lib.rs` | Add `pub mod storage;` |
+| `crates/context-graph-embeddings/src/warm/mod.rs` | Add `pub mod inference;` |
+| `crates/context-graph-embeddings/src/warm/loader/operations.rs` | DELETE lines 405-408, UPDATE validate_model() |
+| `crates/context-graph-embeddings/src/warm/error.rs` | Add `InferenceInitFailed`, `InferenceFailed` variants |
+| `crates/context-graph-embeddings/Cargo.toml` | Add `candle-core`, `candle-nn` dependencies |
 
 ---
 
 ## Validation Criteria
 
-- [ ] `TeleologicalFingerprint` struct with all fields per Constitution
-- [ ] `JohariQuadrant` enum with classify() method
-- [ ] `StorageBackend` enum with env detection
-- [ ] `IndexConfig` with all 6 index layers
-- [ ] `HnswConfig` and `SparseIndexConfig` with defaults
-- [ ] `cargo check -p context-graph-core` passes
+- [ ] Lines 405-408 in operations.rs are DELETED (no sin-wave)
+- [ ] `InferenceEngine` struct exists and compiles
+- [ ] `validate_model()` takes `ModelHandle` parameter
+- [ ] Tests use real `.safetensors` files, not mock data
+- [ ] `cargo test -p context-graph-embeddings` passes
+- [ ] Logs contain `[EMB-I015]` success messages
+- [ ] Logs do NOT contain forbidden patterns
 
 ---
 
@@ -342,8 +532,21 @@ pub struct StorageQuery {
 
 ```bash
 cd /home/cabdru/contextgraph
-cargo check -p context-graph-core
-cargo test -p context-graph-core storage::types:: -- --nocapture
+
+# Verify fake code is deleted
+! grep -n "\.sin()" crates/context-graph-embeddings/src/warm/loader/operations.rs
+
+# Build check
+cargo check -p context-graph-embeddings
+
+# Run all warm loader tests
+cargo test -p context-graph-embeddings warm:: -- --nocapture
+
+# Run inference-specific tests
+cargo test -p context-graph-embeddings inference:: -- --nocapture
+
+# Integration test
+cargo test -p context-graph-embeddings --test inference_integration -- --nocapture
 ```
 
 ---
@@ -351,26 +554,41 @@ cargo test -p context-graph-core storage::types:: -- --nocapture
 ## Pseudo Code
 
 ```
-types.rs:
-  Define TeleologicalFingerprint struct
-    All 13 embeddings as quantized
-    Purpose vector [f32; 13]
-    Johari quadrants [JohariQuadrant; 13]
-    Alignment scores
-    Timestamps
-    Methods: byte_size(), within_budget(), quantization_strategies()
+inference/engine.rs:
+  struct InferenceEngine { device, model_id }
 
-  Define JohariQuadrant enum (Open, Blind, Hidden, Unknown)
-    classify(delta_s, delta_c) factory
-    learning_priority() method
+  new(model_id, handle):
+    device = Device::cuda(handle.device_id())
+    return Self { device, model_id }
 
-  Define StorageBackend enum (RocksDB, ScyllaDB)
-    from_env() factory
+  run_test_inference(handle, test_input, expected_dim):
+    tokens = tokenize(test_input)
+    input_tensor = Tensor::new(tokens, device)
+    output = forward_pass(handle.vram_ptr(), input_tensor)
+    return output.to_vec()
 
-  Define IndexConfig struct with all layer configs
-  Define HnswConfig with M, ef_construction, ef_search
-  Define SparseIndexConfig with vocab_size, threshold
-  Define StorageQuery for retrieval
+operations.rs validate_model():
+  DELETE: output = (0..dim).map(|i| (i * 0.001).sin()).collect()
+
+  ADD:
+    engine = InferenceEngine::new(model_id, handle)
+    output = engine.run_test_inference(handle, "test text", expected_dim)
+    validator.validate_dimensions(model_id, expected_dim, output.len())
+    validator.validate_weights_finite_for_model(model_id, &output)
+    assert non_zero_count > 0
 ```
+
+---
+
+## Manual Verification Checklist
+
+After implementation, manually verify:
+
+- [ ] Open `operations.rs` - confirm lines 405-408 are gone
+- [ ] Open `inference/engine.rs` - confirm `InferenceEngine` exists
+- [ ] Run `cargo test` - confirm all tests pass
+- [ ] Check test output logs - confirm `[EMB-I015]` messages appear
+- [ ] Search for `.sin()` in warm/ directory - confirm zero matches
+- [ ] Run integration test - confirm model validation succeeds with real inference
 
 </task_spec>

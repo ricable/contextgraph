@@ -36,3 +36,6 @@ pub use summary::LoadingSummary;
 
 // Re-export warm loading types (TASK-EMB-006)
 pub use types::{LoadedModelWeights, TensorMetadata, WarmLoadResult};
+
+// Re-export weight loading operations (TASK-EMB-013)
+pub use operations::{load_weights, verify_checksum, TensorMetadata as OperationsTensorMetadata};

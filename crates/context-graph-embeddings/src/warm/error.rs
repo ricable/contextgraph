@@ -14,6 +14,11 @@
 //! | 108 | `CudaAllocFailed` | CUDA allocation failed |
 //! | 109 | `CudaContextLost` | CUDA context unexpectedly lost |
 //! | 110 | `ModelDimensionMismatch` | Model output dimension mismatch |
+//! | 111 | `WeightFileMissing` | SafeTensors weight file not found |
+//! | 112 | `WeightFileCorrupted` | SafeTensors file failed to parse |
+//! | 113 | `WeightChecksumMismatch` | SHA256 checksum verification failed |
+//! | 114 | `InferenceInitFailed` | Inference initialization failed |
+//! | 115 | `InferenceFailed` | Inference execution failed |
 //!
 //! # Design Principles
 //!
@@ -161,6 +166,41 @@ pub enum WarmError {
         actual: usize,
     },
 
+    // === Exit Code 111: Weight File Missing ===
+    /// SafeTensors weight file not found at expected path.
+    /// Different from ModelFileMissing as this is specifically for weight file loading.
+    #[error("Weight file missing for {model_id}: {path:?}")]
+    WeightFileMissing {
+        /// The model identifier (e.g., "E1_Semantic").
+        model_id: String,
+        /// The filesystem path that was searched.
+        path: std::path::PathBuf,
+    },
+
+    // === Exit Code 112: Weight File Corrupted ===
+    /// SafeTensors file failed to parse (invalid format, corrupted data).
+    #[error("Weight file corrupted for {model_id} at {path:?}: {reason}")]
+    WeightFileCorrupted {
+        /// The model identifier.
+        model_id: String,
+        /// The filesystem path.
+        path: std::path::PathBuf,
+        /// Human-readable parse error.
+        reason: String,
+    },
+
+    // === Exit Code 113: Weight Checksum Mismatch ===
+    /// SHA256 checksum verification failed.
+    #[error("Weight checksum mismatch for {model_id}: expected {expected}, got {actual}")]
+    WeightChecksumMismatch {
+        /// The model identifier.
+        model_id: String,
+        /// Expected SHA256 hex string.
+        expected: String,
+        /// Actual computed SHA256 hex string.
+        actual: String,
+    },
+
     // === Non-Fatal Errors (Exit Code 1) ===
     /// Model already registered (programming error).
     #[error("Model already registered: {model_id}")]
@@ -208,6 +248,30 @@ pub enum WarmError {
         available_bytes: usize,
         error: String,
     },
+
+    // === Exit Code 114: Inference Initialization Failed ===
+    /// Inference initialization failed.
+    /// Error code: EMB-E011
+    #[error("[EMB-E011] Inference initialization failed for {model_id}: {reason}")]
+    InferenceInitFailed {
+        /// The model identifier.
+        model_id: String,
+        /// Human-readable failure reason.
+        reason: String,
+    },
+
+    // === Exit Code 115: Inference Failed ===
+    /// Inference execution failed.
+    /// Error code: EMB-E011
+    #[error("[EMB-E011] Inference failed for {model_id}: {reason} (input_hash=0x{input_hash:016x})")]
+    InferenceFailed {
+        /// The model identifier.
+        model_id: String,
+        /// Human-readable failure reason.
+        reason: String,
+        /// Hash of the input that caused the failure.
+        input_hash: u64,
+    },
 }
 
 impl WarmError {
@@ -227,6 +291,11 @@ impl WarmError {
             Self::CudaAllocFailed { .. } => 108,
             Self::CudaContextLost { .. } => 109,
             Self::ModelDimensionMismatch { .. } => 110,
+            Self::WeightFileMissing { .. } => 111,
+            Self::WeightFileCorrupted { .. } => 112,
+            Self::WeightChecksumMismatch { .. } => 113,
+            Self::InferenceInitFailed { .. } => 114,
+            Self::InferenceFailed { .. } => 115,
             _ => 1,
         }
     }
@@ -249,6 +318,11 @@ impl WarmError {
                 | Self::CudaAllocFailed { .. }
                 | Self::CudaContextLost { .. }
                 | Self::ModelDimensionMismatch { .. }
+                | Self::WeightFileMissing { .. }
+                | Self::WeightFileCorrupted { .. }
+                | Self::WeightChecksumMismatch { .. }
+                | Self::InferenceInitFailed { .. }
+                | Self::InferenceFailed { .. }
         )
     }
 
@@ -275,6 +349,10 @@ impl WarmError {
             Self::WorkingMemoryExhausted { .. } | Self::VramAllocationFailed { .. } => "MEMORY",
             Self::DiagnosticDumpFailed { .. } => "DIAGNOSTIC",
             Self::LoadTimeout { .. } => "TIMEOUT",
+            Self::WeightFileMissing { .. }
+            | Self::WeightFileCorrupted { .. }
+            | Self::WeightChecksumMismatch { .. } => "WEIGHT_FILE",
+            Self::InferenceInitFailed { .. } | Self::InferenceFailed { .. } => "INFERENCE",
         }
     }
 
@@ -302,6 +380,11 @@ impl WarmError {
             Self::DiagnosticDumpFailed { .. } => "ERR-WARM-DIAGNOSTIC-DUMP",
             Self::LoadTimeout { .. } => "ERR-WARM-LOAD-TIMEOUT",
             Self::VramAllocationFailed { .. } => "ERR-WARM-VRAM-ALLOC",
+            Self::WeightFileMissing { .. } => "ERR-WARM-WEIGHT-MISSING",
+            Self::WeightFileCorrupted { .. } => "ERR-WARM-WEIGHT-CORRUPTED",
+            Self::WeightChecksumMismatch { .. } => "ERR-WARM-WEIGHT-CHECKSUM",
+            Self::InferenceInitFailed { .. } => "ERR-WARM-INFERENCE-INIT",
+            Self::InferenceFailed { .. } => "ERR-WARM-INFERENCE-EXEC",
         }
     }
 }

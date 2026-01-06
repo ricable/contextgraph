@@ -25,7 +25,7 @@ use super::preflight::{initialize_cuda_allocator, run_preflight_checks};
 use super::summary::LoadingSummary;
 
 #[cfg(test)]
-use super::operations::{allocate_model_vram, simulate_weight_loading};
+use super::operations::allocate_model_vram;
 
 /// Main orchestrator for warm model loading.
 ///
@@ -133,13 +133,28 @@ impl WarmLoader {
             Err(e) => Self::handle_fatal_error(&e),
         }
 
-        // Step 3: Load each model in order
+        // Step 3: Load each model in order using REAL CUDA allocation
+        // Get mutable reference to cuda_allocator - REQUIRED, no fallback
+        let cuda_allocator = self.cuda_allocator.as_mut().ok_or_else(|| {
+            WarmError::CudaInitFailed {
+                cuda_error: "CUDA allocator not initialized - CUDA is REQUIRED (RTX 5090)".to_string(),
+                driver_version: String::new(),
+                gpu_name: String::new(),
+            }
+        });
+
+        let cuda_allocator = match cuda_allocator {
+            Ok(alloc) => alloc,
+            Err(e) => Self::handle_fatal_error(&e),
+        };
+
         for model_id in self.loading_order.clone() {
             if let Err(e) = load_single_model(
                 &model_id,
                 &self.config,
                 &self.registry,
                 &mut self.memory_pools,
+                cuda_allocator,
                 &self.validator,
             ) {
                 let _ = mark_model_failed(&model_id, &e, &self.registry);
@@ -270,23 +285,48 @@ impl WarmLoader {
         run_preflight_checks(&self.config, &mut self.gpu_info)
     }
 
+    /// Initialize CUDA allocator for testing.
+    ///
+    /// # CRITICAL: Real CUDA Required
+    ///
+    /// This initializes a real WarmCudaAllocator using Candle.
+    /// Per Constitution AP-007, no fake allocators are allowed.
+    #[cfg(test)]
+    pub(crate) fn initialize_cuda_for_test(&mut self) -> WarmResult<()> {
+        // Run preflight first if not done
+        if self.gpu_info.is_none() {
+            self.run_preflight_checks()?;
+        }
+
+        // Initialize CUDA allocator (real Candle-based allocation)
+        match initialize_cuda_allocator(&self.config) {
+            Ok(allocator) => {
+                self.cuda_allocator = allocator;
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     /// Allocate model VRAM (exposed for testing).
+    ///
+    /// # CRITICAL: Requires CUDA
+    ///
+    /// This method uses real CUDA allocation. If CUDA is not initialized,
+    /// it will return an error. No fake pointers are generated.
     #[cfg(test)]
     pub(crate) fn allocate_model_vram(
         &mut self,
         model_id: &str,
         size_bytes: usize,
     ) -> WarmResult<u64> {
-        allocate_model_vram(model_id, size_bytes, &mut self.memory_pools)
-    }
-
-    /// Simulate weight loading (exposed for testing).
-    #[cfg(test)]
-    pub(crate) fn simulate_weight_loading(
-        &self,
-        model_id: &str,
-        size_bytes: usize,
-    ) -> WarmResult<u64> {
-        simulate_weight_loading(model_id, size_bytes)
+        let cuda_allocator = self.cuda_allocator.as_mut().ok_or_else(|| {
+            WarmError::CudaInitFailed {
+                cuda_error: "CUDA allocator not initialized for test".to_string(),
+                driver_version: String::new(),
+                gpu_name: String::new(),
+            }
+        })?;
+        allocate_model_vram(model_id, size_bytes, &mut self.memory_pools, cuda_allocator)
     }
 }

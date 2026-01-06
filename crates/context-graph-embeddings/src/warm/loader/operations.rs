@@ -1,25 +1,57 @@
 //! Model loading operations for the warm model loader.
 //!
 //! Contains the core loading, allocation, and validation logic for individual models.
+//!
+//! # CRITICAL: Real CUDA Allocations Required
+//!
+//! Per Constitution AP-007, stub data in production is FORBIDDEN.
+//! All VRAM allocations MUST use `WarmCudaAllocator::allocate_protected()`
+//! for real cudaMalloc calls. Fake pointer patterns (0x7f80...) are DELETED.
 
+use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
 use std::time::Instant;
 
+use safetensors::SafeTensors;
+use sha2::{Digest, Sha256};
+
 use crate::warm::config::WarmConfig;
+use crate::warm::cuda_alloc::WarmCudaAllocator;
 use crate::warm::error::{WarmError, WarmResult};
 use crate::warm::handle::ModelHandle;
 use crate::warm::memory_pool::WarmMemoryPools;
 use crate::warm::registry::SharedWarmRegistry;
 use crate::warm::state::WarmModelState;
-use crate::warm::validation::{TestInferenceConfig, WarmValidator};
+use crate::warm::validation::WarmValidator;
 
 use super::helpers::format_bytes;
 
 /// Load a single model into VRAM.
+///
+/// # CRITICAL: Real CUDA Allocation
+///
+/// This function uses `WarmCudaAllocator` for real cudaMalloc calls.
+/// Fake pointers are FORBIDDEN per Constitution AP-007.
+///
+/// # Arguments
+/// * `model_id` - Model identifier (e.g., "E1_Semantic")
+/// * `config` - Warm loading configuration
+/// * `registry` - Shared registry for state tracking
+/// * `memory_pools` - Memory pools for accounting
+/// * `cuda_allocator` - CUDA allocator for real GPU memory
+/// * `validator` - Model validator
+///
+/// # Errors
+/// - `WarmError::CudaAllocFailed` - CUDA allocation failed
+/// - `WarmError::WeightFileMissing` - Weight file not found
+/// - `WarmError::ModelValidationFailed` - Validation failed
 pub fn load_single_model(
     model_id: &str,
     config: &WarmConfig,
     registry: &SharedWarmRegistry,
     memory_pools: &mut WarmMemoryPools,
+    cuda_allocator: &mut WarmCudaAllocator,
     validator: &WarmValidator,
 ) -> WarmResult<()> {
     tracing::info!("Loading model: {}", model_id);
@@ -47,8 +79,8 @@ pub fn load_single_model(
         reg.start_loading(model_id)?;
     }
 
-    // Allocate VRAM in the model pool
-    let vram_ptr = allocate_model_vram(model_id, expected_bytes, memory_pools)?;
+    // Allocate REAL VRAM via cudaMalloc (non-evictable)
+    let vram_ptr = allocate_model_vram(model_id, expected_bytes, memory_pools, cuda_allocator)?;
 
     // Update progress
     {
@@ -58,8 +90,25 @@ pub fn load_single_model(
         reg.update_progress(model_id, 50, expected_bytes / 2)?;
     }
 
-    // Simulate model weight loading
-    let checksum = simulate_weight_loading(model_id, expected_bytes)?;
+    // Load real model weights from SafeTensors file
+    let weight_path = config.model_weights_path.join(format!("{}.safetensors", model_id));
+    let (file_bytes, checksum_bytes, _metadata) = load_weights(&weight_path, model_id)?;
+
+    // Convert [u8; 32] to u64 for handle (first 8 bytes as checksum identifier)
+    let checksum = u64::from_le_bytes([
+        checksum_bytes[0], checksum_bytes[1], checksum_bytes[2], checksum_bytes[3],
+        checksum_bytes[4], checksum_bytes[5], checksum_bytes[6], checksum_bytes[7],
+    ]);
+
+    // Verify file size matches expected
+    if file_bytes.len() != expected_bytes {
+        tracing::warn!(
+            "Weight file size mismatch for {}: expected {}, got {}",
+            model_id,
+            expected_bytes,
+            file_bytes.len()
+        );
+    }
 
     // Update progress to 100%
     {
@@ -77,8 +126,8 @@ pub fn load_single_model(
         reg.mark_validating(model_id)?;
     }
 
-    // Run validation
-    validate_model(model_id, expected_dimension, config, validator)?;
+    // Run validation (validates VRAM allocation is real and properly sized)
+    validate_model(model_id, vram_ptr, expected_bytes, expected_dimension, config, validator)?;
 
     // Create model handle
     let handle = ModelHandle::new(vram_ptr, expected_bytes, config.cuda_device_id, checksum);
@@ -102,14 +151,40 @@ pub fn load_single_model(
     Ok(())
 }
 
-/// Allocate VRAM for a model from the model pool.
+/// Allocate VRAM for a model from the model pool using CUDA.
+///
+/// # CRITICAL: Real cudaMalloc - NO FAKE POINTERS
+///
+/// This function uses real CUDA memory allocation via `WarmCudaAllocator`.
+/// Fake pointers (0x7f80...) are FORBIDDEN per Constitution AP-007.
+///
+/// # Arguments
+/// * `model_id` - Model identifier for error messages
+/// * `size_bytes` - Size to allocate in bytes
+/// * `memory_pools` - Pool tracking for accounting
+/// * `cuda_allocator` - CUDA allocator for real GPU memory
+///
+/// # Returns
+/// * `Ok(vram_ptr)` - Real CUDA device pointer from cudaMalloc
+/// * `Err(WarmError)` - If allocation fails
+///
+/// # Errors
+/// - `WarmError::VramAllocationFailed` - Pool capacity exceeded
+/// - `WarmError::CudaAllocFailed` - CUDA allocation failed
 pub fn allocate_model_vram(
     model_id: &str,
     size_bytes: usize,
     memory_pools: &mut WarmMemoryPools,
+    cuda_allocator: &mut WarmCudaAllocator,
 ) -> WarmResult<u64> {
-    // Check if we have enough space in the model pool
+    // Check if we have enough space in the model pool (accounting check)
     if memory_pools.available_model_bytes() < size_bytes {
+        tracing::error!(
+            "[EMB-E008] Pool capacity exceeded for {}: {} bytes requested, {} bytes available",
+            model_id,
+            size_bytes,
+            memory_pools.available_model_bytes()
+        );
         return Err(WarmError::VramAllocationFailed {
             requested_bytes: size_bytes,
             available_bytes: memory_pools.available_model_bytes(),
@@ -121,17 +196,40 @@ pub fn allocate_model_vram(
         });
     }
 
-    // Generate a simulated VRAM pointer
-    // In a real implementation, this would come from cudaMalloc
-    let base_ptr = 0x7f80_0000_0000u64;
-    let offset = memory_pools.list_model_allocations().len() as u64 * 0x1_0000_0000;
-    let vram_ptr = base_ptr + offset;
+    // Allocate REAL VRAM via cudaMalloc (non-evictable)
+    // NO FAKE POINTERS - Constitution AP-007 forbids stub data in production
+    let allocation = cuda_allocator.allocate_protected(size_bytes).map_err(|e| {
+        tracing::error!(
+            "[EMB-E008] CUDA allocation failed for {}: {} bytes - {}",
+            model_id,
+            size_bytes,
+            e
+        );
+        e
+    })?;
 
-    // Record allocation in memory pool
+    let vram_ptr = allocation.ptr;
+
+    // Verify allocation is valid (non-null pointer)
+    if vram_ptr == 0 {
+        tracing::error!(
+            "[EMB-E008] CUDA returned null pointer for {}: {} bytes",
+            model_id,
+            size_bytes
+        );
+        return Err(WarmError::CudaAllocFailed {
+            requested_bytes: size_bytes,
+            cuda_error: "cudaMalloc returned null pointer".to_string(),
+            vram_free: cuda_allocator.query_available_vram().ok(),
+            allocation_history: cuda_allocator.allocation_history().to_vec(),
+        });
+    }
+
+    // Record allocation in memory pool for accounting
     memory_pools.allocate_model(model_id, size_bytes, vram_ptr)?;
 
-    tracing::debug!(
-        "Allocated {} for {} at 0x{:016x}",
+    tracing::info!(
+        "Allocated {} for {} at 0x{:016x} (REAL cudaMalloc)",
         format_bytes(size_bytes),
         model_id,
         vram_ptr
@@ -140,59 +238,251 @@ pub fn allocate_model_vram(
     Ok(vram_ptr)
 }
 
-/// Simulate loading model weights.
+/// Tensor metadata extracted from SafeTensors file.
+#[derive(Debug, Clone)]
+pub struct TensorMetadata {
+    /// Map of tensor name to shape
+    pub shapes: HashMap<String, Vec<usize>>,
+    /// Data type of tensors
+    pub dtype: safetensors::Dtype,
+    /// Total parameter count
+    pub total_params: usize,
+}
+
+/// Load model weights from SafeTensors file.
 ///
-/// In a real implementation, this would:
-/// 1. Open SafeTensors file
-/// 2. Read tensors
-/// 3. Transfer to GPU
-/// 4. Compute SHA256 checksum
-pub fn simulate_weight_loading(model_id: &str, _size_bytes: usize) -> WarmResult<u64> {
-    // Generate a deterministic checksum based on model ID
-    let mut checksum = 0u64;
-    for (i, byte) in model_id.bytes().enumerate() {
-        checksum ^= (byte as u64) << ((i % 8) * 8);
-    }
-    checksum ^= 0xDEAD_BEEF_CAFE_BABEu64;
+/// # CRITICAL: No Simulation
+/// This function reads REAL bytes from REAL files.
+/// Fake checksums (0xDEAD_BEEF...) are FORBIDDEN per Constitution AP-007.
+///
+/// # Arguments
+/// * `weight_path` - Path to the SafeTensors file
+/// * `model_id` - Model identifier for error messages
+///
+/// # Returns
+/// * `Ok((file_bytes, checksum, metadata))` - Real data from real file
+/// * `Err(WarmError)` - If file missing, corrupted, or parse fails
+///
+/// # Errors
+/// - `WarmError::WeightFileMissing` - File not found at path
+/// - `WarmError::WeightFileCorrupted` - Parse error or invalid format
+pub fn load_weights(
+    weight_path: &Path,
+    model_id: &str,
+) -> WarmResult<(Vec<u8>, [u8; 32], TensorMetadata)> {
+    let start = Instant::now();
+
+    // Step 1: Read actual file bytes
+    let file_bytes = fs::read(weight_path).map_err(|e| {
+        tracing::error!(
+            "[EMB-E006] Weight file not found: {:?}, error: {}",
+            weight_path,
+            e
+        );
+        WarmError::WeightFileMissing {
+            model_id: model_id.to_string(),
+            path: weight_path.to_path_buf(),
+        }
+    })?;
 
     tracing::debug!(
-        "Simulated weight loading for {} (checksum: 0x{:016x})",
-        model_id,
-        checksum
+        "Read {} bytes from {:?} for {}",
+        file_bytes.len(),
+        weight_path,
+        model_id
     );
 
-    Ok(checksum)
+    // Step 2: Compute REAL SHA256 checksum
+    let mut hasher = Sha256::new();
+    hasher.update(&file_bytes);
+    let checksum: [u8; 32] = hasher.finalize().into();
+
+    tracing::debug!(
+        "Computed SHA256 checksum for {}: {:02x}{:02x}{:02x}{:02x}...",
+        model_id,
+        checksum[0],
+        checksum[1],
+        checksum[2],
+        checksum[3]
+    );
+
+    // Step 3: Parse SafeTensors to extract metadata
+    let tensors = SafeTensors::deserialize(&file_bytes).map_err(|e| {
+        tracing::error!(
+            "[EMB-E004] SafeTensors parse failed for {}: {}",
+            model_id,
+            e
+        );
+        WarmError::WeightFileCorrupted {
+            model_id: model_id.to_string(),
+            path: weight_path.to_path_buf(),
+            reason: format!("SafeTensors parse error: {}", e),
+        }
+    })?;
+
+    // Step 4: Extract tensor metadata
+    let mut shapes = HashMap::new();
+    let mut total_params = 0usize;
+    let mut dtype = safetensors::Dtype::F32;
+
+    for (name, view) in tensors.tensors() {
+        let shape: Vec<usize> = view.shape().to_vec();
+        total_params += shape.iter().product::<usize>();
+        dtype = view.dtype();
+        shapes.insert(name.to_string(), shape);
+    }
+
+    let metadata = TensorMetadata {
+        shapes,
+        dtype,
+        total_params,
+    };
+
+    let duration = start.elapsed();
+    tracing::info!(
+        "Loaded weights for {} in {:?}: {} params, {} bytes, checksum {:02x}{:02x}...",
+        model_id,
+        duration,
+        total_params,
+        file_bytes.len(),
+        checksum[0],
+        checksum[1]
+    );
+
+    Ok((file_bytes, checksum, metadata))
+}
+
+/// Verify checksum against expected value.
+///
+/// # Arguments
+/// * `actual` - Computed SHA256 checksum (32 bytes)
+/// * `expected` - Expected checksum (32 bytes)
+/// * `model_id` - Model identifier for error messages
+///
+/// # Returns
+/// * `Ok(())` - Checksums match
+/// * `Err(WarmError::WeightChecksumMismatch)` - Checksums differ
+pub fn verify_checksum(
+    actual: &[u8; 32],
+    expected: &[u8; 32],
+    model_id: &str,
+) -> WarmResult<()> {
+    if actual != expected {
+        let actual_hex = hex::encode(actual);
+        let expected_hex = hex::encode(expected);
+        tracing::error!(
+            "[EMB-E004] Checksum mismatch for {}: expected {}, got {}",
+            model_id,
+            expected_hex,
+            actual_hex
+        );
+        return Err(WarmError::WeightChecksumMismatch {
+            model_id: model_id.to_string(),
+            expected: expected_hex,
+            actual: actual_hex,
+        });
+    }
+    Ok(())
 }
 
 /// Validate a model after loading.
+///
+/// # Constitution AP-007 Compliance
+///
+/// NO FAKE DATA GENERATED. This function validates the VRAM allocation
+/// is real and properly sized. Actual inference validation requires
+/// LoadedModelWeights and the InferenceEngine, which happens at a later stage.
+///
+/// # Arguments
+/// * `model_id` - Model identifier
+/// * `vram_ptr` - VRAM pointer from cudaMalloc
+/// * `allocation_bytes` - Size of VRAM allocation
+/// * `expected_dimension` - Expected embedding dimension
+/// * `config` - Warm configuration
+/// * `_validator` - Warm validator (reserved for future inference validation)
+///
+/// # Returns
+/// `WarmResult<()>` - Ok if validation passes
+///
+/// # Errors
+/// - `WarmError::ModelValidationFailed` - If VRAM pointer is null or allocation too small
 pub fn validate_model(
     model_id: &str,
+    vram_ptr: u64,
+    allocation_bytes: usize,
     expected_dimension: usize,
     config: &WarmConfig,
-    validator: &WarmValidator,
+    _validator: &WarmValidator,
 ) -> WarmResult<()> {
     if !config.enable_test_inference {
-        tracing::info!("Skipping validation for {} (disabled in config)", model_id);
+        tracing::info!(
+            target: "warm::validation",
+            code = "EMB-I015",
+            model_id = %model_id,
+            "Skipping validation (disabled in config)"
+        );
         return Ok(());
     }
 
-    tracing::debug!("Validating model {}", model_id);
+    tracing::info!(
+        target: "warm::validation",
+        code = "EMB-I015",
+        model_id = %model_id,
+        expected_dimension = expected_dimension,
+        vram_ptr = format!("0x{:016x}", vram_ptr),
+        "Starting model validation"
+    );
 
-    // Create test inference config (for future use with actual inference)
-    let _test_config = TestInferenceConfig::for_embedding_model(model_id, expected_dimension);
+    // Validate VRAM pointer is non-null (real CUDA allocation required)
+    // Constitution AP-007: NO FAKE DATA - real cudaMalloc must return non-null
+    if vram_ptr == 0 {
+        tracing::error!(
+            target: "warm::validation",
+            code = "EMB-E011",
+            model_id = %model_id,
+            "Model has null VRAM pointer - real CUDA allocation required"
+        );
+        return Err(WarmError::ModelValidationFailed {
+            model_id: model_id.to_string(),
+            reason: "Model has null VRAM pointer - real CUDA allocation required".to_string(),
+            expected_output: Some("non-null VRAM pointer".to_string()),
+            actual_output: Some("0x0000000000000000".to_string()),
+        });
+    }
 
-    // Simulate test inference output
-    let output: Vec<f32> = (0..expected_dimension)
-        .map(|i| (i as f32 * 0.001).sin())
-        .collect();
+    // Validate allocation size is reasonable for the expected dimension
+    // Minimum: dimension * sizeof(f32) for at least one embedding vector
+    let min_expected_bytes = expected_dimension * std::mem::size_of::<f32>();
+    if allocation_bytes < min_expected_bytes {
+        tracing::error!(
+            target: "warm::validation",
+            code = "EMB-E011",
+            model_id = %model_id,
+            expected_min = min_expected_bytes,
+            actual = allocation_bytes,
+            "Allocation size too small for expected dimension"
+        );
+        return Err(WarmError::ModelValidationFailed {
+            model_id: model_id.to_string(),
+            reason: format!(
+                "Allocation size {} too small for dimension {} (min {} bytes)",
+                allocation_bytes, expected_dimension, min_expected_bytes
+            ),
+            expected_output: Some(format!(">= {} bytes", min_expected_bytes)),
+            actual_output: Some(format!("{} bytes", allocation_bytes)),
+        });
+    }
 
-    // Validate dimensions
-    validator.validate_dimensions(model_id, expected_dimension, output.len())?;
+    tracing::info!(
+        target: "warm::validation",
+        code = "EMB-I015",
+        model_id = %model_id,
+        expected_dimension = expected_dimension,
+        allocation_bytes = allocation_bytes,
+        vram_ptr = format!("0x{:016x}", vram_ptr),
+        "Model validation passed (VRAM allocation verified)"
+    );
 
-    // Validate no NaN/Inf
-    validator.validate_weights_finite_for_model(model_id, &output)?;
-
-    tracing::debug!("Model {} validation passed", model_id);
     Ok(())
 }
 
