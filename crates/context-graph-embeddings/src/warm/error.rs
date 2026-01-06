@@ -118,6 +118,23 @@ pub enum WarmError {
         gpu_name: String,
     },
 
+    // === Exit Code 101: CUDA Unavailable ===
+    /// CUDA feature or real GPU is unavailable - Constitution AP-007 violation.
+    ///
+    /// # Constitution Compliance
+    ///
+    /// AP-007: Stub data in prod → use tests/fixtures/
+    /// This error is returned when:
+    /// - CUDA feature is not enabled at compile time
+    /// - A simulated/stub GPU is detected at runtime
+    ///
+    /// # Error Code: EMB-E001
+    #[error("[EMB-E001] CUDA_UNAVAILABLE: {message}")]
+    CudaUnavailable {
+        /// Human-readable message explaining why CUDA is unavailable.
+        message: String,
+    },
+
     // === Exit Code 107: CUDA Capability Insufficient ===
     /// GPU compute capability below required minimum (12.0 for RTX 5090).
     #[error("GPU compute capability {actual_cc} insufficient, required {required_cc}")]
@@ -314,6 +331,7 @@ impl WarmError {
     #[must_use]
     pub fn exit_code(&self) -> i32 {
         match self {
+            Self::CudaUnavailable { .. } => 101, // EMB-E001: CUDA_UNAVAILABLE
             Self::ModelFileMissing { .. } => 101,
             Self::ModelLoadFailed { .. } => 102,
             Self::ModelValidationFailed { .. } => 103,
@@ -342,7 +360,8 @@ impl WarmError {
     pub fn is_fatal(&self) -> bool {
         matches!(
             self,
-            Self::ModelFileMissing { .. }
+            Self::CudaUnavailable { .. }
+                | Self::ModelFileMissing { .. }
                 | Self::ModelLoadFailed { .. }
                 | Self::ModelValidationFailed { .. }
                 | Self::VramInsufficientTotal { .. }
@@ -369,7 +388,8 @@ impl WarmError {
             Self::ModelLoadFailed { .. } => "MODEL_LOAD",
             Self::ModelValidationFailed { .. } | Self::ModelDimensionMismatch { .. } => "MODEL_VALIDATION",
             Self::VramInsufficientTotal { .. } | Self::VramInsufficientHeadroom { .. } => "VRAM",
-            Self::CudaInitFailed { .. }
+            Self::CudaUnavailable { .. }
+            | Self::CudaInitFailed { .. }
             | Self::CudaCapabilityInsufficient { .. }
             | Self::CudaAllocFailed { .. }
             | Self::CudaQueryFailed { .. }
@@ -394,6 +414,7 @@ impl WarmError {
     #[must_use]
     pub fn error_code(&self) -> &'static str {
         match self {
+            Self::CudaUnavailable { .. } => "EMB-E001",
             Self::ModelFileMissing { .. } => "ERR-WARM-MODEL-MISSING",
             Self::ModelLoadFailed { .. } => "ERR-WARM-MODEL-LOAD",
             Self::ModelValidationFailed { .. } => "ERR-WARM-MODEL-VALIDATION",
