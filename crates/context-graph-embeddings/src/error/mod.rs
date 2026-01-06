@@ -24,6 +24,8 @@ mod types;
 mod tests;
 #[cfg(test)]
 mod tests_extended;
+#[cfg(test)]
+mod verification_test;
 
 // Re-export all public types
 pub use types::{EmbeddingError, EmbeddingResult, ErrorSeverity};
