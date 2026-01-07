@@ -175,6 +175,7 @@ async fn test_full_state_verification_store_search_delete_cycle() {
         "query": "machine learning systems",
         "query_type": "semantic_search",
         "topK": 10,
+        "minSimilarity": 0.0,  // P1-FIX-1: Required parameter for fail-fast
         "include_per_embedder_scores": true
     });
     let search_request = make_request("search/multi", Some(JsonRpcId::Number(2)), Some(search_params));
@@ -307,7 +308,8 @@ async fn test_edge_case_empty_query_string() {
     println!("\n📝 ACTION: search/multi with empty query \"\"");
     let search_params = json!({
         "query": "",
-        "query_type": "semantic_search"
+        "query_type": "semantic_search",
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter (test expects empty query error)
     });
     let search_request = make_request("search/multi", Some(JsonRpcId::Number(1)), Some(search_params));
     let response = handlers.dispatch(search_request).await;
@@ -359,7 +361,8 @@ async fn test_edge_case_12_weights_instead_of_13() {
     let search_params = json!({
         "query": "test query",
         "query_type": "custom",
-        "weights": invalid_weights
+        "weights": invalid_weights,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter (test expects weights error)
     });
     let search_request = make_request("search/multi", Some(JsonRpcId::Number(1)), Some(search_params));
     let response = handlers.dispatch(search_request).await;
@@ -413,7 +416,8 @@ async fn test_edge_case_space_index_13() {
 
     let search_params = json!({
         "query": "test query",
-        "space_index": 13
+        "space_index": 13,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter (test expects space_index error)
     });
     let search_request = make_request("search/single_space", Some(JsonRpcId::Number(1)), Some(search_params));
     let response = handlers.dispatch(search_request).await;
@@ -559,7 +563,8 @@ async fn test_maximum_limits_topk_restriction() {
     let search_params = json!({
         "query": "fingerprint content text",
         "query_type": "semantic_search",
-        "topK": 3
+        "topK": 3,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter for fail-fast
     });
     let search_request = make_request("search/multi", Some(JsonRpcId::Number(100)), Some(search_params));
     let search_response = handlers.dispatch(search_request).await;

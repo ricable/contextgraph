@@ -279,7 +279,8 @@ async fn verify_search_finds_data_in_source_of_truth() {
     // === SEARCH VIA MCP HANDLER ===
     let search_params = json!({
         "query": "neural network deep learning",
-        "topK": 10
+        "topK": 10,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter for fail-fast
     });
     let search_request = make_request("memory/search", Some(JsonRpcId::Number(10)), Some(search_params));
     let search_response = handlers.dispatch(search_request).await;

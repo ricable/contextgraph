@@ -257,7 +257,8 @@ async fn test_memory_search_returns_results() {
     // Search for similar content
     let search_params = json!({
         "query": "AI and machine learning",
-        "topK": 5
+        "topK": 5,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter for fail-fast
     });
     let search_request = make_request("memory/search", Some(JsonRpcId::Number(2)), Some(search_params));
 
@@ -606,7 +607,8 @@ async fn test_full_state_verification_crud_cycle() {
     // =========================================================================
     let search_params = json!({
         "query": "AI machine learning data",
-        "topK": 10
+        "topK": 10,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter for fail-fast
     });
     let search_request = make_request("memory/search", Some(JsonRpcId::Number(3)), Some(search_params));
     let search_response = handlers.dispatch(search_request).await;
@@ -898,7 +900,8 @@ async fn test_rocksdb_integration_crud_cycle() {
     // =========================================================================
     let search_params = json!({
         "query": "RocksDB persistent storage",
-        "topK": 10
+        "topK": 10,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter for fail-fast
     });
     let search_request = make_request("memory/search", Some(JsonRpcId::Number(3)), Some(search_params));
     let search_response = handlers.dispatch(search_request).await;

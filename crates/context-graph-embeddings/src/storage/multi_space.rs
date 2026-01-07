@@ -249,13 +249,28 @@ impl<S: QuantizedFingerprintRetriever> MultiSpaceSearchEngine<S> {
             .into_iter()
             .map(|(id, embedder_results)| {
                 // Get purpose alignment from storage
-                let purpose_alignment = self
-                    .storage
-                    .get_purpose_vector(id)
-                    .ok()
-                    .flatten()
-                    .map(|pv| pv.iter().sum::<f32>() / 13.0)
-                    .unwrap_or(0.0);
+                // FAIL FAST: Log warning if purpose vector missing (AP-007 compliance)
+                let purpose_alignment = match self.storage.get_purpose_vector(id) {
+                    Ok(Some(pv)) => pv.iter().sum::<f32>() / 13.0,
+                    Ok(None) => {
+                        // Memory exists but has no purpose vector - this is a data integrity issue
+                        eprintln!(
+                            "[MULTI-SPACE SEARCH] WARNING: Memory {} has no purpose vector. \
+                             This indicates incomplete fingerprint storage. Using alignment=0.0 \
+                             but this memory should be re-indexed with complete fingerprint.",
+                            id
+                        );
+                        0.0
+                    }
+                    Err(e) => {
+                        // Storage error - fail fast with full context
+                        panic!(
+                            "MULTI-SPACE SEARCH ERROR: Failed to retrieve purpose vector for memory {}. \
+                             Storage error: {}. This indicates a broken storage layer that must be fixed.",
+                            id, e
+                        );
+                    }
+                };
 
                 // Use existing MultiSpaceQueryResult::from_embedder_results if available,
                 // or compute manually

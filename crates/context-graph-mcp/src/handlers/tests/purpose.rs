@@ -688,7 +688,8 @@ async fn test_goal_aligned_memories_valid() {
     // Find memories aligned to strategic goal s1_retrieval
     let aligned_params = json!({
         "goal_id": "s1_retrieval",
-        "topK": 10
+        "topK": 10,
+        "minAlignment": 0.0  // P1-FIX-1: Required parameter for fail-fast
     });
     let aligned_request = make_request(
         "goal/aligned_memories",
@@ -748,7 +749,8 @@ async fn test_goal_aligned_memories_goal_not_found_fails() {
     let handlers = create_test_handlers();
 
     let aligned_params = json!({
-        "goal_id": "nonexistent_goal"
+        "goal_id": "nonexistent_goal",
+        "minAlignment": 0.0  // P1-FIX-1: Required parameter (test expects goal not found error)
     });
     let aligned_request = make_request(
         "goal/aligned_memories",
@@ -1337,7 +1339,8 @@ async fn test_full_state_verification_purpose_workflow() {
     // =========================================================================
     let aligned_params = json!({
         "goal_id": "s1_retrieval",
-        "topK": 10
+        "topK": 10,
+        "minAlignment": 0.0  // P1-FIX-1: Required parameter for fail-fast
     });
     let aligned_request = make_request(
         "goal/aligned_memories",

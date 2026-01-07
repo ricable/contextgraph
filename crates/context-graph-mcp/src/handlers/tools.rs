@@ -375,39 +375,86 @@ impl Handlers {
         // Get LIVE UTL status from the processor
         let utl_status = self.utl_processor.get_status();
 
-        // Extract values with explicit defaults on parse failure
-        let lifecycle_phase = utl_status
-            .get("lifecycle_phase")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Infancy");
+        // FAIL-FAST: UTL processor MUST return all required fields.
+        // Per constitution AP-007: No stubs or fallbacks in production code paths.
+        // If the UTL processor doesn't have these fields, the system is broken.
+        let lifecycle_phase = match utl_status.get("lifecycle_phase").and_then(|v| v.as_str()) {
+            Some(phase) => phase,
+            None => {
+                error!("get_memetic_status: UTL processor missing 'lifecycle_phase' field - system is broken");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::INTERNAL_ERROR,
+                    "UTL processor returned incomplete status: missing 'lifecycle_phase'. \
+                     This indicates a broken UTL system that must be fixed.".to_string(),
+                );
+            }
+        };
 
-        let entropy = utl_status
-            .get("entropy")
-            .and_then(|v| v.as_f64())
-            .map(|v| v as f32)
-            .unwrap_or(0.0);
+        let entropy = match utl_status.get("entropy").and_then(|v| v.as_f64()) {
+            Some(v) => v as f32,
+            None => {
+                error!("get_memetic_status: UTL processor missing 'entropy' field - system is broken");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::INTERNAL_ERROR,
+                    "UTL processor returned incomplete status: missing 'entropy'. \
+                     This indicates a broken UTL system that must be fixed.".to_string(),
+                );
+            }
+        };
 
-        let coherence = utl_status
-            .get("coherence")
-            .and_then(|v| v.as_f64())
-            .map(|v| v as f32)
-            .unwrap_or(0.0);
+        let coherence = match utl_status.get("coherence").and_then(|v| v.as_f64()) {
+            Some(v) => v as f32,
+            None => {
+                error!("get_memetic_status: UTL processor missing 'coherence' field - system is broken");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::INTERNAL_ERROR,
+                    "UTL processor returned incomplete status: missing 'coherence'. \
+                     This indicates a broken UTL system that must be fixed.".to_string(),
+                );
+            }
+        };
 
-        let learning_score = utl_status
-            .get("learning_score")
-            .and_then(|v| v.as_f64())
-            .map(|v| v as f32)
-            .unwrap_or(0.0);
+        let learning_score = match utl_status.get("learning_score").and_then(|v| v.as_f64()) {
+            Some(v) => v as f32,
+            None => {
+                error!("get_memetic_status: UTL processor missing 'learning_score' field - system is broken");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::INTERNAL_ERROR,
+                    "UTL processor returned incomplete status: missing 'learning_score'. \
+                     This indicates a broken UTL system that must be fixed.".to_string(),
+                );
+            }
+        };
 
-        let johari_quadrant = utl_status
-            .get("johari_quadrant")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Hidden");
+        let johari_quadrant = match utl_status.get("johari_quadrant").and_then(|v| v.as_str()) {
+            Some(q) => q,
+            None => {
+                error!("get_memetic_status: UTL processor missing 'johari_quadrant' field - system is broken");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::INTERNAL_ERROR,
+                    "UTL processor returned incomplete status: missing 'johari_quadrant'. \
+                     This indicates a broken UTL system that must be fixed.".to_string(),
+                );
+            }
+        };
 
-        let consolidation_phase = utl_status
-            .get("consolidation_phase")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Wake");
+        let consolidation_phase = match utl_status.get("consolidation_phase").and_then(|v| v.as_str()) {
+            Some(phase) => phase,
+            None => {
+                error!("get_memetic_status: UTL processor missing 'consolidation_phase' field - system is broken");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::INTERNAL_ERROR,
+                    "UTL processor returned incomplete status: missing 'consolidation_phase'. \
+                     This indicates a broken UTL system that must be fixed.".to_string(),
+                );
+            }
+        };
 
         // Map Johari quadrant to suggested action per constitution.yaml:159-163
         let suggested_action = match johari_quadrant {

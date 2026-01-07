@@ -101,7 +101,17 @@ impl Config {
     }
 
     /// Validate configuration values.
+    ///
+    /// # Phase-Aware Validation
+    ///
+    /// - **Ghost**: Allows stubs and in-memory backends (development scaffolding)
+    /// - **Development**: Warns about stubs but allows them for active development
+    /// - **Production**: FAILS if any stubs or in-memory backends are configured
+    ///
+    /// This prevents accidentally running Production with fake embeddings or
+    /// ephemeral storage that loses all data on restart.
     pub fn validate(&self) -> CoreResult<()> {
+        // Basic field validation
         if self.mcp.max_payload_size == 0 {
             return Err(CoreError::ConfigError(
                 "mcp.max_payload_size must be greater than 0".into(),
@@ -126,7 +136,137 @@ impl Config {
             }
         }
 
+        // Phase-aware validation
+        self.validate_phase_safety()?;
+
         Ok(())
+    }
+
+    /// Validate that configuration is safe for the current phase.
+    ///
+    /// # Constitution Compliance
+    ///
+    /// Per AP-007: No stubs or fallbacks in production code paths.
+    /// This method enforces that Production phase CANNOT use:
+    /// - `embedding.model = "stub"` (fake embeddings)
+    /// - `storage.backend = "memory"` (ephemeral storage)
+    /// - `index.backend = "memory"` (ephemeral HNSW)
+    /// - `utl.mode = "stub"` (fake UTL processing)
+    fn validate_phase_safety(&self) -> CoreResult<()> {
+        // Collect all stub/dangerous configurations
+        let mut dangerous_configs = Vec::new();
+
+        if self.embedding.model == "stub" {
+            dangerous_configs.push(
+                "embedding.model = \"stub\" → System will use FAKE embeddings that return \
+                 deterministic garbage. ALL similarity computations will be MEANINGLESS."
+            );
+        }
+
+        if self.storage.backend == "memory" {
+            dangerous_configs.push(
+                "storage.backend = \"memory\" → ALL DATA WILL BE LOST on restart. \
+                 No persistence, no durability, no recovery."
+            );
+        }
+
+        if self.index.backend == "memory" {
+            dangerous_configs.push(
+                "index.backend = \"memory\" → HNSW indexes are ephemeral. \
+                 No persistent vector search capability."
+            );
+        }
+
+        if self.utl.mode == "stub" {
+            dangerous_configs.push(
+                "utl.mode = \"stub\" → UTL computations will use FAKE processing. \
+                 Learning scores, consolidation, and lifecycle are MEANINGLESS."
+            );
+        }
+
+        // Phase-specific handling
+        match self.phase {
+            Phase::Ghost => {
+                // Ghost phase allows stubs - it's the scaffolding phase
+                // But emit warning to stderr so developers know what's happening
+                if !dangerous_configs.is_empty() {
+                    eprintln!("\n╔════════════════════════════════════════════════════════════════╗");
+                    eprintln!("║ ⚠️  GHOST PHASE: Running with stub/development configuration   ║");
+                    eprintln!("╠════════════════════════════════════════════════════════════════╣");
+                    for config in &dangerous_configs {
+                        eprintln!("║ • {}", config.split('→').next().unwrap_or(config).trim());
+                    }
+                    eprintln!("╚════════════════════════════════════════════════════════════════╝\n");
+                }
+                Ok(())
+            }
+            Phase::Development => {
+                // Development phase warns but allows stubs for active development
+                if !dangerous_configs.is_empty() {
+                    eprintln!("\n╔════════════════════════════════════════════════════════════════╗");
+                    eprintln!("║ ⚠️  DEVELOPMENT PHASE: Stub configurations detected            ║");
+                    eprintln!("║ You should be implementing real backends, not using stubs!     ║");
+                    eprintln!("╠════════════════════════════════════════════════════════════════╣");
+                    for config in &dangerous_configs {
+                        eprintln!("║ • {}", config.split('→').next().unwrap_or(config).trim());
+                    }
+                    eprintln!("╚════════════════════════════════════════════════════════════════╝\n");
+                }
+                Ok(())
+            }
+            Phase::Production => {
+                // Production phase FAILS HARD if any stubs are detected
+                if !dangerous_configs.is_empty() {
+                    let mut error_msg = String::from(
+                        "PRODUCTION PHASE SAFETY VIOLATION - REFUSING TO START\n\n"
+                    );
+                    error_msg.push_str("The following dangerous configurations were detected:\n\n");
+
+                    for (i, config) in dangerous_configs.iter().enumerate() {
+                        error_msg.push_str(&format!("{}. {}\n\n", i + 1, config));
+                    }
+
+                    error_msg.push_str(
+                        "REMEDIATION:\n"
+                    );
+                    error_msg.push_str(
+                        "  • Set embedding.model to a real model (e.g., \"multi_array_13\")\n"
+                    );
+                    error_msg.push_str(
+                        "  • Set storage.backend to \"rocksdb\" with valid path\n"
+                    );
+                    error_msg.push_str(
+                        "  • Set index.backend to \"hnsw\" with persistence\n"
+                    );
+                    error_msg.push_str(
+                        "  • Set utl.mode to \"real\" for actual UTL computation\n\n"
+                    );
+                    error_msg.push_str(
+                        "Or, if testing, set phase = \"ghost\" or \"development\""
+                    );
+
+                    return Err(CoreError::ConfigError(error_msg));
+                }
+                Ok(())
+            }
+        }
+    }
+
+    /// Check if configuration uses any stub or in-memory backends.
+    ///
+    /// Returns true if any stub configurations are detected.
+    pub fn uses_stubs(&self) -> bool {
+        self.embedding.model == "stub"
+            || self.storage.backend == "memory"
+            || self.index.backend == "memory"
+            || self.utl.mode == "stub"
+    }
+
+    /// Check if this is a production-safe configuration.
+    ///
+    /// Returns true only if NO stubs are used and phase is Production.
+    pub fn is_production_safe(&self) -> bool {
+        self.phase == Phase::Production && !self.uses_stubs()
     }
 }
 

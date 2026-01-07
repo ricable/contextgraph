@@ -61,13 +61,28 @@ async fn main() -> Result<()> {
 
     let config = if let Some(path) = config_path {
         info!("Loading configuration from: {:?}", path);
-        Config::from_file(&path)?
+        Config::from_file(&path)?  // validate() is called inside from_file()
     } else {
         info!("Using default configuration");
-        Config::default()
+        let config = Config::default();
+        // CRITICAL: Validate default config for phase safety
+        // This prevents accidentally running Production with stub defaults
+        config.validate()?;
+        config
     };
 
     info!("Configuration loaded: phase={:?}", config.phase);
+
+    // Log stub usage for observability
+    if config.uses_stubs() {
+        info!(
+            "Stub backends in use: embedding={}, storage={}, index={}, utl={}",
+            config.embedding.model == "stub",
+            config.storage.backend == "memory",
+            config.index.backend == "memory",
+            config.utl.mode == "stub"
+        );
+    }
 
     // Create and run server
     let server = server::McpServer::new(config).await?;

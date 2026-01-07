@@ -204,6 +204,30 @@ pub enum CoreError {
     /// `Constraint: single_embed <10ms, batch_embed_64 <50ms`
     #[error("Embedding error: {0}")]
     Embedding(String),
+
+    /// A required field is missing from a data structure.
+    ///
+    /// # When This Occurs
+    ///
+    /// - Required field is None when computation requires it
+    /// - Data structure constructed without mandatory fields
+    /// - Deserialized data missing required properties
+    ///
+    /// # Constitution Compliance
+    ///
+    /// This error supports FAIL-FAST behavior. Rather than using
+    /// fallback values (e.g., zero vectors) that mask bugs, missing
+    /// required data immediately produces this error. This prevents
+    /// silent corruption of computations like alignment scores.
+    ///
+    /// Per AP-007: No stubs/fallbacks in production code paths.
+    #[error("Missing required field '{field}': {context}")]
+    MissingField {
+        /// Name of the missing field
+        field: String,
+        /// Explanation of why the field is required and context
+        context: String,
+    },
 }
 
 impl From<serde_json::Error> for CoreError {

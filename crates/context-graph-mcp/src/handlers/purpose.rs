@@ -712,19 +712,52 @@ impl Handlers {
         };
         drop(hierarchy); // Release read lock
 
+        // top_k has a sensible default (pagination parameter)
+        const DEFAULT_TOP_K: usize = 10;
         let top_k = params
             .get("topK")
             .or_else(|| params.get("top_k"))
             .and_then(|v| v.as_u64())
-            .unwrap_or(10) as usize;
+            .map(|v| v as usize)
+            .unwrap_or(DEFAULT_TOP_K);
 
-        // Default to Warning threshold (0.55) for minimum alignment
-        let min_alignment = params
+        // FAIL-FAST: min_alignment MUST be explicitly provided.
+        // Per constitution AP-007: No silent fallbacks that mask user intent.
+        // Using 0.55 (Warning threshold) as default would silently filter results
+        // without user awareness. Client MUST specify their desired threshold.
+        let min_alignment = match params
             .get("minAlignment")
             .or_else(|| params.get("min_alignment"))
             .and_then(|v| v.as_f64())
             .map(|v| v as f32)
-            .unwrap_or(0.55);
+        {
+            Some(alignment) => {
+                // Validate range [0.0, 1.0]
+                if !(0.0..=1.0).contains(&alignment) {
+                    return JsonRpcResponse::error(
+                        id,
+                        error_codes::INVALID_PARAMS,
+                        format!(
+                            "minAlignment must be between 0.0 and 1.0, got: {}. \
+                             Reference thresholds: 0.75 (Perfect), 0.70 (Strong), \
+                             0.55 (Warning), below 0.55 (Misaligned)",
+                            alignment
+                        ),
+                    );
+                }
+                alignment
+            }
+            None => {
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::INVALID_PARAMS,
+                    "Missing required parameter 'minAlignment' (or 'min_alignment'). \
+                     You must explicitly specify the alignment threshold for filtering results. \
+                     Reference thresholds: 0.75 (Perfect), 0.70 (Strong), 0.55 (Warning), \
+                     below 0.55 (Misaligned). Example: \"minAlignment\": 0.55".to_string(),
+                );
+            }
+        };
 
         // Create purpose vector from goal's embedding
         // We use the goal's propagation weight to scale alignments

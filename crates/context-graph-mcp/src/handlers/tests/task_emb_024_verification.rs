@@ -249,7 +249,8 @@ async fn test_task_emb_024_pipeline_breakdown_returns_error_32052() {
         json!({
             "query": "test query for pipeline breakdown verification",
             "include_pipeline_breakdown": true,
-            "top_k": 5
+            "top_k": 5,
+            "minSimilarity": 0.0  // P1-FIX-1: Required parameter (test expects pipeline breakdown error)
         }),
     );
     let response = handlers.dispatch(request).await;
@@ -297,7 +298,8 @@ async fn test_task_emb_024_search_multi_without_breakdown_succeeds() {
         "search/multi",
         json!({
             "query": "test query without pipeline breakdown",
-            "top_k": 5
+            "top_k": 5,
+            "minSimilarity": 0.0  // P1-FIX-1: Required parameter for fail-fast
         }),
     );
     let response = handlers.dispatch(request).await;

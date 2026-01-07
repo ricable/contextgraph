@@ -60,7 +60,8 @@ async fn test_search_multi_semantic_preset() {
     let search_params = json!({
         "query": "AI and data science",
         "query_type": "semantic_search",
-        "topK": 10
+        "topK": 10,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter for fail-fast
     });
     let search_request = make_request("search/multi", Some(JsonRpcId::Number(2)), Some(search_params));
     let response = handlers.dispatch(search_request).await;
@@ -120,6 +121,7 @@ async fn test_search_multi_custom_weights_13_spaces() {
         "query_type": "custom",
         "weights": custom_weights,
         "topK": 5,
+        "minSimilarity": 0.0,  // P1-FIX-1: Required parameter for fail-fast
         "include_per_embedder_scores": true
     });
     let search_request = make_request("search/multi", Some(JsonRpcId::Number(2)), Some(search_params));
@@ -226,7 +228,8 @@ async fn test_search_multi_active_spaces_array() {
         "query": "programming languages",
         "query_type": "code_search",
         "active_spaces": [0, 6, 7],
-        "topK": 5
+        "topK": 5,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter for fail-fast
     });
     let search_request = make_request("search/multi", Some(JsonRpcId::Number(2)), Some(search_params));
     let response = handlers.dispatch(search_request).await;
@@ -277,7 +280,8 @@ async fn test_search_multi_pipeline_breakdown() {
 
     let search_params = json!({
         "query": "deep learning",
-        "include_pipeline_breakdown": true
+        "include_pipeline_breakdown": true,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter (test expects pipeline breakdown error)
     });
     let search_request = make_request("search/multi", Some(JsonRpcId::Number(2)), Some(search_params));
     let response = handlers.dispatch(search_request).await;
@@ -322,7 +326,8 @@ async fn test_search_single_space_semantic() {
     let search_params = json!({
         "query": "NLP transformers",
         "space_index": 0,
-        "topK": 5
+        "topK": 5,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter for fail-fast
     });
     let search_request =
         make_request("search/single_space", Some(JsonRpcId::Number(2)), Some(search_params));
@@ -363,7 +368,8 @@ async fn test_search_single_space_code() {
     let search_params = json!({
         "query": "rust main function",
         "space_index": 6,
-        "topK": 10
+        "topK": 10,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter for fail-fast
     });
     let search_request =
         make_request("search/single_space", Some(JsonRpcId::Number(2)), Some(search_params));
@@ -401,7 +407,8 @@ async fn test_search_single_space_splade() {
     let search_params = json!({
         "query": "sparse embeddings",
         "space_index": 12,
-        "topK": 5
+        "topK": 5,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter for fail-fast
     });
     let search_request =
         make_request("search/single_space", Some(JsonRpcId::Number(2)), Some(search_params));
@@ -487,7 +494,8 @@ async fn test_search_single_space_query_text_alias() {
     // Use query_text instead of query
     let search_params = json!({
         "query_text": "parameter naming",
-        "space_index": 0
+        "space_index": 0,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter for fail-fast
     });
     let search_request =
         make_request("search/single_space", Some(JsonRpcId::Number(2)), Some(search_params));
@@ -862,6 +870,7 @@ async fn test_full_state_verification_search_workflow() {
         "query": "machine learning data science",
         "query_type": "semantic_search",
         "topK": 10,
+        "minSimilarity": 0.0,  // P1-FIX-1: Required parameter for fail-fast
         "include_per_embedder_scores": true
     });
     let multi_preset_request =
@@ -900,7 +909,8 @@ async fn test_full_state_verification_search_workflow() {
         "query": "programming language memory",
         "query_type": "custom",
         "weights": custom_weights,
-        "topK": 5
+        "topK": 5,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter for fail-fast
     });
     let multi_custom_request =
         make_request("search/multi", Some(JsonRpcId::Number(11)), Some(multi_custom_params));
@@ -926,7 +936,8 @@ async fn test_full_state_verification_search_workflow() {
     let single_space_params = json!({
         "query": "rust programming",
         "space_index": 6,
-        "topK": 5
+        "topK": 5,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter for fail-fast
     });
     let single_space_request = make_request(
         "search/single_space",
@@ -1139,6 +1150,7 @@ async fn test_rocksdb_integration_search_multi() {
         "query": "deep learning neural networks",
         "query_type": "semantic_search",
         "topK": 10,
+        "minSimilarity": 0.0,  // P1-FIX-1: Required parameter for fail-fast
         "include_per_embedder_scores": true
     });
     let search_request = make_request("search/multi", Some(JsonRpcId::Number(10)), Some(search_params));
@@ -1221,7 +1233,8 @@ async fn test_rocksdb_integration_search_multi_custom_weights() {
         "query": "rust ownership",
         "query_type": "custom",
         "weights": custom_weights,
-        "topK": 5
+        "topK": 5,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter for fail-fast
     });
     let search_request = make_request("search/multi", Some(JsonRpcId::Number(2)), Some(search_params));
     let search_response = handlers.dispatch(search_request).await;
@@ -1267,7 +1280,8 @@ async fn test_rocksdb_integration_search_single_space() {
     let search_params = json!({
         "query": "entity relationships",
         "space_index": 7,
-        "topK": 5
+        "topK": 5,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter for fail-fast
     });
     let search_request = make_request("search/single_space", Some(JsonRpcId::Number(2)), Some(search_params));
     let search_response = handlers.dispatch(search_request).await;

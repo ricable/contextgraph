@@ -372,6 +372,7 @@ async fn test_fsv_complete_memory_lifecycle() {
         "query": "machine learning systems",
         "query_type": "semantic_search",
         "topK": 10,
+        "minSimilarity": 0.0,  // P1-FIX-1: Required parameter for fail-fast
         "include_per_embedder_scores": true
     }));
     let search_response = ctx.handlers.dispatch(search_request).await;
@@ -491,6 +492,7 @@ async fn test_fsv_multi_embedding_search_comprehensive() {
         "query": "machine learning neural",
         "query_type": "semantic_search",
         "topK": 5,
+        "minSimilarity": 0.0,  // P1-FIX-1: Required parameter for fail-fast
         "include_per_embedder_scores": true
     }));
     let search_response = ctx.handlers.dispatch(search_request).await;
@@ -534,7 +536,8 @@ async fn test_fsv_multi_embedding_search_comprehensive() {
         "query": "deep learning patterns",
         "query_type": "custom",
         "weights": custom_weights,
-        "topK": 3
+        "topK": 3,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter for fail-fast
     }));
     let custom_response = ctx.handlers.dispatch(custom_search).await;
 
@@ -551,7 +554,8 @@ async fn test_fsv_multi_embedding_search_comprehensive() {
     let single_space = make_request("search/single_space", 12, json!({
         "query": "vision analysis",
         "space_index": 0,
-        "topK": 3
+        "topK": 3,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter for fail-fast
     }));
     let single_response = ctx.handlers.dispatch(single_space).await;
 
@@ -1218,7 +1222,8 @@ async fn test_fsv_cross_handler_integration() {
     let search_request = make_request("search/multi", 5, json!({
         "query": "machine learning pipeline",
         "query_type": "semantic_search",
-        "topK": 5
+        "topK": 5,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter for fail-fast
     }));
     let search_response = ctx.handlers.dispatch(search_request).await;
     assert!(search_response.error.is_none(), "Search MUST succeed");
@@ -1327,7 +1332,8 @@ async fn test_edge_case_12_weights_instead_of_13() {
     let request = make_request("search/multi", 1, json!({
         "query": "test query",
         "query_type": "custom",
-        "weights": invalid_weights
+        "weights": invalid_weights,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter (test expects weights error)
     }));
     let response = ctx.handlers.dispatch(request).await;
 
@@ -1350,7 +1356,8 @@ async fn test_edge_case_space_index_13() {
 
     let request = make_request("search/single_space", 1, json!({
         "query": "test query",
-        "space_index": 13
+        "space_index": 13,
+        "minSimilarity": 0.0  // P1-FIX-1: Required parameter (test expects space_index error)
     }));
     let response = ctx.handlers.dispatch(request).await;
 

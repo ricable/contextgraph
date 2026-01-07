@@ -525,7 +525,9 @@ async fn test_space_search_result_failure() {
 // ==================== Integration Tests ====================
 
 #[tokio::test]
-async fn test_full_query_flow_with_real_data() {
+async fn test_full_query_flow_with_stub_data() {
+    // NOTE: Uses StubMultiArrayProvider - NOT real embeddings!
+    // For real data tests, see context-graph-embeddings/tests/full_state_verification.rs
     // Store 20 fingerprints
     let (executor, stored_ids) = create_populated_executor(20).await;
 

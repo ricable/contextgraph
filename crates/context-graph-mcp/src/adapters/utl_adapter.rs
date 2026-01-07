@@ -109,12 +109,19 @@ impl UtlProcessorAdapter {
         Arc::clone(&self.metrics)
     }
 
-    /// Extract embedding from context, providing default if missing.
-    fn get_embedding(context: &UtlContext) -> Vec<f32> {
+    /// Extract embedding from context.
+    ///
+    /// # Errors
+    /// Returns `CoreError::MissingField` if goal_vector is None.
+    /// FAIL FAST: No fallback to zero vectors which would mask bugs.
+    fn get_embedding(context: &UtlContext) -> CoreResult<Vec<f32>> {
         context
             .goal_vector
             .clone()
-            .unwrap_or_else(|| vec![0.0; 128])
+            .ok_or_else(|| CoreError::MissingField {
+                field: "goal_vector".to_string(),
+                context: "UtlContext must have goal_vector for UTL computation. Zero vector fallback removed per constitution - fail fast on missing data.".to_string(),
+            })
     }
 
     /// Build context embeddings from UtlContext.
@@ -139,11 +146,14 @@ impl UtlProcessor for UtlProcessorAdapter {
     /// Compute the full UTL learning score.
     ///
     /// Bridges to real processor's `compute_learning()` method via spawn_blocking.
+    ///
+    /// # Errors
+    /// Returns `CoreError::MissingField` if goal_vector is missing from context.
     async fn compute_learning_score(&self, input: &str, context: &UtlContext) -> CoreResult<f32> {
         let inner = self.inner_clone();
         let metrics_ref = self.metrics_clone();
         let input = input.to_string();
-        let embedding = Self::get_embedding(context);
+        let embedding = Self::get_embedding(context)?;
         let context_embeddings = Self::get_context_embeddings(context);
 
         tokio::task::spawn_blocking(move || {
@@ -179,10 +189,13 @@ impl UtlProcessor for UtlProcessorAdapter {
     /// Compute surprise component (ΔS).
     ///
     /// Returns value in [0.0, 1.0] representing information gain/novelty.
+    ///
+    /// # Errors
+    /// Returns `CoreError::MissingField` if goal_vector is missing from context.
     async fn compute_surprise(&self, input: &str, context: &UtlContext) -> CoreResult<f32> {
         let inner = self.inner_clone();
         let input = input.to_string();
-        let embedding = Self::get_embedding(context);
+        let embedding = Self::get_embedding(context)?;
         let context_embeddings = Self::get_context_embeddings(context);
 
         tokio::task::spawn_blocking(move || {
@@ -201,10 +214,13 @@ impl UtlProcessor for UtlProcessorAdapter {
     /// Compute coherence change (ΔC).
     ///
     /// Returns value in [0.0, 1.0] representing understanding gain.
+    ///
+    /// # Errors
+    /// Returns `CoreError::MissingField` if goal_vector is missing from context.
     async fn compute_coherence_change(&self, input: &str, context: &UtlContext) -> CoreResult<f32> {
         let inner = self.inner_clone();
         let input = input.to_string();
-        let embedding = Self::get_embedding(context);
+        let embedding = Self::get_embedding(context)?;
         let context_embeddings = Self::get_context_embeddings(context);
 
         tokio::task::spawn_blocking(move || {
@@ -223,10 +239,13 @@ impl UtlProcessor for UtlProcessorAdapter {
     /// Compute emotional weight (wₑ).
     ///
     /// Returns value in [0.5, 1.5] representing emotional salience.
+    ///
+    /// # Errors
+    /// Returns `CoreError::MissingField` if goal_vector is missing from context.
     async fn compute_emotional_weight(&self, input: &str, context: &UtlContext) -> CoreResult<f32> {
         let inner = self.inner_clone();
         let input = input.to_string();
-        let embedding = Self::get_embedding(context);
+        let embedding = Self::get_embedding(context)?;
         let context_embeddings = Self::get_context_embeddings(context);
 
         tokio::task::spawn_blocking(move || {
@@ -245,10 +264,13 @@ impl UtlProcessor for UtlProcessorAdapter {
     /// Compute goal alignment (cos φ).
     ///
     /// Returns value in [-1.0, 1.0] where 1.0 is perfect alignment.
+    ///
+    /// # Errors
+    /// Returns `CoreError::MissingField` if goal_vector is missing from context.
     async fn compute_alignment(&self, input: &str, context: &UtlContext) -> CoreResult<f32> {
         let inner = self.inner_clone();
         let input = input.to_string();
-        let embedding = Self::get_embedding(context);
+        let embedding = Self::get_embedding(context)?;
         let context_embeddings = Self::get_context_embeddings(context);
 
         tokio::task::spawn_blocking(move || {
@@ -283,10 +305,13 @@ impl UtlProcessor for UtlProcessorAdapter {
     }
 
     /// Get full UTL metrics for input.
+    ///
+    /// # Errors
+    /// Returns `CoreError::MissingField` if goal_vector is missing from context.
     async fn compute_metrics(&self, input: &str, context: &UtlContext) -> CoreResult<UtlMetrics> {
         let inner = self.inner_clone();
         let input = input.to_string();
-        let embedding = Self::get_embedding(context);
+        let embedding = Self::get_embedding(context)?;
         let context_embeddings = Self::get_context_embeddings(context);
 
         tokio::task::spawn_blocking(move || {
@@ -577,6 +602,116 @@ mod tests {
             status1["interaction_count"].as_u64(),
             status2["interaction_count"].as_u64(),
             "Cloned adapters should share state"
+        );
+    }
+
+    /// FAIL-FAST TEST: Verify that missing goal_vector returns MissingField error.
+    /// Constitution requires: No zero vector fallbacks that mask missing data.
+    /// This test ensures the fix from P0-FIX-1 (Sherlock investigation) is working.
+    #[tokio::test]
+    async fn test_fail_fast_missing_goal_vector() {
+        let adapter = UtlProcessorAdapter::with_defaults();
+
+        // Context with NO goal_vector - must fail, not return zero vector
+        let context_missing = UtlContext {
+            goal_vector: None, // <-- CRITICAL: This must cause an error
+            ..Default::default()
+        };
+
+        // All compute methods MUST fail with MissingField error
+        let result = adapter
+            .compute_learning_score("test", &context_missing)
+            .await;
+        assert!(
+            result.is_err(),
+            "compute_learning_score must fail with missing goal_vector, not return 0.0"
+        );
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, CoreError::MissingField { .. }),
+            "Expected MissingField error, got: {:?}",
+            err
+        );
+
+        let result = adapter.compute_surprise("test", &context_missing).await;
+        assert!(
+            result.is_err(),
+            "compute_surprise must fail with missing goal_vector"
+        );
+
+        let result = adapter
+            .compute_coherence_change("test", &context_missing)
+            .await;
+        assert!(
+            result.is_err(),
+            "compute_coherence_change must fail with missing goal_vector"
+        );
+
+        let result = adapter
+            .compute_emotional_weight("test", &context_missing)
+            .await;
+        assert!(
+            result.is_err(),
+            "compute_emotional_weight must fail with missing goal_vector"
+        );
+
+        let result = adapter.compute_alignment("test", &context_missing).await;
+        assert!(
+            result.is_err(),
+            "compute_alignment must fail with missing goal_vector"
+        );
+
+        let result = adapter.compute_metrics("test", &context_missing).await;
+        assert!(
+            result.is_err(),
+            "compute_metrics must fail with missing goal_vector"
+        );
+    }
+
+    /// FAIL-FAST TEST: Verify error message is informative for debugging.
+    /// The error must explain WHY it failed and what's needed.
+    #[tokio::test]
+    async fn test_fail_fast_error_message_is_informative() {
+        let adapter = UtlProcessorAdapter::with_defaults();
+        let context_missing = UtlContext {
+            goal_vector: None,
+            ..Default::default()
+        };
+
+        let result = adapter
+            .compute_learning_score("test", &context_missing)
+            .await;
+        let err = result.unwrap_err();
+
+        // Error message must contain actionable information
+        let err_string = err.to_string();
+        assert!(
+            err_string.contains("goal_vector"),
+            "Error message must mention 'goal_vector', got: {}",
+            err_string
+        );
+        assert!(
+            err_string.contains("UtlContext") || err_string.contains("fail fast"),
+            "Error message must explain context or policy, got: {}",
+            err_string
+        );
+    }
+
+    /// Verify that should_consolidate does NOT require goal_vector.
+    /// This method only uses node.importance, not context embedding.
+    #[tokio::test]
+    async fn test_should_consolidate_no_goal_vector_required() {
+        let adapter = UtlProcessorAdapter::with_defaults();
+        let embedding = vec![0.5; 128];
+
+        let mut node = MemoryNode::new("test".to_string(), embedding);
+        node.importance = 0.5;
+
+        // should_consolidate doesn't use context embedding
+        let result = adapter.should_consolidate(&node).await;
+        assert!(
+            result.is_ok(),
+            "should_consolidate should work without goal_vector in context"
         );
     }
 }

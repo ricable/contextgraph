@@ -298,14 +298,48 @@ impl Handlers {
             }
         };
 
-        let top_k = params.get("topK").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
-        let min_similarity = params
+        // top_k has a sensible default (pagination parameter)
+        const DEFAULT_TOP_K: usize = 10;
+        let top_k = params.get("topK").and_then(|v| v.as_u64()).map(|v| v as usize).unwrap_or(DEFAULT_TOP_K);
+
+        // FAIL-FAST: minSimilarity MUST be explicitly provided.
+        // Per constitution AP-007: No silent fallbacks that mask user intent.
+        // 0.0 may seem like "no filter" but user must explicitly confirm this choice.
+        let min_similarity = match params
             .get("minSimilarity")
+            .or_else(|| params.get("min_similarity"))
             .and_then(|v| v.as_f64())
             .map(|v| v as f32)
-            .unwrap_or(0.0);
+        {
+            Some(sim) => {
+                if !(0.0..=1.0).contains(&sim) {
+                    return JsonRpcResponse::error(
+                        id,
+                        error_codes::INVALID_PARAMS,
+                        format!(
+                            "minSimilarity must be between 0.0 and 1.0, got: {}. \
+                             Use 0.0 to include all results (no filter).",
+                            sim
+                        ),
+                    );
+                }
+                sim
+            }
+            None => {
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::INVALID_PARAMS,
+                    "Missing required parameter 'minSimilarity'. \
+                     You must explicitly specify the minimum similarity threshold. \
+                     Use 0.0 to include all results (no filter), or higher values like 0.7 for stricter matching.".to_string(),
+                );
+            }
+        };
+
+        // minAlignment is optional - when provided, adds purpose alignment filter
         let min_alignment = params
             .get("minAlignment")
+            .or_else(|| params.get("min_alignment"))
             .and_then(|v| v.as_f64())
             .map(|v| v as f32);
 

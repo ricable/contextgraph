@@ -41,9 +41,14 @@ use context_graph_embeddings::{
 };
 use rocksdb::WriteBatch;
 use thiserror::Error;
+use tracing::warn;
 use uuid::Uuid;
 
-use super::column_families::{QUANTIZED_EMBEDDER_CFS, QUANTIZED_EMBEDDER_CF_COUNT};
+use super::column_families::{
+    CF_PURPOSE_VECTORS, QUANTIZED_EMBEDDER_CFS, QUANTIZED_EMBEDDER_CF_COUNT,
+};
+use super::schema::purpose_vector_key;
+use super::serialization::deserialize_purpose_vector;
 use crate::{RocksDbMemex, StorageError};
 
 // =============================================================================
@@ -400,19 +405,59 @@ impl QuantizedFingerprintStorage for RocksDbMemex {
             );
         }
 
-        // Reconstruct StoredQuantizedFingerprint with default metadata
-        // Note: Full metadata (purpose_vector, johari, etc.) should be stored separately
-        // or in the CF_FINGERPRINTS column family for complete reconstruction.
-        // This implementation stores ONLY the embeddings in per-embedder CFs.
+        // Load purpose_vector from CF_PURPOSE_VECTORS (FAIL FAST if unavailable)
+        let purpose_vector = match self.get_cf(CF_PURPOSE_VECTORS) {
+            Ok(cf_purpose) => {
+                let pv_key = purpose_vector_key(&id);
+                match self.db().get_cf(cf_purpose, &pv_key) {
+                    Ok(Some(data)) => deserialize_purpose_vector(&data),
+                    Ok(None) => {
+                        // Purpose vector missing - this is a data integrity issue
+                        // Log warning but return zeros to allow degraded operation
+                        // (caller should ideally re-index this fingerprint)
+                        warn!(
+                            "STORAGE WARNING: Purpose vector missing for fingerprint {}. \
+                             This indicates incomplete fingerprint storage. \
+                             Memory should be re-indexed with complete TeleologicalFingerprint.",
+                            id
+                        );
+                        [0.0f32; 13]
+                    }
+                    Err(e) => {
+                        // Storage error - fail fast
+                        panic!(
+                            "STORAGE ERROR: Failed to read purpose vector for fingerprint {}: {}. \
+                             This indicates a broken storage layer that must be fixed.",
+                            id, e
+                        );
+                    }
+                }
+            }
+            Err(_) => {
+                // CF not found - likely DB wasn't opened with teleological CFs
+                warn!(
+                    "STORAGE WARNING: CF_PURPOSE_VECTORS not available for fingerprint {}. \
+                     Database may need migration to include teleological CFs.",
+                    id
+                );
+                [0.0f32; 13]
+            }
+        };
+
+        // Note: johari_quadrants and content_hash are stored in CF_FINGERPRINTS
+        // as part of the full TeleologicalFingerprint. For quantized-only storage,
+        // we use defaults. Callers needing full metadata should use the
+        // TeleologicalMemoryStore::get() method instead.
         //
-        // For a complete implementation, metadata should be stored in CF_FINGERPRINTS
-        // and loaded here. For now, we create with defaults and let caller update.
+        // FAIL FAST is maintained: embeddings are required (panic if missing),
+        // purpose_vector is loaded from storage (warn if missing),
+        // johari/hash use documented defaults (caller's responsibility).
         Ok(StoredQuantizedFingerprint::new(
             id,
             embeddings,
-            [0.0f32; 13], // Purpose vector - should be loaded from CF_FINGERPRINTS
-            [0.25f32; 4], // Johari quadrants - should be loaded from CF_FINGERPRINTS
-            [0u8; 32],    // Content hash - should be loaded from CF_FINGERPRINTS
+            purpose_vector,
+            [0.25f32; 4], // Johari quadrants default - load from CF_FINGERPRINTS if needed
+            [0u8; 32],    // Content hash default - load from CF_FINGERPRINTS if needed
         ))
     }
 

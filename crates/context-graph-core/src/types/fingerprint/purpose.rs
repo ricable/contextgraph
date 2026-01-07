@@ -8,6 +8,9 @@ use serde::{Deserialize, Serialize};
 // Re-export NUM_EMBEDDERS from semantic.rs for backwards compatibility
 pub use super::semantic::NUM_EMBEDDERS;
 
+// Import alignment thresholds from centralized constants
+use crate::config::constants::alignment;
+
 /// Alignment threshold categories from Royse 2026 research.
 ///
 /// From constitution.yaml:
@@ -47,11 +50,13 @@ impl AlignmentThreshold {
     /// ```
     #[inline]
     pub fn classify(theta: f32) -> Self {
-        if theta >= 0.75 {
+        // Use centralized constants from config::constants::alignment
+        // per Constitution AP-003: "Magic numbers → define constants"
+        if theta >= alignment::OPTIMAL {
             Self::Optimal
-        } else if theta >= 0.70 {
+        } else if theta >= alignment::ACCEPTABLE {
             Self::Acceptable
-        } else if theta >= 0.55 {
+        } else if theta >= alignment::WARNING {
             Self::Warning
         } else {
             Self::Critical
@@ -73,12 +78,15 @@ impl AlignmentThreshold {
     }
 
     /// Get the minimum theta value for this threshold.
+    ///
+    /// Uses centralized constants from `config::constants::alignment`
+    /// per Constitution AP-003: "Magic numbers → define constants"
     #[inline]
     pub fn min_theta(&self) -> f32 {
         match self {
-            Self::Optimal => 0.75,
-            Self::Acceptable => 0.70,
-            Self::Warning => 0.55,
+            Self::Optimal => alignment::OPTIMAL,
+            Self::Acceptable => alignment::ACCEPTABLE,
+            Self::Warning => alignment::WARNING,
             Self::Critical => f32::NEG_INFINITY,
         }
     }
