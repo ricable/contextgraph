@@ -1,3 +1,5 @@
+#![deny(deprecated)]
+
 //! Embedding pipeline for Context Graph.
 //!
 //! This crate provides GPU-accelerated text-to-embedding conversion using

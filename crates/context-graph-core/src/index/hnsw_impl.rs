@@ -569,7 +569,47 @@ impl RealHnswIndex {
     ///
     /// * `Ok(Self)` - Successfully loaded and rebuilt index
     /// * `Err(IndexError)` - IO, serialization, or construction error
+    ///
+    /// # Constitution Compliance
+    ///
+    /// Per AP-007: No backwards compatibility with legacy formats.
+    /// This function will reject any legacy SimpleHnswIndex format files.
     pub fn load(path: &Path) -> IndexResult<Self> {
+        // AP-007: Reject legacy formats - no backwards compatibility
+        // Check file header for legacy SimpleHnswIndex format markers
+        let data = std::fs::read(path)
+            .map_err(|e| IndexError::io("reading index file for format check", e))?;
+
+        // Check for legacy SimpleHnswIndex format markers
+        // These magic bytes were used by the deprecated SimpleHnswIndex serialization
+        if data.starts_with(b"SIMPLE_HNSW") ||
+           data.starts_with(b"\x00SIMPLE") ||
+           (data.len() > 8 && &data[0..8] == b"SIMP_IDX") {
+            error!(
+                "FATAL: Legacy SimpleHnswIndex format detected at {:?}. \
+                 This format was deprecated and is no longer supported.",
+                path
+            );
+            return Err(IndexError::legacy_format(
+                path.display().to_string(),
+                "Legacy SimpleHnswIndex format detected. \
+                 This format was deprecated and is no longer supported. \
+                 Data must be reindexed using RealHnswIndex. \
+                 See: docs2/codestate/sherlockplans/agent5-backwards-compat-removal.md"
+            ));
+        }
+
+        // Also reject old .hnsw.bin files based on filename pattern (extra safety)
+        if let Some(filename) = path.file_name().and_then(|s| s.to_str()) {
+            if filename.ends_with(".hnsw.bin") && !filename.contains("real_hnsw") {
+                warn!(
+                    "Potential legacy index file detected: {:?}. \
+                     Attempting to load, but may fail if format is incompatible.",
+                    path
+                );
+            }
+        }
+
         let file = File::open(path)
             .map_err(|e| IndexError::io("opening RealHnswIndex persistence file", e))?;
         let reader = BufReader::new(file);
@@ -603,200 +643,9 @@ impl RealHnswIndex {
     }
 }
 
-// ============================================================================
-// Legacy SimpleHnswIndex (kept for backwards compatibility during migration)
-// ============================================================================
-
-/// Entry in an HNSW index: (vector, metadata).
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct HnswEntry {
-    /// Memory UUID
-    id: Uuid,
-    /// Dense vector
-    vector: Vec<f32>,
-}
-
-/// Simple HNSW-like index using flat search with approximate neighbor graph.
-///
-/// # DEPRECATED
-///
-/// This implementation uses brute-force O(n) search. For production, use
-/// `RealHnswIndex` which provides true O(log n) HNSW search.
-///
-/// # Note
-///
-/// Kept for backwards compatibility with existing serialized indexes.
-/// New code should use `RealHnswIndex`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SimpleHnswIndex {
-    /// All entries in the index
-    entries: Vec<HnswEntry>,
-    /// UUID to index mapping for fast removal
-    id_to_index: HashMap<Uuid, usize>,
-    /// Configuration
-    config: HnswConfig,
-    /// Whether index is initialized
-    initialized: bool,
-}
-
-impl SimpleHnswIndex {
-    /// Create a new empty index with given configuration.
-    pub fn new(config: HnswConfig) -> Self {
-        Self {
-            entries: Vec::new(),
-            id_to_index: HashMap::new(),
-            config,
-            initialized: true,
-        }
-    }
-
-    /// Add a vector to the index.
-    ///
-    /// # Errors
-    ///
-    /// - `DimensionMismatch`: If vector dimension doesn't match config
-    /// - `ZeroNormVector`: If vector has zero magnitude
-    pub fn add(&mut self, id: Uuid, vector: &[f32]) -> IndexResult<()> {
-        // Validate dimension
-        if vector.len() != self.config.dimension {
-            return Err(IndexError::DimensionMismatch {
-                embedder: EmbedderIndex::E1Semantic, // Will be overridden by caller
-                expected: self.config.dimension,
-                actual: vector.len(),
-            });
-        }
-
-        // Validate non-zero norm
-        let norm: f32 = vector.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if norm < f32::EPSILON {
-            return Err(IndexError::ZeroNormVector { memory_id: id });
-        }
-
-        // Remove existing entry if present
-        if let Some(&old_idx) = self.id_to_index.get(&id) {
-            self.entries.remove(old_idx);
-            // Rebuild id_to_index after removal
-            self.id_to_index.clear();
-            for (i, entry) in self.entries.iter().enumerate() {
-                self.id_to_index.insert(entry.id, i);
-            }
-        }
-
-        // Add new entry
-        let idx = self.entries.len();
-        self.entries.push(HnswEntry {
-            id,
-            vector: vector.to_vec(),
-        });
-        self.id_to_index.insert(id, idx);
-
-        Ok(())
-    }
-
-    /// Search for k nearest neighbors.
-    ///
-    /// Returns (id, similarity) pairs sorted by descending similarity.
-    pub fn search(&self, query: &[f32], k: usize) -> IndexResult<Vec<(Uuid, f32)>> {
-        if query.len() != self.config.dimension {
-            return Err(IndexError::DimensionMismatch {
-                embedder: EmbedderIndex::E1Semantic,
-                expected: self.config.dimension,
-                actual: query.len(),
-            });
-        }
-
-        if self.entries.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        // Compute similarities based on metric
-        let mut results: Vec<(Uuid, f32)> = self
-            .entries
-            .iter()
-            .map(|entry| {
-                let sim = match self.config.metric {
-                    DistanceMetric::Cosine => self.cosine_similarity(query, &entry.vector),
-                    DistanceMetric::DotProduct => self.dot_product(query, &entry.vector),
-                    DistanceMetric::Euclidean => {
-                        -self.euclidean_distance(query, &entry.vector) // Negative for sorting
-                    }
-                    DistanceMetric::AsymmetricCosine => {
-                        self.cosine_similarity(query, &entry.vector)
-                    }
-                    DistanceMetric::MaxSim => {
-                        // MaxSim is not supported for HNSW - fall back to cosine
-                        self.cosine_similarity(query, &entry.vector)
-                    }
-                };
-                (entry.id, sim)
-            })
-            .collect();
-
-        // Sort by descending similarity
-        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        results.truncate(k);
-
-        Ok(results)
-    }
-
-    /// Remove an entry by ID.
-    pub fn remove(&mut self, id: Uuid) -> bool {
-        if let Some(&idx) = self.id_to_index.get(&id) {
-            self.entries.remove(idx);
-            self.id_to_index.remove(&id);
-
-            // Rebuild indices
-            self.id_to_index.clear();
-            for (i, entry) in self.entries.iter().enumerate() {
-                self.id_to_index.insert(entry.id, i);
-            }
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Number of entries in the index.
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    /// Check if index is empty.
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-
-    /// Approximate memory usage in bytes.
-    pub fn memory_usage(&self) -> usize {
-        self.entries.len() * (16 + self.config.dimension * 4)
-    }
-
-    // Distance computations
-
-    #[inline]
-    fn cosine_similarity(&self, a: &[f32], b: &[f32]) -> f32 {
-        let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-        let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-        let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-        dot / (norm_a * norm_b).max(f32::EPSILON)
-    }
-
-    #[inline]
-    fn dot_product(&self, a: &[f32], b: &[f32]) -> f32 {
-        a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
-    }
-
-    #[inline]
-    fn euclidean_distance(&self, a: &[f32], b: &[f32]) -> f32 {
-        a.iter()
-            .zip(b.iter())
-            .map(|(x, y)| (x - y).powi(2))
-            .sum::<f32>()
-            .sqrt()
-    }
-}
+// NOTE: SimpleHnswIndex has been DELETED - backwards compat cleanup
+// All indexes must use RealHnswIndex which provides true O(log n) HNSW search.
+// Old serialized data using SimpleHnswIndex must be reindexed.
 
 /// HnswMultiSpaceIndex manages 12 HNSW indexes + SPLADE inverted index.
 ///
@@ -817,12 +666,16 @@ impl SimpleHnswIndex {
 ///
 /// The struct is Send + Sync through interior mutability patterns.
 /// The underlying hnsw_rs indexes are thread-safe.
+///
+/// # NO BACKWARDS COMPATIBILITY
+///
+/// Legacy SimpleHnswIndex has been deleted. Old serialized data must be
+/// reindexed using RealHnswIndex. This is intentional - O(n) search in
+/// production was never acceptable.
 #[derive(Debug)]
 pub struct HnswMultiSpaceIndex {
     /// Map from EmbedderIndex to real HNSW index
     hnsw_indexes: HashMap<EmbedderIndex, RealHnswIndex>,
-    /// Legacy indexes for backwards compatibility (loaded from old serialized data)
-    legacy_indexes: HashMap<EmbedderIndex, SimpleHnswIndex>,
     /// SPLADE inverted index for Stage 1
     splade_index: SpladeInvertedIndex,
     /// Whether initialized
@@ -836,7 +689,6 @@ impl HnswMultiSpaceIndex {
     pub fn new() -> Self {
         Self {
             hnsw_indexes: HashMap::new(),
-            legacy_indexes: HashMap::new(),
             splade_index: SpladeInvertedIndex::new(),
             initialized: false,
             configs: HashMap::new(),
@@ -860,24 +712,13 @@ impl HnswMultiSpaceIndex {
 
     /// Get index status for a specific embedder.
     fn get_embedder_status(&self, embedder: EmbedderIndex) -> IndexStatus {
-        // First check real HNSW index
+        // Check HNSW index (there is NO legacy fallback anymore)
         if let Some(index) = self.hnsw_indexes.get(&embedder) {
             let mut status = IndexStatus::new_empty(embedder);
             let bytes_per_element = self.configs
                 .get(&embedder)
                 .map(|c| c.estimated_memory_per_vector())
                 .unwrap_or(4096); // Default estimate
-            status.update_count(index.len(), bytes_per_element);
-            return status;
-        }
-
-        // Check legacy index for backwards compatibility
-        if let Some(index) = self.legacy_indexes.get(&embedder) {
-            let mut status = IndexStatus::new_empty(embedder);
-            let bytes_per_element = self.configs
-                .get(&embedder)
-                .map(|c| c.estimated_memory_per_vector())
-                .unwrap_or(4096);
             status.update_count(index.len(), bytes_per_element);
             return status;
         }
@@ -952,7 +793,7 @@ impl MultiSpaceIndexManager for HnswMultiSpaceIndex {
             return Err(IndexError::NotInitialized { embedder });
         }
 
-        // Get index - prefer real HNSW, fall back to legacy for loaded data
+        // Get HNSW index (there is NO legacy fallback anymore)
         if let Some(index) = self.hnsw_indexes.get_mut(&embedder) {
             // Validate dimension
             let expected_dim = embedder.dimension().unwrap_or(0);
@@ -984,37 +825,7 @@ impl MultiSpaceIndexManager for HnswMultiSpaceIndex {
             return Ok(());
         }
 
-        // Check legacy index (for backwards compatibility with loaded data)
-        if let Some(index) = self.legacy_indexes.get_mut(&embedder) {
-            warn!(
-                "Using legacy SimpleHnswIndex for {:?} - consider reindexing",
-                embedder
-            );
-            let expected_dim = embedder.dimension().unwrap_or(0);
-            if vector.len() != expected_dim {
-                return Err(IndexError::DimensionMismatch {
-                    embedder,
-                    expected: expected_dim,
-                    actual: vector.len(),
-                });
-            }
-
-            index.add(memory_id, vector).map_err(|e| match e {
-                IndexError::DimensionMismatch { expected, actual, .. } => {
-                    IndexError::DimensionMismatch {
-                        embedder,
-                        expected,
-                        actual,
-                    }
-                }
-                IndexError::ZeroNormVector { memory_id } => IndexError::ZeroNormVector { memory_id },
-                other => other,
-            })?;
-
-            return Ok(());
-        }
-
-        // Neither real nor legacy index found - FAIL FAST
+        // Index not found - FAIL FAST
         error!(
             "FATAL: No HNSW index found for {:?} - not initialized",
             embedder
@@ -1146,7 +957,7 @@ impl MultiSpaceIndexManager for HnswMultiSpaceIndex {
             });
         }
 
-        // Search real HNSW index first
+        // Search HNSW index (there is NO legacy fallback anymore)
         if let Some(index) = self.hnsw_indexes.get(&embedder) {
             return index.search(query, k).map_err(|e| match e {
                 IndexError::DimensionMismatch { expected, actual, .. } => {
@@ -1160,25 +971,7 @@ impl MultiSpaceIndexManager for HnswMultiSpaceIndex {
             });
         }
 
-        // Check legacy index for backwards compatibility
-        if let Some(index) = self.legacy_indexes.get(&embedder) {
-            warn!(
-                "Searching legacy SimpleHnswIndex for {:?} - consider reindexing",
-                embedder
-            );
-            return index.search(query, k).map_err(|e| match e {
-                IndexError::DimensionMismatch { expected, actual, .. } => {
-                    IndexError::DimensionMismatch {
-                        embedder,
-                        expected,
-                        actual,
-                    }
-                }
-                other => other,
-            });
-        }
-
-        // Neither index found - FAIL FAST
+        // Index not found - FAIL FAST
         error!(
             "FATAL: No HNSW index found for {:?} during search",
             embedder
@@ -1221,15 +1014,8 @@ impl MultiSpaceIndexManager for HnswMultiSpaceIndex {
     async fn remove(&mut self, memory_id: Uuid) -> IndexResult<()> {
         let mut found = false;
 
-        // Remove from all real HNSW indexes
+        // Remove from all HNSW indexes
         for index in self.hnsw_indexes.values_mut() {
-            if index.remove(memory_id) {
-                found = true;
-            }
-        }
-
-        // Remove from legacy indexes
-        for index in self.legacy_indexes.values_mut() {
             if index.remove(memory_id) {
                 found = true;
             }
@@ -1284,17 +1070,7 @@ impl MultiSpaceIndexManager for HnswMultiSpaceIndex {
             );
         }
 
-        // Persist legacy indexes (bincode serializable)
-        for (embedder, index) in &self.legacy_indexes {
-            let file_name = format!("{:?}.hnsw.bin", embedder);
-            let file_path = path.join(&file_name);
-
-            let file =
-                File::create(&file_path).map_err(|e| IndexError::io("creating legacy HNSW file", e))?;
-            let writer = BufWriter::new(file);
-            bincode::serialize_into(writer, index)
-                .map_err(|e| IndexError::serialization("serializing legacy HNSW index", e))?;
-        }
+        // NOTE: Legacy SimpleHnswIndex has been deleted - no legacy persistence
 
         // Persist SPLADE index
         let splade_path = path.join("splade.bin");
@@ -1303,13 +1079,12 @@ impl MultiSpaceIndexManager for HnswMultiSpaceIndex {
         // Persist metadata with version info
         let meta_path = path.join("index_meta.json");
         let meta = serde_json::json!({
-            "version": "2.1.0",  // Version 2.1 indicates RealHnswIndex with full vector persistence
+            "version": "3.0.0",  // Version 3.0 - pure RealHnswIndex, no legacy fallback
             "hnsw_count": self.hnsw_indexes.len(),
-            "legacy_count": self.legacy_indexes.len(),
             "splade_count": self.splade_index.len(),
             "initialized": self.initialized,
             "index_type": "RealHnswIndex",
-            "note": "RealHnswIndex with full vector persistence - HNSW graph rebuilt on load"
+            "note": "RealHnswIndex only - legacy SimpleHnswIndex support removed"
         });
         let meta_file =
             File::create(&meta_path).map_err(|e| IndexError::io("creating metadata file", e))?;
@@ -1317,9 +1092,8 @@ impl MultiSpaceIndexManager for HnswMultiSpaceIndex {
             .map_err(|e| IndexError::serialization("serializing metadata", e))?;
 
         info!(
-            "Persisted {} real HNSW indexes, {} legacy indexes, {} SPLADE entries",
+            "Persisted {} HNSW indexes, {} SPLADE entries",
             self.hnsw_indexes.len(),
-            self.legacy_indexes.len(),
             self.splade_index.len()
         );
 
@@ -1398,38 +1172,28 @@ impl MultiSpaceIndexManager for HnswMultiSpaceIndex {
             }
         }
 
-        // Load legacy HNSW indexes (v1.0.0 format, bincode serialized SimpleHnswIndex)
+        // AP-007: FAIL FAST on legacy formats - NO backwards compatibility
+        // Check for old v1.0.0 format files (.hnsw.bin) and REJECT them
         for embedder in EmbedderIndex::all_hnsw() {
-            let file_name = format!("{:?}.hnsw.bin", embedder);
-            let file_path = path.join(&file_name);
+            let legacy_file_name = format!("{:?}.hnsw.bin", embedder);
+            let legacy_file_path = path.join(&legacy_file_name);
 
-            if file_path.exists() {
-                let file = File::open(&file_path)
-                    .map_err(|e| IndexError::io("opening legacy HNSW file", e))?;
-                let reader = BufReader::new(file);
-
-                // Try to load as SimpleHnswIndex (legacy format)
-                match bincode::deserialize_from::<_, SimpleHnswIndex>(reader) {
-                    Ok(index) => {
-                        info!(
-                            "Loaded legacy SimpleHnswIndex for {:?} with {} entries",
-                            embedder,
-                            index.len()
-                        );
-                        self.legacy_indexes.insert(embedder, index);
-
-                        // Store config for this embedder
-                        if let Some(config) = Self::config_for_embedder(embedder) {
-                            self.configs.insert(embedder, config);
-                        }
-                    }
-                    Err(e) => {
-                        warn!(
-                            "Could not load legacy index for {:?}: {} - will use real index",
-                            embedder, e
-                        );
-                    }
-                }
+            if legacy_file_path.exists() {
+                error!(
+                    "FATAL: Legacy SimpleHnswIndex file found for {:?} at {:?}. \
+                     Legacy formats are no longer supported. Data must be reindexed.",
+                    embedder, legacy_file_path
+                );
+                return Err(IndexError::legacy_format(
+                    legacy_file_path.display().to_string(),
+                    format!(
+                        "Legacy SimpleHnswIndex file found for {:?}. \
+                         This format was deprecated and is no longer supported. \
+                         Delete legacy files and reindex data using RealHnswIndex. \
+                         See: docs2/codestate/sherlockplans/agent5-backwards-compat-removal.md",
+                        embedder
+                    )
+                ));
             }
         }
 
@@ -1443,9 +1207,8 @@ impl MultiSpaceIndexManager for HnswMultiSpaceIndex {
         self.initialized = true;
 
         info!(
-            "Loaded HnswMultiSpaceIndex: {} real HNSW, {} legacy HNSW, {} SPLADE",
+            "Loaded HnswMultiSpaceIndex: {} HNSW, {} SPLADE",
             self.hnsw_indexes.len(),
-            self.legacy_indexes.len(),
             self.splade_index.len()
         );
 
@@ -1494,19 +1257,19 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_hnsw_new() {
+    fn test_real_hnsw_new() {
         let config = HnswConfig::default_for_dimension(1024, DistanceMetric::Cosine);
-        let index = SimpleHnswIndex::new(config);
+        let index = RealHnswIndex::new(config).expect("Failed to create index");
 
         assert_eq!(index.len(), 0);
         assert!(index.is_empty());
-        println!("[VERIFIED] SimpleHnswIndex::new() creates empty index");
+        println!("[VERIFIED] RealHnswIndex::new() creates empty index");
     }
 
     #[test]
-    fn test_simple_hnsw_add_and_search() {
+    fn test_real_hnsw_add_and_search() {
         let config = HnswConfig::default_for_dimension(128, DistanceMetric::Cosine);
-        let mut index = SimpleHnswIndex::new(config);
+        let mut index = RealHnswIndex::new(config).expect("Failed to create index");
 
         let id1 = Uuid::new_v4();
         let id2 = Uuid::new_v4();
@@ -1536,9 +1299,9 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_hnsw_dimension_mismatch() {
+    fn test_real_hnsw_dimension_mismatch() {
         let config = HnswConfig::default_for_dimension(128, DistanceMetric::Cosine);
-        let mut index = SimpleHnswIndex::new(config);
+        let mut index = RealHnswIndex::new(config).expect("Failed to create index");
 
         let id = Uuid::new_v4();
         let wrong_dim = random_vector(256); // Wrong dimension
@@ -1559,9 +1322,9 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_hnsw_zero_norm_rejected() {
+    fn test_real_hnsw_zero_norm_rejected() {
         let config = HnswConfig::default_for_dimension(10, DistanceMetric::Cosine);
-        let mut index = SimpleHnswIndex::new(config);
+        let mut index = RealHnswIndex::new(config).expect("Failed to create index");
 
         let id = Uuid::new_v4();
         let zero_vec = vec![0.0; 10];
@@ -1575,9 +1338,9 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_hnsw_remove() {
+    fn test_real_hnsw_remove() {
         let config = HnswConfig::default_for_dimension(64, DistanceMetric::Cosine);
-        let mut index = SimpleHnswIndex::new(config);
+        let mut index = RealHnswIndex::new(config).expect("Failed to create index");
 
         let id = Uuid::new_v4();
         let v = random_vector(64);
@@ -1880,7 +1643,7 @@ mod tests {
     #[test]
     fn test_memory_usage_calculation() {
         let config = HnswConfig::default_for_dimension(1024, DistanceMetric::Cosine);
-        let mut index = SimpleHnswIndex::new(config);
+        let mut index = RealHnswIndex::new(config).expect("Failed to create index");
 
         let empty_usage = index.memory_usage();
         println!("[BEFORE] Empty index memory: {} bytes", empty_usage);
@@ -1899,5 +1662,167 @@ mod tests {
         assert!(full_usage > 400_000);
 
         println!("[VERIFIED] Memory usage calculation reasonable");
+    }
+
+    #[test]
+    fn test_load_rejects_legacy_simple_hnsw_format() {
+        use std::io::Write;
+
+        // Create a temp file with legacy SIMPLE_HNSW format marker
+        let temp_path = std::env::temp_dir().join(format!(
+            "legacy_simple_hnsw_test_{}.bin",
+            Uuid::new_v4()
+        ));
+
+        {
+            let mut file = std::fs::File::create(&temp_path).unwrap();
+            file.write_all(b"SIMPLE_HNSW_LEGACY_DATA_HERE_INVALID_FORMAT").unwrap();
+            file.flush().unwrap();
+        }
+
+        println!("[BEFORE] Attempting to load legacy SIMPLE_HNSW format");
+        let result = RealHnswIndex::load(&temp_path);
+        println!("[AFTER] result.is_err() = {}", result.is_err());
+
+        // Cleanup
+        std::fs::remove_file(&temp_path).ok();
+
+        assert!(result.is_err(), "Should reject legacy format");
+
+        let err = result.unwrap_err();
+        let err_str = err.to_string();
+        println!("[ERROR] {}", err_str);
+
+        assert!(
+            err_str.contains("LEGACY FORMAT REJECTED") || err_str.contains("legacy"),
+            "Error should mention legacy format: {}", err_str
+        );
+
+        println!("[VERIFIED] Legacy SIMPLE_HNSW format rejected");
+    }
+
+    #[test]
+    fn test_load_rejects_legacy_simp_idx_format() {
+        use std::io::Write;
+
+        // Create a temp file with legacy SIMP_IDX format marker
+        let temp_path = std::env::temp_dir().join(format!(
+            "legacy_simp_idx_test_{}.bin",
+            Uuid::new_v4()
+        ));
+
+        {
+            let mut file = std::fs::File::create(&temp_path).unwrap();
+            file.write_all(b"SIMP_IDX_LEGACY_DATA_HERE_INVALID_FORMAT").unwrap();
+            file.flush().unwrap();
+        }
+
+        println!("[BEFORE] Attempting to load legacy SIMP_IDX format");
+        let result = RealHnswIndex::load(&temp_path);
+        println!("[AFTER] result.is_err() = {}", result.is_err());
+
+        // Cleanup
+        std::fs::remove_file(&temp_path).ok();
+
+        assert!(result.is_err(), "Should reject legacy format");
+
+        let err = result.unwrap_err();
+        let err_str = err.to_string();
+        println!("[ERROR] {}", err_str);
+
+        assert!(
+            err_str.contains("LEGACY FORMAT REJECTED") || err_str.contains("legacy"),
+            "Error should mention legacy format: {}", err_str
+        );
+
+        println!("[VERIFIED] Legacy SIMP_IDX format rejected");
+    }
+
+    #[test]
+    fn test_load_rejects_legacy_null_simple_format() {
+        use std::io::Write;
+
+        // Create a temp file with legacy \x00SIMPLE format marker
+        let temp_path = std::env::temp_dir().join(format!(
+            "legacy_null_simple_test_{}.bin",
+            Uuid::new_v4()
+        ));
+
+        {
+            let mut file = std::fs::File::create(&temp_path).unwrap();
+            file.write_all(b"\x00SIMPLE_LEGACY_DATA_HERE_INVALID_FORMAT").unwrap();
+            file.flush().unwrap();
+        }
+
+        println!("[BEFORE] Attempting to load legacy null-prefixed SIMPLE format");
+        let result = RealHnswIndex::load(&temp_path);
+        println!("[AFTER] result.is_err() = {}", result.is_err());
+
+        // Cleanup
+        std::fs::remove_file(&temp_path).ok();
+
+        assert!(result.is_err(), "Should reject legacy format");
+
+        let err = result.unwrap_err();
+        let err_str = err.to_string();
+        println!("[ERROR] {}", err_str);
+
+        assert!(
+            err_str.contains("LEGACY FORMAT REJECTED") || err_str.contains("legacy"),
+            "Error should mention legacy format: {}", err_str
+        );
+
+        println!("[VERIFIED] Legacy null-prefixed SIMPLE format rejected");
+    }
+
+    #[tokio::test]
+    async fn test_multi_space_load_rejects_legacy_files() {
+        use std::io::Write;
+
+        // Create temp directory with legacy .hnsw.bin file
+        let temp_dir = std::env::temp_dir().join(format!(
+            "legacy_multispace_test_{}",
+            Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // Create valid metadata
+        let meta_path = temp_dir.join("index_meta.json");
+        let meta_content = serde_json::json!({
+            "version": "3.0.0",
+            "hnsw_count": 0,
+            "splade_count": 0,
+            "initialized": true,
+            "index_type": "RealHnswIndex"
+        });
+        std::fs::write(&meta_path, meta_content.to_string()).unwrap();
+
+        // Create a legacy .hnsw.bin file (not real_hnsw.bin)
+        let legacy_path = temp_dir.join("E1Semantic.hnsw.bin");
+        {
+            let mut legacy_file = std::fs::File::create(&legacy_path).unwrap();
+            legacy_file.write_all(b"LEGACY_SIMPLE_HNSW_DATA").unwrap();
+        }
+
+        println!("[BEFORE] Attempting to load directory with legacy .hnsw.bin file");
+        let mut manager = HnswMultiSpaceIndex::new();
+        let result = manager.load(&temp_dir).await;
+        println!("[AFTER] result.is_err() = {}", result.is_err());
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).ok();
+
+        assert!(result.is_err(), "Should reject directory containing legacy files");
+
+        let err = result.unwrap_err();
+        let err_str = err.to_string();
+        println!("[ERROR] {}", err_str);
+
+        assert!(
+            err_str.contains("LEGACY FORMAT REJECTED") || err_str.contains("legacy"),
+            "Error should mention legacy format: {}", err_str
+        );
+
+        println!("[VERIFIED] Multi-space load rejects legacy files");
     }
 }

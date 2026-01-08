@@ -49,6 +49,7 @@ pub struct StubVectorOps {
     device_name: String,
 }
 
+#[allow(deprecated)]
 impl StubVectorOps {
     /// Create a new stub vector ops instance.
     pub fn new() -> Self {
@@ -58,6 +59,7 @@ impl StubVectorOps {
     }
 }
 
+#[allow(deprecated)]
 #[async_trait]
 impl VectorOps for StubVectorOps {
     async fn cosine_similarity(&self, a: &[f32], b: &[f32]) -> CudaResult<f32> {
@@ -154,6 +156,7 @@ impl VectorOps for StubVectorOps {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 

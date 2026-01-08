@@ -13,12 +13,16 @@
 //!
 //! # Stubs (TEST ONLY)
 //!
-//! - [`StubEmbeddingProvider`]: Deterministic single embedding generation
 //! - [`StubMultiArrayProvider`]: Deterministic 13-embedding generation (TASK-F007)
 //! - [`InMemoryTeleologicalStore`]: In-memory teleological storage (TASK-F008)
 //!   - **O(n) search complexity** - full table scan
 //!   - **No persistence** - data lost on drop
 //! - [`InMemoryGraphIndex`]: In-memory graph index
+//!
+//! # REMOVED (Phase 1 Cleanup)
+//!
+//! - `StubEmbeddingProvider`: Deprecated single-embedding stub has been DELETED.
+//!   Use `StubMultiArrayProvider` for tests requiring embedding generation.
 //!
 //! # Usage
 //!
@@ -46,8 +50,7 @@
 //! Attempting to use stubs in production will result in a compile error.
 
 // AP-007: All stub modules are test-only or test-utils feature
-#[cfg(any(test, feature = "test-utils"))]
-mod embedding_stub;
+// NOTE: embedding_stub.rs has been DELETED - use multi_array_stub instead
 #[cfg(any(test, feature = "test-utils"))]
 mod graph_index;
 #[cfg(any(test, feature = "test-utils"))]
@@ -62,9 +65,8 @@ mod utl_stub;
 // AP-007: All stub exports are gated to test-only or test-utils builds
 // Production code CANNOT import these - compile error if attempted
 
-// Single embedding stub - TEST ONLY
-#[cfg(any(test, feature = "test-utils"))]
-pub use embedding_stub::StubEmbeddingProvider;
+// NOTE: StubEmbeddingProvider has been DELETED - backwards compat cleanup
+// Use StubMultiArrayProvider for 13-embedding generation
 
 // Graph index stub - TEST ONLY
 #[cfg(any(test, feature = "test-utils"))]

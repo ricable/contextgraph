@@ -47,6 +47,7 @@ uuid = { workspace = true }
 
 # Synchronization
 parking_lot = "0.12"
+futures = "0.3"
 
 # Time
 chrono = { workspace = true }

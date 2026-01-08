@@ -5,7 +5,7 @@ use crate::protocol::JsonRpcId;
 use super::{create_test_handlers, make_request};
 
 #[tokio::test]
-async fn test_tools_list_returns_all_6_tools() {
+async fn test_tools_list_returns_all_12_tools() {
     let handlers = create_test_handlers();
     let request = make_request("tools/list", Some(JsonRpcId::Number(1)), None);
 
@@ -24,11 +24,13 @@ async fn test_tools_list_returns_all_6_tools() {
         .as_array()
         .expect("tools must be an array");
 
-    // Verify exactly 6 tools returned (5 original + utl_status)
+    // Verify exactly 12 tools returned:
+    // Original 6: inject_context, store_memory, get_memetic_status, get_graph_manifest, search_graph, utl_status
+    // GWT 6: get_consciousness_state, get_kuramoto_sync, get_workspace_status, get_ego_state, trigger_workspace_broadcast, adjust_coupling
     assert_eq!(
         tools.len(),
-        6,
-        "Must return exactly 6 tools, got {}",
+        12,
+        "Must return exactly 12 tools, got {}",
         tools.len()
     );
 }
@@ -95,7 +97,7 @@ async fn test_tools_list_contains_expected_tool_names() {
         .filter_map(|t| t.get("name").and_then(|n| n.as_str()))
         .collect();
 
-    // Verify all expected tools are present
+    // Verify all expected original tools are present
     assert!(
         tool_names.contains(&"inject_context"),
         "Missing inject_context tool"
@@ -119,5 +121,31 @@ async fn test_tools_list_contains_expected_tool_names() {
     assert!(
         tool_names.contains(&"utl_status"),
         "Missing utl_status tool"
+    );
+
+    // Verify all GWT tools are present
+    assert!(
+        tool_names.contains(&"get_consciousness_state"),
+        "Missing get_consciousness_state tool"
+    );
+    assert!(
+        tool_names.contains(&"get_kuramoto_sync"),
+        "Missing get_kuramoto_sync tool"
+    );
+    assert!(
+        tool_names.contains(&"get_workspace_status"),
+        "Missing get_workspace_status tool"
+    );
+    assert!(
+        tool_names.contains(&"get_ego_state"),
+        "Missing get_ego_state tool"
+    );
+    assert!(
+        tool_names.contains(&"trigger_workspace_broadcast"),
+        "Missing trigger_workspace_broadcast tool"
+    );
+    assert!(
+        tool_names.contains(&"adjust_coupling"),
+        "Missing adjust_coupling tool"
     );
 }

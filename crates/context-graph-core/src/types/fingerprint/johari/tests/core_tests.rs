@@ -48,25 +48,8 @@ fn test_zeroed() {
     println!("[PASS] zeroed() creates valid fingerprint with zero quadrants and uniform transitions");
 }
 
-// ===== stub() backwards compat test =====
-
-#[test]
-#[allow(deprecated)]
-fn test_stub_backwards_compat() {
-    let jf = JohariFingerprint::stub();
-
-    for i in 0..NUM_EMBEDDERS {
-        assert_eq!(
-            jf.dominant_quadrant(i),
-            JohariQuadrant::Unknown,
-            "stub() embedder {} should be Unknown dominant",
-            i
-        );
-        assert_eq!(jf.confidence[i], 1.0, "stub() confidence should be 1.0");
-    }
-
-    println!("[PASS] stub() returns all Unknown dominant (backwards compat)");
-}
+// NOTE: stub() method has been removed as part of backwards compat cleanup
+// See: docs2/codestate/sherlockplans/agent7-phase1-cleanup-report.md
 
 // ===== Default and PartialEq Tests =====
 

@@ -76,20 +76,7 @@ impl JohariFingerprint {
         }
     }
 
-    /// Create stub with all Unknown dominant (backwards compat during migration).
-    ///
-    /// **DEPRECATED**: Use `zeroed()` for new code.
-    ///
-    /// Sets all embedders to 100% Unknown weight with full confidence.
-    /// This matches the old stub behavior for backwards compatibility.
-    #[deprecated(since = "2.0.0", note = "Use zeroed() for new code")]
-    pub fn stub() -> Self {
-        let mut fp = Self::zeroed();
-        for embedder_idx in 0..NUM_EMBEDDERS {
-            // Set 100% Unknown weight, 100% confidence
-            fp.quadrants[embedder_idx] = [0.0, 0.0, 0.0, 1.0];
-            fp.confidence[embedder_idx] = 1.0;
-        }
-        fp
-    }
+    // NOTE: stub() method has been removed - backwards compat cleanup
+    // Use zeroed() for new code, which creates a valid fingerprint with
+    // all-zero quadrant weights and uniform transition probabilities.
 }

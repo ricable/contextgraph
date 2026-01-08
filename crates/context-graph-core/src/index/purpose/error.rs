@@ -83,7 +83,7 @@ pub enum PurposeIndexError {
 
     /// Wraps underlying HNSW index errors.
     ///
-    /// Propagates errors from the SimpleHnswIndex operations.
+    /// Propagates errors from the RealHnswIndex operations.
     /// The source error contains detailed context.
     #[error("PURPOSE INDEX ERROR: HNSW operation failed - {0}")]
     HnswError(#[from] IndexError),

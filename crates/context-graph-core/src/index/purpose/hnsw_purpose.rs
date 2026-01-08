@@ -16,7 +16,7 @@
 //!
 //! ```text
 //! HnswPurposeIndex
-//! ├── inner: SimpleHnswIndex (13D HNSW for ANN search)
+//! ├── inner: RealHnswIndex (13D HNSW for ANN search - O(log n))
 //! ├── metadata: HashMap<Uuid, PurposeMetadata>
 //! ├── vectors: HashMap<Uuid, PurposeVector>
 //! ├── quadrant_index: HashMap<JohariQuadrant, HashSet<Uuid>>
@@ -45,7 +45,7 @@ use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use crate::index::config::{HnswConfig, PURPOSE_VECTOR_DIM};
-use crate::index::hnsw_impl::SimpleHnswIndex;
+use crate::index::hnsw_impl::RealHnswIndex;
 use crate::purpose::GoalId;
 use crate::types::fingerprint::PurposeVector;
 use crate::types::JohariQuadrant;
@@ -57,12 +57,12 @@ use super::query::{PurposeQuery, PurposeQueryTarget, PurposeSearchResult};
 
 /// HNSW-backed purpose pattern index with metadata enrichment.
 ///
-/// Combines an HNSW index for fast ANN search on 13D purpose vectors with
-/// secondary indexes for efficient filtering by goal and Johari quadrant.
+/// Combines a REAL HNSW index (O(log n)) for fast ANN search on 13D purpose
+/// vectors with secondary indexes for efficient filtering by goal and Johari quadrant.
 ///
 /// # Structure
 ///
-/// - `inner`: SimpleHnswIndex for approximate nearest neighbor search
+/// - `inner`: RealHnswIndex for approximate nearest neighbor search (O(log n))
 /// - `metadata`: Purpose metadata indexed by memory ID
 /// - `vectors`: Purpose vectors indexed by memory ID for reranking
 /// - `quadrant_index`: Inverted index from quadrant to memory IDs
@@ -76,8 +76,8 @@ use super::query::{PurposeQuery, PurposeQueryTarget, PurposeSearchResult};
 /// - Get fails if memory not found
 #[derive(Debug)]
 pub struct HnswPurposeIndex {
-    /// Underlying HNSW index for ANN search.
-    inner: SimpleHnswIndex,
+    /// Underlying REAL HNSW index for ANN search (O(log n), not O(n) like old SimpleHnswIndex).
+    inner: RealHnswIndex,
     /// Metadata storage indexed by memory ID.
     metadata: HashMap<Uuid, PurposeMetadata>,
     /// Purpose vectors for reranking.
@@ -188,6 +188,7 @@ impl HnswPurposeIndex {
     /// # Errors
     ///
     /// Returns `DimensionMismatch` if config.dimension != PURPOSE_VECTOR_DIM.
+    /// Returns `HnswError` if HNSW index construction fails.
     ///
     /// # Example
     ///
@@ -203,8 +204,11 @@ impl HnswPurposeIndex {
             ));
         }
 
+        // Create real HNSW index - may fail, propagate error via #[from] conversion
+        let inner = RealHnswIndex::new(config)?;
+
         Ok(Self {
-            inner: SimpleHnswIndex::new(config),
+            inner,
             metadata: HashMap::new(),
             vectors: HashMap::new(),
             quadrant_index: HashMap::new(),
@@ -222,6 +226,7 @@ impl HnswPurposeIndex {
     /// # Errors
     ///
     /// Returns `DimensionMismatch` if config.dimension != PURPOSE_VECTOR_DIM.
+    /// Returns `HnswError` if HNSW index construction fails.
     pub fn with_capacity(config: HnswConfig, capacity: usize) -> PurposeIndexResult<Self> {
         // Fail-fast: validate dimension
         if config.dimension != PURPOSE_VECTOR_DIM {
@@ -231,8 +236,11 @@ impl HnswPurposeIndex {
             ));
         }
 
+        // Create real HNSW index - may fail, propagate error via #[from] conversion
+        let inner = RealHnswIndex::new(config)?;
+
         Ok(Self {
-            inner: SimpleHnswIndex::new(config),
+            inner,
             metadata: HashMap::with_capacity(capacity),
             vectors: HashMap::with_capacity(capacity),
             quadrant_index: HashMap::new(),
@@ -604,15 +612,16 @@ impl PurposeIndexOps for HnswPurposeIndex {
     }
 
     fn clear(&mut self) {
-        // Note: SimpleHnswIndex doesn't have a clear method, so we recreate it
-        // This is fine since we validated the config at construction
+        // Get all IDs first to avoid borrowing issues during removal
+        let ids: Vec<Uuid> = self.metadata.keys().copied().collect();
+
+        // Clear primary storage
         self.metadata.clear();
         self.vectors.clear();
         self.quadrant_index.clear();
         self.goal_index.clear();
-        // For the inner HNSW, we need to remove all entries
-        // Get all IDs first to avoid borrowing issues
-        let ids: Vec<Uuid> = self.vectors.keys().copied().collect();
+
+        // Remove all entries from HNSW index
         for id in ids {
             self.inner.remove(id);
         }

@@ -4,6 +4,7 @@
 //! TASK-S003: Added GoalAlignmentCalculator for purpose/goal operations.
 //! TASK-S004: Added JohariTransitionManager for johari/* handlers.
 //! TASK-S005: Added MetaUtlTracker for meta_utl/* handlers.
+//! TASK-GWT-001: Added GWT/Kuramoto provider traits for consciousness operations.
 //! NO BACKWARDS COMPATIBILITY with legacy MemoryStore trait.
 
 use std::collections::HashMap;
@@ -19,6 +20,12 @@ use context_graph_core::johari::{DynDefaultJohariManager, JohariTransitionManage
 use context_graph_core::monitoring::{LayerStatusProvider, StubLayerStatusProvider, StubSystemMonitor, SystemMonitor};
 use context_graph_core::purpose::GoalHierarchy;
 use context_graph_core::traits::{MultiArrayEmbeddingProvider, TeleologicalMemoryStore, UtlProcessor};
+
+// TASK-GWT-001: Import GWT provider traits
+use super::gwt_traits::{
+    GwtSystemProvider, KuramotoProvider, MetaCognitiveProvider,
+    SelfEgoProvider, WorkspaceProvider,
+};
 
 /// Prediction type for tracking
 /// TASK-S005: Used to distinguish storage vs retrieval predictions.
@@ -231,6 +238,29 @@ pub struct Handlers {
     /// Layer status provider for REAL layer statuses.
     /// TASK-EMB-024: Required for get_memetic_status and get_graph_manifest - NO hardcoded values.
     pub(super) layer_status_provider: Arc<dyn LayerStatusProvider>,
+
+    // ========== GWT/Kuramoto Fields (TASK-GWT-001) ==========
+
+    /// Kuramoto oscillator network for 13-embedding phase synchronization.
+    /// TASK-GWT-001: Required for gwt/* handlers and consciousness computation.
+    /// Uses RwLock because step() mutates internal state.
+    pub(super) kuramoto_network: Option<Arc<RwLock<dyn KuramotoProvider>>>,
+
+    /// GWT consciousness system provider.
+    /// TASK-GWT-001: Required for consciousness computation C(t) = I(t) x R(t) x D(t).
+    pub(super) gwt_system: Option<Arc<dyn GwtSystemProvider>>,
+
+    /// Global workspace provider for winner-take-all memory selection.
+    /// TASK-GWT-001: Required for workspace broadcast operations.
+    pub(super) workspace_provider: Option<Arc<tokio::sync::RwLock<dyn WorkspaceProvider>>>,
+
+    /// Meta-cognitive loop provider for self-correction.
+    /// TASK-GWT-001: Required for meta_score computation and dream triggering.
+    pub(super) meta_cognitive: Option<Arc<tokio::sync::RwLock<dyn MetaCognitiveProvider>>>,
+
+    /// Self-ego node provider for system identity tracking.
+    /// TASK-GWT-001: Required for identity continuity monitoring.
+    pub(super) self_ego: Option<Arc<tokio::sync::RwLock<dyn SelfEgoProvider>>>,
 }
 
 impl Handlers {
@@ -275,6 +305,12 @@ impl Handlers {
             meta_utl_tracker,
             system_monitor,
             layer_status_provider,
+            // TASK-GWT-001: GWT fields default to None - use with_gwt() for full GWT support
+            kuramoto_network: None,
+            gwt_system: None,
+            workspace_provider: None,
+            meta_cognitive: None,
+            self_ego: None,
         }
     }
 
@@ -321,6 +357,12 @@ impl Handlers {
             meta_utl_tracker,
             system_monitor,
             layer_status_provider,
+            // TASK-GWT-001: GWT fields default to None - use with_gwt() for full GWT support
+            kuramoto_network: None,
+            gwt_system: None,
+            workspace_provider: None,
+            meta_cognitive: None,
+            self_ego: None,
         }
     }
 
@@ -365,6 +407,12 @@ impl Handlers {
             meta_utl_tracker,
             system_monitor,
             layer_status_provider,
+            // TASK-GWT-001: GWT fields default to None - use with_gwt() for full GWT support
+            kuramoto_network: None,
+            gwt_system: None,
+            workspace_provider: None,
+            meta_cognitive: None,
+            self_ego: None,
         }
     }
 
@@ -401,6 +449,12 @@ impl Handlers {
             meta_utl_tracker,
             system_monitor,
             layer_status_provider,
+            // TASK-GWT-001: GWT fields default to None - use with_gwt() for full GWT support
+            kuramoto_network: None,
+            gwt_system: None,
+            workspace_provider: None,
+            meta_cognitive: None,
+            self_ego: None,
         }
     }
 
@@ -440,6 +494,133 @@ impl Handlers {
             meta_utl_tracker,
             system_monitor,
             layer_status_provider,
+            // TASK-GWT-001: GWT fields default to None - use with_gwt() for full GWT support
+            kuramoto_network: None,
+            gwt_system: None,
+            workspace_provider: None,
+            meta_cognitive: None,
+            self_ego: None,
+        }
+    }
+
+    /// Create new handlers with full GWT/consciousness support.
+    ///
+    /// TASK-GWT-001: This is the recommended constructor for production use
+    /// with REAL GWT consciousness features. All GWT providers are REQUIRED.
+    /// No stub implementations allowed - FAIL FAST on missing components.
+    ///
+    /// # Arguments
+    /// * `teleological_store` - Store for TeleologicalFingerprint (TASK-F008)
+    /// * `utl_processor` - UTL metrics computation
+    /// * `multi_array_provider` - 13-embedding generator (TASK-F007)
+    /// * `alignment_calculator` - Goal alignment calculator (TASK-S003)
+    /// * `goal_hierarchy` - Shared goal hierarchy reference (TASK-S003)
+    /// * `johari_manager` - Shared Johari manager reference (TASK-S004)
+    /// * `meta_utl_tracker` - Shared Meta-UTL tracker (TASK-S005)
+    /// * `system_monitor` - Real system monitor for health metrics
+    /// * `layer_status_provider` - Real layer status provider
+    /// * `kuramoto_network` - Kuramoto oscillator network (TASK-GWT-001)
+    /// * `gwt_system` - GWT consciousness system (TASK-GWT-001)
+    /// * `workspace_provider` - Global workspace provider (TASK-GWT-001)
+    /// * `meta_cognitive` - Meta-cognitive loop provider (TASK-GWT-001)
+    /// * `self_ego` - Self-ego node provider (TASK-GWT-001)
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_gwt(
+        teleological_store: Arc<dyn TeleologicalMemoryStore>,
+        utl_processor: Arc<dyn UtlProcessor>,
+        multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider>,
+        alignment_calculator: Arc<dyn GoalAlignmentCalculator>,
+        goal_hierarchy: Arc<RwLock<GoalHierarchy>>,
+        johari_manager: Arc<dyn JohariTransitionManager>,
+        meta_utl_tracker: Arc<RwLock<MetaUtlTracker>>,
+        system_monitor: Arc<dyn SystemMonitor>,
+        layer_status_provider: Arc<dyn LayerStatusProvider>,
+        kuramoto_network: Arc<RwLock<dyn KuramotoProvider>>,
+        gwt_system: Arc<dyn GwtSystemProvider>,
+        workspace_provider: Arc<tokio::sync::RwLock<dyn WorkspaceProvider>>,
+        meta_cognitive: Arc<tokio::sync::RwLock<dyn MetaCognitiveProvider>>,
+        self_ego: Arc<tokio::sync::RwLock<dyn SelfEgoProvider>>,
+    ) -> Self {
+        Self {
+            teleological_store,
+            utl_processor,
+            multi_array_provider,
+            alignment_calculator,
+            goal_hierarchy,
+            johari_manager,
+            meta_utl_tracker,
+            system_monitor,
+            layer_status_provider,
+            kuramoto_network: Some(kuramoto_network),
+            gwt_system: Some(gwt_system),
+            workspace_provider: Some(workspace_provider),
+            meta_cognitive: Some(meta_cognitive),
+            self_ego: Some(self_ego),
+        }
+    }
+
+    /// Create new handlers with default GWT provider implementations.
+    ///
+    /// TASK-GWT-001: Convenience constructor that uses the real GWT provider
+    /// implementations from `gwt_providers` module. This creates fresh instances
+    /// of KuramotoNetwork, ConsciousnessCalculator, GlobalWorkspace, etc.
+    ///
+    /// All GWT tools will return REAL data - no stubs, no mocks.
+    ///
+    /// # Arguments
+    /// * `teleological_store` - Store for TeleologicalFingerprint (TASK-F008)
+    /// * `utl_processor` - UTL metrics computation
+    /// * `multi_array_provider` - 13-embedding generator (TASK-F007)
+    /// * `alignment_calculator` - Goal alignment calculator (TASK-S003)
+    /// * `goal_hierarchy` - Shared goal hierarchy reference (TASK-S003)
+    /// * `johari_manager` - Shared Johari manager reference (TASK-S004)
+    /// * `meta_utl_tracker` - Shared Meta-UTL tracker (TASK-S005)
+    /// * `system_monitor` - Real system monitor for health metrics
+    /// * `layer_status_provider` - Real layer status provider
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_default_gwt(
+        teleological_store: Arc<dyn TeleologicalMemoryStore>,
+        utl_processor: Arc<dyn UtlProcessor>,
+        multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider>,
+        alignment_calculator: Arc<dyn GoalAlignmentCalculator>,
+        goal_hierarchy: Arc<RwLock<GoalHierarchy>>,
+        johari_manager: Arc<dyn JohariTransitionManager>,
+        meta_utl_tracker: Arc<RwLock<MetaUtlTracker>>,
+        system_monitor: Arc<dyn SystemMonitor>,
+        layer_status_provider: Arc<dyn LayerStatusProvider>,
+    ) -> Self {
+        use super::gwt_providers::{
+            GwtSystemProviderImpl, KuramotoProviderImpl, MetaCognitiveProviderImpl,
+            SelfEgoProviderImpl, WorkspaceProviderImpl,
+        };
+
+        // Create real GWT provider implementations
+        let kuramoto_network: Arc<RwLock<dyn KuramotoProvider>> =
+            Arc::new(RwLock::new(KuramotoProviderImpl::new()));
+        let gwt_system: Arc<dyn GwtSystemProvider> =
+            Arc::new(GwtSystemProviderImpl::new());
+        let workspace_provider: Arc<tokio::sync::RwLock<dyn WorkspaceProvider>> =
+            Arc::new(tokio::sync::RwLock::new(WorkspaceProviderImpl::new()));
+        let meta_cognitive: Arc<tokio::sync::RwLock<dyn MetaCognitiveProvider>> =
+            Arc::new(tokio::sync::RwLock::new(MetaCognitiveProviderImpl::new()));
+        let self_ego: Arc<tokio::sync::RwLock<dyn SelfEgoProvider>> =
+            Arc::new(tokio::sync::RwLock::new(SelfEgoProviderImpl::new()));
+
+        Self {
+            teleological_store,
+            utl_processor,
+            multi_array_provider,
+            alignment_calculator,
+            goal_hierarchy,
+            johari_manager,
+            meta_utl_tracker,
+            system_monitor,
+            layer_status_provider,
+            kuramoto_network: Some(kuramoto_network),
+            gwt_system: Some(gwt_system),
+            workspace_provider: Some(workspace_provider),
+            meta_cognitive: Some(meta_cognitive),
+            self_ego: Some(self_ego),
         }
     }
 

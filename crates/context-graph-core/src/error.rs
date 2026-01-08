@@ -228,6 +228,36 @@ pub enum CoreError {
         /// Explanation of why the field is required and context
         context: String,
     },
+
+    /// Feature/layer is not yet implemented.
+    ///
+    /// # When This Occurs
+    ///
+    /// - Bio-nervous layer stubs called in production
+    /// - Placeholder code paths executed
+    /// - Required functionality not yet available
+    ///
+    /// # Constitution Compliance
+    ///
+    /// Per AP-007: No stubs/fallbacks in production code paths.
+    /// This error is returned instead of mock data to fail fast.
+    #[error("Not implemented: {0}. See documentation for implementation guide.")]
+    NotImplemented(String),
+
+    /// Legacy data format detected and rejected.
+    ///
+    /// # When This Occurs
+    ///
+    /// - Loading data saved with deprecated SimpleHnswIndex format
+    /// - Deserializing old schema versions without migration
+    /// - Reading files created before current format version
+    ///
+    /// # Constitution Compliance
+    ///
+    /// Per AP-007: No backwards compatibility with legacy formats.
+    /// Data must be migrated to current format using migration tools.
+    #[error("Legacy format rejected: {0}. See documentation for migration guide.")]
+    LegacyFormatRejected(String),
 }
 
 impl From<serde_json::Error> for CoreError {

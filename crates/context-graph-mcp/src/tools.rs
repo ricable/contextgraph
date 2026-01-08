@@ -181,6 +181,137 @@ pub fn get_tool_definitions() -> Vec<ToolDefinition> {
                 "required": []
             }),
         ),
+
+        // get_consciousness_state - GWT consciousness state (TASK-GWT-001)
+        ToolDefinition::new(
+            "get_consciousness_state",
+            "Get current consciousness state including Kuramoto sync (r), consciousness level (C), \
+             meta-cognitive score, differentiation, workspace status, and identity coherence. \
+             Requires GWT providers to be initialized via with_gwt() constructor.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "Session ID for consciousness tracking (optional, uses default if not provided)"
+                    }
+                },
+                "required": []
+            }),
+        ),
+
+        // get_kuramoto_sync - Kuramoto oscillator network synchronization (TASK-GWT-001)
+        ToolDefinition::new(
+            "get_kuramoto_sync",
+            "Get Kuramoto oscillator network synchronization state including order parameter (r), \
+             mean phase (psi), all 13 oscillator phases, natural frequencies, and coupling strength. \
+             Requires GWT providers to be initialized via with_gwt() constructor.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "Session ID (optional, uses default if not provided)"
+                    }
+                },
+                "required": []
+            }),
+        ),
+
+        // get_workspace_status - Global Workspace status (TASK-GWT-001)
+        ToolDefinition::new(
+            "get_workspace_status",
+            "Get Global Workspace status including active memory, competing candidates, \
+             broadcast state, and coherence threshold. Returns WTA selection details. \
+             Requires GWT providers to be initialized via with_gwt() constructor.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "Session ID (optional, uses default if not provided)"
+                    }
+                },
+                "required": []
+            }),
+        ),
+
+        // get_ego_state - Self-Ego Node state (TASK-GWT-001)
+        ToolDefinition::new(
+            "get_ego_state",
+            "Get Self-Ego Node state including purpose vector (13D), identity continuity, \
+             coherence with actions, and trajectory length. Used for identity monitoring. \
+             Requires GWT providers to be initialized via with_gwt() constructor.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "Session ID (optional, uses default if not provided)"
+                    }
+                },
+                "required": []
+            }),
+        ),
+
+        // trigger_workspace_broadcast - Trigger WTA selection (TASK-GWT-001)
+        ToolDefinition::new(
+            "trigger_workspace_broadcast",
+            "Trigger winner-take-all workspace broadcast with a specific memory. \
+             Forces memory into workspace competition. Requires write lock on workspace. \
+             Requires GWT providers to be initialized via with_gwt() constructor.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "memory_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "UUID of memory to broadcast into workspace"
+                    },
+                    "importance": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "default": 0.8,
+                        "description": "Importance score for the memory [0.0, 1.0]"
+                    },
+                    "alignment": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "default": 0.8,
+                        "description": "North star alignment score [0.0, 1.0]"
+                    },
+                    "force": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Force broadcast even if below coherence threshold"
+                    }
+                },
+                "required": ["memory_id"]
+            }),
+        ),
+
+        // adjust_coupling - Adjust Kuramoto coupling strength (TASK-GWT-001)
+        ToolDefinition::new(
+            "adjust_coupling",
+            "Adjust Kuramoto oscillator network coupling strength K. \
+             Higher K leads to faster synchronization. K is clamped to [0, 10]. \
+             Returns old and new K values plus predicted order parameter r. \
+             Requires GWT providers to be initialized via with_gwt() constructor.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "new_K": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 10,
+                        "description": "New coupling strength K (clamped to [0, 10])"
+                    }
+                },
+                "required": ["new_K"]
+            }),
+        ),
     ]
 }
 
@@ -192,6 +323,18 @@ pub mod tool_names {
     pub const GET_GRAPH_MANIFEST: &str = "get_graph_manifest";
     pub const SEARCH_GRAPH: &str = "search_graph";
     pub const UTL_STATUS: &str = "utl_status";
+    /// TASK-GWT-001: Get consciousness state from GWT/Kuramoto system
+    pub const GET_CONSCIOUSNESS_STATE: &str = "get_consciousness_state";
+    /// TASK-GWT-001: Get Kuramoto oscillator network synchronization state
+    pub const GET_KURAMOTO_SYNC: &str = "get_kuramoto_sync";
+    /// TASK-GWT-001: Get Global Workspace status (active memory, competing, broadcast)
+    pub const GET_WORKSPACE_STATUS: &str = "get_workspace_status";
+    /// TASK-GWT-001: Get Self-Ego Node state (purpose vector, identity continuity)
+    pub const GET_EGO_STATE: &str = "get_ego_state";
+    /// TASK-GWT-001: Trigger workspace broadcast with a memory
+    pub const TRIGGER_WORKSPACE_BROADCAST: &str = "trigger_workspace_broadcast";
+    /// TASK-GWT-001: Adjust Kuramoto coupling strength K
+    pub const ADJUST_COUPLING: &str = "adjust_coupling";
 }
 
 #[cfg(test)]
@@ -201,15 +344,24 @@ mod tests {
     #[test]
     fn test_get_tool_definitions() {
         let tools = get_tool_definitions();
-        assert_eq!(tools.len(), 6);
+        // 6 original + 6 GWT tools = 12 total
+        assert_eq!(tools.len(), 12);
 
         let tool_names: Vec<_> = tools.iter().map(|t| t.name.as_str()).collect();
+        // Original 6 tools
         assert!(tool_names.contains(&"inject_context"));
         assert!(tool_names.contains(&"store_memory"));
         assert!(tool_names.contains(&"get_memetic_status"));
         assert!(tool_names.contains(&"get_graph_manifest"));
         assert!(tool_names.contains(&"search_graph"));
         assert!(tool_names.contains(&"utl_status"));
+        // GWT tools (TASK-GWT-001)
+        assert!(tool_names.contains(&"get_consciousness_state"));
+        assert!(tool_names.contains(&"get_kuramoto_sync"));
+        assert!(tool_names.contains(&"get_workspace_status"));
+        assert!(tool_names.contains(&"get_ego_state"));
+        assert!(tool_names.contains(&"trigger_workspace_broadcast"));
+        assert!(tool_names.contains(&"adjust_coupling"));
     }
 
     #[test]

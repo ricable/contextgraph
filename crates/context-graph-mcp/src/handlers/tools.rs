@@ -85,6 +85,14 @@ impl Handlers {
             tool_names::GET_GRAPH_MANIFEST => self.call_get_graph_manifest(id).await,
             tool_names::SEARCH_GRAPH => self.call_search_graph(id, arguments).await,
             tool_names::UTL_STATUS => self.call_utl_status(id).await,
+            tool_names::GET_CONSCIOUSNESS_STATE => self.call_get_consciousness_state(id).await,
+            tool_names::GET_KURAMOTO_SYNC => self.call_get_kuramoto_sync(id).await,
+            tool_names::GET_WORKSPACE_STATUS => self.call_get_workspace_status(id).await,
+            tool_names::GET_EGO_STATE => self.call_get_ego_state(id).await,
+            tool_names::TRIGGER_WORKSPACE_BROADCAST => {
+                self.call_trigger_workspace_broadcast(id, arguments).await
+            }
+            tool_names::ADJUST_COUPLING => self.call_adjust_coupling(id, arguments).await,
             _ => JsonRpcResponse::error(
                 id,
                 error_codes::TOOL_NOT_FOUND,
@@ -696,5 +704,621 @@ impl Handlers {
         let status = self.utl_processor.get_status();
 
         self.tool_result_with_pulse(id, status)
+    }
+
+    /// get_consciousness_state tool implementation.
+    ///
+    /// TASK-GWT-001: Returns complete consciousness state from GWT/Kuramoto system.
+    /// FAIL FAST on missing GWT components - no stubs or fallbacks.
+    ///
+    /// Returns:
+    /// - C: Consciousness level C(t) = I(t) x R(t) x D(t)
+    /// - r: Kuramoto order parameter (synchronization)
+    /// - psi: Kuramoto mean phase
+    /// - meta_score: Meta-cognitive accuracy
+    /// - differentiation: Purpose vector entropy
+    /// - state: CONSCIOUS/EMERGING/FRAGMENTED
+    /// - workspace: Active memory and broadcast status
+    /// - identity: Coherence and purpose vector
+    /// - component_analysis: Which factor limits consciousness
+    pub(super) async fn call_get_consciousness_state(
+        &self,
+        id: Option<JsonRpcId>,
+    ) -> JsonRpcResponse {
+        debug!("Handling get_consciousness_state tool call");
+
+        // FAIL FAST: Check all required GWT providers
+        let kuramoto = match &self.kuramoto_network {
+            Some(k) => k,
+            None => {
+                error!("get_consciousness_state: Kuramoto network not initialized");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::GWT_NOT_INITIALIZED,
+                    "Kuramoto network not initialized - use with_gwt() constructor",
+                );
+            }
+        };
+
+        let gwt_system = match &self.gwt_system {
+            Some(g) => g,
+            None => {
+                error!("get_consciousness_state: GWT system not initialized");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::GWT_NOT_INITIALIZED,
+                    "GWT system not initialized - use with_gwt() constructor",
+                );
+            }
+        };
+
+        let workspace = match &self.workspace_provider {
+            Some(w) => w,
+            None => {
+                error!("get_consciousness_state: Workspace provider not initialized");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::GWT_NOT_INITIALIZED,
+                    "Workspace provider not initialized - use with_gwt() constructor",
+                );
+            }
+        };
+
+        let meta_cognitive = match &self.meta_cognitive {
+            Some(m) => m,
+            None => {
+                error!("get_consciousness_state: Meta-cognitive provider not initialized");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::GWT_NOT_INITIALIZED,
+                    "Meta-cognitive provider not initialized - use with_gwt() constructor",
+                );
+            }
+        };
+
+        let self_ego = match &self.self_ego {
+            Some(s) => s,
+            None => {
+                error!("get_consciousness_state: Self-ego provider not initialized");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::GWT_NOT_INITIALIZED,
+                    "Self-ego provider not initialized - use with_gwt() constructor",
+                );
+            }
+        };
+
+        // Get Kuramoto order parameter (r, psi)
+        // parking_lot::RwLock::read() doesn't return Result, it blocks until lock acquired
+        let (r, psi) = {
+            let kuramoto_guard = kuramoto.read();
+            kuramoto_guard.order_parameter()
+        };
+
+        // Get purpose vector from self-ego
+        let purpose_vector = self_ego.read().await.purpose_vector();
+
+        // Get meta-cognitive accuracy
+        let meta_accuracy = {
+            let meta = meta_cognitive.read().await;
+            // Use acetylcholine level as a proxy for meta-cognitive accuracy
+            // Higher Ach means better learning/attention
+            meta.acetylcholine()
+        };
+
+        // Compute consciousness metrics from GWT system
+        let metrics = match gwt_system.compute_metrics(r as f32, meta_accuracy, &purpose_vector) {
+            Ok(m) => m,
+            Err(e) => {
+                error!(error = %e, "get_consciousness_state: Consciousness computation failed");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::CONSCIOUSNESS_COMPUTATION_FAILED,
+                    format!("Consciousness computation failed: {}", e),
+                );
+            }
+        };
+
+        // Get workspace status
+        let workspace_guard = workspace.read().await;
+        let active_memory = workspace_guard.get_active_memory();
+        let is_broadcasting = workspace_guard.is_broadcasting();
+        let has_conflict = workspace_guard.has_conflict();
+        let coherence_threshold = workspace_guard.coherence_threshold();
+
+        // Get identity coherence from self-ego
+        let identity_coherence = self_ego.read().await.identity_coherence();
+        let identity_status = self_ego.read().await.identity_status();
+        let trajectory_length = self_ego.read().await.trajectory_length();
+
+        // Determine consciousness state string
+        let state = if r >= 0.8 {
+            "CONSCIOUS"
+        } else if r >= 0.5 {
+            "EMERGING"
+        } else {
+            "FRAGMENTED"
+        };
+
+        // Get GWT current state
+        let gwt_state = gwt_system.current_state();
+        let time_in_state = gwt_system.time_in_state();
+
+        self.tool_result_with_pulse(
+            id,
+            json!({
+                "C": metrics.consciousness,
+                "r": r,
+                "psi": psi,
+                "meta_score": meta_accuracy,
+                "differentiation": metrics.differentiation,
+                "integration": metrics.integration,
+                "reflection": metrics.reflection,
+                "state": state,
+                "gwt_state": format!("{:?}", gwt_state),
+                "time_in_state_ms": time_in_state.as_millis(),
+                "workspace": {
+                    "active_memory": active_memory.map(|id| id.to_string()),
+                    "is_broadcasting": is_broadcasting,
+                    "has_conflict": has_conflict,
+                    "coherence_threshold": coherence_threshold
+                },
+                "identity": {
+                    "coherence": identity_coherence,
+                    "status": format!("{:?}", identity_status),
+                    "trajectory_length": trajectory_length,
+                    "purpose_vector": purpose_vector.to_vec()
+                },
+                "component_analysis": {
+                    "integration_sufficient": metrics.component_analysis.integration_sufficient,
+                    "reflection_sufficient": metrics.component_analysis.reflection_sufficient,
+                    "differentiation_sufficient": metrics.component_analysis.differentiation_sufficient,
+                    "limiting_factor": format!("{:?}", metrics.component_analysis.limiting_factor)
+                }
+            }),
+        )
+    }
+
+    /// get_kuramoto_sync tool implementation.
+    ///
+    /// TASK-GWT-001: Returns Kuramoto oscillator network state.
+    /// Provides detailed synchronization metrics for 13-embedding phase coupling.
+    ///
+    /// FAIL FAST on missing Kuramoto network - no stubs or fallbacks.
+    ///
+    /// Returns:
+    /// - r: Order parameter (synchronization level) in [0, 1]
+    /// - psi: Mean phase in [0, 2π]
+    /// - synchronization: Same as r (for convenience)
+    /// - state: CONSCIOUS/EMERGING/FRAGMENTED/HYPERSYNC
+    /// - phases: All 13 oscillator phases
+    /// - natural_freqs: All 13 natural frequencies (Hz)
+    /// - coupling: Coupling strength K
+    /// - elapsed_seconds: Time since creation/reset
+    /// - embedding_labels: Names of the 13 embedding spaces
+    /// - thresholds: State transition thresholds
+    pub(super) async fn call_get_kuramoto_sync(
+        &self,
+        id: Option<JsonRpcId>,
+    ) -> JsonRpcResponse {
+        debug!("Handling get_kuramoto_sync tool call");
+
+        // FAIL FAST: Check kuramoto provider
+        let kuramoto = match &self.kuramoto_network {
+            Some(k) => k,
+            None => {
+                error!("get_kuramoto_sync: Kuramoto network not initialized");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::GWT_NOT_INITIALIZED,
+                    "Kuramoto network not initialized - use with_gwt() constructor",
+                );
+            }
+        };
+
+        // Acquire read lock (parking_lot RwLock blocks until available, no Result)
+        let network = kuramoto.read();
+
+        // Get order parameter (r, psi)
+        let (r, psi) = network.order_parameter();
+
+        // Get all 13 oscillator phases
+        let phases = network.phases();
+
+        // Get all 13 natural frequencies
+        let natural_freqs = network.natural_frequencies();
+
+        // Get coupling strength K
+        let coupling = network.coupling_strength();
+
+        // Get synchronization (same as r but as f64)
+        let sync = network.synchronization();
+
+        // Classify state based on r
+        let state = if network.is_hypersync() {
+            "HYPERSYNC"
+        } else if network.is_conscious() {
+            "CONSCIOUS"
+        } else if network.is_fragmented() {
+            "FRAGMENTED"
+        } else {
+            "EMERGING"
+        };
+
+        // Get elapsed time
+        let elapsed = network.elapsed_total();
+
+        // Return complete Kuramoto state
+        self.tool_result_with_pulse(id, json!({
+            "r": r,
+            "psi": psi,
+            "synchronization": sync,
+            "state": state,
+            "phases": phases.to_vec(),
+            "natural_freqs": natural_freqs.to_vec(),
+            "coupling": coupling,
+            "elapsed_seconds": elapsed.as_secs_f64(),
+            "embedding_labels": [
+                "E1_semantic", "E2_temporal_recent", "E3_temporal_periodic",
+                "E4_temporal_positional", "E5_causal", "E6_sparse",
+                "E7_code", "E8_graph", "E9_hdc", "E10_multimodal",
+                "E11_entity", "E12_late_interaction", "E13_splade"
+            ],
+            "thresholds": {
+                "conscious": 0.8,
+                "fragmented": 0.5,
+                "hypersync": 0.95
+            }
+        }))
+    }
+
+    /// get_workspace_status tool implementation.
+    ///
+    /// TASK-GWT-001: Returns Global Workspace status including active memory,
+    /// competing candidates, broadcast state, and coherence threshold.
+    ///
+    /// FAIL FAST on missing workspace provider - no stubs or fallbacks.
+    ///
+    /// Returns:
+    /// - active_memory: UUID of currently active (conscious) memory, or null
+    /// - is_broadcasting: Whether broadcast window is active
+    /// - has_conflict: Whether multiple memories compete (r > 0.8)
+    /// - coherence_threshold: Threshold for workspace entry (default 0.8)
+    /// - conflict_memories: List of conflicting memory UUIDs if has_conflict
+    pub(super) async fn call_get_workspace_status(
+        &self,
+        id: Option<JsonRpcId>,
+    ) -> JsonRpcResponse {
+        debug!("Handling get_workspace_status tool call");
+
+        // FAIL FAST: Check workspace provider
+        let workspace = match &self.workspace_provider {
+            Some(w) => w,
+            None => {
+                error!("get_workspace_status: Workspace provider not initialized");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::GWT_NOT_INITIALIZED,
+                    "Workspace provider not initialized - use with_gwt() constructor",
+                );
+            }
+        };
+
+        // Acquire read lock (tokio RwLock)
+        let ws = workspace.read().await;
+
+        // Get active memory if broadcasting
+        let active_memory = ws.get_active_memory();
+
+        // Check broadcast state
+        let is_broadcasting = ws.is_broadcasting();
+
+        // Check for conflict
+        let has_conflict = ws.has_conflict();
+
+        // Get coherence threshold
+        let coherence_threshold = ws.coherence_threshold();
+
+        // Get conflict details if present
+        let conflict_memories = ws.get_conflict_details();
+
+        self.tool_result_with_pulse(
+            id,
+            json!({
+                "active_memory": active_memory.map(|id| id.to_string()),
+                "is_broadcasting": is_broadcasting,
+                "has_conflict": has_conflict,
+                "coherence_threshold": coherence_threshold,
+                "conflict_memories": conflict_memories.map(|ids|
+                    ids.iter().map(|id| id.to_string()).collect::<Vec<_>>()
+                ),
+                "broadcast_duration_ms": 100 // Constitution default
+            }),
+        )
+    }
+
+    /// get_ego_state tool implementation.
+    ///
+    /// TASK-GWT-001: Returns Self-Ego Node state including purpose vector,
+    /// identity continuity, coherence with actions, and trajectory length.
+    ///
+    /// FAIL FAST on missing self-ego provider - no stubs or fallbacks.
+    ///
+    /// Returns:
+    /// - purpose_vector: 13D purpose alignment vector
+    /// - identity_coherence: IC = cos(PV_t, PV_{t-1}) x r(t)
+    /// - coherence_with_actions: Alignment between actions and purpose
+    /// - identity_status: Healthy/Warning/Degraded/Critical
+    /// - trajectory_length: Number of purpose snapshots stored
+    pub(super) async fn call_get_ego_state(
+        &self,
+        id: Option<JsonRpcId>,
+    ) -> JsonRpcResponse {
+        debug!("Handling get_ego_state tool call");
+
+        // FAIL FAST: Check self-ego provider
+        let self_ego = match &self.self_ego {
+            Some(s) => s,
+            None => {
+                error!("get_ego_state: Self-ego provider not initialized");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::GWT_NOT_INITIALIZED,
+                    "Self-ego provider not initialized - use with_gwt() constructor",
+                );
+            }
+        };
+
+        // Acquire read lock (tokio RwLock)
+        let ego = self_ego.read().await;
+
+        // Get purpose vector
+        let purpose_vector = ego.purpose_vector();
+
+        // Get identity coherence
+        let identity_coherence = ego.identity_coherence();
+
+        // Get coherence with actions
+        let coherence_with_actions = ego.coherence_with_actions();
+
+        // Get identity status
+        let identity_status = ego.identity_status();
+
+        // Get trajectory length
+        let trajectory_length = ego.trajectory_length();
+
+        self.tool_result_with_pulse(
+            id,
+            json!({
+                "purpose_vector": purpose_vector.to_vec(),
+                "identity_coherence": identity_coherence,
+                "coherence_with_actions": coherence_with_actions,
+                "identity_status": format!("{:?}", identity_status),
+                "trajectory_length": trajectory_length,
+                "thresholds": {
+                    "healthy": 0.9,
+                    "warning": 0.7,
+                    "degraded": 0.5,
+                    "critical": 0.0
+                }
+            }),
+        )
+    }
+
+    /// trigger_workspace_broadcast tool implementation.
+    ///
+    /// TASK-GWT-001: Triggers winner-take-all selection with a specific memory.
+    /// Forces memory into workspace competition. Requires write lock on workspace.
+    ///
+    /// FAIL FAST on missing providers - no stubs or fallbacks.
+    ///
+    /// Arguments:
+    /// - memory_id: UUID of memory to broadcast
+    /// - importance: Importance score [0,1] (default 0.8)
+    /// - alignment: North star alignment [0,1] (default 0.8)
+    /// - force: Force broadcast even if below coherence threshold
+    ///
+    /// Returns:
+    /// - success: Whether broadcast was successful
+    /// - memory_id: UUID of the memory
+    /// - new_r: Current Kuramoto order parameter
+    /// - was_selected: Whether this memory won WTA selection
+    pub(super) async fn call_trigger_workspace_broadcast(
+        &self,
+        id: Option<JsonRpcId>,
+        args: serde_json::Value,
+    ) -> JsonRpcResponse {
+        debug!("Handling trigger_workspace_broadcast tool call");
+
+        // FAIL FAST: Check workspace provider
+        let workspace = match &self.workspace_provider {
+            Some(w) => w,
+            None => {
+                error!("trigger_workspace_broadcast: Workspace provider not initialized");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::GWT_NOT_INITIALIZED,
+                    "Workspace provider not initialized - use with_gwt() constructor",
+                );
+            }
+        };
+
+        // FAIL FAST: Check kuramoto provider (needed for order parameter)
+        let kuramoto = match &self.kuramoto_network {
+            Some(k) => k,
+            None => {
+                error!("trigger_workspace_broadcast: Kuramoto network not initialized");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::GWT_NOT_INITIALIZED,
+                    "Kuramoto network not initialized - use with_gwt() constructor",
+                );
+            }
+        };
+
+        // Parse memory_id (required)
+        let memory_id_str = match args.get("memory_id").and_then(|v| v.as_str()) {
+            Some(s) => s,
+            None => {
+                return self.tool_error_with_pulse(id, "Missing required 'memory_id' parameter");
+            }
+        };
+
+        let memory_id = match uuid::Uuid::parse_str(memory_id_str) {
+            Ok(id) => id,
+            Err(e) => {
+                return self.tool_error_with_pulse(
+                    id,
+                    &format!("Invalid UUID format for memory_id: {}", e),
+                );
+            }
+        };
+
+        // Parse optional parameters
+        let importance = args
+            .get("importance")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.8) as f32;
+        let alignment = args
+            .get("alignment")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.8) as f32;
+        let force = args
+            .get("force")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // Get current order parameter from Kuramoto network
+        let r = {
+            let kuramoto_guard = kuramoto.read();
+            kuramoto_guard.synchronization() as f32
+        };
+
+        // Check if memory qualifies for workspace (r >= 0.8 unless forced)
+        let coherence_threshold = 0.8;
+        if r < coherence_threshold && !force {
+            return self.tool_result_with_pulse(
+                id,
+                json!({
+                    "success": false,
+                    "memory_id": memory_id.to_string(),
+                    "new_r": r,
+                    "was_selected": false,
+                    "reason": format!(
+                        "Order parameter r={:.3} below coherence threshold {}. Use force=true to override.",
+                        r, coherence_threshold
+                    )
+                }),
+            );
+        }
+
+        // Acquire write lock and trigger selection
+        let mut ws = workspace.write().await;
+
+        // Create candidate and trigger WTA selection
+        let candidates = vec![(memory_id, r, importance, alignment)];
+        let winner = match ws.select_winning_memory(candidates).await {
+            Ok(w) => w,
+            Err(e) => {
+                error!(error = %e, "trigger_workspace_broadcast: WTA selection failed");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::WORKSPACE_ERROR,
+                    format!("Workspace selection failed: {}", e),
+                );
+            }
+        };
+
+        let was_selected = winner == Some(memory_id);
+
+        self.tool_result_with_pulse(
+            id,
+            json!({
+                "success": true,
+                "memory_id": memory_id.to_string(),
+                "new_r": r,
+                "was_selected": was_selected,
+                "is_broadcasting": ws.is_broadcasting()
+            }),
+        )
+    }
+
+    /// adjust_coupling tool implementation.
+    ///
+    /// TASK-GWT-001: Adjusts Kuramoto oscillator network coupling strength K.
+    /// Higher K leads to faster synchronization. K is clamped to [0, 10].
+    ///
+    /// FAIL FAST on missing kuramoto provider - no stubs or fallbacks.
+    ///
+    /// Arguments:
+    /// - new_K: New coupling strength (clamped to [0, 10])
+    ///
+    /// Returns:
+    /// - old_K: Previous coupling strength
+    /// - new_K: New coupling strength (after clamping)
+    /// - predicted_r: Predicted order parameter after adjustment
+    pub(super) async fn call_adjust_coupling(
+        &self,
+        id: Option<JsonRpcId>,
+        args: serde_json::Value,
+    ) -> JsonRpcResponse {
+        debug!("Handling adjust_coupling tool call");
+
+        // FAIL FAST: Check kuramoto provider
+        let kuramoto = match &self.kuramoto_network {
+            Some(k) => k,
+            None => {
+                error!("adjust_coupling: Kuramoto network not initialized");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::GWT_NOT_INITIALIZED,
+                    "Kuramoto network not initialized - use with_gwt() constructor",
+                );
+            }
+        };
+
+        // Parse new_K (required)
+        let new_k = match args.get("new_K").and_then(|v| v.as_f64()) {
+            Some(k) => k,
+            None => {
+                return self.tool_error_with_pulse(id, "Missing required 'new_K' parameter");
+            }
+        };
+
+        // Acquire write lock (parking_lot RwLock)
+        let mut kuramoto_guard = kuramoto.write();
+
+        // Get old coupling strength
+        let old_k = kuramoto_guard.coupling_strength();
+
+        // Set new coupling strength (will be clamped internally to [0, 10])
+        kuramoto_guard.set_coupling_strength(new_k);
+
+        // Get the actual new K (after clamping)
+        let actual_new_k = kuramoto_guard.coupling_strength();
+
+        // Get current synchronization for prediction
+        let current_r = kuramoto_guard.synchronization();
+
+        // Simple prediction: higher K tends to increase r
+        // This is a rough approximation based on Kuramoto dynamics
+        let predicted_r = if actual_new_k > old_k {
+            // Increasing K tends to increase r
+            (current_r + 0.1 * (actual_new_k - old_k)).min(1.0)
+        } else {
+            // Decreasing K may decrease r
+            (current_r - 0.05 * (old_k - actual_new_k)).max(0.0)
+        };
+
+        self.tool_result_with_pulse(
+            id,
+            json!({
+                "old_K": old_k,
+                "new_K": actual_new_k,
+                "predicted_r": predicted_r,
+                "current_r": current_r,
+                "K_clamped": new_k != actual_new_k
+            }),
+        )
     }
 }

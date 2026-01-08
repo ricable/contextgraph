@@ -1,3 +1,5 @@
+#![deny(deprecated)]
+
 //! Context Graph Core Library
 //!
 //! Provides core domain types, traits, and stub implementations for the

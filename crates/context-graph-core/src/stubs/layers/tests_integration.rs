@@ -1,10 +1,11 @@
 //! Integration and cross-layer tests for stub layers.
 //!
 //! This module contains tests that verify:
-//! - Cross-layer interactions and pipeline processing
-//! - Layer output validation
-//! - Health check verification
+//! - Stubs return NotImplemented per AP-007 (fail-fast)
+//! - Layer identifiers are correctly reported
+//! - Health check returns false for unimplemented stubs
 
+use crate::error::CoreError;
 use crate::traits::NervousLayer;
 use crate::types::{LayerId, LayerInput};
 
@@ -18,70 +19,56 @@ fn test_input(content: &str) -> LayerInput {
 }
 
 #[tokio::test]
-async fn test_all_layers_healthy() {
+async fn test_all_layers_unhealthy() {
+    // Per AP-007: Stubs must report unhealthy since they are not real implementations
     let sensing = StubSensingLayer::new();
     let reflex = StubReflexLayer::new();
     let memory = StubMemoryLayer::new();
     let learning = StubLearningLayer::new();
     let coherence = StubCoherenceLayer::new();
 
-    assert!(sensing.health_check().await.unwrap());
-    assert!(reflex.health_check().await.unwrap());
-    assert!(memory.health_check().await.unwrap());
-    assert!(learning.health_check().await.unwrap());
-    assert!(coherence.health_check().await.unwrap());
+    assert!(!sensing.health_check().await.unwrap(), "Sensing stub should be unhealthy");
+    assert!(!reflex.health_check().await.unwrap(), "Reflex stub should be unhealthy");
+    assert!(!memory.health_check().await.unwrap(), "Memory stub should be unhealthy");
+    assert!(!learning.health_check().await.unwrap(), "Learning stub should be unhealthy");
+    assert!(!coherence.health_check().await.unwrap(), "Coherence stub should be unhealthy");
 }
 
 #[tokio::test]
-async fn test_pipeline_processing() {
-    // Test that layers can be chained (context accumulates)
+async fn test_pipeline_all_fail_fast() {
+    // Per AP-007: All stubs must return NotImplemented error - no mock data
     let sensing = StubSensingLayer::new();
     let reflex = StubReflexLayer::new();
     let memory = StubMemoryLayer::new();
     let learning = StubLearningLayer::new();
     let coherence = StubCoherenceLayer::new();
 
-    let mut input = test_input("pipeline test");
+    let input = test_input("pipeline test");
 
-    let out1 = sensing.process(input.clone()).await.unwrap();
-    input
-        .context
-        .add_latency(std::time::Duration::from_micros(out1.duration_us));
-    input.context.layer_results.push(out1.result.clone());
+    // All layers must fail with NotImplemented
+    let r1 = sensing.process(input.clone()).await;
+    let r2 = reflex.process(input.clone()).await;
+    let r3 = memory.process(input.clone()).await;
+    let r4 = learning.process(input.clone()).await;
+    let r5 = coherence.process(input.clone()).await;
 
-    let out2 = reflex.process(input.clone()).await.unwrap();
-    input
-        .context
-        .add_latency(std::time::Duration::from_micros(out2.duration_us));
-    input.context.layer_results.push(out2.result.clone());
+    assert!(r1.is_err(), "Sensing must fail");
+    assert!(r2.is_err(), "Reflex must fail");
+    assert!(r3.is_err(), "Memory must fail");
+    assert!(r4.is_err(), "Learning must fail");
+    assert!(r5.is_err(), "Coherence must fail");
 
-    let out3 = memory.process(input.clone()).await.unwrap();
-    input
-        .context
-        .add_latency(std::time::Duration::from_micros(out3.duration_us));
-    input.context.layer_results.push(out3.result.clone());
-
-    let out4 = learning.process(input.clone()).await.unwrap();
-    input
-        .context
-        .add_latency(std::time::Duration::from_micros(out4.duration_us));
-    input.context.layer_results.push(out4.result.clone());
-
-    let out5 = coherence.process(input.clone()).await.unwrap();
-    input
-        .context
-        .add_latency(std::time::Duration::from_micros(out5.duration_us));
-    input.context.layer_results.push(out5.result.clone());
-
-    // All layers should have run successfully
-    assert_eq!(input.context.layer_results.len(), 5);
-    for result in &input.context.layer_results {
-        assert!(result.success);
-    }
+    // Verify all are NotImplemented errors
+    assert!(matches!(r1, Err(CoreError::NotImplemented(_))));
+    assert!(matches!(r2, Err(CoreError::NotImplemented(_))));
+    assert!(matches!(r3, Err(CoreError::NotImplemented(_))));
+    assert!(matches!(r4, Err(CoreError::NotImplemented(_))));
+    assert!(matches!(r5, Err(CoreError::NotImplemented(_))));
 }
 
 #[tokio::test]
-async fn test_layer_output_coherence_ranges() {
+async fn test_layer_errors_reference_documentation() {
+    // Verify that NotImplemented errors include documentation reference
     let layers: Vec<Box<dyn NervousLayer>> = vec![
         Box::new(StubSensingLayer::new()),
         Box::new(StubReflexLayer::new()),
@@ -93,27 +80,26 @@ async fn test_layer_output_coherence_ranges() {
     for layer in layers {
         let input = LayerInput::new(
             "test-request".to_string(),
-            "test content for range validation".to_string(),
+            "test content".to_string(),
         );
-        let output = layer.process(input).await.unwrap();
+        let result = layer.process(input).await;
 
-        assert!(
-            output.pulse.entropy >= 0.0 && output.pulse.entropy <= 1.0,
-            "{} entropy {} must be in [0.0, 1.0]",
-            layer.layer_name(),
-            output.pulse.entropy
-        );
-        assert!(
-            output.pulse.coherence >= 0.0 && output.pulse.coherence <= 1.0,
-            "{} coherence {} must be in [0.0, 1.0]",
-            layer.layer_name(),
-            output.pulse.coherence
-        );
+        if let Err(CoreError::NotImplemented(msg)) = result {
+            assert!(
+                msg.contains("docs2") || msg.contains("See:"),
+                "{} error should reference documentation, got: {}",
+                layer.layer_name(),
+                msg
+            );
+        } else {
+            panic!("{} should return NotImplemented error", layer.layer_name());
+        }
     }
 }
 
 #[tokio::test]
-async fn test_layer_output_correct_layer_id() {
+async fn test_layer_id_correctly_reported() {
+    // Verify layer_id() method works correctly even though process() fails
     let test_cases = vec![
         (
             Box::new(StubSensingLayer::new()) as Box<dyn NervousLayer>,
@@ -126,24 +112,63 @@ async fn test_layer_output_correct_layer_id() {
     ];
 
     for (layer, expected_id) in test_cases {
-        let input = LayerInput::new("test-request".to_string(), "test content".to_string());
-        let output = layer.process(input).await.unwrap();
+        assert_eq!(
+            layer.layer_id(),
+            expected_id,
+            "{} must report correct LayerId {:?}",
+            layer.layer_name(),
+            expected_id
+        );
+    }
+}
 
-        assert_eq!(
-            output.layer,
-            expected_id,
-            "{} must report correct LayerId {:?}, got {:?}",
-            layer.layer_name(),
-            expected_id,
-            output.layer
+#[tokio::test]
+async fn test_layer_names_indicate_not_implemented() {
+    let layers: Vec<Box<dyn NervousLayer>> = vec![
+        Box::new(StubSensingLayer::new()),
+        Box::new(StubReflexLayer::new()),
+        Box::new(StubMemoryLayer::new()),
+        Box::new(StubLearningLayer::new()),
+        Box::new(StubCoherenceLayer::new()),
+    ];
+
+    for layer in layers {
+        let name = layer.layer_name();
+        assert!(
+            name.contains("NOT IMPLEMENTED"),
+            "Layer name should indicate NOT IMPLEMENTED: {}",
+            name
         );
-        assert_eq!(
-            output.result.layer,
-            expected_id,
-            "{} result must report correct LayerId {:?}, got {:?}",
-            layer.layer_name(),
-            expected_id,
-            output.result.layer
-        );
+    }
+}
+
+#[tokio::test]
+async fn test_latency_budgets_defined() {
+    // Even though stubs fail, they should still have latency budgets defined
+    let layers: Vec<(Box<dyn NervousLayer>, u64)> = vec![
+        (Box::new(StubSensingLayer::new()), 5), // 5ms
+        (Box::new(StubReflexLayer::new()), 0),  // 100us (< 1ms)
+        (Box::new(StubMemoryLayer::new()), 1),  // 1ms
+        (Box::new(StubLearningLayer::new()), 10), // 10ms
+        (Box::new(StubCoherenceLayer::new()), 10), // 10ms
+    ];
+
+    for (layer, expected_ms) in layers {
+        let budget = layer.latency_budget();
+        if expected_ms > 0 {
+            assert_eq!(
+                budget.as_millis() as u64,
+                expected_ms,
+                "{} has unexpected latency budget",
+                layer.layer_name()
+            );
+        } else {
+            // Reflex layer budget is 100us
+            assert_eq!(
+                budget.as_micros() as u64,
+                100,
+                "Reflex layer should have 100us budget"
+            );
+        }
     }
 }

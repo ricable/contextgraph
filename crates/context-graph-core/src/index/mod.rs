@@ -62,7 +62,9 @@ pub mod status;
 
 // Re-exports for convenient access
 pub use error::{IndexError, IndexResult};
-pub use hnsw_impl::{HnswMultiSpaceIndex, RealHnswIndex, SimpleHnswIndex};
+// NOTE: SimpleHnswIndex has been DELETED - backwards compat cleanup
+// Use RealHnswIndex which provides true O(log n) HNSW search
+pub use hnsw_impl::{HnswMultiSpaceIndex, RealHnswIndex};
 pub use manager::MultiSpaceIndexManager;
 pub use splade_impl::SpladeInvertedIndex;
 pub use status::{IndexHealth, IndexStatus, MultiIndexHealth};

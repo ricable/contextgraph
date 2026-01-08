@@ -1,3 +1,5 @@
+#![deny(deprecated)]
+
 //! Context Graph Storage Layer
 //!
 //! Provides persistent storage for the Context Graph system

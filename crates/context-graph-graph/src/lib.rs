@@ -1,3 +1,5 @@
+#![deny(deprecated)]
+
 //! Knowledge Graph with FAISS GPU Vector Search and Hyperbolic Geometry
 //!
 //! This crate provides the Knowledge Graph layer for the Context Graph system,

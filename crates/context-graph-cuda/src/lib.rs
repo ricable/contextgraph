@@ -1,3 +1,5 @@
+#![deny(deprecated)]
+
 //! CUDA acceleration for Context Graph.
 //!
 //! This crate provides GPU-accelerated operations for:
@@ -56,5 +58,7 @@ pub use cone::{
 #[cfg(feature = "cuda")]
 pub use cone::{cone_check_batch_gpu, cone_check_single_gpu};
 // AP-007: StubVectorOps export is gated to test-only builds
+// Allow deprecated usage in tests - the deprecation warning is intentional for production
 #[cfg(test)]
+#[allow(deprecated)]
 pub use stub::StubVectorOps;

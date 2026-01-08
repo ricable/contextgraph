@@ -2,7 +2,11 @@
 //!
 //! This module tests boundary conditions to verify the modularization
 //! maintains correct behavior in edge cases.
+//!
+//! NOTE: Per AP-007, stubs now return NotImplemented errors (fail-fast).
+//! These tests verify that failure occurs regardless of input.
 
+use crate::error::CoreError;
 use crate::traits::NervousLayer;
 use crate::types::LayerInput;
 
@@ -11,7 +15,7 @@ use super::{
 };
 
 // =============================================================================
-// EDGE CASE 1: Empty Input Handling
+// EDGE CASE 1: Empty Input Handling - Should Still Fail Fast
 // =============================================================================
 
 #[tokio::test]
@@ -22,20 +26,15 @@ async fn test_edge_case_empty_input_sensing() {
 
     println!("BEFORE STATE: input.content = \"{}\" (len={})", input.content, input.content.len());
 
-    let output = layer.process(input).await.expect("Should handle empty input");
+    let result = layer.process(input).await;
 
-    println!("AFTER STATE:");
-    println!("  - result.success = {}", output.result.success);
-    println!("  - pulse.entropy = {}", output.pulse.entropy);
-    println!("  - pulse.coherence = {}", output.pulse.coherence);
-    println!("  - duration_us = {}", output.duration_us);
+    println!("AFTER STATE: result.is_err() = {}", result.is_err());
 
-    // SOURCE OF TRUTH VERIFICATION
-    assert!(output.result.success, "Empty input should be processed successfully");
-    assert!(output.pulse.entropy >= 0.0, "Entropy should be non-negative");
-    assert!(output.pulse.coherence >= 0.0, "Coherence should be non-negative");
+    // SOURCE OF TRUTH VERIFICATION: AP-007 - No mock data in production
+    assert!(result.is_err(), "Empty input should still fail (NotImplemented)");
+    assert!(matches!(result, Err(CoreError::NotImplemented(_))));
 
-    println!("VERIFICATION: Empty input handled correctly ✓");
+    println!("VERIFICATION: Empty input correctly triggers NotImplemented error");
 }
 
 #[tokio::test]
@@ -52,19 +51,19 @@ async fn test_edge_case_empty_input_all_layers() {
 
     for (layer, name) in layers {
         let input = LayerInput::new("test".to_string(), "".to_string());
-        let output = layer.process(input).await.unwrap_or_else(|_| panic!("{} should handle empty input", name));
+        let result = layer.process(input).await;
 
-        println!("{}: success={}, entropy={:.4}, coherence={:.4}",
-            name, output.result.success, output.pulse.entropy, output.pulse.coherence);
+        println!("{}: is_err={}", name, result.is_err());
 
-        assert!(output.result.success, "{} should succeed with empty input", name);
+        // AP-007: All stubs must fail fast
+        assert!(result.is_err(), "{} should fail with NotImplemented", name);
     }
 
-    println!("VERIFICATION: All layers handle empty input correctly ✓");
+    println!("VERIFICATION: All layers correctly return NotImplemented for empty input");
 }
 
 // =============================================================================
-// EDGE CASE 2: Large Input Handling
+// EDGE CASE 2: Large Input Handling - Should Still Fail Fast
 // =============================================================================
 
 #[tokio::test]
@@ -77,27 +76,24 @@ async fn test_edge_case_large_input() {
 
     println!("BEFORE STATE: input.content.len() = {} bytes", input.content.len());
 
-    let output = layer.process(input).await.expect("Should handle large input");
+    let result = layer.process(input).await;
 
-    println!("AFTER STATE:");
-    println!("  - result.success = {}", output.result.success);
-    println!("  - duration_us = {} (budget: 5000us)", output.duration_us);
+    println!("AFTER STATE: result.is_err() = {}", result.is_err());
 
-    // SOURCE OF TRUTH VERIFICATION
-    let budget_us = layer.latency_budget().as_micros() as u64;
-    assert!(output.result.success, "Large input should be processed");
-    assert!(output.duration_us < budget_us, "Should complete within budget");
+    // SOURCE OF TRUTH VERIFICATION: AP-007 - No mock data regardless of input size
+    assert!(result.is_err(), "Large input should still fail (NotImplemented)");
+    assert!(matches!(result, Err(CoreError::NotImplemented(_))));
 
-    println!("VERIFICATION: Large input processed within budget ✓");
+    println!("VERIFICATION: Large input correctly triggers NotImplemented error");
 }
 
 // =============================================================================
-// EDGE CASE 3: Entropy/Coherence Boundary Values
+// EDGE CASE 3: Various Inputs All Trigger NotImplemented
 // =============================================================================
 
 #[tokio::test]
-async fn test_edge_case_boundary_values() {
-    println!("\n=== EDGE CASE 3: Entropy/Coherence Range Validation ===");
+async fn test_edge_case_various_inputs() {
+    println!("\n=== EDGE CASE 3: Various Input Patterns ===");
 
     let layers: Vec<(Box<dyn NervousLayer>, &str)> = vec![
         (Box::new(StubSensingLayer::new()), "Sensing"),
@@ -107,31 +103,52 @@ async fn test_edge_case_boundary_values() {
         (Box::new(StubCoherenceLayer::new()), "Coherence"),
     ];
 
-    // Test with various input patterns that exercise hash boundaries
     let large_input = "x".repeat(1000);
     let test_inputs = vec!["", "a", "test", "boundary value test", large_input.as_str()];
 
     for (layer, name) in &layers {
         for test_content in &test_inputs {
             let input = LayerInput::new("test".to_string(), test_content.to_string());
-            let output = layer.process(input).await.unwrap();
+            let result = layer.process(input).await;
 
-            // SOURCE OF TRUTH VERIFICATION
+            // SOURCE OF TRUTH VERIFICATION: AP-007 - All inputs fail
             assert!(
-                output.pulse.entropy >= 0.0 && output.pulse.entropy <= 1.0,
-                "{} entropy {} out of range for input len {}",
-                name, output.pulse.entropy, test_content.len()
-            );
-            assert!(
-                output.pulse.coherence >= 0.0 && output.pulse.coherence <= 1.0,
-                "{} coherence {} out of range for input len {}",
-                name, output.pulse.coherence, test_content.len()
+                result.is_err(),
+                "{} should fail for input len {}",
+                name, test_content.len()
             );
         }
-        println!("{}: All boundary values within [0.0, 1.0] range ✓", name);
+        println!("{}: All inputs correctly trigger NotImplemented", name);
     }
 
-    println!("\nVERIFICATION: All entropy/coherence values within valid range ✓");
+    println!("\nVERIFICATION: All input patterns correctly return NotImplemented error");
+}
+
+// =============================================================================
+// EDGE CASE 4: Health Check Returns Unhealthy
+// =============================================================================
+
+#[tokio::test]
+async fn test_edge_case_health_check() {
+    println!("\n=== EDGE CASE 4: Health Check Returns Unhealthy ===");
+
+    let layers: Vec<(Box<dyn NervousLayer>, &str)> = vec![
+        (Box::new(StubSensingLayer::new()), "Sensing"),
+        (Box::new(StubReflexLayer::new()), "Reflex"),
+        (Box::new(StubMemoryLayer::new()), "Memory"),
+        (Box::new(StubLearningLayer::new()), "Learning"),
+        (Box::new(StubCoherenceLayer::new()), "Coherence"),
+    ];
+
+    for (layer, name) in layers {
+        let health = layer.health_check().await.unwrap();
+        println!("{}: healthy={}", name, health);
+
+        // Stubs should report unhealthy since they aren't real implementations
+        assert!(!health, "{} stub should report unhealthy", name);
+    }
+
+    println!("\nVERIFICATION: All stubs correctly report unhealthy");
 }
 
 // =============================================================================
@@ -149,11 +166,42 @@ fn test_source_of_truth_module_structure() {
     let _learning: StubLearningLayer = StubLearningLayer::new();
     let _coherence: StubCoherenceLayer = StubCoherenceLayer::new();
 
-    println!("StubSensingLayer: accessible ✓");
-    println!("StubReflexLayer: accessible ✓");
-    println!("StubMemoryLayer: accessible ✓");
-    println!("StubLearningLayer: accessible ✓");
-    println!("StubCoherenceLayer: accessible ✓");
+    println!("StubSensingLayer: accessible");
+    println!("StubReflexLayer: accessible");
+    println!("StubMemoryLayer: accessible");
+    println!("StubLearningLayer: accessible");
+    println!("StubCoherenceLayer: accessible");
 
-    println!("\nVERIFICATION: All layer types properly re-exported ✓");
+    println!("\nVERIFICATION: All layer types properly re-exported");
+}
+
+// =============================================================================
+// SOURCE OF TRUTH VERIFICATION: Layer Names Show NOT IMPLEMENTED
+// =============================================================================
+
+#[test]
+fn test_source_of_truth_layer_names() {
+    println!("\n=== SOURCE OF TRUTH: Layer Names ===");
+
+    let layers: Vec<(Box<dyn NervousLayer>, &str)> = vec![
+        (Box::new(StubSensingLayer::new()), "Sensing"),
+        (Box::new(StubReflexLayer::new()), "Reflex"),
+        (Box::new(StubMemoryLayer::new()), "Memory"),
+        (Box::new(StubLearningLayer::new()), "Learning"),
+        (Box::new(StubCoherenceLayer::new()), "Coherence"),
+    ];
+
+    for (layer, expected_type) in layers {
+        let name = layer.layer_name();
+        println!("{}: layer_name = \"{}\"", expected_type, name);
+
+        // Name should indicate NOT IMPLEMENTED
+        assert!(
+            name.contains("NOT IMPLEMENTED"),
+            "{} layer name should indicate NOT IMPLEMENTED",
+            expected_type
+        );
+    }
+
+    println!("\nVERIFICATION: All layer names correctly indicate NOT IMPLEMENTED");
 }

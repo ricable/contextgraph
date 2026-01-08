@@ -193,6 +193,26 @@ pub enum IndexError {
         /// Error message from hnsw_rs
         message: String,
     },
+
+    /// Legacy index format detected and rejected.
+    ///
+    /// # When This Occurs
+    ///
+    /// - Loading data saved with deprecated SimpleHnswIndex format
+    /// - Deserializing old schema versions without migration
+    /// - Reading files created before current format version
+    ///
+    /// # Constitution Compliance
+    ///
+    /// Per AP-007: No backwards compatibility with legacy formats.
+    /// Data must be migrated to current format using migration tools.
+    #[error("LEGACY FORMAT REJECTED: {path} - {message}. Data must be migrated to RealHnswIndex format.")]
+    LegacyFormatRejected {
+        /// Path to the legacy format file
+        path: String,
+        /// Details about the legacy format detected
+        message: String,
+    },
 }
 
 impl IndexError {
@@ -217,6 +237,18 @@ impl IndexError {
         Self::SerializationError {
             context: context.into(),
             message: error.to_string(),
+        }
+    }
+
+    /// Create a legacy format rejection error.
+    ///
+    /// # Constitution Compliance
+    ///
+    /// Per AP-007: No backwards compatibility with legacy formats.
+    pub fn legacy_format(path: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::LegacyFormatRejected {
+            path: path.into(),
+            message: message.into(),
         }
     }
 }

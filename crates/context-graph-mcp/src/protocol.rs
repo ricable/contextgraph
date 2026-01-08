@@ -164,6 +164,24 @@ pub mod error_codes {
     pub const LAYER_STATUS_ERROR: i32 = -32051;
     /// Pipeline breakdown metrics not yet implemented
     pub const PIPELINE_METRICS_UNAVAILABLE: i32 = -32052;
+
+    // GWT/Kuramoto error codes (-32060 to -32069) - TASK-GWT-001
+    /// GWT system not initialized or unavailable
+    pub const GWT_NOT_INITIALIZED: i32 = -32060;
+    /// Kuramoto network error (step failed, invalid phase, etc.)
+    pub const KURAMOTO_ERROR: i32 = -32061;
+    /// Consciousness computation failed (invalid inputs, math error)
+    pub const CONSCIOUSNESS_COMPUTATION_FAILED: i32 = -32062;
+    /// Workspace selection or broadcast error
+    pub const WORKSPACE_ERROR: i32 = -32063;
+    /// State machine transition error
+    pub const STATE_TRANSITION_ERROR: i32 = -32064;
+    /// Meta-cognitive evaluation failed
+    pub const META_COGNITIVE_ERROR: i32 = -32065;
+    /// Self-ego node operation failed
+    pub const SELF_EGO_ERROR: i32 = -32066;
+    /// Identity continuity check failed
+    pub const IDENTITY_CONTINUITY_ERROR: i32 = -32067;
 }
 
 /// MCP method names.
@@ -242,6 +260,20 @@ pub mod methods {
     pub const META_UTL_VALIDATE_PREDICTION: &str = "meta_utl/validate_prediction";
     /// Get meta-learned optimized weights
     pub const META_UTL_OPTIMIZED_WEIGHTS: &str = "meta_utl/optimized_weights";
+
+    // GWT/Consciousness operations (TASK-GWT-001)
+    /// Get Kuramoto network synchronization status
+    pub const GWT_KURAMOTO_STATUS: &str = "gwt/kuramoto_status";
+    /// Get consciousness level and metrics
+    pub const GWT_CONSCIOUSNESS_LEVEL: &str = "gwt/consciousness_level";
+    /// Get workspace status and active memory
+    pub const GWT_WORKSPACE_STATUS: &str = "gwt/workspace_status";
+    /// Get consciousness state machine status
+    pub const GWT_STATE_STATUS: &str = "gwt/state_status";
+    /// Get meta-cognitive loop status
+    pub const GWT_META_COGNITIVE_STATUS: &str = "gwt/meta_cognitive_status";
+    /// Get self-ego node status
+    pub const GWT_SELF_EGO_STATUS: &str = "gwt/self_ego_status";
 }
 
 #[cfg(test)]

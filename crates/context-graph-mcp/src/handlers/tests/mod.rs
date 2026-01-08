@@ -37,6 +37,7 @@
 mod cognitive_pulse;
 mod error_codes;
 mod full_state_verification;
+mod full_state_verification_gwt;
 mod full_state_verification_johari;
 mod full_state_verification_meta_utl;
 mod full_state_verification_search;

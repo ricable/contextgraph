@@ -1,3 +1,5 @@
+#![deny(deprecated)]
+
 //! UTL (Unified Theory of Learning) computation engine for Context Graph.
 //!
 //! This crate provides the core UTL computation engine that implements the

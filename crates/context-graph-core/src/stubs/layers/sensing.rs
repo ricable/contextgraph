@@ -1,21 +1,20 @@
 //! Stub implementation of the Sensing layer.
 //!
 //! The Sensing layer handles multi-modal input processing.
-//! This stub immediately returns a processed result with sensible defaults.
+//! This stub returns NotImplemented error - no mock data in production (AP-007).
 //!
 //! # Latency Budget
 //! Real implementation: 5ms max
-//! Stub implementation: <1us (instant return)
+//! Stub implementation: Fails fast with error
 
 use async_trait::async_trait;
-use serde_json::json;
 use std::time::Duration;
 
-use crate::error::CoreResult;
+use crate::error::{CoreError, CoreResult};
 use crate::traits::NervousLayer;
-use crate::types::{CognitivePulse, LayerId, LayerInput, LayerOutput, LayerResult, SuggestedAction};
+use crate::types::{LayerId, LayerInput, LayerOutput};
 
-use super::helpers::{compute_input_hash, StubLayerConfig};
+use super::helpers::StubLayerConfig;
 
 /// Stub implementation of the Sensing layer.
 #[derive(Debug, Clone, Default)]
@@ -35,38 +34,12 @@ impl StubSensingLayer {
 
 #[async_trait]
 impl NervousLayer for StubSensingLayer {
-    async fn process(&self, input: LayerInput) -> CoreResult<LayerOutput> {
-        // Compute deterministic hash from input for reproducibility
-        let input_hash = compute_input_hash(&input.content);
-
-        // Generate deterministic entropy/coherence based on input
-        let entropy = (input_hash % 100) as f32 / 200.0 + 0.2; // Range: 0.2-0.7
-        let coherence = 0.6 + (input_hash % 50) as f32 / 200.0; // Range: 0.6-0.85
-
-        let result = LayerResult::success(
-            LayerId::Sensing,
-            json!({
-                "input_processed": true,
-                "content_length": input.content.len(),
-                "request_id": input.request_id,
-                "modality": "text",
-                "tokenized": true
-            }),
-        );
-
-        Ok(LayerOutput {
-            layer: LayerId::Sensing,
-            result,
-            pulse: CognitivePulse::new(
-                entropy,
-                coherence,
-                0.0,
-                1.0,
-                SuggestedAction::Continue,
-                Some(LayerId::Sensing),
-            ),
-            duration_us: 500, // 500us stub value, well under 5ms budget
-        })
+    async fn process(&self, _input: LayerInput) -> CoreResult<LayerOutput> {
+        // FAIL FAST - No mock data in production (AP-007)
+        Err(CoreError::NotImplemented(
+            "L1 SensingLayer requires real implementation. \
+             See: docs2/codestate/sherlockplans/agent4-bio-nervous-research.md".into()
+        ))
     }
 
     fn latency_budget(&self) -> Duration {
@@ -78,11 +51,12 @@ impl NervousLayer for StubSensingLayer {
     }
 
     fn layer_name(&self) -> &'static str {
-        "Sensing Layer (Stub)"
+        "Sensing Layer [NOT IMPLEMENTED]"
     }
 
     async fn health_check(&self) -> CoreResult<bool> {
-        Ok(true)
+        // Stub is NOT healthy - requires real implementation
+        Ok(false)
     }
 }
 
@@ -92,41 +66,21 @@ mod tests {
     use crate::stubs::layers::helpers::test_input;
 
     #[tokio::test]
-    async fn test_sensing_layer_output_within_budget() {
+    async fn test_sensing_layer_fails_fast() {
         let layer = StubSensingLayer::new();
-        let input = test_input("test sensing input");
+        let input = test_input("test input");
 
-        let output = layer.process(input).await.expect("process should succeed");
+        let result = layer.process(input).await;
+        assert!(result.is_err(), "Stub should fail fast");
 
-        let budget_us = layer.latency_budget().as_micros() as u64;
-        assert!(
-            output.duration_us < budget_us,
-            "duration {}us should be < budget {}us",
-            output.duration_us,
-            budget_us
-        );
-
-        assert_eq!(output.layer, LayerId::Sensing);
-        assert!(output.result.success);
+        let err = result.unwrap_err();
+        assert!(matches!(err, CoreError::NotImplemented(_)));
     }
 
     #[tokio::test]
-    async fn test_sensing_layer_determinism() {
+    async fn test_sensing_layer_health_check_returns_false() {
         let layer = StubSensingLayer::new();
-        let input1 = test_input("same input");
-        let input2 = test_input("same input");
-
-        let output1 = layer.process(input1).await.unwrap();
-        let output2 = layer.process(input2).await.unwrap();
-
-        assert_eq!(output1.pulse.entropy, output2.pulse.entropy);
-        assert_eq!(output1.pulse.coherence, output2.pulse.coherence);
-    }
-
-    #[tokio::test]
-    async fn test_sensing_layer_health_check() {
-        let layer = StubSensingLayer::new();
-        assert!(layer.health_check().await.unwrap());
+        assert!(!layer.health_check().await.unwrap(), "Stub should report unhealthy");
     }
 
     #[test]
@@ -134,6 +88,6 @@ mod tests {
         let layer = StubSensingLayer::new();
         assert_eq!(layer.layer_id(), LayerId::Sensing);
         assert_eq!(layer.latency_budget(), Duration::from_millis(5));
-        assert!(layer.layer_name().contains("Sensing"));
+        assert!(layer.layer_name().contains("NOT IMPLEMENTED"));
     }
 }

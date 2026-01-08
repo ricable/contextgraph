@@ -1,3 +1,5 @@
+#![deny(deprecated)]
+
 //! Context Graph MCP Server Library
 //!
 //! JSON-RPC 2.0 server implementing the Model Context Protocol (MCP)
