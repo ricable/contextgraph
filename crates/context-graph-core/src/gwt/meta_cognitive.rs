@@ -21,6 +21,17 @@ use chrono::{DateTime, Utc};
 use std::collections::VecDeque;
 use crate::error::CoreResult;
 
+/// Acetylcholine baseline level (minimum learning rate)
+/// Constitution v4.0.0: neuromod.Acetylcholine.range = "[0.001, 0.002]"
+const ACH_BASELINE: f32 = 0.001;
+
+/// Acetylcholine maximum level
+const ACH_MAX: f32 = 0.002;
+
+/// Acetylcholine decay rate per evaluation (homeostatic regulation)
+/// Decays toward baseline when dream is not triggered
+const ACH_DECAY_RATE: f32 = 0.1;
+
 /// Meta-cognitive learning loop state
 #[derive(Debug, Clone)]
 pub struct MetaCognitiveLoop {
@@ -79,7 +90,7 @@ impl MetaCognitiveLoop {
             max_history: 20,
             consecutive_low_scores: 0,
             consecutive_high_scores: 0,
-            acetylcholine_level: 0.001, // Default learning rate
+            acetylcholine_level: ACH_BASELINE, // Default learning rate (baseline)
             monitoring_frequency: 1.0,   // 1 Hz by default
             last_update: Utc::now(),
         }
@@ -139,8 +150,17 @@ impl MetaCognitiveLoop {
         // Check for dream trigger (low MetaScore for 5+ consecutive operations)
         let dream_triggered = self.consecutive_low_scores >= 5;
         if dream_triggered {
-            self.acetylcholine_level = (self.acetylcholine_level * 1.5).clamp(0.001, 0.002);
+            // Increase ACh on dream trigger (learning rate boost)
+            self.acetylcholine_level = (self.acetylcholine_level * 1.5).clamp(ACH_BASELINE, ACH_MAX);
             self.consecutive_low_scores = 0; // Reset after triggering
+        } else {
+            // Decay ACh toward baseline when not triggered (homeostatic regulation)
+            // Per constitution spec: neuromodulators must decay toward baseline
+            self.acetylcholine_level = self.decay_toward(
+                self.acetylcholine_level,
+                ACH_BASELINE,
+                ACH_DECAY_RATE,
+            );
         }
 
         // Check for frequency adjustment
@@ -193,6 +213,20 @@ impl MetaCognitiveLoop {
     /// Logistic sigmoid: σ(x) = 1 / (1 + e^(-x))
     fn sigmoid(&self, x: f32) -> f32 {
         (1.0 / (1.0 + (-x).exp())).clamp(0.0, 1.0)
+    }
+
+    /// Decay a value toward a target baseline
+    ///
+    /// Implements exponential decay: value = value + (target - value) * rate
+    /// This ensures smooth convergence toward baseline without overshooting.
+    ///
+    /// # Arguments
+    /// - `current`: Current value
+    /// - `target`: Target baseline to decay toward
+    /// - `rate`: Decay rate (0.0 to 1.0, higher = faster decay)
+    fn decay_toward(&self, current: f32, target: f32, rate: f32) -> f32 {
+        let rate = rate.clamp(0.0, 1.0);
+        current + (target - current) * rate
     }
 
     /// Determine score trend from recent history
@@ -301,9 +335,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_meta_cognitive_acetylcholine_decay() {
+        let mut loop_mgr = MetaCognitiveLoop::new();
+
+        // First, trigger dream to increase ACh to max
+        for _ in 0..5 {
+            loop_mgr.evaluate(0.1, 0.9).await.unwrap();
+        }
+        let elevated_ach = loop_mgr.acetylcholine();
+        assert!(elevated_ach > ACH_BASELINE, "ACh should be elevated after dream trigger");
+
+        // Now make several evaluations that DON'T trigger dream (good predictions)
+        // ACh should decay toward baseline
+        for _ in 0..10 {
+            loop_mgr.evaluate(0.5, 0.5).await.unwrap(); // Neutral - won't trigger dream
+        }
+
+        let decayed_ach = loop_mgr.acetylcholine();
+        assert!(
+            decayed_ach < elevated_ach,
+            "ACh should decay after non-dream evaluations: elevated={}, decayed={}",
+            elevated_ach,
+            decayed_ach
+        );
+        assert!(
+            decayed_ach >= ACH_BASELINE,
+            "ACh should not decay below baseline: decayed={}, baseline={}",
+            decayed_ach,
+            ACH_BASELINE
+        );
+    }
+
+    #[tokio::test]
+    async fn test_meta_cognitive_acetylcholine_decay_toward_baseline() {
+        let mut loop_mgr = MetaCognitiveLoop::new();
+
+        // Trigger dream multiple times to max out ACh
+        for _ in 0..15 {
+            loop_mgr.evaluate(0.1, 0.9).await.unwrap();
+        }
+
+        // ACh should be at or near max
+        let max_ach = loop_mgr.acetylcholine();
+        assert!(
+            (max_ach - ACH_MAX).abs() < 0.0001 || max_ach >= ACH_BASELINE,
+            "ACh should be elevated: {}",
+            max_ach
+        );
+
+        // Decay many times - should approach baseline
+        for _ in 0..50 {
+            loop_mgr.evaluate(0.5, 0.5).await.unwrap();
+        }
+
+        let final_ach = loop_mgr.acetylcholine();
+        // Should be very close to baseline after 50 decay steps
+        assert!(
+            (final_ach - ACH_BASELINE).abs() < 0.0002,
+            "ACh should converge to baseline: final={}, baseline={}",
+            final_ach,
+            ACH_BASELINE
+        );
+    }
+
+    #[tokio::test]
     async fn test_meta_cognitive_frequency_adjustment() {
         let mut loop_mgr = MetaCognitiveLoop::new();
-        let initial_freq = loop_mgr.monitoring_frequency();
+        let _initial_freq = loop_mgr.monitoring_frequency();
 
         // Trigger 5 consecutive high meta-scores (perfect predictions)
         // High meta-score means meta_score > 0.9
@@ -313,11 +411,11 @@ mod tests {
 
         // Try with confident predictions instead
         loop_mgr = MetaCognitiveLoop::new();
-        let initial_freq = loop_mgr.monitoring_frequency();
+        let _initial_freq = loop_mgr.monitoring_frequency();
 
         // Trigger high meta-scores by predicting perfectly
         for _ in 0..6 {
-            let state = loop_mgr.evaluate(0.8, 0.8).await.unwrap();
+            let _state = loop_mgr.evaluate(0.8, 0.8).await.unwrap();
             // meta_score = σ(0) ≈ 0.5 (still not >0.9)
             // Need error < 0 to get high sigmoid value
         }

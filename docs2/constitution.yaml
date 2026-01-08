@@ -431,7 +431,14 @@ neuromod:
   Dopamine:     { bio: "reward error", param: hopfield.beta, range: "[1,5]", effect: "↑=sharp retrieval" }
   Serotonin:    { bio: "temporal discount", param: similarity.space_weights, range: "[0,1]", effect: "↑=more spaces considered" }
   Noradrenaline: { bio: "arousal/surprise", param: attention.temp, range: "[0.5,2]", effect: "↑=flat attention" }
-  Acetylcholine: { bio: "learning rate", param: utl.lr, range: "[0.001,0.002]", effect: "↑=faster update" }
+  Acetylcholine:
+    bio: "learning rate"
+    param: utl.lr
+    range: "[0.001,0.002]"
+    baseline: 0.001
+    decay_rate: 0.1
+    effect: "↑=faster update"
+    behavior: "Decays toward baseline when dream not triggered; increases on dream trigger (homeostatic regulation)"
 
 # ═══════════════════════════════════════════════
 # DREAM LAYER
