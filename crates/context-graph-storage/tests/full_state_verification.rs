@@ -163,11 +163,6 @@ fn generate_real_teleological_fingerprint(id: Uuid) -> TeleologicalFingerprint {
     }
 }
 
-fn create_test_store_sync(temp_dir: &TempDir) -> RocksDbTeleologicalStore {
-    // Use the open method with just path (uses default config)
-    RocksDbTeleologicalStore::open(temp_dir.path()).expect("Failed to open RocksDB store")
-}
-
 fn create_test_store(temp_dir: &TempDir) -> RocksDbTeleologicalStore {
     // Open store - EmbedderIndexRegistry is initialized in constructor
     RocksDbTeleologicalStore::open(temp_dir.path()).expect("Failed to open RocksDB store")

@@ -951,13 +951,17 @@ mod tests {
         assert!(!status.has_pending_work());
 
         // With pending prune
-        let mut status = AutonomousStatus::default();
-        status.pending_prune_count = 5;
+        let status = AutonomousStatus {
+            pending_prune_count: 5,
+            ..AutonomousStatus::default()
+        };
         assert!(status.has_pending_work());
 
         // With consolidation queue
-        let mut status = AutonomousStatus::default();
-        status.consolidation_queue_size = 10;
+        let status = AutonomousStatus {
+            consolidation_queue_size: 10,
+            ..AutonomousStatus::default()
+        };
         assert!(status.has_pending_work());
 
         // With drift requiring attention
@@ -982,9 +986,11 @@ mod tests {
         assert!(summary.contains("enabled=true"));
         assert!(summary.contains("ready=true"));
 
-        let mut status = AutonomousStatus::default();
-        status.pending_prune_count = 5;
-        status.consolidation_queue_size = 10;
+        let status = AutonomousStatus {
+            pending_prune_count: 5,
+            consolidation_queue_size: 10,
+            ..AutonomousStatus::default()
+        };
         let summary = status.summary();
         assert!(summary.contains("prune=5"));
         assert!(summary.contains("consolidate=10"));
@@ -992,18 +998,24 @@ mod tests {
 
     #[test]
     fn test_autonomous_status_summary_with_errors() {
-        let mut status = AutonomousStatus::default();
-        status.health = AutonomousHealth::warning("Warning");
+        let status = AutonomousStatus {
+            health: AutonomousHealth::warning("Warning"),
+            ..AutonomousStatus::default()
+        };
         let summary = status.summary();
         assert!(summary.contains("warning"));
 
-        let mut status = AutonomousStatus::default();
-        status.health = AutonomousHealth::recoverable_error("Error");
+        let status = AutonomousStatus {
+            health: AutonomousHealth::recoverable_error("Error"),
+            ..AutonomousStatus::default()
+        };
         let summary = status.summary();
         assert!(summary.contains("recoverable"));
 
-        let mut status = AutonomousStatus::default();
-        status.health = AutonomousHealth::fatal_error("Fatal");
+        let status = AutonomousStatus {
+            health: AutonomousHealth::fatal_error("Fatal"),
+            ..AutonomousStatus::default()
+        };
         let summary = status.summary();
         assert!(summary.contains("fatal"));
     }
@@ -1069,11 +1081,13 @@ mod tests {
     #[test]
     fn test_config_and_status_interaction() {
         let config = AutonomousConfig::default();
-        let mut status = AutonomousStatus::default();
 
         // Simulate initialization based on config
-        status.enabled = config.enabled;
-        status.bootstrap_complete = config.bootstrap.auto_init;
+        let status = AutonomousStatus {
+            enabled: config.enabled,
+            bootstrap_complete: config.bootstrap.auto_init,
+            ..AutonomousStatus::default()
+        };
 
         assert!(status.enabled);
         assert!(status.bootstrap_complete);

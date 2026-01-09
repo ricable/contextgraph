@@ -7,7 +7,7 @@
 //! - "Do not use mock data in tests, use the real data"
 //! - "test to ensure everything is working and functioning as it should"
 //! - "Do not cover up something not working correctly by making a test that passes
-//!    when the project is in a broken state"
+//!   when the project is in a broken state"
 //!
 //! # Model Details
 //! - Model: Qodo/Qodo-Embed-1-1.5B

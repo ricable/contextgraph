@@ -553,6 +553,7 @@ impl Handlers {
     /// * `system_monitor` - Real system monitor for health metrics
     /// * `layer_status_provider` - Real layer status provider
     #[allow(dead_code)]
+    #[allow(clippy::too_many_arguments)]
     pub fn with_full_monitoring(
         teleological_store: Arc<dyn TeleologicalMemoryStore>,
         utl_processor: Arc<dyn UtlProcessor>,

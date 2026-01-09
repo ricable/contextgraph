@@ -911,12 +911,14 @@ fn test_config_validation() {
     );
 
     // Invalid weights
-    let mut invalid_config = AlignmentConfig::default();
-    invalid_config.level_weights = LevelWeights {
-        north_star: 0.5,
-        strategic: 0.5,
-        tactical: 0.5,
-        immediate: 0.5,
+    let invalid_config = AlignmentConfig {
+        level_weights: LevelWeights {
+            north_star: 0.5,
+            strategic: 0.5,
+            tactical: 0.5,
+            immediate: 0.5,
+        },
+        ..AlignmentConfig::default()
     };
 
     println!("\nINVALID WEIGHTS CONFIG:");

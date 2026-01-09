@@ -27,7 +27,6 @@ use crate::protocol::{JsonRpcId, JsonRpcRequest};
 /// Source of Truth: InMemoryTeleologicalStore (DashMap<Uuid, TeleologicalFingerprint>)
 /// Source of Truth: GoalHierarchy (HashMap<GoalId, GoalNode>)
 /// Source of Truth: MetaUtlTracker (HashMap<Uuid, StoredPrediction>)
-
 fn make_request(method: &str, id: i64, params: serde_json::Value) -> JsonRpcRequest {
     JsonRpcRequest {
         jsonrpc: "2.0".to_string(),

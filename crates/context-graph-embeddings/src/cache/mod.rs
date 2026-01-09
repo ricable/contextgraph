@@ -677,9 +677,11 @@ mod tests {
 
     #[test]
     fn test_cache_config_validation_fails_on_zero_entries() {
-        let mut config = CacheConfig::default();
-        config.enabled = true;
-        config.max_entries = 0;
+        let config = CacheConfig {
+            enabled: true,
+            max_entries: 0,
+            ..CacheConfig::default()
+        };
 
         let result = EmbeddingCache::new(config);
         assert!(result.is_err(), "Should fail with max_entries=0");
@@ -687,9 +689,11 @@ mod tests {
 
     #[test]
     fn test_cache_config_validation_fails_on_zero_bytes() {
-        let mut config = CacheConfig::default();
-        config.enabled = true;
-        config.max_bytes = 0;
+        let config = CacheConfig {
+            enabled: true,
+            max_bytes: 0,
+            ..CacheConfig::default()
+        };
 
         let result = EmbeddingCache::new(config);
         assert!(result.is_err(), "Should fail with max_bytes=0");
@@ -777,8 +781,10 @@ mod tests {
 
     #[test]
     fn test_cache_with_ttl() {
-        let mut config = CacheConfig::default();
-        config.ttl_seconds = Some(3600); // 1 hour TTL
+        let config = CacheConfig {
+            ttl_seconds: Some(3600), // 1 hour TTL
+            ..CacheConfig::default()
+        };
 
         let cache = EmbeddingCache::new(config).expect("cache with TTL should be valid");
 
@@ -834,7 +840,7 @@ mod tests {
 
         // Cache should have entries
         assert!(
-            cache.len() > 0,
+            !cache.is_empty(),
             "Cache should have entries after concurrent access"
         );
     }

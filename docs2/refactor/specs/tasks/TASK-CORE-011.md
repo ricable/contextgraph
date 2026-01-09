@@ -6,7 +6,7 @@
 |-------|-------|
 | **Task ID** | TASK-CORE-011 |
 | **Title** | GPU Memory Management Infrastructure |
-| **Status** | :yellow_circle: in_progress (infrastructure exists, needs slot management) |
+| **Status** | :white_check_mark: completed |
 | **Layer** | Foundation |
 | **Sequence** | 11 |
 | **Complexity** | High |
@@ -336,18 +336,18 @@ pub use tracker::VramTracker;
 
 ### Unit Tests
 
-- [ ] `MemoryPressure::from_utilization()` returns correct levels at thresholds
-- [ ] `ModelSlotManager::allocate_slot()` fails when budget exceeded
-- [ ] `ModelSlotManager::get_lru_candidate()` returns oldest slot
-- [ ] `GpuMemoryPool::pressure_level()` reflects utilization
-- [ ] All 13 embedder slots can be allocated within 8GB budget
+- [x] `MemoryPressure::from_utilization()` returns correct levels at thresholds
+- [x] `ModelSlotManager::allocate_slot()` fails when budget exceeded
+- [x] `ModelSlotManager::get_lru_candidate()` returns oldest slot
+- [x] `GpuMemoryPool::pressure_level()` reflects utilization
+- [x] All 13 embedder slots can be allocated within 8GB budget
 
 ### Integration Tests
 
-- [ ] Create `ModelSlotManager` and allocate all 13 slots
-- [ ] Verify LRU eviction works correctly
-- [ ] Verify memory pressure triggers eviction callback
-- [ ] Test with real CUDA allocations (feature-gated)
+- [x] Create `ModelSlotManager` and allocate all 13 slots
+- [x] Verify LRU eviction works correctly
+- [x] Verify memory pressure triggers eviction callback
+- [x] Test with real CUDA allocations (feature-gated)
 
 ---
 

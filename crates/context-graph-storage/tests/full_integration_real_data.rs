@@ -568,7 +568,7 @@ async fn test_all_column_families_populated() {
         .expect("Missing fingerprints CF");
     let fp_key = fingerprint_key(&id);
     let fp_data = db
-        .get_cf(&cf_fp, &fp_key)
+        .get_cf(&cf_fp, fp_key)
         .expect("Get failed")
         .expect("Fingerprint not found in fingerprints CF");
 
@@ -590,7 +590,7 @@ async fn test_all_column_families_populated() {
         .expect("Missing purpose_vectors CF");
     let pv_key = purpose_vector_key(&id);
     let pv_data = db
-        .get_cf(&cf_pv, &pv_key)
+        .get_cf(&cf_pv, pv_key)
         .expect("Get failed")
         .expect("Data not found in purpose_vectors CF");
 
@@ -606,9 +606,13 @@ async fn test_all_column_families_populated() {
 
     // Deserialize and verify
     let retrieved_pv = deserialize_purpose_vector(&pv_data);
-    for i in 0..NUM_EMBEDDERS {
+    for (i, (retrieved, original)) in retrieved_pv
+        .iter()
+        .zip(fp.purpose_vector.alignments.iter())
+        .enumerate()
+    {
         assert!(
-            (retrieved_pv[i] - fp.purpose_vector.alignments[i]).abs() < f32::EPSILON,
+            (retrieved - original).abs() < f32::EPSILON,
             "Purpose vector mismatch at index {}",
             i
         );
@@ -620,7 +624,7 @@ async fn test_all_column_families_populated() {
         .expect("Missing e1_matryoshka_128 CF");
     let mat_key = e1_matryoshka_128_key(&id);
     let mat_data = db
-        .get_cf(&cf_mat, &mat_key)
+        .get_cf(&cf_mat, mat_key)
         .expect("Get failed")
         .expect("Data not found in e1_matryoshka_128 CF");
 
@@ -636,9 +640,13 @@ async fn test_all_column_families_populated() {
 
     // Deserialize and verify it matches first 128 dims of E1
     let retrieved_mat = deserialize_e1_matryoshka_128(&mat_data);
-    for i in 0..128 {
+    for (i, (retrieved, original)) in retrieved_mat
+        .iter()
+        .zip(fp.semantic.e1_semantic.iter())
+        .enumerate()
+    {
         assert!(
-            (retrieved_mat[i] - fp.semantic.e1_semantic[i]).abs() < f32::EPSILON,
+            (retrieved - original).abs() < f32::EPSILON,
             "E1 Matryoshka mismatch at index {}",
             i
         );
@@ -654,7 +662,7 @@ async fn test_all_column_families_populated() {
         let first_term = fp.semantic.e13_splade.indices[0];
         let term_key = context_graph_storage::teleological::e13_splade_inverted_key(first_term);
         let inv_data = db
-            .get_cf(&cf_inv, &term_key)
+            .get_cf(&cf_inv, term_key)
             .expect("Get failed")
             .expect("Term not found in inverted index");
 
@@ -678,13 +686,10 @@ async fn test_all_column_families_populated() {
         let cf = db
             .cf_handle(cf_name)
             .unwrap_or_else(|| panic!("Missing CF: {}", cf_name));
-        #[allow(clippy::cmp_null)]
-        {
-            assert!(
-                cf as *const _ != std::ptr::null(),
-                "CF handle should be valid"
-            );
-        }
+        assert!(
+            !std::ptr::eq(cf as *const _, std::ptr::null()),
+            "CF handle should be valid"
+        );
         println!("  {} OK", cf_name);
     }
 
@@ -697,13 +702,10 @@ async fn test_all_column_families_populated() {
         let cf = db
             .cf_handle(cf_name)
             .unwrap_or_else(|| panic!("Missing CF: {}", cf_name));
-        #[allow(clippy::cmp_null)]
-        {
-            assert!(
-                cf as *const _ != std::ptr::null(),
-                "CF handle should be valid"
-            );
-        }
+        assert!(
+            !std::ptr::eq(cf as *const _, std::ptr::null()),
+            "CF handle should be valid"
+        );
         println!("  {} OK", cf_name);
     }
 
@@ -995,7 +997,7 @@ async fn test_update_and_delete_operations() {
     // Verify raw bytes are gone
     let db = store.db();
     let cf = db.cf_handle(CF_FINGERPRINTS).expect("Missing CF");
-    let raw = db.get_cf(&cf, &fingerprint_key(&id2)).expect("Get failed");
+    let raw = db.get_cf(&cf, fingerprint_key(&id2)).expect("Get failed");
     assert!(
         raw.is_none(),
         "Hard deleted fingerprint should be physically removed"

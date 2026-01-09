@@ -22,7 +22,7 @@
 //! 6. Full State Verification Tests - Complete workflow
 
 #[cfg(test)]
-mod tests {
+mod purpose_index_tests {
     use super::super::clustering::{KMeansConfig, KMeansPurposeClustering, StandardKMeans};
     use super::super::entry::{PurposeIndexEntry, PurposeMetadata};
     use super::super::error::{PurposeIndexError, PurposeIndexResult};

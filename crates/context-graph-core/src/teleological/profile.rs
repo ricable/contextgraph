@@ -286,6 +286,7 @@ impl ProfileMetrics {
     }
 
     /// Update metrics with EWMA.
+    #[allow(clippy::too_many_arguments)]
     pub fn update_ewma(
         &mut self,
         new_mrr: f32,

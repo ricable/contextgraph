@@ -403,6 +403,7 @@ mod tests {
             }
         }
 
+        #[allow(dead_code)] // Prepared for future tests
         fn add_purpose_vector(&mut self, id: Uuid, pv: [f32; 13]) {
             self.purpose_vectors.insert(id, pv);
         }

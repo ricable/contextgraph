@@ -630,7 +630,7 @@ mod tests {
         let mut embeddings = create_test_embeddings();
         embeddings.remove(&5); // Remove one embedder
 
-        StoredQuantizedFingerprint::new(
+        let _ = StoredQuantizedFingerprint::new(
             Uuid::new_v4(),
             embeddings,
             [0.5f32; 13],
@@ -756,7 +756,7 @@ mod tests {
         embeddings.remove(&5); // Remove E6
 
         // This MUST panic with "CONSTRUCTION ERROR"
-        StoredQuantizedFingerprint::new(
+        let _ = StoredQuantizedFingerprint::new(
             Uuid::new_v4(),
             embeddings,
             [0.5f32; 13],
@@ -843,7 +843,7 @@ mod tests {
             },
         );
 
-        StoredQuantizedFingerprint::new(
+        let _ = StoredQuantizedFingerprint::new(
             Uuid::new_v4(),
             embeddings,
             [0.5f32; 13],
@@ -865,7 +865,7 @@ mod tests {
         );
 
         // This should panic because 15 is not a valid index
-        fp.get_embedding(15);
+        let _ = fp.get_embedding(15);
     }
 
     /// Test cosine similarity panics on dimension mismatch
@@ -875,14 +875,14 @@ mod tests {
         let entry = IndexEntry::new(Uuid::new_v4(), 0, vec![1.0, 0.0, 0.0]);
 
         // This should panic because query has 2 dims, entry has 3
-        entry.cosine_similarity(&[1.0, 0.0]);
+        let _ = entry.cosine_similarity(&[1.0, 0.0]);
     }
 
     /// Test MultiSpaceQueryResult panics on empty results
     #[test]
     #[should_panic(expected = "AGGREGATION ERROR")]
     fn test_multi_space_empty_results() {
-        MultiSpaceQueryResult::from_embedder_results(
+        let _ = MultiSpaceQueryResult::from_embedder_results(
             Uuid::new_v4(),
             &[], // Empty results
             0.75,

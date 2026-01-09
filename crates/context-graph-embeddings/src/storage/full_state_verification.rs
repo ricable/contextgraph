@@ -4,7 +4,7 @@
 //! They verify actual computed values, not just return codes.
 
 #[cfg(test)]
-mod full_state_verification {
+mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
     use uuid::Uuid;

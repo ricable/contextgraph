@@ -918,7 +918,7 @@ mod tests {
 
         let mem = create_test_memory(vec![1.0, 0.0], "original", 0.8).with_access_count(10);
 
-        let merged = service.merge_memories(&[mem.clone()]);
+        let merged = service.merge_memories(std::slice::from_ref(&mem));
 
         assert_eq!(merged.embedding, mem.embedding);
         assert_eq!(merged.text, "original");

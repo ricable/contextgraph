@@ -23,7 +23,10 @@ mod ops;
 mod tensor;
 
 pub use device::{default_dtype, device, get_gpu_info, init_gpu, is_gpu_available, require_gpu};
-pub use memory::{GpuMemoryPool, MemoryBudget, MemoryError, MemoryStats, VramTracker};
+pub use memory::{
+    GpuMemoryPool, MemoryBudget, MemoryError, MemoryPressure, MemoryStats, ModelSlot,
+    ModelSlotManager, VramTracker, MODEL_BUDGET_BYTES,
+};
 pub use model_loader::{
     AttentionWeights, BertConfig, BertWeights, EmbeddingWeights, EncoderLayerWeights, FfnWeights,
     GpuModelLoader, ModelLoadError, PoolerWeights,
