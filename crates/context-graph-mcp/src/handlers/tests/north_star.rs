@@ -22,7 +22,8 @@ use parking_lot::RwLock;
 use serde_json::json;
 
 use context_graph_core::alignment::{DefaultAlignmentCalculator, GoalAlignmentCalculator};
-use context_graph_core::purpose::{GoalHierarchy, GoalId, GoalLevel, GoalNode};
+use context_graph_core::purpose::{GoalDiscoveryMetadata, GoalHierarchy, GoalLevel, GoalNode};
+use context_graph_core::types::fingerprint::SemanticFingerprint;
 use context_graph_core::stubs::{InMemoryTeleologicalStore, StubMultiArrayProvider, StubUtlProcessor};
 use context_graph_core::traits::{
     MultiArrayEmbeddingProvider, TeleologicalMemoryStore, UtlProcessor,
@@ -83,20 +84,16 @@ fn create_handlers_with_north_star() -> (
 
     // Create hierarchy with North Star
     let mut hierarchy = GoalHierarchy::new();
+    let discovery = GoalDiscoveryMetadata::bootstrap();
 
-    // Real 1024D embedding (using sin wave pattern for reproducibility)
-    let ns_embedding: Vec<f32> = (0..1024)
-        .map(|i| (i as f32 / 1024.0 * std::f32::consts::PI * 2.0).sin() * 0.5 + 0.5)
-        .collect();
-
-    hierarchy
-        .add_goal(GoalNode::north_star(
-            "initial_north_star",
-            "Build the best AI assistant system",
-            ns_embedding,
-            vec!["ai".into(), "assistant".into(), "system".into()],
-        ))
-        .expect("Failed to add initial North Star");
+    let ns_goal = GoalNode::autonomous_goal(
+        "Build the best AI assistant system".into(),
+        GoalLevel::NorthStar,
+        SemanticFingerprint::zeroed(),
+        discovery,
+    )
+    .expect("Failed to create North Star");
+    hierarchy.add_goal(ns_goal).expect("Failed to add initial North Star");
 
     let shared_hierarchy = Arc::new(RwLock::new(hierarchy));
 
@@ -126,60 +123,53 @@ fn create_handlers_with_full_hierarchy() -> (
         Arc::new(DefaultAlignmentCalculator::new());
 
     let mut hierarchy = GoalHierarchy::new();
-
-    // Real 1024D embedding
-    let embedding: Vec<f32> = (0..1024)
-        .map(|i| (i as f32 / 1024.0).sin() * 0.8)
-        .collect();
+    let discovery = GoalDiscoveryMetadata::bootstrap();
 
     // North Star
-    hierarchy
-        .add_goal(GoalNode::north_star(
-            "ns_knowledge",
-            "Build comprehensive knowledge system",
-            embedding.clone(),
-            vec!["knowledge".into(), "learning".into()],
-        ))
-        .expect("Failed to add North Star");
+    let ns_goal = GoalNode::autonomous_goal(
+        "Build comprehensive knowledge system".into(),
+        GoalLevel::NorthStar,
+        SemanticFingerprint::zeroed(),
+        discovery.clone(),
+    )
+    .expect("Failed to create North Star");
+    let ns_id = ns_goal.id;
+    hierarchy.add_goal(ns_goal).expect("Failed to add North Star");
 
-    // Strategic goal
-    hierarchy
-        .add_goal(GoalNode::child(
-            "s1_retrieval",
-            "Improve knowledge retrieval",
-            GoalLevel::Strategic,
-            GoalId::new("ns_knowledge"),
-            embedding.clone(),
-            0.8,
-            vec!["retrieval".into()],
-        ))
-        .expect("Failed to add strategic goal");
+    // Strategic goal - child of North Star
+    let s1_goal = GoalNode::child_goal(
+        "Improve knowledge retrieval".into(),
+        GoalLevel::Strategic,
+        ns_id,
+        SemanticFingerprint::zeroed(),
+        discovery.clone(),
+    )
+    .expect("Failed to create strategic goal");
+    let s1_id = s1_goal.id;
+    hierarchy.add_goal(s1_goal).expect("Failed to add strategic goal");
 
-    // Tactical goal
-    hierarchy
-        .add_goal(GoalNode::child(
-            "t1_semantic",
-            "Implement semantic search",
-            GoalLevel::Tactical,
-            GoalId::new("s1_retrieval"),
-            embedding.clone(),
-            0.6,
-            vec!["semantic".into()],
-        ))
-        .expect("Failed to add tactical goal");
+    // Tactical goal - child of Strategic
+    let t1_goal = GoalNode::child_goal(
+        "Implement semantic search".into(),
+        GoalLevel::Tactical,
+        s1_id,
+        SemanticFingerprint::zeroed(),
+        discovery.clone(),
+    )
+    .expect("Failed to create tactical goal");
+    let t1_id = t1_goal.id;
+    hierarchy.add_goal(t1_goal).expect("Failed to add tactical goal");
 
-    // Immediate goal
-    hierarchy
-        .add_goal(GoalNode::child(
-            "i1_vectors",
-            "Add vector embeddings",
-            GoalLevel::Immediate,
-            GoalId::new("t1_semantic"),
-            embedding,
-            0.5,
-            vec!["vectors".into()],
-        ))
-        .expect("Failed to add immediate goal");
+    // Immediate goal - child of Tactical
+    let i1_goal = GoalNode::child_goal(
+        "Add vector embeddings".into(),
+        GoalLevel::Immediate,
+        t1_id,
+        SemanticFingerprint::zeroed(),
+        discovery,
+    )
+    .expect("Failed to create immediate goal");
+    hierarchy.add_goal(i1_goal).expect("Failed to add immediate goal");
 
     let shared_hierarchy = Arc::new(RwLock::new(hierarchy));
 
@@ -277,12 +267,10 @@ async fn test_get_north_star_returns_data() {
 
     // Get reference data from Source of Truth
     let expected_description: String;
-    let expected_keywords: Vec<String>;
     {
         let h = hierarchy.read();
         let ns = h.north_star().expect("Must have NS");
         expected_description = ns.description.clone();
-        expected_keywords = ns.keywords.clone();
     }
 
     // ACTION: Query goal hierarchy for get_all
@@ -317,15 +305,6 @@ async fn test_get_north_star_returns_data() {
         returned_description, expected_description,
         "FSV: Returned description must match Source of Truth"
     );
-
-    let returned_keywords = ns_goal
-        .get("keywords")
-        .and_then(|v| v.as_array())
-        .expect("Must have keywords");
-    for kw in &expected_keywords {
-        let kw_exists = returned_keywords.iter().any(|v| v.as_str() == Some(kw));
-        assert!(kw_exists, "FSV: Keyword '{}' must be in response", kw);
-    }
 
     // Verify is_north_star flag
     let is_ns = ns_goal

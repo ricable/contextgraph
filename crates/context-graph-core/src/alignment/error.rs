@@ -3,7 +3,7 @@
 //! Defines errors that can occur during goal alignment calculations.
 //! All errors are designed for robust debugging with specific context.
 
-use crate::purpose::GoalId;
+use uuid::Uuid;
 
 /// Errors that can occur during alignment computation.
 ///
@@ -15,7 +15,7 @@ use crate::purpose::GoalId;
 pub enum AlignmentError {
     /// No North Star goal defined in the hierarchy.
     ///
-    /// Resolution: Add a North Star goal using `GoalNode::north_star()`.
+    /// Resolution: Add a North Star goal using `GoalNode::autonomous_goal()` with `GoalLevel::NorthStar`.
     #[error("No North Star goal defined in hierarchy - cannot compute alignment without a North Star")]
     NoNorthStar,
 
@@ -23,7 +23,7 @@ pub enum AlignmentError {
     ///
     /// Resolution: Ensure the goal was added to the hierarchy before referencing.
     #[error("Goal not found in hierarchy: {0}")]
-    GoalNotFound(GoalId),
+    GoalNotFound(Uuid),
 
     /// Empty fingerprint - no embeddings to compute alignment.
     ///
@@ -101,9 +101,10 @@ mod tests {
         println!("NoNorthStar: {}", e1);
         assert!(e1.to_string().contains("North Star"));
 
-        let e2 = AlignmentError::GoalNotFound(GoalId::new("test_goal"));
+        let test_uuid = Uuid::new_v4();
+        let e2 = AlignmentError::GoalNotFound(test_uuid);
         println!("GoalNotFound: {}", e2);
-        assert!(e2.to_string().contains("test_goal"));
+        assert!(e2.to_string().contains(&test_uuid.to_string()));
 
         let e3 = AlignmentError::EmptyFingerprint;
         println!("EmptyFingerprint: {}", e3);
@@ -143,7 +144,7 @@ mod tests {
     #[test]
     fn test_error_is_recoverable() {
         assert!(!AlignmentError::NoNorthStar.is_recoverable());
-        assert!(!AlignmentError::GoalNotFound(GoalId::new("x")).is_recoverable());
+        assert!(!AlignmentError::GoalNotFound(Uuid::new_v4()).is_recoverable());
         assert!(!AlignmentError::EmptyFingerprint.is_recoverable());
         assert!(!AlignmentError::InvalidConfig("test".into()).is_recoverable());
 
@@ -162,7 +163,7 @@ mod tests {
         assert!(AlignmentError::InvalidConfig("test".into()).requires_config_change());
         assert!(AlignmentError::InvalidHierarchy("test".into()).requires_config_change());
 
-        assert!(!AlignmentError::GoalNotFound(GoalId::new("x")).requires_config_change());
+        assert!(!AlignmentError::GoalNotFound(Uuid::new_v4()).requires_config_change());
         assert!(!AlignmentError::EmptyFingerprint.requires_config_change());
         assert!(!AlignmentError::Timeout {
             elapsed_ms: 10,

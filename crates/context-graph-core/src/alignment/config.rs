@@ -186,29 +186,36 @@ impl AlignmentConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::purpose::{GoalNode, GoalLevel, GoalId};
+    use crate::purpose::{GoalDiscoveryMetadata, GoalLevel, GoalNode};
+    use crate::types::fingerprint::SemanticFingerprint;
+
+    fn test_discovery() -> GoalDiscoveryMetadata {
+        GoalDiscoveryMetadata::bootstrap()
+    }
 
     fn create_test_hierarchy() -> GoalHierarchy {
         let mut hierarchy = GoalHierarchy::new();
-        hierarchy
-            .add_goal(GoalNode::north_star(
-                "ns",
-                "North Star",
-                vec![0.5; 1024],
-                vec!["goal".into()],
-            ))
-            .unwrap();
-        hierarchy
-            .add_goal(GoalNode::child(
-                "s1",
-                "Strategic 1",
-                GoalLevel::Strategic,
-                GoalId::new("ns"),
-                vec![0.4; 1024],
-                0.8,
-                vec![],
-            ))
-            .unwrap();
+
+        let ns = GoalNode::autonomous_goal(
+            "North Star".into(),
+            GoalLevel::NorthStar,
+            SemanticFingerprint::zeroed(),
+            test_discovery(),
+        )
+        .expect("Failed to create North Star");
+        let ns_id = ns.id;
+        hierarchy.add_goal(ns).unwrap();
+
+        let s1 = GoalNode::child_goal(
+            "Strategic 1".into(),
+            GoalLevel::Strategic,
+            ns_id,
+            SemanticFingerprint::zeroed(),
+            test_discovery(),
+        )
+        .expect("Failed to create Strategic goal");
+        hierarchy.add_goal(s1).unwrap();
+
         hierarchy
     }
 

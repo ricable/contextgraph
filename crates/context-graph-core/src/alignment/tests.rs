@@ -4,8 +4,11 @@
 //! with BEFORE/AFTER logging for Full State Verification.
 
 use super::*;
-use crate::purpose::{GoalHierarchy, GoalId, GoalLevel, GoalNode};
-use crate::types::fingerprint::{AlignmentThreshold, JohariFingerprint, PurposeVector, NUM_EMBEDDERS, SemanticFingerprint, TeleologicalFingerprint};
+use crate::purpose::{DiscoveryMethod, GoalDiscoveryMetadata, GoalHierarchy, GoalLevel, GoalNode};
+use crate::types::fingerprint::{
+    AlignmentThreshold, JohariFingerprint, PurposeVector, SemanticFingerprint,
+    TeleologicalFingerprint, NUM_EMBEDDERS,
+};
 
 use chrono::Utc;
 use uuid::Uuid;
@@ -42,94 +45,102 @@ fn create_real_fingerprint(alignment_factor: f32) -> TeleologicalFingerprint {
     }
 }
 
+/// Helper to create bootstrap discovery metadata for tests.
+fn test_discovery() -> GoalDiscoveryMetadata {
+    GoalDiscoveryMetadata::bootstrap()
+}
+
+/// Helper to create a SemanticFingerprint with deterministic pattern.
+fn create_test_fingerprint(seed: f32) -> SemanticFingerprint {
+    let mut fp = SemanticFingerprint::zeroed();
+    // Populate E1 with deterministic pattern based on seed
+    for i in 0..fp.e1_semantic.len() {
+        fp.e1_semantic[i] = ((i as f32 / 128.0 + seed).sin()).clamp(-1.0, 1.0);
+    }
+    fp
+}
+
 /// Create a real GoalHierarchy with all four levels.
 fn create_real_hierarchy() -> GoalHierarchy {
     let mut hierarchy = GoalHierarchy::new();
 
-    // Create deterministic embeddings that will produce meaningful similarities
-    let create_embedding = |seed: f32| -> Vec<f32> {
-        (0..1024)
-            .map(|i| ((i as f32 / 128.0 + seed).sin()).clamp(-1.0, 1.0))
-            .collect()
-    };
-
     // North Star - primary goal
-    let ns_embedding = create_embedding(0.0);
+    let ns = GoalNode::autonomous_goal(
+        "Revolutionize knowledge management through AI".into(),
+        GoalLevel::NorthStar,
+        create_test_fingerprint(0.0),
+        test_discovery(),
+    )
+    .expect("FAIL: Could not create North Star goal");
+    let ns_id = ns.id;
     hierarchy
-        .add_goal(GoalNode::north_star(
-            "north_star_1",
-            "Revolutionize knowledge management through AI",
-            ns_embedding.clone(),
-            vec!["knowledge".into(), "AI".into(), "management".into()],
-        ))
+        .add_goal(ns)
         .expect("FAIL: Could not add North Star goal");
 
     // Strategic goals
-    let s1_embedding = create_embedding(0.1);
+    let s1 = GoalNode::child_goal(
+        "Build intelligent retrieval system".into(),
+        GoalLevel::Strategic,
+        ns_id,
+        create_test_fingerprint(0.1),
+        test_discovery(),
+    )
+    .expect("FAIL: Could not create Strategic goal 1");
+    let s1_id = s1.id;
     hierarchy
-        .add_goal(GoalNode::child(
-            "strategic_1",
-            "Build intelligent retrieval system",
-            GoalLevel::Strategic,
-            GoalId::new("north_star_1"),
-            s1_embedding,
-            0.9,
-            vec!["retrieval".into(), "intelligent".into()],
-        ))
+        .add_goal(s1)
         .expect("FAIL: Could not add Strategic goal 1");
 
-    let s2_embedding = create_embedding(0.2);
+    let s2 = GoalNode::child_goal(
+        "Enable semantic understanding".into(),
+        GoalLevel::Strategic,
+        ns_id,
+        create_test_fingerprint(0.2),
+        test_discovery(),
+    )
+    .expect("FAIL: Could not create Strategic goal 2");
+    let s2_id = s2.id;
     hierarchy
-        .add_goal(GoalNode::child(
-            "strategic_2",
-            "Enable semantic understanding",
-            GoalLevel::Strategic,
-            GoalId::new("north_star_1"),
-            s2_embedding,
-            0.85,
-            vec!["semantic".into(), "understanding".into()],
-        ))
+        .add_goal(s2)
         .expect("FAIL: Could not add Strategic goal 2");
 
     // Tactical goals
-    let t1_embedding = create_embedding(0.3);
+    let t1 = GoalNode::child_goal(
+        "Implement vector search".into(),
+        GoalLevel::Tactical,
+        s1_id,
+        create_test_fingerprint(0.3),
+        test_discovery(),
+    )
+    .expect("FAIL: Could not create Tactical goal 1");
+    let t1_id = t1.id;
     hierarchy
-        .add_goal(GoalNode::child(
-            "tactical_1",
-            "Implement vector search",
-            GoalLevel::Tactical,
-            GoalId::new("strategic_1"),
-            t1_embedding,
-            0.8,
-            vec!["vector".into(), "search".into()],
-        ))
+        .add_goal(t1)
         .expect("FAIL: Could not add Tactical goal 1");
 
-    let t2_embedding = create_embedding(0.4);
+    let t2 = GoalNode::child_goal(
+        "Build embedding pipeline".into(),
+        GoalLevel::Tactical,
+        s2_id,
+        create_test_fingerprint(0.4),
+        test_discovery(),
+    )
+    .expect("FAIL: Could not create Tactical goal 2");
     hierarchy
-        .add_goal(GoalNode::child(
-            "tactical_2",
-            "Build embedding pipeline",
-            GoalLevel::Tactical,
-            GoalId::new("strategic_2"),
-            t2_embedding,
-            0.75,
-            vec!["embedding".into(), "pipeline".into()],
-        ))
+        .add_goal(t2)
         .expect("FAIL: Could not add Tactical goal 2");
 
     // Immediate goals
-    let i1_embedding = create_embedding(0.5);
+    let i1 = GoalNode::child_goal(
+        "Optimize query latency".into(),
+        GoalLevel::Immediate,
+        t1_id,
+        create_test_fingerprint(0.5),
+        test_discovery(),
+    )
+    .expect("FAIL: Could not create Immediate goal 1");
     hierarchy
-        .add_goal(GoalNode::child(
-            "immediate_1",
-            "Optimize query latency",
-            GoalLevel::Immediate,
-            GoalId::new("tactical_1"),
-            i1_embedding,
-            0.7,
-            vec!["query".into(), "latency".into()],
-        ))
+        .add_goal(i1)
         .expect("FAIL: Could not add Immediate goal 1");
 
     hierarchy
@@ -139,35 +150,33 @@ fn create_real_hierarchy() -> GoalHierarchy {
 fn create_misaligned_hierarchy() -> GoalHierarchy {
     let mut hierarchy = GoalHierarchy::new();
 
-    // All embeddings are the same to ensure predictable similarity
-    let base_embedding: Vec<f32> = (0..1024).map(|i| (i as f32 / 128.0).sin()).collect();
-
     // North Star
-    hierarchy
-        .add_goal(GoalNode::north_star(
-            "ns",
-            "North Star Goal",
-            base_embedding.clone(),
-            vec![],
-        ))
-        .expect("FAIL: North Star");
+    let ns = GoalNode::autonomous_goal(
+        "North Star Goal".into(),
+        GoalLevel::NorthStar,
+        create_test_fingerprint(0.0),
+        test_discovery(),
+    )
+    .expect("FAIL: North Star");
+    let ns_id = ns.id;
+    hierarchy.add_goal(ns).expect("FAIL: North Star");
 
-    // Strategic with slightly different embedding (will diverge)
-    let divergent_embedding: Vec<f32> = (0..1024)
-        .map(|i| ((i as f32 / 128.0) + std::f32::consts::PI).sin())
-        .collect();
+    // Strategic with different embedding (will diverge)
+    // Use PI offset to create different embedding pattern
+    let mut divergent_fp = SemanticFingerprint::zeroed();
+    for i in 0..divergent_fp.e1_semantic.len() {
+        divergent_fp.e1_semantic[i] = ((i as f32 / 128.0) + std::f32::consts::PI).sin();
+    }
 
-    hierarchy
-        .add_goal(GoalNode::child(
-            "s1",
-            "Divergent Strategic",
-            GoalLevel::Strategic,
-            GoalId::new("ns"),
-            divergent_embedding,
-            0.3, // Low weight - intentionally misaligned
-            vec![],
-        ))
-        .expect("FAIL: Strategic");
+    let s1 = GoalNode::child_goal(
+        "Divergent Strategic".into(),
+        GoalLevel::Strategic,
+        ns_id,
+        divergent_fp,
+        test_discovery(),
+    )
+    .expect("FAIL: Strategic");
+    hierarchy.add_goal(s1).expect("FAIL: Strategic");
 
     hierarchy
 }
@@ -188,8 +197,14 @@ async fn test_full_alignment_computation_with_real_data() {
 
     println!("\nBEFORE STATE:");
     println!("  - fingerprint.id: {}", fingerprint.id);
-    println!("  - fingerprint.theta_to_north_star: {:.3}", fingerprint.theta_to_north_star);
-    println!("  - fingerprint.purpose_vector.alignments[0]: {:.3}", fingerprint.purpose_vector.alignments[0]);
+    println!(
+        "  - fingerprint.theta_to_north_star: {:.3}",
+        fingerprint.theta_to_north_star
+    );
+    println!(
+        "  - fingerprint.purpose_vector.alignments[0]: {:.3}",
+        fingerprint.purpose_vector.alignments[0]
+    );
     println!("  - hierarchy.len(): {}", hierarchy.len());
     println!("  - hierarchy.has_north_star(): {}", hierarchy.has_north_star());
 
@@ -207,25 +222,43 @@ async fn test_full_alignment_computation_with_real_data() {
 
     // AFTER: Verify results
     println!("\nAFTER STATE:");
-    println!("  - result.score.composite_score: {:.3}", result.score.composite_score);
+    println!(
+        "  - result.score.composite_score: {:.3}",
+        result.score.composite_score
+    );
     println!("  - result.score.threshold: {:?}", result.score.threshold);
-    println!("  - result.score.north_star_alignment: {:.3}", result.score.north_star_alignment);
-    println!("  - result.score.strategic_alignment: {:.3}", result.score.strategic_alignment);
-    println!("  - result.score.tactical_alignment: {:.3}", result.score.tactical_alignment);
-    println!("  - result.score.immediate_alignment: {:.3}", result.score.immediate_alignment);
+    println!(
+        "  - result.score.north_star_alignment: {:.3}",
+        result.score.north_star_alignment
+    );
+    println!(
+        "  - result.score.strategic_alignment: {:.3}",
+        result.score.strategic_alignment
+    );
+    println!(
+        "  - result.score.tactical_alignment: {:.3}",
+        result.score.tactical_alignment
+    );
+    println!(
+        "  - result.score.immediate_alignment: {:.3}",
+        result.score.immediate_alignment
+    );
     println!("  - result.score.goal_count(): {}", result.score.goal_count());
-    println!("  - result.score.misaligned_count: {}", result.score.misaligned_count);
+    println!(
+        "  - result.score.misaligned_count: {}",
+        result.score.misaligned_count
+    );
     println!("  - result.flags.has_any(): {}", result.flags.has_any());
     println!("  - result.patterns.len(): {}", result.patterns.len());
-    println!("  - result.computation_time_us: {}", result.computation_time_us);
+    println!(
+        "  - result.computation_time_us: {}",
+        result.computation_time_us
+    );
     println!("  - result.is_healthy(): {}", result.is_healthy());
     println!("  - result.severity(): {}", result.severity());
 
     // ASSERTIONS
-    assert!(
-        result.score.goal_count() > 0,
-        "FAIL: No goals scored"
-    );
+    assert!(result.score.goal_count() > 0, "FAIL: No goals scored");
     assert!(
         result.computation_time_us < 5_000,
         "FAIL: Computation exceeded 5ms timeout"
@@ -234,8 +267,16 @@ async fn test_full_alignment_computation_with_real_data() {
     // Verify embedder breakdown exists
     if let Some(ref breakdown) = result.embedder_breakdown {
         println!("\n  EMBEDDER BREAKDOWN:");
-        println!("    - best_embedder: {} ({})", breakdown.best_embedder, EmbedderBreakdown::embedder_name(breakdown.best_embedder));
-        println!("    - worst_embedder: {} ({})", breakdown.worst_embedder, EmbedderBreakdown::embedder_name(breakdown.worst_embedder));
+        println!(
+            "    - best_embedder: {} ({})",
+            breakdown.best_embedder,
+            EmbedderBreakdown::embedder_name(breakdown.best_embedder)
+        );
+        println!(
+            "    - worst_embedder: {} ({})",
+            breakdown.worst_embedder,
+            EmbedderBreakdown::embedder_name(breakdown.worst_embedder)
+        );
         println!("    - mean: {:.3}", breakdown.mean);
         println!("    - std_dev: {:.3}", breakdown.std_dev);
     }
@@ -243,7 +284,10 @@ async fn test_full_alignment_computation_with_real_data() {
     // Verify patterns
     println!("\n  DETECTED PATTERNS:");
     for (i, p) in result.patterns.iter().enumerate() {
-        println!("    [{}] {:?} (severity {}): {}", i, p.pattern_type, p.severity, p.description);
+        println!(
+            "    [{}] {:?} (severity {}): {}",
+            i, p.pattern_type, p.severity, p.description
+        );
     }
 
     println!("\n[VERIFIED] Full alignment computation with real data successful");
@@ -260,12 +304,14 @@ async fn test_critical_misalignment_detection() {
     let hierarchy = create_real_hierarchy();
 
     println!("\nBEFORE STATE:");
-    println!("  - fingerprint.theta_to_north_star: {:.3}", fingerprint.theta_to_north_star);
+    println!(
+        "  - fingerprint.theta_to_north_star: {:.3}",
+        fingerprint.theta_to_north_star
+    );
 
     // COMPUTE
     let calculator = DefaultAlignmentCalculator::new();
-    let config = AlignmentConfig::with_hierarchy(hierarchy)
-        .with_pattern_detection(true);
+    let config = AlignmentConfig::with_hierarchy(hierarchy).with_pattern_detection(true);
 
     let result = calculator
         .compute_alignment(&fingerprint, &config)
@@ -274,10 +320,19 @@ async fn test_critical_misalignment_detection() {
 
     // AFTER: Check for critical detection
     println!("\nAFTER STATE:");
-    println!("  - result.score.composite_score: {:.3}", result.score.composite_score);
+    println!(
+        "  - result.score.composite_score: {:.3}",
+        result.score.composite_score
+    );
     println!("  - result.score.threshold: {:?}", result.score.threshold);
-    println!("  - result.flags.below_threshold: {}", result.flags.below_threshold);
-    println!("  - result.flags.critical_goals.len(): {}", result.flags.critical_goals.len());
+    println!(
+        "  - result.flags.below_threshold: {}",
+        result.flags.below_threshold
+    );
+    println!(
+        "  - result.flags.critical_goals.len(): {}",
+        result.flags.critical_goals.len()
+    );
     println!("  - result.severity(): {}", result.severity());
 
     // With 0.2 alignment factor, we should have low scores
@@ -299,25 +354,43 @@ async fn test_tactical_without_strategic_pattern() {
     // Create a hierarchy where tactical is high but strategic is low
     let mut hierarchy = GoalHierarchy::new();
 
-    // Use embeddings that will produce predictable similarities
-    let ns_embedding: Vec<f32> = (0..1024).map(|i| (i as f32 / 128.0).sin()).collect();
-
-    hierarchy
-        .add_goal(GoalNode::north_star("ns", "North Star", ns_embedding.clone(), vec![]))
-        .expect("FAIL: NS");
+    // North Star
+    let ns = GoalNode::autonomous_goal(
+        "North Star".into(),
+        GoalLevel::NorthStar,
+        create_test_fingerprint(0.0),
+        test_discovery(),
+    )
+    .expect("FAIL: NS");
+    let ns_id = ns.id;
+    hierarchy.add_goal(ns).expect("FAIL: NS");
 
     // Strategic with different embedding (low similarity)
-    let s_embedding: Vec<f32> = (0..1024)
-        .map(|i| ((i as f32 / 128.0) + std::f32::consts::PI).sin())
-        .collect();
-    hierarchy
-        .add_goal(GoalNode::child("s1", "Strategic", GoalLevel::Strategic, GoalId::new("ns"), s_embedding, 0.5, vec![]))
-        .expect("FAIL: S1");
+    let mut s_fp = SemanticFingerprint::zeroed();
+    for i in 0..s_fp.e1_semantic.len() {
+        s_fp.e1_semantic[i] = ((i as f32 / 128.0) + std::f32::consts::PI).sin();
+    }
+    let s1 = GoalNode::child_goal(
+        "Strategic".into(),
+        GoalLevel::Strategic,
+        ns_id,
+        s_fp,
+        test_discovery(),
+    )
+    .expect("FAIL: S1");
+    let s1_id = s1.id;
+    hierarchy.add_goal(s1).expect("FAIL: S1");
 
     // Tactical with similar embedding (high similarity)
-    hierarchy
-        .add_goal(GoalNode::child("t1", "Tactical", GoalLevel::Tactical, GoalId::new("s1"), ns_embedding.clone(), 0.9, vec![]))
-        .expect("FAIL: T1");
+    let t1 = GoalNode::child_goal(
+        "Tactical".into(),
+        GoalLevel::Tactical,
+        s1_id,
+        create_test_fingerprint(0.0),
+        test_discovery(),
+    )
+    .expect("FAIL: T1");
+    hierarchy.add_goal(t1).expect("FAIL: T1");
 
     let fingerprint = create_real_fingerprint(0.8);
 
@@ -325,8 +398,7 @@ async fn test_tactical_without_strategic_pattern() {
     println!("  - hierarchy.len(): {}", hierarchy.len());
 
     let calculator = DefaultAlignmentCalculator::new();
-    let config = AlignmentConfig::with_hierarchy(hierarchy)
-        .with_pattern_detection(true);
+    let config = AlignmentConfig::with_hierarchy(hierarchy).with_pattern_detection(true);
 
     let result = calculator
         .compute_alignment(&fingerprint, &config)
@@ -334,9 +406,18 @@ async fn test_tactical_without_strategic_pattern() {
         .expect("FAIL: Computation");
 
     println!("\nAFTER STATE:");
-    println!("  - tactical_alignment: {:.3}", result.score.tactical_alignment);
-    println!("  - strategic_alignment: {:.3}", result.score.strategic_alignment);
-    println!("  - flags.tactical_without_strategic: {}", result.flags.tactical_without_strategic);
+    println!(
+        "  - tactical_alignment: {:.3}",
+        result.score.tactical_alignment
+    );
+    println!(
+        "  - strategic_alignment: {:.3}",
+        result.score.strategic_alignment
+    );
+    println!(
+        "  - flags.tactical_without_strategic: {}",
+        result.flags.tactical_without_strategic
+    );
 
     // Log all patterns
     println!("\n  PATTERNS:");
@@ -360,8 +441,7 @@ async fn test_divergent_hierarchy_detection() {
     println!("  - hierarchy.len(): {}", hierarchy.len());
 
     let calculator = DefaultAlignmentCalculator::new();
-    let config = AlignmentConfig::with_hierarchy(hierarchy)
-        .with_pattern_detection(true);
+    let config = AlignmentConfig::with_hierarchy(hierarchy).with_pattern_detection(true);
 
     let result = calculator
         .compute_alignment(&fingerprint, &config)
@@ -369,8 +449,14 @@ async fn test_divergent_hierarchy_detection() {
         .expect("FAIL: Computation");
 
     println!("\nAFTER STATE:");
-    println!("  - flags.divergent_hierarchy: {}", result.flags.divergent_hierarchy);
-    println!("  - flags.divergent_pairs.len(): {}", result.flags.divergent_pairs.len());
+    println!(
+        "  - flags.divergent_hierarchy: {}",
+        result.flags.divergent_hierarchy
+    );
+    println!(
+        "  - flags.divergent_pairs.len(): {}",
+        result.flags.divergent_pairs.len()
+    );
 
     for (parent, child) in &result.flags.divergent_pairs {
         println!("    - divergent: {} -> {}", parent, child);
@@ -401,9 +487,7 @@ async fn test_batch_processing_with_real_data() {
     let calculator = DefaultAlignmentCalculator::new();
     let fingerprints: Vec<&TeleologicalFingerprint> = vec![&fp1, &fp2, &fp3];
 
-    let results = calculator
-        .compute_alignment_batch(&fingerprints, &config)
-        .await;
+    let results = calculator.compute_alignment_batch(&fingerprints, &config).await;
 
     println!("\nAFTER STATE:");
     for (i, result) in results.iter().enumerate() {
@@ -411,7 +495,10 @@ async fn test_batch_processing_with_real_data() {
             Ok(r) => {
                 println!(
                     "  - fp[{}]: composite={:.3}, threshold={:?}, healthy={}",
-                    i, r.score.composite_score, r.score.threshold, r.is_healthy()
+                    i,
+                    r.score.composite_score,
+                    r.score.threshold,
+                    r.is_healthy()
                 );
             }
             Err(e) => {
@@ -439,7 +526,10 @@ async fn test_empty_hierarchy_error() {
     let config = AlignmentConfig::default(); // Empty hierarchy
 
     println!("\nBEFORE STATE:");
-    println!("  - config.hierarchy.is_empty(): {}", config.hierarchy.is_empty());
+    println!(
+        "  - config.hierarchy.is_empty(): {}",
+        config.hierarchy.is_empty()
+    );
 
     let calculator = DefaultAlignmentCalculator::new();
     let result = calculator.compute_alignment(&fingerprint, &config).await;
@@ -587,7 +677,8 @@ fn test_goal_score_weighted_contribution() {
 
     println!("\nWEIGHTED CONTRIBUTIONS:");
     for (level, alignment, weight, expected_contrib) in test_cases {
-        let score = GoalScore::new(GoalId::new("test"), level, alignment, weight);
+        let goal_id = Uuid::new_v4();
+        let score = GoalScore::new(goal_id, level, alignment, weight);
 
         println!(
             "  - {:?}: alignment={:.2} * weight={:.2} = {:.3} (expected {:.3})",
@@ -619,19 +710,25 @@ fn test_misalignment_flags_severity_levels() {
     let mut flags_warn = MisalignmentFlags::empty();
     flags_warn.tactical_without_strategic = true;
     assert_eq!(flags_warn.severity(), 1, "FAIL: Warning should be 1");
-    println!("  - tactical_without_strategic: severity = {}", flags_warn.severity());
+    println!(
+        "  - tactical_without_strategic: severity = {}",
+        flags_warn.severity()
+    );
 
     // Critical flags = severity 2
     let mut flags_crit = MisalignmentFlags::empty();
-    flags_crit.mark_below_threshold(GoalId::new("test"));
+    flags_crit.mark_below_threshold(Uuid::new_v4());
     assert_eq!(flags_crit.severity(), 2, "FAIL: Critical should be 2");
     println!("  - below_threshold: severity = {}", flags_crit.severity());
 
     // Divergent = severity 2
     let mut flags_div = MisalignmentFlags::empty();
-    flags_div.mark_divergent(GoalId::new("parent"), GoalId::new("child"));
+    flags_div.mark_divergent(Uuid::new_v4(), Uuid::new_v4());
     assert_eq!(flags_div.severity(), 2, "FAIL: Divergent should be 2");
-    println!("  - divergent_hierarchy: severity = {}", flags_div.severity());
+    println!(
+        "  - divergent_hierarchy: severity = {}",
+        flags_div.severity()
+    );
 
     println!("\n[VERIFIED] MisalignmentFlags severity levels correct");
 }
@@ -659,14 +756,22 @@ fn test_pattern_type_classification() {
     for p in &positive_patterns {
         assert!(p.is_positive(), "FAIL: {:?} should be positive", p);
         assert!(!p.is_negative(), "FAIL: {:?} should not be negative", p);
-        println!("  - {:?}: is_positive=true, severity={}", p, p.default_severity());
+        println!(
+            "  - {:?}: is_positive=true, severity={}",
+            p,
+            p.default_severity()
+        );
     }
 
     println!("\nNEGATIVE PATTERNS:");
     for p in &negative_patterns {
         assert!(p.is_negative(), "FAIL: {:?} should be negative", p);
         assert!(!p.is_positive(), "FAIL: {:?} should not be positive", p);
-        println!("  - {:?}: is_negative=true, severity={}", p, p.default_severity());
+        println!(
+            "  - {:?}: is_negative=true, severity={}",
+            p,
+            p.default_severity()
+        );
     }
 
     println!("\n[VERIFIED] PatternType classification correct");
@@ -691,8 +796,16 @@ fn test_embedder_breakdown_statistics() {
     println!("  - alignments: {:?}", alignments);
 
     println!("\nAFTER STATE:");
-    println!("  - best_embedder: {} ({})", breakdown.best_embedder, EmbedderBreakdown::embedder_name(breakdown.best_embedder));
-    println!("  - worst_embedder: {} ({})", breakdown.worst_embedder, EmbedderBreakdown::embedder_name(breakdown.worst_embedder));
+    println!(
+        "  - best_embedder: {} ({})",
+        breakdown.best_embedder,
+        EmbedderBreakdown::embedder_name(breakdown.best_embedder)
+    );
+    println!(
+        "  - worst_embedder: {} ({})",
+        breakdown.worst_embedder,
+        EmbedderBreakdown::embedder_name(breakdown.worst_embedder)
+    );
     println!("  - mean: {:.3}", breakdown.mean);
     println!("  - std_dev: {:.3}", breakdown.std_dev);
 
@@ -708,7 +821,10 @@ fn test_embedder_breakdown_statistics() {
 
     let misaligned = breakdown.misaligned_embedders();
     println!("  - misaligned embedders: {:?}", misaligned);
-    assert!(misaligned.len() >= 2, "FAIL: Should have at least 2 misaligned");
+    assert!(
+        misaligned.len() >= 2,
+        "FAIL: Should have at least 2 misaligned"
+    );
 
     println!("\n[VERIFIED] EmbedderBreakdown statistics correct");
 }
@@ -720,10 +836,10 @@ fn test_goal_alignment_score_composite_computation() {
     println!("============================================================");
 
     let scores = vec![
-        GoalScore::new(GoalId::new("ns"), GoalLevel::NorthStar, 0.90, 0.4),
-        GoalScore::new(GoalId::new("s1"), GoalLevel::Strategic, 0.80, 0.3),
-        GoalScore::new(GoalId::new("t1"), GoalLevel::Tactical, 0.70, 0.2),
-        GoalScore::new(GoalId::new("i1"), GoalLevel::Immediate, 0.60, 0.1),
+        GoalScore::new(Uuid::new_v4(), GoalLevel::NorthStar, 0.90, 0.4),
+        GoalScore::new(Uuid::new_v4(), GoalLevel::Strategic, 0.80, 0.3),
+        GoalScore::new(Uuid::new_v4(), GoalLevel::Tactical, 0.70, 0.2),
+        GoalScore::new(Uuid::new_v4(), GoalLevel::Immediate, 0.60, 0.1),
     ];
 
     let weights = LevelWeights::default();
@@ -740,8 +856,14 @@ fn test_goal_alignment_score_composite_computation() {
     let expected = 0.80;
 
     println!("\nAFTER STATE:");
-    println!("  - composite_score: {:.3} (expected {:.3})", result.composite_score, expected);
-    println!("  - north_star_alignment: {:.3}", result.north_star_alignment);
+    println!(
+        "  - composite_score: {:.3} (expected {:.3})",
+        result.composite_score, expected
+    );
+    println!(
+        "  - north_star_alignment: {:.3}",
+        result.north_star_alignment
+    );
     println!("  - strategic_alignment: {:.3}", result.strategic_alignment);
     println!("  - tactical_alignment: {:.3}", result.tactical_alignment);
     println!("  - immediate_alignment: {:.3}", result.immediate_alignment);
@@ -772,7 +894,10 @@ fn test_config_validation() {
     println!("\nVALID CONFIG:");
     let validation = config.validate();
     println!("  - validate(): {:?}", validation);
-    assert!(validation.is_ok(), "FAIL: Valid config should pass validation");
+    assert!(
+        validation.is_ok(),
+        "FAIL: Valid config should pass validation"
+    );
 
     // Invalid weights
     let mut invalid_config = AlignmentConfig::default();
@@ -799,18 +924,28 @@ fn test_error_types_are_descriptive() {
 
     let errors = [
         AlignmentError::NoNorthStar,
-        AlignmentError::GoalNotFound(GoalId::new("test_goal")),
+        AlignmentError::GoalNotFound(Uuid::new_v4()),
         AlignmentError::EmptyFingerprint,
-        AlignmentError::DimensionMismatch { expected: 13, got: 10 },
+        AlignmentError::DimensionMismatch {
+            expected: 13,
+            got: 10,
+        },
         AlignmentError::InvalidConfig("test error".into()),
-        AlignmentError::Timeout { elapsed_ms: 10, limit_ms: 5 },
+        AlignmentError::Timeout {
+            elapsed_ms: 10,
+            limit_ms: 5,
+        },
         AlignmentError::InvalidHierarchy("orphan nodes".into()),
         AlignmentError::ComputationFailed("NaN detected".into()),
     ];
 
     println!("\nERROR MESSAGES:");
     for e in &errors {
-        println!("  - {}: {}", std::any::type_name_of_val(e).split("::").last().unwrap_or("?"), e);
+        println!(
+            "  - {}: {}",
+            std::any::type_name_of_val(e).split("::").last().unwrap_or("?"),
+            e
+        );
     }
 
     // Check recoverable
@@ -821,7 +956,11 @@ fn test_error_types_are_descriptive() {
 
     // Only Timeout should be recoverable
     assert!(
-        AlignmentError::Timeout { elapsed_ms: 10, limit_ms: 5 }.is_recoverable(),
+        AlignmentError::Timeout {
+            elapsed_ms: 10,
+            limit_ms: 5
+        }
+        .is_recoverable(),
         "FAIL: Timeout should be recoverable"
     );
     assert!(

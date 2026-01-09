@@ -46,12 +46,11 @@ use uuid::Uuid;
 
 use crate::index::config::{HnswConfig, PURPOSE_VECTOR_DIM};
 use crate::index::hnsw_impl::RealHnswIndex;
-use crate::purpose::GoalId;
 use crate::types::fingerprint::PurposeVector;
 use crate::types::JohariQuadrant;
 
 use super::clustering::{KMeansConfig, KMeansPurposeClustering, StandardKMeans};
-use super::entry::{PurposeIndexEntry, PurposeMetadata};
+use super::entry::{GoalId, PurposeIndexEntry, PurposeMetadata};
 use super::error::{PurposeIndexError, PurposeIndexResult};
 use super::query::{PurposeQuery, PurposeQueryTarget, PurposeSearchResult};
 

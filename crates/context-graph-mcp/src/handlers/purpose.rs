@@ -21,9 +21,10 @@
 
 use serde_json::json;
 use tracing::{debug, error, instrument};
+use uuid::Uuid;
 
 use context_graph_core::alignment::AlignmentConfig;
-use context_graph_core::purpose::{GoalHierarchy, GoalId, GoalLevel, GoalNode};
+use context_graph_core::purpose::{GoalHierarchy, GoalLevel, GoalNode};
 use context_graph_core::traits::TeleologicalSearchOptions;
 use context_graph_core::types::fingerprint::{AlignmentThreshold, PurposeVector, NUM_EMBEDDERS};
 
@@ -292,7 +293,17 @@ impl Handlers {
 
             "get_goal" => {
                 let goal_id = match params.get("goal_id").and_then(|v| v.as_str()) {
-                    Some(gid) => GoalId::new(gid),
+                    Some(gid) => match Uuid::parse_str(gid) {
+                        Ok(uuid) => uuid,
+                        Err(_) => {
+                            error!("goal/hierarchy_query: Invalid goal_id UUID format: {}", gid);
+                            return JsonRpcResponse::error(
+                                id,
+                                error_codes::INVALID_PARAMS,
+                                format!("Invalid goal_id UUID format: {}", gid),
+                            );
+                        }
+                    },
                     None => {
                         error!("goal/hierarchy_query: get_goal requires 'goal_id'");
                         return JsonRpcResponse::error(
@@ -320,7 +331,17 @@ impl Handlers {
 
             "get_children" => {
                 let goal_id = match params.get("goal_id").and_then(|v| v.as_str()) {
-                    Some(gid) => GoalId::new(gid),
+                    Some(gid) => match Uuid::parse_str(gid) {
+                        Ok(uuid) => uuid,
+                        Err(_) => {
+                            error!("goal/hierarchy_query: Invalid goal_id UUID format: {}", gid);
+                            return JsonRpcResponse::error(
+                                id,
+                                error_codes::INVALID_PARAMS,
+                                format!("Invalid goal_id UUID format: {}", gid),
+                            );
+                        }
+                    },
                     None => {
                         error!("goal/hierarchy_query: get_children requires 'goal_id'");
                         return JsonRpcResponse::error(
@@ -350,7 +371,7 @@ impl Handlers {
                 JsonRpcResponse::success(
                     id,
                     json!({
-                        "parent_goal_id": goal_id.as_str(),
+                        "parent_goal_id": goal_id.to_string(),
                         "children": children,
                         "count": children.len()
                     }),
@@ -359,7 +380,17 @@ impl Handlers {
 
             "get_ancestors" => {
                 let goal_id = match params.get("goal_id").and_then(|v| v.as_str()) {
-                    Some(gid) => GoalId::new(gid),
+                    Some(gid) => match Uuid::parse_str(gid) {
+                        Ok(uuid) => uuid,
+                        Err(_) => {
+                            error!("goal/hierarchy_query: Invalid goal_id UUID format: {}", gid);
+                            return JsonRpcResponse::error(
+                                id,
+                                error_codes::INVALID_PARAMS,
+                                format!("Invalid goal_id UUID format: {}", gid),
+                            );
+                        }
+                    },
                     None => {
                         error!("goal/hierarchy_query: get_ancestors requires 'goal_id'");
                         return JsonRpcResponse::error(
@@ -389,7 +420,7 @@ impl Handlers {
                 JsonRpcResponse::success(
                     id,
                     json!({
-                        "goal_id": goal_id.as_str(),
+                        "goal_id": goal_id.to_string(),
                         "ancestors": ancestors,
                         "depth": ancestors.len()
                     }),
@@ -398,7 +429,17 @@ impl Handlers {
 
             "get_subtree" => {
                 let goal_id = match params.get("goal_id").and_then(|v| v.as_str()) {
-                    Some(gid) => GoalId::new(gid),
+                    Some(gid) => match Uuid::parse_str(gid) {
+                        Ok(uuid) => uuid,
+                        Err(_) => {
+                            error!("goal/hierarchy_query: Invalid goal_id UUID format: {}", gid);
+                            return JsonRpcResponse::error(
+                                id,
+                                error_codes::INVALID_PARAMS,
+                                format!("Invalid goal_id UUID format: {}", gid),
+                            );
+                        }
+                    },
                     None => {
                         error!("goal/hierarchy_query: get_subtree requires 'goal_id'");
                         return JsonRpcResponse::error(
@@ -436,7 +477,7 @@ impl Handlers {
                 JsonRpcResponse::success(
                     id,
                     json!({
-                        "root_goal_id": goal_id.as_str(),
+                        "root_goal_id": goal_id.to_string(),
                         "subtree": subtree,
                         "count": subtree.len()
                     }),
@@ -493,7 +534,17 @@ impl Handlers {
 
         // Extract goal_id (required)
         let goal_id = match params.get("goal_id").and_then(|v| v.as_str()) {
-            Some(gid) => GoalId::new(gid),
+            Some(gid) => match Uuid::parse_str(gid) {
+                        Ok(uuid) => uuid,
+                        Err(_) => {
+                            error!("goal/hierarchy_query: Invalid goal_id UUID format: {}", gid);
+                            return JsonRpcResponse::error(
+                                id,
+                                error_codes::INVALID_PARAMS,
+                                format!("Invalid goal_id UUID format: {}", gid),
+                            );
+                        }
+                    },
             None => {
                 error!("goal/aligned_memories: Missing 'goal_id' parameter");
                 return JsonRpcResponse::error(
@@ -851,15 +902,19 @@ impl Handlers {
     /// Convert a GoalNode to JSON representation.
     fn goal_to_json(&self, goal: &GoalNode) -> serde_json::Value {
         json!({
-            "id": goal.id.as_str(),
+            "id": goal.id.to_string(),
             "description": goal.description,
             "level": format!("{:?}", goal.level),
             "level_depth": goal.level.depth(),
-            "parent": goal.parent.as_ref().map(|p| p.as_str()),
-            "weight": goal.weight,
+            "parent_id": goal.parent_id.map(|p| p.to_string()),
+            "discovery": {
+                "method": format!("{:?}", goal.discovery.method),
+                "confidence": goal.discovery.confidence,
+                "cluster_size": goal.discovery.cluster_size,
+                "coherence": goal.discovery.coherence
+            },
             "propagation_weight": goal.level.propagation_weight(),
-            "keywords": goal.keywords,
-            "embedding_dimensions": goal.embedding.len(),
+            "child_count": goal.child_ids.len(),
             "is_north_star": goal.is_north_star()
         })
     }
@@ -888,24 +943,27 @@ impl Handlers {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use context_graph_core::purpose::GoalDiscoveryMetadata;
+    use context_graph_core::types::fingerprint::SemanticFingerprint;
 
     #[test]
     fn test_goal_to_json_structure() {
         // Verify the JSON structure matches expected output
-        let goal = GoalNode::north_star(
-            "test_ns",
-            "Test North Star",
-            vec![0.5; 1024],
-            vec!["test".into()],
-        );
+        // Per TASK-CORE-005: Use autonomous_goal() with TeleologicalArray, not north_star()
+        let discovery = GoalDiscoveryMetadata::bootstrap();
+        let goal = GoalNode::autonomous_goal(
+            "Test North Star".into(),
+            GoalLevel::NorthStar,
+            SemanticFingerprint::zeroed(),
+            discovery,
+        ).expect("Failed to create test goal");
 
-        // Create a mock Handlers to test the helper - this would require proper setup
-        // For now, just verify GoalNode structure
-        assert_eq!(goal.id.as_str(), "test_ns");
+        // Verify GoalNode structure (id is now Uuid, not custom GoalId)
+        assert!(!goal.id.is_nil());  // UUID should not be nil
         assert_eq!(goal.level, GoalLevel::NorthStar);
         assert!(goal.is_north_star());
 
-        println!("[VERIFIED] GoalNode structure is correct");
+        println!("[VERIFIED] GoalNode structure is correct with new API");
     }
 
     #[test]

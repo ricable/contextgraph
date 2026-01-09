@@ -636,37 +636,58 @@ mod tests {
     use super::*;
     use crate::alignment::DefaultAlignmentCalculator;
     use crate::johari::DefaultJohariManager;
-    use crate::purpose::{GoalId, GoalLevel, GoalNode};
+    use crate::purpose::{DiscoveryMethod, GoalDiscoveryMetadata, GoalLevel, GoalNode};
+    use crate::types::fingerprint::SemanticFingerprint;
     use crate::retrieval::teleological_result::AlignmentLevel;
     use crate::retrieval::InMemoryMultiEmbeddingExecutor;
     use crate::stubs::{InMemoryTeleologicalStore, StubMultiArrayProvider};
     use std::sync::Arc;
 
+    /// Create a test fingerprint for goal hierarchy.
+    fn create_test_goal_fingerprint(base: f32) -> SemanticFingerprint {
+        let mut fp = SemanticFingerprint::zeroed();
+        for i in 0..fp.e1_semantic.len() {
+            fp.e1_semantic[i] = (i as f32 / 1024.0).sin() * base;
+        }
+        for i in 0..fp.e5_causal.len() {
+            fp.e5_causal[i] = base + (i as f32 * 0.0001);
+        }
+        for i in 0..fp.e7_code.len() {
+            fp.e7_code[i] = base + (i as f32 * 0.0001);
+        }
+        fp
+    }
+
     fn create_test_hierarchy() -> GoalHierarchy {
         let mut hierarchy = GoalHierarchy::new();
 
-        let ns_embedding: Vec<f32> = (0..1024).map(|i| (i as f32 / 1024.0).sin() * 0.8).collect();
+        let ns_fp = create_test_goal_fingerprint(0.8);
+        let discovery = GoalDiscoveryMetadata::new(DiscoveryMethod::Bootstrap, 0.9, 1, 0.85).unwrap();
 
-        hierarchy
-            .add_goal(GoalNode::north_star(
-                "ns",
-                "Build the best product",
-                ns_embedding.clone(),
-                vec!["product".into()],
-            ))
-            .expect("Failed to add North Star");
+        let ns = GoalNode::autonomous_goal(
+            "Build the best product".to_string(),
+            GoalLevel::NorthStar,
+            ns_fp.clone(),
+            discovery,
+        )
+        .expect("Failed to create North Star");
+        let ns_id = ns.id;
 
-        hierarchy
-            .add_goal(GoalNode::child(
-                "s1",
-                "Improve UX",
-                GoalLevel::Strategic,
-                GoalId::new("ns"),
-                ns_embedding,
-                0.8,
-                vec!["ux".into()],
-            ))
-            .expect("Failed to add strategic goal");
+        hierarchy.add_goal(ns).expect("Failed to add North Star");
+
+        let child_fp = create_test_goal_fingerprint(0.7);
+        let child_discovery = GoalDiscoveryMetadata::new(DiscoveryMethod::Decomposition, 0.8, 5, 0.75).unwrap();
+
+        let child = GoalNode::child_goal(
+            "Improve UX".to_string(),
+            GoalLevel::Strategic,
+            ns_id,
+            child_fp,
+            child_discovery,
+        )
+        .expect("Failed to create strategic goal");
+
+        hierarchy.add_goal(child).expect("Failed to add strategic goal");
 
         hierarchy
     }

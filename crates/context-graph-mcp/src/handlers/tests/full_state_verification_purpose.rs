@@ -24,12 +24,12 @@ use serde_json::json;
 use uuid::Uuid;
 
 use context_graph_core::alignment::{DefaultAlignmentCalculator, GoalAlignmentCalculator};
-use context_graph_core::purpose::{GoalHierarchy, GoalId, GoalLevel, GoalNode};
+use context_graph_core::purpose::{GoalDiscoveryMetadata, GoalHierarchy, GoalLevel, GoalNode};
 use context_graph_core::stubs::{InMemoryTeleologicalStore, StubMultiArrayProvider, StubUtlProcessor};
 use context_graph_core::traits::{
     MultiArrayEmbeddingProvider, TeleologicalMemoryStore, UtlProcessor,
 };
-use context_graph_core::types::fingerprint::NUM_EMBEDDERS;
+use context_graph_core::types::fingerprint::{SemanticFingerprint, NUM_EMBEDDERS};
 
 use crate::handlers::Handlers;
 use crate::protocol::JsonRpcId;
@@ -101,72 +101,65 @@ fn create_verifiable_handlers_no_north_star() -> (
 fn create_full_test_hierarchy() -> GoalHierarchy {
     let mut hierarchy = GoalHierarchy::new();
 
-    // Create embedding that varies by dimension for distinctiveness
-    let ns_embedding: Vec<f32> = (0..1024)
-        .map(|i| (i as f32 / 1024.0).sin() * 0.8)
-        .collect();
+    // Create test discovery metadata for autonomous goals
+    let discovery = GoalDiscoveryMetadata::bootstrap();
 
-    // North Star
-    hierarchy
-        .add_goal(GoalNode::north_star(
-            "ns_ml_system",
-            "Build the best ML learning system",
-            ns_embedding.clone(),
-            vec!["ml".into(), "learning".into(), "system".into()],
-        ))
-        .expect("Failed to add North Star");
+    // North Star - autonomous goal discovery
+    let ns_goal = GoalNode::autonomous_goal(
+        "Build the best ML learning system".into(),
+        GoalLevel::NorthStar,
+        SemanticFingerprint::zeroed(),
+        discovery.clone(),
+    )
+    .expect("Failed to create North Star goal");
+    let ns_id = ns_goal.id;
+    hierarchy.add_goal(ns_goal).expect("Failed to add North Star");
 
-    // Strategic goal 1
-    hierarchy
-        .add_goal(GoalNode::child(
-            "s1_retrieval",
-            "Improve retrieval accuracy",
-            GoalLevel::Strategic,
-            GoalId::new("ns_ml_system"),
-            ns_embedding.clone(),
-            0.8,
-            vec!["retrieval".into(), "accuracy".into()],
-        ))
-        .expect("Failed to add strategic goal 1");
+    // Strategic goal 1 - child of North Star
+    let s1_goal = GoalNode::child_goal(
+        "Improve retrieval accuracy".into(),
+        GoalLevel::Strategic,
+        ns_id,
+        SemanticFingerprint::zeroed(),
+        discovery.clone(),
+    )
+    .expect("Failed to create strategic goal 1");
+    let s1_id = s1_goal.id;
+    hierarchy.add_goal(s1_goal).expect("Failed to add strategic goal 1");
 
-    // Strategic goal 2
-    hierarchy
-        .add_goal(GoalNode::child(
-            "s2_ux",
-            "Enhance user experience",
-            GoalLevel::Strategic,
-            GoalId::new("ns_ml_system"),
-            ns_embedding.clone(),
-            0.7,
-            vec!["ux".into(), "user".into()],
-        ))
-        .expect("Failed to add strategic goal 2");
+    // Strategic goal 2 - child of North Star
+    let s2_goal = GoalNode::child_goal(
+        "Enhance user experience".into(),
+        GoalLevel::Strategic,
+        ns_id,
+        SemanticFingerprint::zeroed(),
+        discovery.clone(),
+    )
+    .expect("Failed to create strategic goal 2");
+    hierarchy.add_goal(s2_goal).expect("Failed to add strategic goal 2");
 
-    // Tactical goal
-    hierarchy
-        .add_goal(GoalNode::child(
-            "t1_semantic",
-            "Implement semantic search",
-            GoalLevel::Tactical,
-            GoalId::new("s1_retrieval"),
-            ns_embedding.clone(),
-            0.6,
-            vec!["semantic".into(), "search".into()],
-        ))
-        .expect("Failed to add tactical goal");
+    // Tactical goal - child of Strategic goal 1
+    let t1_goal = GoalNode::child_goal(
+        "Implement semantic search".into(),
+        GoalLevel::Tactical,
+        s1_id,
+        SemanticFingerprint::zeroed(),
+        discovery.clone(),
+    )
+    .expect("Failed to create tactical goal");
+    let t1_id = t1_goal.id;
+    hierarchy.add_goal(t1_goal).expect("Failed to add tactical goal");
 
-    // Immediate goal
-    hierarchy
-        .add_goal(GoalNode::child(
-            "i1_vector",
-            "Add vector similarity",
-            GoalLevel::Immediate,
-            GoalId::new("t1_semantic"),
-            ns_embedding,
-            0.5,
-            vec!["vector".into(), "similarity".into()],
-        ))
-        .expect("Failed to add immediate goal");
+    // Immediate goal - child of Tactical goal
+    let i1_goal = GoalNode::child_goal(
+        "Add vector similarity".into(),
+        GoalLevel::Immediate,
+        t1_id,
+        SemanticFingerprint::zeroed(),
+        discovery,
+    )
+    .expect("Failed to create immediate goal");
+    hierarchy.add_goal(i1_goal).expect("Failed to add immediate goal");
 
     hierarchy
 }
@@ -382,8 +375,8 @@ async fn test_full_state_verification_goal_hierarchy_navigation() {
         assert_eq!(h.len(), 5, "Must have 5 goals");
 
         let ns = h.north_star().expect("Must have North Star");
-        println!("   North Star: {} - {}", ns.id.as_str(), ns.description);
-        assert_eq!(ns.id.as_str(), "ns_ml_system");
+        println!("   North Star: {} - {}", ns.id, ns.description);
+        assert!(!ns.id.is_nil(), "North Star must have valid UUID");
 
         let strategic = h.at_level(GoalLevel::Strategic);
         println!("   Strategic goals: {}", strategic.len());
@@ -452,7 +445,8 @@ async fn test_full_state_verification_goal_hierarchy_navigation() {
 
     // Verify against Source of Truth
     let hierarchy_guard = hierarchy.read();
-    let direct_children = hierarchy_guard.children(&GoalId::new("ns_ml_system"));
+    let ns_id = hierarchy_guard.north_star().expect("Must have North Star").id;
+    let direct_children = hierarchy_guard.children(&ns_id);
     assert_eq!(
         children.len(),
         direct_children.len(),
@@ -485,12 +479,16 @@ async fn test_full_state_verification_goal_hierarchy_navigation() {
 
     println!("   Handler returned {} ancestors", ancestors.len());
 
-    // Verify against Source of Truth
-    let direct_path = hierarchy.read().path_to_north_star(&GoalId::new("i1_vector"));
+    // Verify against Source of Truth - get the immediate goal (last added child)
+    let hierarchy_guard = hierarchy.read();
+    let immediate_goals = hierarchy_guard.at_level(GoalLevel::Immediate);
+    let immediate_goal_id = immediate_goals.first().expect("Must have immediate goal").id;
+    let direct_path = hierarchy_guard.path_to_north_star(&immediate_goal_id);
     println!("   Direct path length: {}", direct_path.len());
 
     // Path should be: i1_vector -> t1_semantic -> s1_retrieval -> ns_ml_system
-    println!("   Path: {:?}", direct_path.iter().map(|g| g.as_str()).collect::<Vec<_>>());
+    println!("   Path: {:?}", direct_path.iter().map(|g| g.to_string()).collect::<Vec<_>>());
+    drop(hierarchy_guard);
 
     assert!(ancestors.len() >= 3, "Must have at least 3 ancestors");
     println!("   ✓ VERIFIED: get_ancestors returns correct path\n");
@@ -645,8 +643,8 @@ async fn test_edge_case_goal_not_found() {
     let goal_count = hierarchy.read().len();
     println!("   Total goals in hierarchy: {}", goal_count);
 
-    // Verify the goal we're looking for does NOT exist
-    let nonexistent_id = GoalId::new("nonexistent_goal_xyz");
+    // Verify the goal we're looking for does NOT exist (random UUID)
+    let nonexistent_id = Uuid::new_v4();
     let exists_in_hierarchy = hierarchy.read().get(&nonexistent_id).is_some();
     println!("   'nonexistent_goal_xyz' exists: {}", exists_in_hierarchy);
     assert!(!exists_in_hierarchy, "Goal must NOT exist");
@@ -655,7 +653,7 @@ async fn test_edge_case_goal_not_found() {
     println!("\n📝 ACTION: goal/hierarchy_query get_goal (nonexistent)");
     let query_params = json!({
         "operation": "get_goal",
-        "goal_id": "nonexistent_goal_xyz"
+        "goal_id": nonexistent_id.to_string()
     });
     let query_request = make_request(
         "goal/hierarchy_query",
@@ -703,7 +701,7 @@ async fn test_edge_case_north_star_update_returns_method_not_found() {
     let existing_ns_id = hierarchy
         .read()
         .north_star()
-        .map(|g| g.id.as_str().to_string())
+        .map(|g| g.id.to_string())
         .expect("Must have NS");
     println!("   Existing North Star ID: {}", existing_ns_id);
 
@@ -734,7 +732,7 @@ async fn test_edge_case_north_star_update_returns_method_not_found() {
     let after_ns_id = hierarchy
         .read()
         .north_star()
-        .map(|g| g.id.as_str().to_string())
+        .map(|g| g.id.to_string())
         .expect("Must still have NS");
     assert_eq!(
         after_ns_id, existing_ns_id,

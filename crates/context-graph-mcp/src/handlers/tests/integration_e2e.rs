@@ -32,7 +32,7 @@ use uuid::Uuid;
 
 use context_graph_core::alignment::{DefaultAlignmentCalculator, GoalAlignmentCalculator};
 use context_graph_core::johari::{DynDefaultJohariManager, JohariTransitionManager, NUM_EMBEDDERS};
-use context_graph_core::purpose::{GoalHierarchy, GoalId, GoalLevel, GoalNode};
+use context_graph_core::purpose::{GoalDiscoveryMetadata, GoalHierarchy, GoalLevel, GoalNode};
 use context_graph_core::stubs::{InMemoryTeleologicalStore, StubMultiArrayProvider, StubUtlProcessor};
 use context_graph_core::traits::{
     MultiArrayEmbeddingProvider, TeleologicalMemoryStore, UtlProcessor,
@@ -144,73 +144,64 @@ impl TestContext {
 /// Create a test goal hierarchy with North Star and sub-goals.
 fn create_test_hierarchy() -> GoalHierarchy {
     let mut hierarchy = GoalHierarchy::new();
-
-    // Create embedding that varies by dimension for distinctiveness
-    let ns_embedding: Vec<f32> = (0..1024)
-        .map(|i| (i as f32 / 1024.0).sin() * 0.8)
-        .collect();
+    let discovery = GoalDiscoveryMetadata::bootstrap();
 
     // North Star
-    hierarchy
-        .add_goal(GoalNode::north_star(
-            "ns_ml_system",
-            "Build the best ML learning system",
-            ns_embedding.clone(),
-            vec!["ml".into(), "learning".into(), "system".into()],
-        ))
-        .expect("Failed to add North Star");
+    let ns_goal = GoalNode::autonomous_goal(
+        "Build the best ML learning system".into(),
+        GoalLevel::NorthStar,
+        SemanticFingerprint::zeroed(),
+        discovery.clone(),
+    )
+    .expect("Failed to create North Star goal");
+    let ns_id = ns_goal.id;
+    hierarchy.add_goal(ns_goal).expect("Failed to add North Star");
 
-    // Strategic goal 1
-    hierarchy
-        .add_goal(GoalNode::child(
-            "s1_retrieval",
-            "Improve retrieval accuracy",
-            GoalLevel::Strategic,
-            GoalId::new("ns_ml_system"),
-            ns_embedding.clone(),
-            0.8,
-            vec!["retrieval".into(), "accuracy".into()],
-        ))
-        .expect("Failed to add strategic goal 1");
+    // Strategic goal 1 - child of North Star
+    let s1_goal = GoalNode::child_goal(
+        "Improve retrieval accuracy".into(),
+        GoalLevel::Strategic,
+        ns_id,
+        SemanticFingerprint::zeroed(),
+        discovery.clone(),
+    )
+    .expect("Failed to create strategic goal 1");
+    let s1_id = s1_goal.id;
+    hierarchy.add_goal(s1_goal).expect("Failed to add strategic goal 1");
 
-    // Strategic goal 2
-    hierarchy
-        .add_goal(GoalNode::child(
-            "s2_ux",
-            "Enhance user experience",
-            GoalLevel::Strategic,
-            GoalId::new("ns_ml_system"),
-            ns_embedding.clone(),
-            0.7,
-            vec!["ux".into(), "user".into()],
-        ))
-        .expect("Failed to add strategic goal 2");
+    // Strategic goal 2 - child of North Star
+    let s2_goal = GoalNode::child_goal(
+        "Enhance user experience".into(),
+        GoalLevel::Strategic,
+        ns_id,
+        SemanticFingerprint::zeroed(),
+        discovery.clone(),
+    )
+    .expect("Failed to create strategic goal 2");
+    hierarchy.add_goal(s2_goal).expect("Failed to add strategic goal 2");
 
-    // Tactical goal
-    hierarchy
-        .add_goal(GoalNode::child(
-            "t1_semantic",
-            "Implement semantic search",
-            GoalLevel::Tactical,
-            GoalId::new("s1_retrieval"),
-            ns_embedding.clone(),
-            0.6,
-            vec!["semantic".into(), "search".into()],
-        ))
-        .expect("Failed to add tactical goal");
+    // Tactical goal - child of Strategic goal 1
+    let t1_goal = GoalNode::child_goal(
+        "Implement semantic search".into(),
+        GoalLevel::Tactical,
+        s1_id,
+        SemanticFingerprint::zeroed(),
+        discovery.clone(),
+    )
+    .expect("Failed to create tactical goal");
+    let t1_id = t1_goal.id;
+    hierarchy.add_goal(t1_goal).expect("Failed to add tactical goal");
 
-    // Immediate goal
-    hierarchy
-        .add_goal(GoalNode::child(
-            "i1_vector",
-            "Add vector similarity",
-            GoalLevel::Immediate,
-            GoalId::new("t1_semantic"),
-            ns_embedding,
-            0.5,
-            vec!["vector".into(), "similarity".into()],
-        ))
-        .expect("Failed to add immediate goal");
+    // Immediate goal - child of Tactical goal
+    let i1_goal = GoalNode::child_goal(
+        "Add vector similarity".into(),
+        GoalLevel::Immediate,
+        t1_id,
+        SemanticFingerprint::zeroed(),
+        discovery,
+    )
+    .expect("Failed to create immediate goal");
+    hierarchy.add_goal(i1_goal).expect("Failed to add immediate goal");
 
     hierarchy
 }
@@ -628,8 +619,8 @@ async fn test_fsv_purpose_alignment_with_hierarchy() {
         assert_eq!(h.len(), 5, "Hierarchy MUST have 5 goals");
 
         let ns = h.north_star().expect("MUST have North Star");
-        println!("   - North Star: {} - {}", ns.id.as_str(), ns.description);
-        assert_eq!(ns.id.as_str(), "ns_ml_system");
+        println!("   - North Star: {} - {}", ns.id, ns.description);
+        assert!(!ns.id.is_nil(), "North Star must have valid UUID");
 
         println!("   - Strategic goals: {}", h.at_level(GoalLevel::Strategic).len());
         println!("   - Tactical goals: {}", h.at_level(GoalLevel::Tactical).len());

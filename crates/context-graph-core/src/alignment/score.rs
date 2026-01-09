@@ -10,8 +10,9 @@
 //! - Critical: θ < 0.55
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use crate::purpose::{GoalId, GoalLevel};
+use crate::purpose::GoalLevel;
 use crate::types::fingerprint::AlignmentThreshold;
 
 /// Level-based weights for computing composite alignment score.
@@ -102,8 +103,8 @@ impl LevelWeights {
 /// and metadata about the goal.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GoalScore {
-    /// Goal identifier
-    pub goal_id: GoalId,
+    /// Goal identifier (UUID)
+    pub goal_id: Uuid,
     /// Goal level in hierarchy
     pub level: GoalLevel,
     /// Raw alignment score [-1.0, 1.0] (cosine similarity)
@@ -118,7 +119,7 @@ impl GoalScore {
     /// Create a new goal score.
     ///
     /// Automatically classifies the alignment into the appropriate threshold.
-    pub fn new(goal_id: GoalId, level: GoalLevel, alignment: f32, weight: f32) -> Self {
+    pub fn new(goal_id: Uuid, level: GoalLevel, alignment: f32, weight: f32) -> Self {
         Self {
             goal_id,
             level,
@@ -377,14 +378,15 @@ mod tests {
 
     #[test]
     fn test_goal_score_creation() {
+        let goal_id = Uuid::new_v4();
         let score = GoalScore::new(
-            GoalId::new("test_goal"),
+            goal_id,
             GoalLevel::Strategic,
             0.80,
             0.3,
         );
 
-        assert_eq!(score.goal_id.as_str(), "test_goal");
+        assert_eq!(score.goal_id, goal_id);
         assert_eq!(score.level, GoalLevel::Strategic);
         assert_eq!(score.alignment, 0.80);
         assert!((score.weighted_contribution - 0.24).abs() < 0.001);
@@ -399,10 +401,10 @@ mod tests {
 
     #[test]
     fn test_goal_score_misalignment_detection() {
-        let optimal = GoalScore::new(GoalId::new("opt"), GoalLevel::NorthStar, 0.80, 1.0);
-        let acceptable = GoalScore::new(GoalId::new("acc"), GoalLevel::NorthStar, 0.72, 1.0);
-        let warning = GoalScore::new(GoalId::new("warn"), GoalLevel::NorthStar, 0.60, 1.0);
-        let critical = GoalScore::new(GoalId::new("crit"), GoalLevel::NorthStar, 0.40, 1.0);
+        let optimal = GoalScore::new(Uuid::new_v4(), GoalLevel::NorthStar, 0.80, 1.0);
+        let acceptable = GoalScore::new(Uuid::new_v4(), GoalLevel::NorthStar, 0.72, 1.0);
+        let warning = GoalScore::new(Uuid::new_v4(), GoalLevel::NorthStar, 0.60, 1.0);
+        let critical = GoalScore::new(Uuid::new_v4(), GoalLevel::NorthStar, 0.40, 1.0);
 
         assert!(!optimal.is_misaligned());
         assert!(!optimal.is_critical());
@@ -422,11 +424,11 @@ mod tests {
     #[test]
     fn test_goal_alignment_score_compute() {
         let scores = vec![
-            GoalScore::new(GoalId::new("ns"), GoalLevel::NorthStar, 0.85, 0.4),
-            GoalScore::new(GoalId::new("s1"), GoalLevel::Strategic, 0.75, 0.3),
-            GoalScore::new(GoalId::new("s2"), GoalLevel::Strategic, 0.65, 0.3),
-            GoalScore::new(GoalId::new("t1"), GoalLevel::Tactical, 0.55, 0.2),
-            GoalScore::new(GoalId::new("i1"), GoalLevel::Immediate, 0.45, 0.1),
+            GoalScore::new(Uuid::new_v4(), GoalLevel::NorthStar, 0.85, 0.4),
+            GoalScore::new(Uuid::new_v4(), GoalLevel::Strategic, 0.75, 0.3),
+            GoalScore::new(Uuid::new_v4(), GoalLevel::Strategic, 0.65, 0.3),
+            GoalScore::new(Uuid::new_v4(), GoalLevel::Tactical, 0.55, 0.2),
+            GoalScore::new(Uuid::new_v4(), GoalLevel::Immediate, 0.45, 0.1),
         ];
 
         let alignment = GoalAlignmentScore::compute(scores, LevelWeights::default());
@@ -476,8 +478,8 @@ mod tests {
     fn test_goal_alignment_score_partial_hierarchy() {
         // Only NorthStar and Strategic (no Tactical/Immediate)
         let scores = vec![
-            GoalScore::new(GoalId::new("ns"), GoalLevel::NorthStar, 0.90, 0.4),
-            GoalScore::new(GoalId::new("s1"), GoalLevel::Strategic, 0.80, 0.3),
+            GoalScore::new(Uuid::new_v4(), GoalLevel::NorthStar, 0.90, 0.4),
+            GoalScore::new(Uuid::new_v4(), GoalLevel::Strategic, 0.80, 0.3),
         ];
 
         let alignment = GoalAlignmentScore::compute(scores, LevelWeights::default());
@@ -495,10 +497,11 @@ mod tests {
 
     #[test]
     fn test_goal_alignment_score_misaligned_goals() {
+        let ns_id = Uuid::new_v4();
         let scores = vec![
-            GoalScore::new(GoalId::new("ns"), GoalLevel::NorthStar, 0.50, 0.4),  // Critical
-            GoalScore::new(GoalId::new("s1"), GoalLevel::Strategic, 0.60, 0.3),  // Warning
-            GoalScore::new(GoalId::new("s2"), GoalLevel::Strategic, 0.80, 0.3),  // Optimal
+            GoalScore::new(ns_id, GoalLevel::NorthStar, 0.50, 0.4),  // Critical
+            GoalScore::new(Uuid::new_v4(), GoalLevel::Strategic, 0.60, 0.3),  // Warning
+            GoalScore::new(Uuid::new_v4(), GoalLevel::Strategic, 0.80, 0.3),  // Optimal
         ];
 
         let alignment = GoalAlignmentScore::compute(scores, LevelWeights::default());
@@ -511,7 +514,7 @@ mod tests {
 
         let critical = alignment.critical_goals();
         assert_eq!(critical.len(), 1);
-        assert_eq!(critical[0].goal_id.as_str(), "ns");
+        assert_eq!(critical[0].goal_id, ns_id);
 
         println!("[VERIFIED] misaligned_goals and critical_goals filter correctly");
     }

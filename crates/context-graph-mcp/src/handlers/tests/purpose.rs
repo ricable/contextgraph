@@ -23,6 +23,44 @@ use crate::protocol::JsonRpcId;
 use context_graph_core::types::fingerprint::NUM_EMBEDDERS;
 
 use super::{create_test_handlers, create_test_handlers_no_north_star, make_request};
+use crate::handlers::Handlers;
+
+// =============================================================================
+// Helper Functions for UUID-based Goal Tests (TASK-CORE-005)
+// =============================================================================
+
+/// Extract goal IDs from the hierarchy via get_all query.
+/// Returns (north_star_id, strategic_ids, tactical_ids, immediate_ids).
+async fn get_goal_ids_from_hierarchy(handlers: &Handlers) -> (String, Vec<String>, Vec<String>, Vec<String>) {
+    let query_params = json!({ "operation": "get_all" });
+    let query_request = make_request(
+        "goal/hierarchy_query",
+        Some(JsonRpcId::Number(999)),
+        Some(query_params),
+    );
+    let response = handlers.dispatch(query_request).await;
+    let result = response.result.expect("get_all should succeed");
+    let goals = result.get("goals").and_then(|v| v.as_array()).expect("Should have goals");
+
+    let mut north_star_id = String::new();
+    let mut strategic_ids = Vec::new();
+    let mut tactical_ids = Vec::new();
+    let mut immediate_ids = Vec::new();
+
+    for goal in goals {
+        let id = goal.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let level = goal.get("level").and_then(|v| v.as_str()).unwrap_or("");
+        match level {
+            "NorthStar" => north_star_id = id,
+            "Strategic" => strategic_ids.push(id),
+            "Tactical" => tactical_ids.push(id),
+            "Immediate" => immediate_ids.push(id),
+            _ => {}
+        }
+    }
+
+    (north_star_id, strategic_ids, tactical_ids, immediate_ids)
+}
 
 // =============================================================================
 // purpose/query Tests
@@ -429,13 +467,18 @@ async fn test_goal_hierarchy_get_all() {
 }
 
 /// Test goal/hierarchy_query get_goal operation.
+/// TASK-CORE-005: Updated to use UUID-based goal IDs instead of hardcoded strings.
 #[tokio::test]
 async fn test_goal_hierarchy_get_goal() {
     let handlers = create_test_handlers();
 
+    // First, get the actual North Star ID from the hierarchy
+    let (north_star_id, _, _, _) = get_goal_ids_from_hierarchy(&handlers).await;
+    assert!(!north_star_id.is_empty(), "Should have North Star goal");
+
     let query_params = json!({
         "operation": "get_goal",
-        "goal_id": "ns_ml_system"
+        "goal_id": north_star_id
     });
     let query_request = make_request(
         "goal/hierarchy_query",
@@ -453,7 +496,7 @@ async fn test_goal_hierarchy_get_goal() {
     let goal = result.get("goal").expect("Should have goal");
     assert_eq!(
         goal.get("id").and_then(|v| v.as_str()),
-        Some("ns_ml_system"),
+        Some(north_star_id.as_str()),
         "Should return correct goal"
     );
     assert_eq!(
@@ -469,13 +512,18 @@ async fn test_goal_hierarchy_get_goal() {
 }
 
 /// Test goal/hierarchy_query get_children operation.
+/// TASK-CORE-005: Updated to use UUID-based goal IDs instead of hardcoded strings.
 #[tokio::test]
 async fn test_goal_hierarchy_get_children() {
     let handlers = create_test_handlers();
 
+    // First, get the actual North Star ID from the hierarchy
+    let (north_star_id, _, _, _) = get_goal_ids_from_hierarchy(&handlers).await;
+    assert!(!north_star_id.is_empty(), "Should have North Star goal");
+
     let query_params = json!({
         "operation": "get_children",
-        "goal_id": "ns_ml_system"
+        "goal_id": north_star_id
     });
     let query_request = make_request(
         "goal/hierarchy_query",
@@ -492,27 +540,33 @@ async fn test_goal_hierarchy_get_children() {
 
     assert_eq!(
         result.get("parent_goal_id").and_then(|v| v.as_str()),
-        Some("ns_ml_system"),
+        Some(north_star_id.as_str()),
         "Should return parent_goal_id"
     );
 
     let children = result.get("children").and_then(|v| v.as_array());
     assert!(children.is_some(), "Should have children array");
 
-    // From test hierarchy, ns_ml_system has 2 strategic children
+    // From test hierarchy, North Star has 2 strategic children
     let children = children.unwrap();
     assert_eq!(children.len(), 2, "North Star should have 2 strategic children");
 }
 
 /// Test goal/hierarchy_query get_ancestors operation.
+/// TASK-CORE-005: Updated to use UUID-based goal IDs instead of hardcoded strings.
 #[tokio::test]
 async fn test_goal_hierarchy_get_ancestors() {
     let handlers = create_test_handlers();
 
-    // Get ancestors of immediate goal i1_vector
+    // First, get the actual immediate goal ID from the hierarchy
+    let (_, _, _, immediate_ids) = get_goal_ids_from_hierarchy(&handlers).await;
+    assert!(!immediate_ids.is_empty(), "Should have at least one Immediate goal");
+    let immediate_id = &immediate_ids[0];
+
+    // Get ancestors of immediate goal
     let query_params = json!({
         "operation": "get_ancestors",
-        "goal_id": "i1_vector"
+        "goal_id": immediate_id
     });
     let query_request = make_request(
         "goal/hierarchy_query",
@@ -530,7 +584,7 @@ async fn test_goal_hierarchy_get_ancestors() {
     let ancestors = result.get("ancestors").and_then(|v| v.as_array());
     assert!(ancestors.is_some(), "Should have ancestors array");
 
-    // Path should be: i1_vector -> t1_semantic -> s1_retrieval -> ns_ml_system
+    // Path should be: Immediate -> Tactical -> Strategic -> NorthStar
     let ancestors = ancestors.unwrap();
     assert!(
         ancestors.len() >= 3,
@@ -539,14 +593,20 @@ async fn test_goal_hierarchy_get_ancestors() {
 }
 
 /// Test goal/hierarchy_query get_subtree operation.
+/// TASK-CORE-005: Updated to use UUID-based goal IDs instead of hardcoded strings.
 #[tokio::test]
 async fn test_goal_hierarchy_get_subtree() {
     let handlers = create_test_handlers();
 
-    // Get subtree rooted at s1_retrieval
+    // First, get the actual strategic goal ID from the hierarchy
+    let (_, strategic_ids, _, _) = get_goal_ids_from_hierarchy(&handlers).await;
+    assert!(!strategic_ids.is_empty(), "Should have at least one Strategic goal");
+    let strategic_id = &strategic_ids[0];
+
+    // Get subtree rooted at strategic goal
     let query_params = json!({
         "operation": "get_subtree",
-        "goal_id": "s1_retrieval"
+        "goal_id": strategic_id
     });
     let query_request = make_request(
         "goal/hierarchy_query",
@@ -563,7 +623,7 @@ async fn test_goal_hierarchy_get_subtree() {
 
     assert_eq!(
         result.get("root_goal_id").and_then(|v| v.as_str()),
-        Some("s1_retrieval"),
+        Some(strategic_id.as_str()),
         "Should return root_goal_id"
     );
 
@@ -626,13 +686,15 @@ async fn test_goal_hierarchy_unknown_operation_fails() {
 }
 
 /// Test goal/hierarchy_query fails with non-existent goal.
+/// TASK-CORE-005: Updated to use valid UUID format for non-existent goal.
 #[tokio::test]
 async fn test_goal_hierarchy_goal_not_found_fails() {
     let handlers = create_test_handlers();
 
+    // Use a valid UUID format that doesn't exist in the hierarchy
     let query_params = json!({
         "operation": "get_goal",
-        "goal_id": "nonexistent_goal"
+        "goal_id": "00000000-0000-0000-0000-000000000000"
     });
     let query_request = make_request(
         "goal/hierarchy_query",
@@ -654,9 +716,15 @@ async fn test_goal_hierarchy_goal_not_found_fails() {
 // =============================================================================
 
 /// Test goal/aligned_memories with valid goal.
+/// TASK-CORE-005: Updated to use UUID-based goal IDs instead of hardcoded strings.
 #[tokio::test]
 async fn test_goal_aligned_memories_valid() {
     let handlers = create_test_handlers();
+
+    // First, get the actual strategic goal ID from the hierarchy
+    let (_, strategic_ids, _, _) = get_goal_ids_from_hierarchy(&handlers).await;
+    assert!(!strategic_ids.is_empty(), "Should have at least one Strategic goal");
+    let strategic_id = &strategic_ids[0];
 
     // Store content
     let store_params = json!({
@@ -666,9 +734,9 @@ async fn test_goal_aligned_memories_valid() {
     let store_request = make_request("memory/store", Some(JsonRpcId::Number(1)), Some(store_params));
     handlers.dispatch(store_request).await;
 
-    // Find memories aligned to strategic goal s1_retrieval
+    // Find memories aligned to strategic goal
     let aligned_params = json!({
-        "goal_id": "s1_retrieval",
+        "goal_id": strategic_id,
         "topK": 10,
         "minAlignment": 0.0  // P1-FIX-1: Required parameter for fail-fast
     });
@@ -688,7 +756,7 @@ async fn test_goal_aligned_memories_valid() {
     let goal = result.get("goal").expect("Should have goal");
     assert_eq!(
         goal.get("id").and_then(|v| v.as_str()),
-        Some("s1_retrieval"),
+        Some(strategic_id.as_str()),
         "Should return correct goal"
     );
 
@@ -725,12 +793,14 @@ async fn test_goal_aligned_memories_missing_id_fails() {
 }
 
 /// Test goal/aligned_memories fails with non-existent goal.
+/// TASK-CORE-005: Updated to use valid UUID format for non-existent goal.
 #[tokio::test]
 async fn test_goal_aligned_memories_goal_not_found_fails() {
     let handlers = create_test_handlers();
 
+    // Use a valid UUID format that doesn't exist in the hierarchy
     let aligned_params = json!({
-        "goal_id": "nonexistent_goal",
+        "goal_id": "00000000-0000-0000-0000-000000000000",
         "minAlignment": 0.0  // P1-FIX-1: Required parameter (test expects goal not found error)
     });
     let aligned_request = make_request(

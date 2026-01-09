@@ -12,27 +12,36 @@
 //! ## Components
 //!
 //! - [`GoalHierarchy`]: Tree structure for organizing goals
+//! - [`GoalNode`]: Individual goal with TeleologicalArray for apples-to-apples comparison
+//! - [`GoalDiscoveryMetadata`]: How goals were autonomously discovered
 //! - [`PurposeVectorComputer`]: Trait for computing alignments
 //! - [`DefaultPurposeComputer`]: Standard implementation
 //! - [`SpladeAlignment`]: E13 keyword alignment details
+//!
+//! # Architecture (constitution.yaml)
+//!
+//! - **ARCH-02**: Goals use TeleologicalArray for apples-to-apples comparison
+//! - **ARCH-03**: Goals are discovered autonomously, not manually created
+//! - **ARCH-05**: All 13 embedders must be present in teleological_array
 //!
 //! # Example
 //!
 //! ```ignore
 //! use context_graph_core::purpose::{
-//!     GoalNode, GoalHierarchy, PurposeVectorComputer,
-//!     PurposeComputeConfig, DefaultPurposeComputer,
+//!     GoalNode, GoalHierarchy, GoalLevel, GoalDiscoveryMetadata, DiscoveryMethod,
+//!     PurposeVectorComputer, PurposeComputeConfig, DefaultPurposeComputer,
 //! };
 //! use context_graph_core::types::fingerprint::SemanticFingerprint;
 //!
-//! // Create goal hierarchy with North Star
+//! // Create goal hierarchy with North Star (discovered autonomously)
 //! let mut hierarchy = GoalHierarchy::new();
-//! let north_star = GoalNode::north_star(
-//!     "master_ml",
-//!     "Master machine learning",
-//!     vec![0.5; 1024],
-//!     vec!["machine".into(), "learning".into()],
-//! );
+//! let discovery = GoalDiscoveryMetadata::bootstrap();
+//! let north_star = GoalNode::autonomous_goal(
+//!     "Emergent ML mastery goal".into(),
+//!     GoalLevel::NorthStar,
+//!     SemanticFingerprint::zeroed(),
+//!     discovery,
+//! ).unwrap();
 //! hierarchy.add_goal(north_star).unwrap();
 //!
 //! // Compute purpose vector
@@ -55,7 +64,12 @@ mod splade;
 #[cfg(test)]
 mod tests;
 
-pub use goals::{GoalHierarchyError, GoalId, GoalLevel, GoalNode, GoalHierarchy};
+// Re-export goal types (TASK-CORE-005)
+// NOTE: GoalId is REMOVED - use uuid::Uuid directly
+pub use goals::{
+    DiscoveryMethod, GoalDiscoveryMetadata, GoalHierarchy, GoalHierarchyError, GoalLevel,
+    GoalNode, GoalNodeError,
+};
 pub use computer::{PurposeVectorComputer, PurposeComputeConfig, PurposeComputeError};
 pub use default_computer::DefaultPurposeComputer;
 pub use splade::SpladeAlignment;

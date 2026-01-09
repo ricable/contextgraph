@@ -26,7 +26,7 @@ use tempfile::TempDir;
 use context_graph_core::alignment::{DefaultAlignmentCalculator, GoalAlignmentCalculator};
 use context_graph_core::johari::{DynDefaultJohariManager, JohariTransitionManager};
 use context_graph_core::monitoring::{StubLayerStatusProvider, StubSystemMonitor};
-use context_graph_core::purpose::{GoalHierarchy, GoalId, GoalLevel, GoalNode};
+use context_graph_core::purpose::{GoalHierarchy, GoalLevel, GoalNode};
 use context_graph_core::stubs::{InMemoryTeleologicalStore, StubMultiArrayProvider, StubUtlProcessor};
 use context_graph_core::traits::{MultiArrayEmbeddingProvider, TeleologicalMemoryStore, UtlProcessor};
 use context_graph_core::{LayerStatusProvider, SystemMonitor};
@@ -121,31 +121,31 @@ async fn create_handlers_with_rocksdb_and_gwt() -> (Handlers, TempDir) {
 
 /// Create test goal hierarchy.
 fn create_test_hierarchy() -> GoalHierarchy {
+    use context_graph_core::purpose::GoalDiscoveryMetadata;
+    use context_graph_core::types::fingerprint::SemanticFingerprint;
+
     let mut hierarchy = GoalHierarchy::new();
-    let ns_embedding: Vec<f32> = (0..1024)
-        .map(|i| (i as f32 / 1024.0).sin() * 0.8)
-        .collect();
+    let discovery = GoalDiscoveryMetadata::bootstrap();
 
-    hierarchy
-        .add_goal(GoalNode::north_star(
-            "ns_gwt_test",
-            "GWT Test North Star",
-            ns_embedding.clone(),
-            vec!["gwt".into(), "test".into()],
-        ))
-        .expect("Failed to add North Star");
+    let ns_goal = GoalNode::autonomous_goal(
+        "GWT Test North Star".into(),
+        GoalLevel::NorthStar,
+        SemanticFingerprint::zeroed(),
+        discovery.clone(),
+    )
+    .expect("Failed to create North Star");
+    let ns_id = ns_goal.id;
+    hierarchy.add_goal(ns_goal).expect("Failed to add North Star");
 
-    hierarchy
-        .add_goal(GoalNode::child(
-            "s1_consciousness",
-            "Achieve consciousness",
-            GoalLevel::Strategic,
-            GoalId::new("ns_gwt_test"),
-            ns_embedding,
-            0.8,
-            vec!["consciousness".into()],
-        ))
-        .expect("Failed to add strategic goal");
+    let s1_goal = GoalNode::child_goal(
+        "Achieve consciousness".into(),
+        GoalLevel::Strategic,
+        ns_id,
+        SemanticFingerprint::zeroed(),
+        discovery,
+    )
+    .expect("Failed to create strategic goal");
+    hierarchy.add_goal(s1_goal).expect("Failed to add strategic goal");
 
     hierarchy
 }

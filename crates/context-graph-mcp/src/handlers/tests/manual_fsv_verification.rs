@@ -10,7 +10,8 @@ use uuid::Uuid;
 
 use context_graph_core::alignment::{DefaultAlignmentCalculator, GoalAlignmentCalculator};
 use context_graph_core::johari::{DynDefaultJohariManager, JohariTransitionManager, NUM_EMBEDDERS};
-use context_graph_core::purpose::{GoalHierarchy, GoalId, GoalLevel, GoalNode};
+use context_graph_core::purpose::{GoalDiscoveryMetadata, GoalHierarchy, GoalLevel, GoalNode};
+use context_graph_core::types::fingerprint::SemanticFingerprint;
 use context_graph_core::stubs::{InMemoryTeleologicalStore, StubMultiArrayProvider, StubUtlProcessor};
 use context_graph_core::traits::{MultiArrayEmbeddingProvider, TeleologicalMemoryStore, UtlProcessor};
 use context_graph_core::types::JohariQuadrant;
@@ -34,17 +35,25 @@ fn make_request(method: &str, id: i64, params: serde_json::Value) -> JsonRpcRequ
 
 fn create_test_hierarchy() -> GoalHierarchy {
     let mut hierarchy = GoalHierarchy::new();
-    let embedding: Vec<f32> = (0..1024).map(|i| (i as f32 / 1024.0).sin() * 0.8).collect();
+    let discovery = GoalDiscoveryMetadata::bootstrap();
 
-    hierarchy.add_goal(GoalNode::north_star(
-        "ns_test", "Test North Star", embedding.clone(),
-        vec!["test".into()],
-    )).unwrap();
+    let ns_goal = GoalNode::autonomous_goal(
+        "Test North Star".into(),
+        GoalLevel::NorthStar,
+        SemanticFingerprint::zeroed(),
+        discovery.clone(),
+    ).expect("Failed to create North Star");
+    let ns_id = ns_goal.id;
+    hierarchy.add_goal(ns_goal).unwrap();
 
-    hierarchy.add_goal(GoalNode::child(
-        "s1_test", "Strategic Goal", GoalLevel::Strategic,
-        GoalId::new("ns_test"), embedding, 0.8, vec!["strategic".into()],
-    )).unwrap();
+    let s1_goal = GoalNode::child_goal(
+        "Strategic Goal".into(),
+        GoalLevel::Strategic,
+        ns_id,
+        SemanticFingerprint::zeroed(),
+        discovery,
+    ).expect("Failed to create strategic goal");
+    hierarchy.add_goal(s1_goal).unwrap();
 
     hierarchy
 }

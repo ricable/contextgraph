@@ -41,7 +41,6 @@
 //! let alignments: &[f32; 13] = entry.get_alignments();
 //! ```
 
-use crate::purpose::GoalId;
 use crate::types::fingerprint::PurposeVector;
 use crate::types::JohariQuadrant;
 
@@ -49,6 +48,40 @@ use super::error::{PurposeIndexError, PurposeIndexResult};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use uuid::Uuid;
+
+/// String-based goal identifier for purpose indexing.
+///
+/// This type wraps goal names (like "master_ml", "learn_pytorch") for use in
+/// purpose metadata and filtering. It is distinct from `uuid::Uuid` which is
+/// used for `GoalNode.id` identifiers.
+///
+/// # Usage
+///
+/// ```ignore
+/// let goal = GoalId::new("master_machine_learning");
+/// assert_eq!(goal.as_str(), "master_machine_learning");
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct GoalId(String);
+
+impl GoalId {
+    /// Create a new goal ID from a string.
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Get the goal ID as a string slice.
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for GoalId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 /// Metadata about a purpose vector computation.
 ///

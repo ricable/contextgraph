@@ -31,7 +31,7 @@ mod tests {
 
     use crate::index::config::{DistanceMetric, HnswConfig, PURPOSE_VECTOR_DIM};
     use crate::index::error::IndexError;
-    use crate::purpose::GoalId;
+    use super::super::entry::GoalId;
     use crate::types::fingerprint::PurposeVector;
     use crate::types::JohariQuadrant;
 

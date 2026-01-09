@@ -28,9 +28,8 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::index::config::PURPOSE_VECTOR_DIM;
-use crate::purpose::GoalId;
 
-use super::entry::PurposeIndexEntry;
+use super::entry::{GoalId, PurposeIndexEntry};
 use super::error::{PurposeIndexError, PurposeIndexResult};
 
 /// A cluster of memories with similar purpose vectors.

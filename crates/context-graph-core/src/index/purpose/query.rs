@@ -45,11 +45,10 @@
 
 use uuid::Uuid;
 
-use crate::purpose::GoalId;
 use crate::types::fingerprint::PurposeVector;
 use crate::types::JohariQuadrant;
 
-use super::entry::PurposeMetadata;
+use super::entry::{GoalId, PurposeMetadata};
 use super::error::{PurposeIndexError, PurposeIndexResult};
 
 /// Specifies the target for a purpose-based query.

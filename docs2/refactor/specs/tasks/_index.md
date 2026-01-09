@@ -269,7 +269,7 @@ graph TD
 | TASK-CORE-002 | :white_check_mark: completed | 2026-01-09 | 2026-01-09 | YES |
 | TASK-CORE-003 | :white_check_mark: completed | 2026-01-09 | 2026-01-09 | YES |
 | TASK-CORE-004 | :white_check_mark: completed | 2026-01-09 | 2026-01-09 | YES |
-| TASK-CORE-005 | :white_circle: todo | - | - | - |
+| TASK-CORE-005 | :large_orange_diamond: in_progress | 2026-01-09 | - | Core done, MCP tests failing |
 | TASK-CORE-006 | :white_circle: todo | - | - | - |
 | TASK-CORE-007 | :white_circle: todo | - | - | - |
 | TASK-CORE-008 | :white_circle: todo | - | - | - |
@@ -334,7 +334,7 @@ graph TD
 | TASK-PERF-003 | :white_circle: todo | - | - | - |
 | TASK-PERF-004 | :white_circle: todo | - | - | - |
 
-**Progress: 4/52 tasks (8%)**
+**Progress: 4/52 tasks completed (8%), 1 in progress (TASK-CORE-005)**
 
 ---
 

@@ -317,9 +317,10 @@ impl Handlers {
         // Get goal_vector from North Star for UTL alignment computation (Issue 3 fix)
         // Per constitution.yaml: alignment = cos(content_embedding, goal_vector)
         // Without goal_vector, alignment always returns 1.0 (useless)
+        // Per TASK-CORE-005: Use E1 semantic embedding from TeleologicalArray for UTL alignment
         let goal_vector = {
             let hierarchy = self.goal_hierarchy.read();
-            hierarchy.north_star().map(|ns| ns.embedding.clone())
+            hierarchy.north_star().map(|ns| ns.teleological_array.e1_semantic.clone())
         };
 
         // Compute UTL metrics for the content

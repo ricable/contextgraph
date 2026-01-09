@@ -4,8 +4,8 @@
 //! that indicate issues or opportunities in the goal alignment.
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use crate::purpose::GoalId;
 use crate::types::fingerprint::{AlignmentThreshold, PurposeVector, NUM_EMBEDDERS};
 
 /// Detected alignment pattern with context.
@@ -18,7 +18,7 @@ pub struct AlignmentPattern {
     /// Human-readable description
     pub description: String,
     /// Affected goal IDs (if applicable)
-    pub affected_goals: Vec<GoalId>,
+    pub affected_goals: Vec<Uuid>,
     /// Suggested action
     pub suggestion: String,
 }
@@ -97,7 +97,7 @@ impl AlignmentPattern {
     }
 
     /// Add affected goals.
-    pub fn with_affected_goals(mut self, goals: Vec<GoalId>) -> Self {
+    pub fn with_affected_goals(mut self, goals: Vec<Uuid>) -> Self {
         self.affected_goals = goals;
         self
     }
@@ -273,7 +273,7 @@ mod tests {
             "Goal X is below critical threshold",
             "Review and adjust goal X alignment",
         )
-        .with_affected_goals(vec![GoalId::new("goal_x")])
+        .with_affected_goals(vec![Uuid::new_v4()])
         .with_severity(2);
 
         assert_eq!(pattern.pattern_type, PatternType::CriticalMisalignment);

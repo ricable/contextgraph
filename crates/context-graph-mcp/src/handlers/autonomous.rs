@@ -304,7 +304,7 @@ impl Handlers {
             id,
             json!({
                 "bootstrap_result": {
-                    "goal_id": north_star.id.as_str(),
+                    "goal_id": north_star.id.to_string(),
                     "goal_text": north_star.description,
                     "confidence": 1.0, // Existing North Star has full confidence
                     "source": "existing_north_star"
@@ -383,7 +383,7 @@ impl Handlers {
             "severity": format!("{:?}", severity),
             "trend": format!("{:?}", trend),
             "observation_count": 0, // Fresh detector has no observations
-            "goal_id": north_star.id.as_str(),
+            "goal_id": north_star.id.to_string(),
             "note": "Drift detection requires historical observations. Add observations via memory operations."
         });
 
@@ -407,7 +407,7 @@ impl Handlers {
             "current_state": current_state,
             "recommendation": recommendation_json,
             "timeframe": params.timeframe,
-            "north_star_id": north_star.id.as_str()
+            "north_star_id": north_star.id.to_string()
         });
 
         // Optionally include history
@@ -760,9 +760,19 @@ impl Handlers {
             let hierarchy = self.goal_hierarchy.read();
 
             match &params.parent_goal_id {
-                Some(goal_id) => {
-                    // Look for specific goal using GoalId wrapper
-                    let goal_id = context_graph_core::purpose::GoalId::from(goal_id.as_str());
+                Some(goal_id_str) => {
+                    // Parse goal_id as UUID (per TASK-CORE-005: GoalId removed, use Uuid directly)
+                    let goal_id = match uuid::Uuid::parse_str(goal_id_str) {
+                        Ok(uuid) => uuid,
+                        Err(e) => {
+                            error!(goal_id = %goal_id_str, error = %e, "discover_sub_goals: Invalid goal UUID");
+                            return JsonRpcResponse::error(
+                                id,
+                                error_codes::INVALID_PARAMS,
+                                format!("Invalid goal UUID '{}': {}", goal_id_str, e),
+                            );
+                        }
+                    };
                     match hierarchy.get(&goal_id) {
                         Some(goal) => goal.clone(),
                         None => {
@@ -808,7 +818,7 @@ impl Handlers {
 
         // Build cluster analysis
         let cluster_analysis = json!({
-            "parent_goal_id": parent_goal.id.as_str(),
+            "parent_goal_id": parent_goal.id.to_string(),
             "parent_goal_description": parent_goal.description,
             "clusters_analyzed": 0,
             "memory_count_analyzed": 0,
@@ -830,7 +840,7 @@ impl Handlers {
             json!({
                 "discovered_goals": discovered_goals,
                 "cluster_analysis": cluster_analysis,
-                "parent_goal_id": parent_goal.id.as_str(),
+                "parent_goal_id": parent_goal.id.to_string(),
                 "discovery_count": discovered_goals.len()
             }),
         )
@@ -882,9 +892,9 @@ impl Handlers {
             match hierarchy.north_star() {
                 Some(ns) => json!({
                     "configured": true,
-                    "goal_id": ns.id.as_str(),
+                    "goal_id": ns.id.to_string(),
                     "description": ns.description,
-                    "keywords_count": ns.keywords.len()
+                    "level": format!("{:?}", ns.level)
                 }),
                 None => json!({
                     "configured": false,

@@ -39,10 +39,11 @@ use async_trait::async_trait;
 use tracing::{debug, error, warn};
 
 use crate::config::constants::alignment as thresholds;
-use crate::purpose::{GoalHierarchy, GoalId, GoalLevel, GoalNode};
+use crate::purpose::{GoalHierarchy, GoalLevel, GoalNode};
 use crate::types::fingerprint::{
     AlignmentThreshold, SemanticFingerprint, TeleologicalFingerprint, NUM_EMBEDDERS,
 };
+use uuid::Uuid;
 
 use super::config::AlignmentConfig;
 use super::error::AlignmentError;
@@ -363,7 +364,7 @@ impl DefaultAlignmentCalculator {
         let final_alignment = weighted_alignment * level_weight;
 
         GoalScore::new(
-            goal.id.clone(),
+            goal.id,
             goal.level,
             final_alignment,
             config_weight,
@@ -382,60 +383,60 @@ impl DefaultAlignmentCalculator {
     /// - Token-level embeddings (E12): Max-sim over tokens
     ///
     /// Goal embedding is projected to match each space's dimensions when needed.
+    /// Compute cosine similarity for ALL 13 embedding spaces using apples-to-apples comparison.
+    ///
+    /// ARCH-02: Each embedding space in the fingerprint is compared with the corresponding
+    /// embedding space in the goal's teleological array. E1 vs E1, E2 vs E2, etc.
+    ///
+    /// Returns an array of 13 alignment values, one for each embedding space.
+    /// Each value is normalized to [0, 1] range.
     fn compute_all_space_alignments(
         &self,
         fingerprint: &SemanticFingerprint,
         goal: &GoalNode,
     ) -> [f32; NUM_EMBEDDERS] {
         let mut alignments = [0.0f32; NUM_EMBEDDERS];
+        let goal_array = goal.array();
 
-        // E1: Semantic (1024D) - primary alignment
-        alignments[0] = self.compute_dense_alignment(&fingerprint.e1_semantic, &goal.embedding);
+        // ARCH-02: Apples-to-apples comparison - same embedder to same embedder
+        // E1: Semantic (1024D) - E1 vs E1
+        alignments[0] = self.compute_dense_alignment(&fingerprint.e1_semantic, &goal_array.e1_semantic);
 
-        // E2: Temporal Recent (512D)
-        let projected_e2 = Self::project_embedding(&goal.embedding, fingerprint.e2_temporal_recent.len());
-        alignments[1] = self.compute_dense_alignment(&fingerprint.e2_temporal_recent, &projected_e2);
+        // E2: Temporal Recent (512D) - E2 vs E2
+        alignments[1] = self.compute_dense_alignment(&fingerprint.e2_temporal_recent, &goal_array.e2_temporal_recent);
 
-        // E3: Temporal Periodic (512D)
-        let projected_e3 = Self::project_embedding(&goal.embedding, fingerprint.e3_temporal_periodic.len());
-        alignments[2] = self.compute_dense_alignment(&fingerprint.e3_temporal_periodic, &projected_e3);
+        // E3: Temporal Periodic (512D) - E3 vs E3
+        alignments[2] = self.compute_dense_alignment(&fingerprint.e3_temporal_periodic, &goal_array.e3_temporal_periodic);
 
-        // E4: Temporal Positional (512D)
-        let projected_e4 = Self::project_embedding(&goal.embedding, fingerprint.e4_temporal_positional.len());
-        alignments[3] = self.compute_dense_alignment(&fingerprint.e4_temporal_positional, &projected_e4);
+        // E4: Temporal Positional (512D) - E4 vs E4
+        alignments[3] = self.compute_dense_alignment(&fingerprint.e4_temporal_positional, &goal_array.e4_temporal_positional);
 
-        // E5: Causal (768D)
-        let projected_e5 = Self::project_embedding(&goal.embedding, fingerprint.e5_causal.len());
-        alignments[4] = self.compute_dense_alignment(&fingerprint.e5_causal, &projected_e5);
+        // E5: Causal (768D) - E5 vs E5
+        alignments[4] = self.compute_dense_alignment(&fingerprint.e5_causal, &goal_array.e5_causal);
 
-        // E6: Sparse (SPLADE) - use keyword matching
-        alignments[5] = self.compute_sparse_alignment(&fingerprint.e6_sparse, goal);
+        // E6: Sparse (SPLADE) - E6 vs E6
+        alignments[5] = self.compute_sparse_vector_alignment(&fingerprint.e6_sparse, &goal_array.e6_sparse);
 
-        // E7: Code (1536D - Qodo-Embed)
-        let projected_e7 = Self::project_embedding(&goal.embedding, fingerprint.e7_code.len());
-        alignments[6] = self.compute_dense_alignment(&fingerprint.e7_code, &projected_e7);
+        // E7: Code (1536D - Qodo-Embed) - E7 vs E7
+        alignments[6] = self.compute_dense_alignment(&fingerprint.e7_code, &goal_array.e7_code);
 
-        // E8: Graph (384D)
-        let projected_e8 = Self::project_embedding(&goal.embedding, fingerprint.e8_graph.len());
-        alignments[7] = self.compute_dense_alignment(&fingerprint.e8_graph, &projected_e8);
+        // E8: Graph (384D) - E8 vs E8
+        alignments[7] = self.compute_dense_alignment(&fingerprint.e8_graph, &goal_array.e8_graph);
 
-        // E9: HDC (10000D) - hyperdimensional computing
-        let projected_e9 = Self::project_embedding(&goal.embedding, fingerprint.e9_hdc.len());
-        alignments[8] = self.compute_dense_alignment(&fingerprint.e9_hdc, &projected_e9);
+        // E9: HDC (1024D projected) - E9 vs E9
+        alignments[8] = self.compute_dense_alignment(&fingerprint.e9_hdc, &goal_array.e9_hdc);
 
-        // E10: Multimodal (768D)
-        let projected_e10 = Self::project_embedding(&goal.embedding, fingerprint.e10_multimodal.len());
-        alignments[9] = self.compute_dense_alignment(&fingerprint.e10_multimodal, &projected_e10);
+        // E10: Multimodal (768D) - E10 vs E10
+        alignments[9] = self.compute_dense_alignment(&fingerprint.e10_multimodal, &goal_array.e10_multimodal);
 
-        // E11: Entity (384D)
-        let projected_e11 = Self::project_embedding(&goal.embedding, fingerprint.e11_entity.len());
-        alignments[10] = self.compute_dense_alignment(&fingerprint.e11_entity, &projected_e11);
+        // E11: Entity (384D) - E11 vs E11
+        alignments[10] = self.compute_dense_alignment(&fingerprint.e11_entity, &goal_array.e11_entity);
 
-        // E12: Late Interaction (ColBERT) - max-sim over tokens
-        alignments[11] = self.compute_late_interaction_alignment(&fingerprint.e12_late_interaction, goal);
+        // E12: Late Interaction (ColBERT) - E12 vs E12 (max-sim over tokens)
+        alignments[11] = self.compute_late_interaction_vectors(&fingerprint.e12_late_interaction, &goal_array.e12_late_interaction);
 
-        // E13: SPLADE v3 - keyword precision
-        alignments[12] = self.compute_splade_alignment(&fingerprint.e13_splade, goal);
+        // E13: SPLADE v3 - E13 vs E13
+        alignments[12] = self.compute_sparse_vector_alignment(&fingerprint.e13_splade, &goal_array.e13_splade);
 
         alignments
     }
@@ -475,71 +476,85 @@ impl DefaultAlignmentCalculator {
         result
     }
 
-    /// Compute sparse alignment using keyword matching for E6.
+    /// Compute sparse vector alignment using cosine similarity between sparse vectors.
     ///
-    /// Matches goal keywords against the sparse vector's active indices.
-    fn compute_sparse_alignment(
+    /// ARCH-02: Apples-to-apples comparison between sparse vectors in the same embedding space.
+    fn compute_sparse_vector_alignment(
         &self,
-        sparse: &crate::types::fingerprint::SparseVector,
-        goal: &GoalNode,
+        fp_sparse: &crate::types::fingerprint::SparseVector,
+        goal_sparse: &crate::types::fingerprint::SparseVector,
     ) -> f32 {
-        if sparse.is_empty() || goal.keywords.is_empty() {
-            return 0.5; // Neutral alignment
+        if fp_sparse.is_empty() && goal_sparse.is_empty() {
+            return 0.5; // Both empty = neutral alignment
+        }
+        if fp_sparse.is_empty() || goal_sparse.is_empty() {
+            return 0.25; // One empty = low alignment
         }
 
-        // Compute based on sparse vector magnitude as proxy for relevance
-        // Higher L2 norm indicates more active/relevant content
-        let norm = sparse.l2_norm();
-        let alignment = (norm / 10.0).min(1.0); // Normalize to [0, 1]
-        (alignment + 1.0) / 2.0 // Map to [0.5, 1.0] range
-    }
+        // Compute sparse vector dot product over shared indices
+        let mut dot = 0.0f32;
+        let mut fp_i = 0;
+        let mut goal_i = 0;
 
-    /// Compute late interaction alignment (E12 ColBERT) using max-sim.
-    ///
-    /// For each goal keyword, find max similarity across all token embeddings.
-    fn compute_late_interaction_alignment(
-        &self,
-        tokens: &[Vec<f32>],
-        goal: &GoalNode,
-    ) -> f32 {
-        if tokens.is_empty() {
-            return 0.5; // Neutral alignment
-        }
+        while fp_i < fp_sparse.indices.len() && goal_i < goal_sparse.indices.len() {
+            let fp_idx = fp_sparse.indices[fp_i];
+            let goal_idx = goal_sparse.indices[goal_i];
 
-        // Project goal embedding to token dimension (128D)
-        let goal_token = Self::project_embedding(&goal.embedding, 128);
-
-        // MaxSim: find maximum similarity across all tokens
-        let mut max_sim = -1.0f32;
-        for token in tokens {
-            let sim = Self::cosine_similarity(token, &goal_token);
-            if sim > max_sim {
-                max_sim = sim;
+            if fp_idx == goal_idx {
+                dot += fp_sparse.values[fp_i] * goal_sparse.values[goal_i];
+                fp_i += 1;
+                goal_i += 1;
+            } else if fp_idx < goal_idx {
+                fp_i += 1;
+            } else {
+                goal_i += 1;
             }
         }
 
-        // Normalize to [0, 1]
-        (max_sim + 1.0) / 2.0
-    }
+        let fp_norm = fp_sparse.l2_norm();
+        let goal_norm = goal_sparse.l2_norm();
+        let denom = fp_norm * goal_norm;
 
-    /// Compute SPLADE v3 alignment (E13) for keyword precision.
-    fn compute_splade_alignment(
-        &self,
-        splade: &crate::types::fingerprint::SparseVector,
-        _goal: &GoalNode,
-    ) -> f32 {
-        if splade.is_empty() {
-            return 0.5; // Neutral alignment
+        if denom < f32::EPSILON {
+            return 0.5; // Neutral for zero-norm vectors
         }
 
-        // SPLADE alignment based on sparse activation patterns
-        // Higher number of active indices with higher values = better keyword coverage
-        let activation_strength = splade.values.iter().sum::<f32>() / splade.nnz() as f32;
-        let coverage = (splade.nnz() as f32 / 100.0).min(1.0); // Normalize NNZ
+        let cosine = dot / denom;
+        // Normalize cosine [-1, 1] to [0, 1]
+        (cosine + 1.0) / 2.0
+    }
 
-        // Combine activation strength and coverage
-        let alignment = (activation_strength * coverage).min(1.0);
-        (alignment + 1.0) / 2.0 // Map to [0.5, 1.0] range
+    /// Compute late interaction alignment (ColBERT style) using max-sim between token vectors.
+    ///
+    /// ARCH-02: Apples-to-apples comparison between late interaction token vectors.
+    fn compute_late_interaction_vectors(
+        &self,
+        fp_tokens: &[Vec<f32>],
+        goal_tokens: &[Vec<f32>],
+    ) -> f32 {
+        if fp_tokens.is_empty() && goal_tokens.is_empty() {
+            return 0.5; // Both empty = neutral alignment
+        }
+        if fp_tokens.is_empty() || goal_tokens.is_empty() {
+            return 0.25; // One empty = low alignment
+        }
+
+        // MaxSim: for each fingerprint token, find max similarity across goal tokens
+        let mut total_max_sim = 0.0f32;
+        for fp_token in fp_tokens {
+            let mut max_sim = -1.0f32;
+            for goal_token in goal_tokens {
+                let sim = Self::cosine_similarity(fp_token, goal_token);
+                if sim > max_sim {
+                    max_sim = sim;
+                }
+            }
+            total_max_sim += max_sim;
+        }
+
+        // Average max similarity and normalize to [0, 1]
+        let avg_max_sim = total_max_sim / fp_tokens.len() as f32;
+        (avg_max_sim + 1.0) / 2.0
     }
 
     /// Get propagation weight for a goal level.
@@ -585,10 +600,10 @@ impl DefaultAlignmentCalculator {
         for goal_score in &score.goal_scores {
             match goal_score.threshold {
                 AlignmentThreshold::Critical => {
-                    flags.mark_below_threshold(goal_score.goal_id.clone());
+                    flags.mark_below_threshold(goal_score.goal_id);
                 }
                 AlignmentThreshold::Warning => {
-                    flags.mark_warning(goal_score.goal_id.clone());
+                    flags.mark_warning(goal_score.goal_id);
                 }
                 _ => {}
             }
@@ -609,19 +624,19 @@ impl DefaultAlignmentCalculator {
         thresholds: &MisalignmentThresholds,
     ) {
         // Build a map of goal_id -> alignment
-        let alignment_map: std::collections::HashMap<&GoalId, f32> = score
+        let alignment_map: std::collections::HashMap<Uuid, f32> = score
             .goal_scores
             .iter()
-            .map(|s| (&s.goal_id, s.alignment))
+            .map(|s| (s.goal_id, s.alignment))
             .collect();
 
         // Check each goal against its parent
         for goal_score in &score.goal_scores {
             if let Some(goal) = hierarchy.get(&goal_score.goal_id) {
-                if let Some(ref parent_id) = goal.parent {
-                    if let Some(&parent_alignment) = alignment_map.get(parent_id) {
+                if let Some(parent_id) = goal.parent_id {
+                    if let Some(&parent_alignment) = alignment_map.get(&parent_id) {
                         if thresholds.is_divergent(parent_alignment, goal_score.alignment) {
-                            flags.mark_divergent(parent_id.clone(), goal_score.goal_id.clone());
+                            flags.mark_divergent(parent_id, goal_score.goal_id);
                             warn!(
                                 parent = %parent_id,
                                 child = %goal_score.goal_id,
@@ -892,73 +907,86 @@ impl GoalAlignmentCalculator for DefaultAlignmentCalculator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::purpose::GoalDiscoveryMetadata;
     use crate::types::fingerprint::{JohariFingerprint, PurposeVector, NUM_EMBEDDERS};
 
-    fn create_test_fingerprint(alignment: f32) -> TeleologicalFingerprint {
-        let mut semantic = SemanticFingerprint::zeroed();
+    fn test_discovery() -> GoalDiscoveryMetadata {
+        GoalDiscoveryMetadata::bootstrap()
+    }
 
-        // Populate ALL 13 embedding spaces for proper multi-space alignment testing.
-        // Per constitution.yaml, alignment uses ALL 13 embedders:
-        // A_multi = SUM_i(w_i * A(E_i, V)) where SUM(w_i) = 1
+    /// Create a SemanticFingerprint with deterministic values based on a seed.
+    fn create_test_semantic_fingerprint(seed: f32) -> SemanticFingerprint {
+        let mut fp = SemanticFingerprint::zeroed();
 
-        // E1: Semantic (1024D) - primary alignment
-        for i in 0..semantic.e1_semantic.len() {
-            semantic.e1_semantic[i] = (i as f32 / 1024.0).sin() * alignment;
+        // E1: Semantic (1024D)
+        for i in 0..fp.e1_semantic.len() {
+            fp.e1_semantic[i] = ((i as f32 / 128.0 + seed).sin()).clamp(-1.0, 1.0);
         }
 
         // E2: Temporal Recent (512D)
-        for i in 0..semantic.e2_temporal_recent.len() {
-            semantic.e2_temporal_recent[i] = (i as f32 / 512.0).sin() * alignment;
+        for i in 0..fp.e2_temporal_recent.len() {
+            fp.e2_temporal_recent[i] = ((i as f32 / 64.0 + seed * 1.1).sin()).clamp(-1.0, 1.0);
         }
 
         // E3: Temporal Periodic (512D)
-        for i in 0..semantic.e3_temporal_periodic.len() {
-            semantic.e3_temporal_periodic[i] = (i as f32 / 512.0).sin() * alignment;
+        for i in 0..fp.e3_temporal_periodic.len() {
+            fp.e3_temporal_periodic[i] = ((i as f32 / 64.0 + seed * 1.2).sin()).clamp(-1.0, 1.0);
         }
 
         // E4: Temporal Positional (512D)
-        for i in 0..semantic.e4_temporal_positional.len() {
-            semantic.e4_temporal_positional[i] = (i as f32 / 512.0).sin() * alignment;
+        for i in 0..fp.e4_temporal_positional.len() {
+            fp.e4_temporal_positional[i] = ((i as f32 / 64.0 + seed * 1.3).sin()).clamp(-1.0, 1.0);
         }
 
         // E5: Causal (768D)
-        for i in 0..semantic.e5_causal.len() {
-            semantic.e5_causal[i] = (i as f32 / 768.0).sin() * alignment;
+        for i in 0..fp.e5_causal.len() {
+            fp.e5_causal[i] = ((i as f32 / 96.0 + seed * 1.4).sin()).clamp(-1.0, 1.0);
         }
 
-        // E6: Sparse - set some active indices for non-zero alignment
-        // (Sparse alignment computed separately, neutral 0.5 is fine for test)
+        // E6: Sparse - add some values
+        fp.e6_sparse.indices = vec![10, 50, 100, 200];
+        fp.e6_sparse.values = vec![seed.abs() * 0.5 + 0.1; 4];
 
-        // E7: Code (1536D - Qodo-Embed)
-        for i in 0..semantic.e7_code.len() {
-            semantic.e7_code[i] = (i as f32 / 1536.0).sin() * alignment;
+        // E7: Code (1536D)
+        for i in 0..fp.e7_code.len() {
+            fp.e7_code[i] = ((i as f32 / 192.0 + seed * 1.5).sin()).clamp(-1.0, 1.0);
         }
 
         // E8: Graph (384D)
-        for i in 0..semantic.e8_graph.len() {
-            semantic.e8_graph[i] = (i as f32 / 384.0).sin() * alignment;
+        for i in 0..fp.e8_graph.len() {
+            fp.e8_graph[i] = ((i as f32 / 48.0 + seed * 1.6).sin()).clamp(-1.0, 1.0);
         }
 
-        // E9: HDC (1024D projected)
-        for i in 0..semantic.e9_hdc.len() {
-            semantic.e9_hdc[i] = (i as f32 / 1024.0).sin() * alignment;
+        // E9: HDC (1024D)
+        for i in 0..fp.e9_hdc.len() {
+            fp.e9_hdc[i] = ((i as f32 / 128.0 + seed * 1.7).sin()).clamp(-1.0, 1.0);
         }
 
         // E10: Multimodal (768D)
-        for i in 0..semantic.e10_multimodal.len() {
-            semantic.e10_multimodal[i] = (i as f32 / 768.0).sin() * alignment;
+        for i in 0..fp.e10_multimodal.len() {
+            fp.e10_multimodal[i] = ((i as f32 / 96.0 + seed * 1.8).sin()).clamp(-1.0, 1.0);
         }
 
         // E11: Entity (384D)
-        for i in 0..semantic.e11_entity.len() {
-            semantic.e11_entity[i] = (i as f32 / 384.0).sin() * alignment;
+        for i in 0..fp.e11_entity.len() {
+            fp.e11_entity[i] = ((i as f32 / 48.0 + seed * 1.9).sin()).clamp(-1.0, 1.0);
         }
 
-        // E12: Late Interaction - add some token embeddings
-        // (Late interaction uses max-sim, neutral for test)
+        // E12: Late Interaction - add a few token vectors
+        fp.e12_late_interaction = vec![
+            (0..128).map(|i| ((i as f32 / 16.0 + seed * 2.0).sin()).clamp(-1.0, 1.0)).collect(),
+            (0..128).map(|i| ((i as f32 / 16.0 + seed * 2.1).sin()).clamp(-1.0, 1.0)).collect(),
+        ];
 
-        // E13: SPLADE sparse - neutral for test
+        // E13: SPLADE sparse
+        fp.e13_splade.indices = vec![5, 25, 75, 150];
+        fp.e13_splade.values = vec![seed.abs() * 0.4 + 0.2; 4];
 
+        fp
+    }
+
+    fn create_test_fingerprint(alignment: f32) -> TeleologicalFingerprint {
+        let semantic = create_test_semantic_fingerprint(alignment);
         let purpose_vector = PurposeVector::new([alignment; NUM_EMBEDDERS]);
         let johari = JohariFingerprint::zeroed();
 
@@ -979,59 +1007,62 @@ mod tests {
     fn create_test_hierarchy() -> GoalHierarchy {
         let mut hierarchy = GoalHierarchy::new();
 
-        // Create embedding that matches our test fingerprint
-        let ns_embedding: Vec<f32> = (0..1024)
-            .map(|i| (i as f32 / 1024.0).sin() * 0.8)
-            .collect();
+        // Create TeleologicalArray (SemanticFingerprint) for goals
+        let ns_fp = create_test_semantic_fingerprint(0.8);
 
         // North Star
+        let ns = GoalNode::autonomous_goal(
+            "Build the best product".into(),
+            GoalLevel::NorthStar,
+            ns_fp.clone(),
+            test_discovery(),
+        )
+        .expect("FAIL: Could not create North Star goal");
+        let ns_id = ns.id;
         hierarchy
-            .add_goal(GoalNode::north_star(
-                "ns",
-                "Build the best product",
-                ns_embedding.clone(),
-                vec!["product".into(), "best".into()],
-            ))
-            .expect("Failed to add North Star");
+            .add_goal(ns)
+            .expect("FAIL: Could not add North Star to hierarchy");
 
         // Strategic goal
+        let s1 = GoalNode::child_goal(
+            "Improve user experience".into(),
+            GoalLevel::Strategic,
+            ns_id,
+            create_test_semantic_fingerprint(0.75),
+            test_discovery(),
+        )
+        .expect("FAIL: Could not create Strategic goal");
+        let s1_id = s1.id;
         hierarchy
-            .add_goal(GoalNode::child(
-                "s1",
-                "Improve user experience",
-                GoalLevel::Strategic,
-                GoalId::new("ns"),
-                ns_embedding.clone(),
-                0.8,
-                vec!["ux".into()],
-            ))
-            .expect("Failed to add strategic goal");
+            .add_goal(s1)
+            .expect("FAIL: Could not add Strategic goal to hierarchy");
 
         // Tactical goal
+        let t1 = GoalNode::child_goal(
+            "Reduce page load time".into(),
+            GoalLevel::Tactical,
+            s1_id,
+            create_test_semantic_fingerprint(0.7),
+            test_discovery(),
+        )
+        .expect("FAIL: Could not create Tactical goal");
+        let t1_id = t1.id;
         hierarchy
-            .add_goal(GoalNode::child(
-                "t1",
-                "Reduce page load time",
-                GoalLevel::Tactical,
-                GoalId::new("s1"),
-                ns_embedding.clone(),
-                0.7,
-                vec!["performance".into()],
-            ))
-            .expect("Failed to add tactical goal");
+            .add_goal(t1)
+            .expect("FAIL: Could not add Tactical goal to hierarchy");
 
         // Immediate goal
+        let i1 = GoalNode::child_goal(
+            "Optimize image loading".into(),
+            GoalLevel::Immediate,
+            t1_id,
+            create_test_semantic_fingerprint(0.65),
+            test_discovery(),
+        )
+        .expect("FAIL: Could not create Immediate goal");
         hierarchy
-            .add_goal(GoalNode::child(
-                "i1",
-                "Optimize image loading",
-                GoalLevel::Immediate,
-                GoalId::new("t1"),
-                ns_embedding,
-                0.6,
-                vec!["images".into()],
-            ))
-            .expect("Failed to add immediate goal");
+            .add_goal(i1)
+            .expect("FAIL: Could not add Immediate goal to hierarchy");
 
         hierarchy
     }
@@ -1237,12 +1268,12 @@ mod tests {
         let calculator = DefaultAlignmentCalculator::new();
         let hierarchy = create_test_hierarchy();
 
-        // Create optimal score
+        // Create optimal score using UUIDs
         let scores = vec![
-            GoalScore::new(GoalId::new("ns"), GoalLevel::NorthStar, 0.85, 0.4),
-            GoalScore::new(GoalId::new("s1"), GoalLevel::Strategic, 0.80, 0.3),
-            GoalScore::new(GoalId::new("t1"), GoalLevel::Tactical, 0.78, 0.2),
-            GoalScore::new(GoalId::new("i1"), GoalLevel::Immediate, 0.76, 0.1),
+            GoalScore::new(Uuid::new_v4(), GoalLevel::NorthStar, 0.85, 0.4),
+            GoalScore::new(Uuid::new_v4(), GoalLevel::Strategic, 0.80, 0.3),
+            GoalScore::new(Uuid::new_v4(), GoalLevel::Tactical, 0.78, 0.2),
+            GoalScore::new(Uuid::new_v4(), GoalLevel::Immediate, 0.76, 0.1),
         ];
         let score = GoalAlignmentScore::compute(scores, LevelWeights::default());
         let flags = MisalignmentFlags::empty();
@@ -1268,10 +1299,10 @@ mod tests {
         let calculator = DefaultAlignmentCalculator::new();
         let hierarchy = create_test_hierarchy();
 
-        // Create score with low North Star alignment
+        // Create score with low North Star alignment using UUIDs
         let scores = vec![
-            GoalScore::new(GoalId::new("ns"), GoalLevel::NorthStar, 0.40, 0.4),  // Below warning
-            GoalScore::new(GoalId::new("s1"), GoalLevel::Strategic, 0.80, 0.3),
+            GoalScore::new(Uuid::new_v4(), GoalLevel::NorthStar, 0.40, 0.4),  // Below warning
+            GoalScore::new(Uuid::new_v4(), GoalLevel::Strategic, 0.80, 0.3),
         ];
         let score = GoalAlignmentScore::compute(scores, LevelWeights::default());
         let flags = MisalignmentFlags::empty();
@@ -1401,18 +1432,16 @@ mod tests {
         let calculator = DefaultAlignmentCalculator::new();
 
         // Create a test fingerprint with known values
-        let mut semantic = SemanticFingerprint::zeroed();
-        for i in 0..semantic.e1_semantic.len() {
-            semantic.e1_semantic[i] = 0.5;
-        }
+        let semantic = create_test_semantic_fingerprint(0.5);
 
-        // Create a goal
-        let goal = GoalNode::north_star(
-            "test",
-            "Test goal",
-            vec![0.5; 1024],
-            vec!["test".into()],
-        );
+        // Create a goal using new API
+        let goal = GoalNode::autonomous_goal(
+            "Test goal".into(),
+            GoalLevel::NorthStar,
+            create_test_semantic_fingerprint(0.5),
+            test_discovery(),
+        )
+        .expect("FAIL: Could not create test goal");
 
         // Compute all space alignments
         let alignments = calculator.compute_all_space_alignments(&semantic, &goal);
@@ -1453,18 +1482,16 @@ mod tests {
     fn test_multi_space_weighted_aggregation() {
         let calculator = DefaultAlignmentCalculator::new();
 
-        // Create test fingerprint and goal
-        let mut semantic = SemanticFingerprint::zeroed();
-        for i in 0..semantic.e1_semantic.len() {
-            semantic.e1_semantic[i] = (i as f32 / 1024.0).sin();
-        }
+        // Create test fingerprint and goal using same seed for high correlation
+        let semantic = create_test_semantic_fingerprint(0.8);
 
-        let goal = GoalNode::north_star(
-            "test",
-            "Test goal",
-            (0..1024).map(|i| (i as f32 / 1024.0).sin()).collect(),
-            vec!["test".into()],
-        );
+        let goal = GoalNode::autonomous_goal(
+            "Test goal".into(),
+            GoalLevel::NorthStar,
+            create_test_semantic_fingerprint(0.8),
+            test_discovery(),
+        )
+        .expect("FAIL: Could not create test goal");
 
         let weights = LevelWeights::default();
 

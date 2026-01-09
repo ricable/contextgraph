@@ -11,8 +11,7 @@
 //! - `inconsistent_alignment`: High variance across embedding spaces
 
 use serde::{Deserialize, Serialize};
-
-use crate::purpose::GoalId;
+use uuid::Uuid;
 
 /// Flags indicating specific misalignment patterns.
 ///
@@ -43,16 +42,16 @@ pub struct MisalignmentFlags {
     pub inconsistent_alignment: bool,
 
     /// List of goal IDs that are critically misaligned.
-    pub critical_goals: Vec<GoalId>,
+    pub critical_goals: Vec<Uuid>,
 
     /// List of goal IDs that are in warning state.
-    pub warning_goals: Vec<GoalId>,
+    pub warning_goals: Vec<Uuid>,
 
     /// Alignment variance across embedding spaces (for debugging).
     pub alignment_variance: f32,
 
     /// Details about divergent hierarchy (parent -> child pairs).
-    pub divergent_pairs: Vec<(GoalId, GoalId)>,
+    pub divergent_pairs: Vec<(Uuid, Uuid)>,
 }
 
 impl MisalignmentFlags {
@@ -109,7 +108,7 @@ impl MisalignmentFlags {
     }
 
     /// Set the below_threshold flag and add critical goal.
-    pub fn mark_below_threshold(&mut self, goal_id: GoalId) {
+    pub fn mark_below_threshold(&mut self, goal_id: Uuid) {
         self.below_threshold = true;
         if !self.critical_goals.contains(&goal_id) {
             self.critical_goals.push(goal_id);
@@ -117,14 +116,14 @@ impl MisalignmentFlags {
     }
 
     /// Add a warning-level goal.
-    pub fn mark_warning(&mut self, goal_id: GoalId) {
+    pub fn mark_warning(&mut self, goal_id: Uuid) {
         if !self.warning_goals.contains(&goal_id) {
             self.warning_goals.push(goal_id);
         }
     }
 
     /// Set divergent hierarchy with a specific parent-child pair.
-    pub fn mark_divergent(&mut self, parent_id: GoalId, child_id: GoalId) {
+    pub fn mark_divergent(&mut self, parent_id: Uuid, child_id: Uuid) {
         self.divergent_hierarchy = true;
         self.divergent_pairs.push((parent_id, child_id));
     }
@@ -233,7 +232,7 @@ mod tests {
     #[test]
     fn test_misalignment_flags_below_threshold() {
         let mut flags = MisalignmentFlags::empty();
-        flags.mark_below_threshold(GoalId::new("critical_goal"));
+        flags.mark_below_threshold(Uuid::new_v4());
 
         assert!(flags.has_any());
         assert!(flags.needs_intervention());
@@ -248,7 +247,7 @@ mod tests {
     #[test]
     fn test_misalignment_flags_divergent_hierarchy() {
         let mut flags = MisalignmentFlags::empty();
-        flags.mark_divergent(GoalId::new("parent"), GoalId::new("child"));
+        flags.mark_divergent(Uuid::new_v4(), Uuid::new_v4());
 
         assert!(flags.has_any());
         assert!(flags.needs_intervention());
@@ -290,13 +289,14 @@ mod tests {
     #[test]
     fn test_misalignment_flags_multiple() {
         let mut flags = MisalignmentFlags::empty();
-        flags.mark_below_threshold(GoalId::new("crit1"));
-        flags.mark_below_threshold(GoalId::new("crit2"));
-        flags.mark_warning(GoalId::new("warn1"));
-        flags.mark_divergent(GoalId::new("parent"), GoalId::new("child"));
+        flags.mark_below_threshold(Uuid::new_v4());
+        flags.mark_below_threshold(Uuid::new_v4());
+        flags.mark_warning(Uuid::new_v4());
+        flags.mark_divergent(Uuid::new_v4(), Uuid::new_v4());
         flags.tactical_without_strategic = true;
 
         assert_eq!(flags.flag_count(), 3); // below_threshold, divergent, tactical_without_strategic
+        // Note: Each Uuid::new_v4() creates a unique ID, so no duplicates
         assert_eq!(flags.critical_goals.len(), 2);
         assert_eq!(flags.warning_goals.len(), 1);
         assert_eq!(flags.severity(), 2);
@@ -365,9 +365,10 @@ mod tests {
     #[test]
     fn test_misalignment_flags_no_duplicates() {
         let mut flags = MisalignmentFlags::empty();
-        flags.mark_below_threshold(GoalId::new("goal1"));
-        flags.mark_below_threshold(GoalId::new("goal1")); // Duplicate
-        flags.mark_below_threshold(GoalId::new("goal2"));
+        let same_id = Uuid::new_v4();
+        flags.mark_below_threshold(same_id);
+        flags.mark_below_threshold(same_id); // Duplicate
+        flags.mark_below_threshold(Uuid::new_v4());
 
         assert_eq!(flags.critical_goals.len(), 2); // No duplicate
 

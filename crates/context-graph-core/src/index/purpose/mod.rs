@@ -38,7 +38,7 @@ mod tests;
 pub use clustering::{
     ClusteringResult, KMeansConfig, KMeansPurposeClustering, PurposeCluster, StandardKMeans,
 };
-pub use entry::{PurposeIndexEntry, PurposeMetadata};
+pub use entry::{GoalId, PurposeIndexEntry, PurposeMetadata};
 pub use error::{PurposeIndexError, PurposeIndexResult};
 pub use hnsw_purpose::{HnswPurposeIndex, PurposeIndexOps};
 pub use query::{PurposeQuery, PurposeQueryBuilder, PurposeQueryTarget, PurposeSearchResult};

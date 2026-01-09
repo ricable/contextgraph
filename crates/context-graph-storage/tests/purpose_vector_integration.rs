@@ -11,7 +11,7 @@
 //! - Indexed for O(log n) purpose-based search
 
 use context_graph_core::purpose::{
-    DefaultPurposeComputer, GoalHierarchy, GoalNode, PurposeComputeConfig,
+    DefaultPurposeComputer, GoalDiscoveryMetadata, GoalHierarchy, GoalLevel, GoalNode, PurposeComputeConfig,
     PurposeVectorComputer,
 };
 use context_graph_core::traits::TeleologicalMemoryStore;
@@ -54,13 +54,14 @@ async fn test_purpose_vector_structure() {
 async fn test_purpose_computation_with_real_goal_hierarchy() {
     // Create a real goal hierarchy with North Star
     let mut hierarchy = GoalHierarchy::new();
+    let discovery = GoalDiscoveryMetadata::bootstrap();
 
-    let north_star = GoalNode::north_star(
-        "north_star_1",
-        "Master semantic understanding",
-        vec![0.5; 1024],
-        vec!["semantic".into(), "understanding".into()],
-    );
+    let north_star = GoalNode::autonomous_goal(
+        "Master semantic understanding".into(),
+        GoalLevel::NorthStar,
+        SemanticFingerprint::zeroed(),
+        discovery,
+    ).expect("Failed to create North Star");
     hierarchy.add_goal(north_star).expect("Failed to add North Star");
 
     let config = PurposeComputeConfig::with_hierarchy(hierarchy);
@@ -218,12 +219,13 @@ fn test_purpose_vector_alignment_ranges() {
 #[tokio::test]
 async fn test_purpose_vectors_differentiate_semantics() {
     let mut hierarchy = GoalHierarchy::new();
-    let north_star = GoalNode::north_star(
-        "ns1",
-        "Test goal",
-        vec![0.5; 1024],
-        vec![],
-    );
+    let discovery = GoalDiscoveryMetadata::bootstrap();
+    let north_star = GoalNode::autonomous_goal(
+        "Test goal".into(),
+        GoalLevel::NorthStar,
+        SemanticFingerprint::zeroed(),
+        discovery,
+    ).expect("Failed to create goal");
     hierarchy.add_goal(north_star).expect("Failed to add goal");
 
     let config = PurposeComputeConfig::with_hierarchy(hierarchy);

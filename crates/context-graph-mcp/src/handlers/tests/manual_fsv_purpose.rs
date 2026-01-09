@@ -17,7 +17,8 @@ use serde_json::json;
 use uuid::Uuid;
 
 use context_graph_core::alignment::{DefaultAlignmentCalculator, GoalAlignmentCalculator};
-use context_graph_core::purpose::{GoalHierarchy, GoalId, GoalLevel, GoalNode};
+use context_graph_core::purpose::{GoalDiscoveryMetadata, GoalHierarchy, GoalLevel, GoalNode};
+use context_graph_core::types::fingerprint::SemanticFingerprint;
 use context_graph_core::stubs::{InMemoryTeleologicalStore, StubMultiArrayProvider, StubUtlProcessor};
 use context_graph_core::traits::{MultiArrayEmbeddingProvider, TeleologicalMemoryStore, UtlProcessor};
 
@@ -39,24 +40,25 @@ fn create_verifiable_system() -> (
 
     // Create hierarchy with test goals
     let mut hierarchy = GoalHierarchy::new();
-    let ns_embedding: Vec<f32> = (0..1024).map(|i| (i as f32 / 1024.0).sin() * 0.8).collect();
+    let discovery = GoalDiscoveryMetadata::bootstrap();
 
-    hierarchy.add_goal(GoalNode::north_star(
-        "ns_test",
-        "Test North Star Goal",
-        ns_embedding.clone(),
-        vec!["test".into()],
-    )).expect("Failed to add North Star");
+    let ns_goal = GoalNode::autonomous_goal(
+        "Test North Star Goal".into(),
+        GoalLevel::NorthStar,
+        SemanticFingerprint::zeroed(),
+        discovery.clone(),
+    ).expect("Failed to create North Star");
+    let ns_id = ns_goal.id;
+    hierarchy.add_goal(ns_goal).expect("Failed to add North Star");
 
-    hierarchy.add_goal(GoalNode::child(
-        "s1_test",
-        "Test Strategic Goal",
+    let s1_goal = GoalNode::child_goal(
+        "Test Strategic Goal".into(),
         GoalLevel::Strategic,
-        GoalId::new("ns_test"),
-        ns_embedding.clone(),
-        0.8,
-        vec!["strategic".into()],
-    )).expect("Failed to add strategic goal");
+        ns_id,
+        SemanticFingerprint::zeroed(),
+        discovery,
+    ).expect("Failed to create strategic goal");
+    hierarchy.add_goal(s1_goal).expect("Failed to add strategic goal");
 
     // We need to wrap in RwLock to share with handlers
     let hierarchy_lock = Arc::new(RwLock::new(hierarchy));
@@ -260,8 +262,9 @@ async fn manual_fsv_purpose_handlers() {
         let level = goal.get("level").and_then(|v| v.as_str()).unwrap_or("?");
         let desc = goal.get("description").and_then(|v| v.as_str()).unwrap_or("?");
 
-        // Verify goal exists in hierarchy
-        let exists_in_sot = hierarchy_read.get(&GoalId::new(goal_id)).is_some();
+        // Verify goal exists in hierarchy by parsing UUID from response
+        let goal_uuid = Uuid::parse_str(goal_id).expect("Goal ID must be valid UUID");
+        let exists_in_sot = hierarchy_read.get(&goal_uuid).is_some();
         println!("   │   [{}] {} ({}) - exists in SoT: {}", i, goal_id, level, exists_in_sot);
         assert!(exists_in_sot, "Goal {} must exist in Source of Truth", goal_id);
     }
@@ -319,11 +322,12 @@ async fn manual_fsv_purpose_handlers() {
     println!("│ EDGE CASE 2: Goal Not Found in Hierarchy                       │");
     println!("└─────────────────────────────────────────────────────────────────┘");
 
-    let nonexistent_goal = "nonexistent_goal_12345";
+    let nonexistent_uuid = Uuid::new_v4();
+    let nonexistent_goal = nonexistent_uuid.to_string();
 
     println!("📊 BEFORE STATE:");
     let hierarchy_read = hierarchy.read();
-    let exists = hierarchy_read.get(&GoalId::new(nonexistent_goal)).is_some();
+    let exists = hierarchy_read.get(&nonexistent_uuid).is_some();
     println!("   └─ Goal '{}' exists in SoT: {}", nonexistent_goal, exists);
     drop(hierarchy_read);
 
@@ -344,7 +348,7 @@ async fn manual_fsv_purpose_handlers() {
     println!();
     println!("📊 AFTER STATE:");
     let hierarchy_read = hierarchy.read();
-    let still_not_exists = hierarchy_read.get(&GoalId::new(nonexistent_goal)).is_none();
+    let still_not_exists = hierarchy_read.get(&nonexistent_uuid).is_none();
     println!("   └─ Goal '{}' still not in SoT: {}", nonexistent_goal, still_not_exists);
     drop(hierarchy_read);
 
@@ -424,14 +428,11 @@ async fn manual_fsv_purpose_handlers() {
         println!("   ├─ North Star: {} - {}", ns.id, ns.description);
     }
 
-    // Verify specific goals exist by ID
-    let goal_ids = ["ns_test", "s1_test"];
-    for (i, goal_id) in goal_ids.iter().enumerate() {
-        if let Some(goal) = hierarchy_read.get(&GoalId::new(*goal_id)) {
-            println!("   ├─ [{}] {:?}: {} - {}", i, goal.level, goal.id, goal.description);
-        } else {
-            println!("   ├─ [{}] {} - NOT FOUND", i, goal_id);
-        }
+    // Verify goals exist by checking counts per level
+    let strategic = hierarchy_read.at_level(GoalLevel::Strategic);
+    println!("   ├─ Strategic goals: {}", strategic.len());
+    for goal in strategic {
+        println!("   │  └─ {} - {}", goal.id, goal.description);
     }
     println!("   └─ END OF HIERARCHY");
     drop(hierarchy_read);
