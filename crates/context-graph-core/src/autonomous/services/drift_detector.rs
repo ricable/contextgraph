@@ -321,7 +321,7 @@ impl DriftDetector {
 
     /// Compute current trend direction
     pub fn compute_trend(&self) -> DriftTrend {
-        self.state.trend.clone()
+        self.state.trend
     }
 
     /// Get the current drift score (distance from baseline)
@@ -360,7 +360,7 @@ impl DriftDetector {
             // Moderate drift - depends on trend
             (DriftSeverity::Moderate, DriftTrend::Improving) => DriftRecommendation::Monitor,
             (DriftSeverity::Moderate, DriftTrend::Stable) => DriftRecommendation::ReviewMemories,
-            (DriftSeverity::Moderate, DriftTrend::Declining) => {
+            (DriftSeverity::Moderate, DriftTrend::Declining | DriftTrend::Worsening) => {
                 DriftRecommendation::AdjustThresholds
             }
 
@@ -369,7 +369,9 @@ impl DriftDetector {
                 DriftRecommendation::RecalibrateBaseline
             }
             (DriftSeverity::Severe, DriftTrend::Stable) => DriftRecommendation::RecalibrateBaseline,
-            (DriftSeverity::Severe, DriftTrend::Declining) => DriftRecommendation::UserIntervention,
+            (DriftSeverity::Severe, DriftTrend::Declining | DriftTrend::Worsening) => {
+                DriftRecommendation::UserIntervention
+            }
         }
     }
 

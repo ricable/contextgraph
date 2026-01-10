@@ -173,8 +173,8 @@ impl DriftCorrector {
             DriftSeverity::None => CorrectionStrategy::NoAction,
 
             DriftSeverity::Mild => {
-                // Mild drift: slight goal reinforcement if declining
-                if state.trend == DriftTrend::Declining {
+                // Mild drift: slight goal reinforcement if declining/worsening
+                if matches!(state.trend, DriftTrend::Declining | DriftTrend::Worsening) {
                     CorrectionStrategy::GoalReinforcement {
                         emphasis_factor: 1.1,
                     }
@@ -186,9 +186,11 @@ impl DriftCorrector {
             DriftSeverity::Moderate => {
                 // Moderate drift: threshold adjustment or reinforcement based on trend
                 match state.trend {
-                    DriftTrend::Declining => CorrectionStrategy::ThresholdAdjustment {
-                        delta: self.config.moderate_threshold_delta,
-                    },
+                    DriftTrend::Declining | DriftTrend::Worsening => {
+                        CorrectionStrategy::ThresholdAdjustment {
+                            delta: self.config.moderate_threshold_delta,
+                        }
+                    }
                     DriftTrend::Stable => CorrectionStrategy::GoalReinforcement {
                         emphasis_factor: self.config.moderate_reinforcement,
                     },
@@ -199,7 +201,7 @@ impl DriftCorrector {
             DriftSeverity::Severe => {
                 // Severe drift: aggressive correction or intervention
                 match state.trend {
-                    DriftTrend::Declining => {
+                    DriftTrend::Declining | DriftTrend::Worsening => {
                         // Critical: requires human intervention
                         CorrectionStrategy::EmergencyIntervention {
                             reason: format!(
