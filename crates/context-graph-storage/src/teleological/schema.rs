@@ -3,7 +3,7 @@
 //! All keys use fixed-size formats for efficient range scans.
 //! No variable-length prefixes (except teleological_profiles which uses string keys).
 //!
-//! # Key Formats (TASK-TELEO-006, TASK-CONTENT-001)
+//! # Key Formats (TASK-TELEO-006, TASK-CONTENT-001, TASK-GWT-P1-001)
 //!
 //! | CF | Key Format | Size |
 //! |----|------------|------|
@@ -11,6 +11,7 @@
 //! | teleological_profiles | profile_id string | variable (1-255 bytes) |
 //! | teleological_vectors | memory_id UUID | 16 bytes |
 //! | content | fingerprint_id UUID | 16 bytes |
+//! | ego_node | "ego_node" (singleton) | 8 bytes |
 //!
 //! # FAIL FAST Policy
 //!
@@ -28,6 +29,29 @@ use uuid::Uuid;
 /// Singleton key for synergy_matrix CF.
 /// Fixed 7-byte string "synergy".
 pub const SYNERGY_MATRIX_KEY: &[u8] = b"synergy";
+
+// =============================================================================
+// TASK-GWT-P1-001: EGO_NODE KEY CONSTANT
+// =============================================================================
+
+/// Singleton key for ego_node CF.
+/// Fixed 8-byte string "ego_node".
+///
+/// The SELF_EGO_NODE is a singleton representing the system's persistent identity.
+/// Only one ego node ever exists in the database.
+pub const EGO_NODE_KEY: &[u8] = b"ego_node";
+
+/// Returns the fixed singleton key for ego_node CF.
+///
+/// This is a constant function for consistency with other key functions.
+/// The key is always "ego_node" (8 bytes).
+///
+/// # Returns
+/// Fixed 8-byte key "ego_node"
+#[inline]
+pub const fn ego_node_key() -> &'static [u8] {
+    EGO_NODE_KEY
+}
 
 /// Key for fingerprints CF: UUID as 16 bytes.
 ///

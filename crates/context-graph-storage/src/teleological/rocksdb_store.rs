@@ -54,16 +54,18 @@ use context_graph_core::types::fingerprint::{
 
 use super::column_families::{
     get_all_teleological_cf_descriptors, CF_CONTENT, CF_E13_SPLADE_INVERTED, CF_E1_MATRYOSHKA_128,
-    CF_FINGERPRINTS, CF_PURPOSE_VECTORS, QUANTIZED_EMBEDDER_CFS, TELEOLOGICAL_CFS,
+    CF_EGO_NODE, CF_FINGERPRINTS, CF_PURPOSE_VECTORS, QUANTIZED_EMBEDDER_CFS, TELEOLOGICAL_CFS,
 };
 use super::schema::{
-    content_key, e13_splade_inverted_key, e1_matryoshka_128_key, fingerprint_key,
+    content_key, e13_splade_inverted_key, e1_matryoshka_128_key, ego_node_key, fingerprint_key,
     parse_fingerprint_key, purpose_vector_key,
 };
 use super::serialization::{
-    deserialize_memory_id_list, deserialize_teleological_fingerprint, serialize_e1_matryoshka_128,
-    serialize_memory_id_list, serialize_purpose_vector, serialize_teleological_fingerprint,
+    deserialize_ego_node, deserialize_memory_id_list, deserialize_teleological_fingerprint,
+    serialize_e1_matryoshka_128, serialize_ego_node, serialize_memory_id_list,
+    serialize_purpose_vector, serialize_teleological_fingerprint,
 };
+use context_graph_core::gwt::ego_node::SelfEgoNode;
 
 // ============================================================================
 // Error Types - FAIL FAST with detailed context
@@ -511,6 +513,22 @@ impl RocksDbTeleologicalStore {
         self.db
             .cf_handle(CF_CONTENT)
             .expect("CF_CONTENT must exist - database initialization failed")
+    }
+
+    /// Get the ego_node column family handle.
+    ///
+    /// # FAIL FAST
+    ///
+    /// Panics if CF_EGO_NODE doesn't exist. This indicates database initialization
+    /// failed and is an invariant violation that cannot be recovered from.
+    /// CF_EGO_NODE must be present in any valid database opened by this store.
+    ///
+    /// TASK-GWT-P1-001: Ego node persistence CF handle.
+    #[inline]
+    fn cf_ego_node(&self) -> &ColumnFamily {
+        self.db
+            .cf_handle(CF_EGO_NODE)
+            .expect("CF_EGO_NODE must exist - database initialization failed")
     }
 
     /// Store a fingerprint in all relevant column families.
@@ -1796,6 +1814,87 @@ impl TeleologicalMemoryStore for RocksDbTeleologicalStore {
         }
 
         Ok(exists)
+    }
+
+    // ==================== Ego Node Storage Operations (TASK-GWT-P1-001) ====================
+
+    /// Save the singleton SELF_EGO_NODE to persistent storage.
+    ///
+    /// Uses CF_EGO_NODE column family with fixed key "ego_node".
+    /// Serialization uses bincode with version byte prefix.
+    ///
+    /// # FAIL FAST
+    /// - Panics on serialization failure (indicates code bug)
+    /// - Returns error on RocksDB write failure
+    ///
+    /// # Constitution Reference
+    /// gwt.self_ego_node (lines 371-392): Identity persistence requirements
+    async fn save_ego_node(&self, ego_node: &SelfEgoNode) -> CoreResult<()> {
+        debug!(
+            "Saving SELF_EGO_NODE with id={}, purpose_vector={:?}",
+            ego_node.id,
+            &ego_node.purpose_vector[..3] // Log first 3 dimensions
+        );
+
+        // Serialize with version byte
+        let serialized = serialize_ego_node(ego_node);
+        let cf = self.cf_ego_node();
+        let key = ego_node_key();
+
+        self.db.put_cf(cf, key, &serialized).map_err(|e| {
+            error!(
+                "ROCKSDB ERROR: Failed to save SELF_EGO_NODE id={}: {}",
+                ego_node.id, e
+            );
+            TeleologicalStoreError::rocksdb_op("put_ego_node", CF_EGO_NODE, Some(ego_node.id), e)
+        })?;
+
+        info!(
+            "Saved SELF_EGO_NODE id={} ({} bytes, {} identity snapshots)",
+            ego_node.id,
+            serialized.len(),
+            ego_node.identity_trajectory.len()
+        );
+        Ok(())
+    }
+
+    /// Load the singleton SELF_EGO_NODE from persistent storage.
+    ///
+    /// Returns None if no ego node has been saved yet (first run).
+    ///
+    /// # FAIL FAST
+    /// - Panics on deserialization failure (indicates data corruption)
+    /// - Returns error on RocksDB read failure
+    ///
+    /// # Constitution Reference
+    /// gwt.self_ego_node (lines 371-392): Identity persistence requirements
+    async fn load_ego_node(&self) -> CoreResult<Option<SelfEgoNode>> {
+        let cf = self.cf_ego_node();
+        let key = ego_node_key();
+
+        match self.db.get_cf(cf, key) {
+            Ok(Some(data)) => {
+                // Deserialize with version check - FAIL FAST on corruption
+                let ego_node = deserialize_ego_node(&data);
+                info!(
+                    "Loaded SELF_EGO_NODE id={} with {} identity snapshots",
+                    ego_node.id,
+                    ego_node.identity_trajectory.len()
+                );
+                Ok(Some(ego_node))
+            }
+            Ok(None) => {
+                debug!("No SELF_EGO_NODE found - first run or not yet initialized");
+                Ok(None)
+            }
+            Err(e) => {
+                error!("ROCKSDB ERROR: Failed to load SELF_EGO_NODE: {}", e);
+                Err(CoreError::StorageError(format!(
+                    "Failed to load SELF_EGO_NODE: {}",
+                    e
+                )))
+            }
+        }
     }
 }
 

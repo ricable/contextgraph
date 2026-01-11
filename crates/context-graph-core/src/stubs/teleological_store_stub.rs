@@ -51,6 +51,7 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::error::{CoreError, CoreResult};
+use crate::gwt::ego_node::SelfEgoNode;
 use crate::traits::{
     TeleologicalMemoryStore, TeleologicalSearchOptions, TeleologicalSearchResult,
     TeleologicalStorageBackend,
@@ -98,6 +99,11 @@ pub struct InMemoryTeleologicalStore {
     /// TASK-CONTENT-004: Added for content storage support in tests
     content: DashMap<Uuid, String>,
 
+    /// Singleton SELF_EGO_NODE storage.
+    /// TASK-GWT-P1-001: Added for ego node persistence in tests.
+    /// Uses RwLock for thread-safe access to the singleton.
+    ego_node: std::sync::RwLock<Option<SelfEgoNode>>,
+
     /// Running size estimate in bytes
     size_bytes: AtomicUsize,
 }
@@ -115,6 +121,7 @@ impl InMemoryTeleologicalStore {
             data: DashMap::new(),
             deleted: DashMap::new(),
             content: DashMap::new(),
+            ego_node: std::sync::RwLock::new(None),
             size_bytes: AtomicUsize::new(0),
         }
     }
@@ -134,6 +141,7 @@ impl InMemoryTeleologicalStore {
             data: DashMap::with_capacity(capacity),
             deleted: DashMap::new(),
             content: DashMap::with_capacity(capacity),
+            ego_node: std::sync::RwLock::new(None),
             size_bytes: AtomicUsize::new(0),
         }
     }
@@ -813,6 +821,59 @@ impl TeleologicalMemoryStore for InMemoryTeleologicalStore {
             debug!(fingerprint_id = %id, "Content deleted");
         }
         Ok(removed)
+    }
+
+    // ==================== Ego Node Storage (TASK-GWT-P1-001) ====================
+
+    /// Save the singleton SELF_EGO_NODE to in-memory storage.
+    ///
+    /// # Note
+    /// Data is NOT persistent - lost when the store is dropped.
+    /// For persistence tests, use RocksDbTeleologicalStore.
+    async fn save_ego_node(&self, ego_node: &SelfEgoNode) -> CoreResult<()> {
+        match self.ego_node.write() {
+            Ok(mut guard) => {
+                info!(
+                    "Saving SELF_EGO_NODE id={} ({} identity snapshots)",
+                    ego_node.id,
+                    ego_node.identity_trajectory.len()
+                );
+                *guard = Some(ego_node.clone());
+                Ok(())
+            }
+            Err(e) => {
+                error!("Failed to acquire ego_node write lock: {}", e);
+                Err(CoreError::Internal(format!(
+                    "Failed to save ego node: lock poisoned ({})",
+                    e
+                )))
+            }
+        }
+    }
+
+    /// Load the singleton SELF_EGO_NODE from in-memory storage.
+    ///
+    /// Returns None if no ego node has been saved in this store instance.
+    async fn load_ego_node(&self) -> CoreResult<Option<SelfEgoNode>> {
+        match self.ego_node.read() {
+            Ok(guard) => {
+                if let Some(ref ego) = *guard {
+                    info!(
+                        "Loaded SELF_EGO_NODE id={} ({} identity snapshots)",
+                        ego.id,
+                        ego.identity_trajectory.len()
+                    );
+                }
+                Ok(guard.clone())
+            }
+            Err(e) => {
+                error!("Failed to acquire ego_node read lock: {}", e);
+                Err(CoreError::Internal(format!(
+                    "Failed to load ego node: lock poisoned ({})",
+                    e
+                )))
+            }
+        }
     }
 }
 

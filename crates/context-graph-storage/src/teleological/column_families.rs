@@ -81,7 +81,26 @@ pub const CF_TELEOLOGICAL_VECTORS: &str = "teleological_vectors";
 /// - No bloom filter (point lookups only by UUID)
 pub const CF_CONTENT: &str = "content";
 
-/// All teleological column family names (8 total: 4 original + 3 teleological + 1 content).
+// =============================================================================
+// TASK-GWT-P1-001: EGO_NODE COLUMN FAMILY
+// =============================================================================
+
+/// Column family for SELF_EGO_NODE singleton storage.
+///
+/// Stores the system's persistent identity node as specified in Constitution v4.0.0
+/// Section gwt.self_ego_node (lines 371-392).
+///
+/// # Storage Details
+/// - Key: Fixed "ego_node" (8 bytes)
+/// - Value: SelfEgoNode serialized via bincode (~5-50KB depending on trajectory length)
+/// - Compression: LZ4 (trajectory history benefits from compression)
+/// - Singleton access pattern - only one key ever exists
+///
+/// # FAIL FAST Policy
+/// No fallback options - let RocksDB error on open if misconfigured.
+pub const CF_EGO_NODE: &str = "ego_node";
+
+/// All teleological column family names (9 total: 4 original + 3 teleological + 1 content + 1 ego_node).
 pub const TELEOLOGICAL_CFS: &[&str] = &[
     CF_FINGERPRINTS,
     CF_PURPOSE_VECTORS,
@@ -93,10 +112,12 @@ pub const TELEOLOGICAL_CFS: &[&str] = &[
     CF_TELEOLOGICAL_VECTORS,
     // TASK-CONTENT-001: Content storage CF
     CF_CONTENT,
+    // TASK-GWT-P1-001: EGO_NODE storage CF
+    CF_EGO_NODE,
 ];
 
-/// Total count of teleological CFs (should be 8).
-pub const TELEOLOGICAL_CF_COUNT: usize = 8;
+/// Total count of teleological CFs (should be 9).
+pub const TELEOLOGICAL_CF_COUNT: usize = 9;
 
 // =============================================================================
 // QUANTIZED EMBEDDER COLUMN FAMILIES (13 CFs for per-embedder storage)
@@ -373,6 +394,44 @@ pub fn content_cf_options(cache: &Cache) -> Options {
     opts
 }
 
+// =============================================================================
+// TASK-GWT-P1-001: CF OPTION BUILDER FOR EGO_NODE STORAGE
+// =============================================================================
+
+/// Options for SELF_EGO_NODE singleton storage (~5-50KB).
+///
+/// # Configuration
+/// - LZ4 compression (trajectory history benefits from compression)
+/// - Bloom filter for fast lookups
+/// - Optimized for point lookups (singleton access pattern)
+///
+/// # Key Format
+/// Fixed "ego_node" string (8 bytes).
+///
+/// # Value Format
+/// SelfEgoNode serialized via bincode. Size varies with identity_trajectory length:
+/// - Minimal (~5KB): Empty trajectory, no fingerprint
+/// - Typical (~15KB): 100 snapshots, current fingerprint
+/// - Maximum (~50KB): 1000 snapshots with full fingerprint
+///
+/// # FAIL FAST Policy
+/// No fallback options - let RocksDB error on open if misconfigured.
+pub fn ego_node_cf_options(cache: &Cache) -> Options {
+    let mut block_opts = BlockBasedOptions::default();
+    block_opts.set_block_cache(cache);
+    block_opts.set_bloom_filter(10.0, false);
+    block_opts.set_cache_index_and_filter_blocks(true);
+
+    let mut opts = Options::default();
+    opts.set_block_based_table_factory(&block_opts);
+    // LZ4 for trajectory history compression
+    opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
+    // Singleton, so optimize for point lookup
+    opts.optimize_for_point_lookup(16); // 16MB hint
+    opts.create_if_missing(true);
+    opts
+}
+
 /// Options for quantized embedder storage (~1-2KB per embedding).
 ///
 /// Configuration:
@@ -399,15 +458,15 @@ pub fn quantized_embedder_cf_options(cache: &Cache) -> Options {
     opts
 }
 
-/// Get all 8 teleological column family descriptors.
+/// Get all 9 teleological column family descriptors.
 ///
-/// Returns 8 descriptors: 4 original + 3 teleological + 1 content (TASK-CONTENT-001).
+/// Returns 9 descriptors: 4 original + 3 teleological + 1 content + 1 ego_node.
 ///
 /// # Arguments
 /// * `cache` - Shared block cache (recommended: 256MB via `Cache::new_lru_cache`)
 ///
 /// # Returns
-/// Vector of 8 `ColumnFamilyDescriptor`s for teleological storage.
+/// Vector of 9 `ColumnFamilyDescriptor`s for teleological storage.
 ///
 /// # Example
 /// ```ignore
@@ -416,7 +475,7 @@ pub fn quantized_embedder_cf_options(cache: &Cache) -> Options {
 ///
 /// let cache = Cache::new_lru_cache(256 * 1024 * 1024); // 256MB
 /// let descriptors = get_teleological_cf_descriptors(&cache);
-/// assert_eq!(descriptors.len(), 8);
+/// assert_eq!(descriptors.len(), 9);
 /// ```
 pub fn get_teleological_cf_descriptors(cache: &Cache) -> Vec<ColumnFamilyDescriptor> {
     vec![
@@ -439,6 +498,8 @@ pub fn get_teleological_cf_descriptors(cache: &Cache) -> Vec<ColumnFamilyDescrip
         ),
         // TASK-CONTENT-001: Content storage CF
         ColumnFamilyDescriptor::new(CF_CONTENT, content_cf_options(cache)),
+        // TASK-GWT-P1-001: EGO_NODE storage CF
+        ColumnFamilyDescriptor::new(CF_EGO_NODE, ego_node_cf_options(cache)),
     ]
 }
 
@@ -471,14 +532,14 @@ pub fn get_quantized_embedder_cf_descriptors(cache: &Cache) -> Vec<ColumnFamilyD
 
 /// Get ALL teleological + quantized embedder column family descriptors.
 ///
-/// Returns 21 descriptors total: 8 teleological + 13 quantized embedder.
+/// Returns 22 descriptors total: 9 teleological + 13 quantized embedder.
 /// Use this when opening a database that needs both fingerprint and per-embedder storage.
 ///
 /// # Arguments
 /// * `cache` - Shared block cache (recommended: 256MB via `Cache::new_lru_cache`)
 ///
 /// # Returns
-/// Vector of 21 `ColumnFamilyDescriptor`s.
+/// Vector of 22 `ColumnFamilyDescriptor`s.
 ///
 /// # Example
 /// ```ignore
@@ -487,7 +548,7 @@ pub fn get_quantized_embedder_cf_descriptors(cache: &Cache) -> Vec<ColumnFamilyD
 ///
 /// let cache = Cache::new_lru_cache(256 * 1024 * 1024); // 256MB
 /// let descriptors = get_all_teleological_cf_descriptors(&cache);
-/// assert_eq!(descriptors.len(), 21); // 8 teleological + 13 embedder
+/// assert_eq!(descriptors.len(), 22); // 9 teleological + 13 embedder
 /// ```
 pub fn get_all_teleological_cf_descriptors(cache: &Cache) -> Vec<ColumnFamilyDescriptor> {
     let mut descriptors = get_teleological_cf_descriptors(cache);

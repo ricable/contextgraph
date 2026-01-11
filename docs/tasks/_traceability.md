@@ -25,8 +25,8 @@ This matrix ensures every requirement, component, and behavior identified in the
 | kuramoto_r Manual Passing | Must be passed manually from external code | SHERLOCK-01 | TASK-GWT-P0-001 | ☑ |
 | SelfAwarenessLoop Not Called | `cycle()` defined but never invoked | SHERLOCK-03 | TASK-GWT-P0-003 | ☑ |
 | purpose_vector Static | Remains `[0.0; 13]` forever | SHERLOCK-03 | TASK-GWT-P0-003 | ☑ |
-| No Ego Persistence | Identity lost on restart | SHERLOCK-03 | TASK-GWT-P1-001 | ☐ |
-| HNSW Brute Force | O(n) linear scan instead of O(log n) | SHERLOCK-08 | TASK-STORAGE-P1-001 | ☐ |
+| No Ego Persistence | Identity lost on restart | SHERLOCK-03 | TASK-GWT-P1-001 | ☑ |
+| HNSW Brute Force | O(n) linear scan instead of O(log n) | SHERLOCK-08 | TASK-STORAGE-P1-001 | ☑ |
 
 ### Moderate Gap Coverage (From SHERLOCK-MASTER-REPORT)
 
@@ -70,14 +70,14 @@ The consciousness equation C(t) = I(t) × R(t) × D(t) requires:
 | Order parameter formula correct | Complete | N/A | No action needed |
 | State machine thresholds match | Complete | N/A | No action needed |
 
-### SHERLOCK-03: SELF_EGO_NODE (LOOP FIXED ☑, PERSISTENCE PENDING)
+### SHERLOCK-03: SELF_EGO_NODE (COMPLETE ☑)
 
 | Finding | Requirement | Task ID | Verified |
 |---------|-------------|---------|----------|
 | SelfAwarenessLoop::cycle() never called | Wire into action processing | TASK-GWT-P0-003 | ☑ |
 | purpose_vector stays [0.0; 13] | Update on each action alignment | TASK-GWT-P0-003 | ☑ |
-| No ego persistence | Save to RocksDB CF_EGO_NODE | TASK-GWT-P1-001 | ☐ |
-| No MCP tool to UPDATE ego | Add update_ego_state tool | TASK-GWT-P1-001 | ☐ |
+| No ego persistence | Save to RocksDB CF_EGO_NODE | TASK-GWT-P1-001 | ☑ |
+| No MCP tool to UPDATE ego | Add update_ego_state tool | TASK-GWT-P1-001 | ☑ |
 
 ### SHERLOCK-04: Teleological Fingerprint (INNOCENT ✓)
 
@@ -172,7 +172,7 @@ The consciousness equation C(t) = I(t) × R(t) × D(t) requires:
 | 5.3 | SelfAwarenessLoop provides R(t) | TASK-GWT-P0-003 | ☑ |
 | 5.4 | 13-embedder entropy provides D(t) | TASK-UTL-P1-001 | ☑ |
 | 6.1 | HNSW < 60ms at 1M memories | TASK-STORAGE-P1-001 | ☑ |
-| 6.2 | Identity persists across restarts | TASK-GWT-P1-001 | ☐ |
+| 6.2 | Identity persists across restarts | TASK-GWT-P1-001 | ☑ |
 | 7.1 | Workspace events trigger subsystems | TASK-GWT-P1-002 | ☐ |
 | 8.1 | ColBERT late interaction for E12 | TASK-STORAGE-P2-001 | ☐ |
 | 9.1 | Chaos resilience verified | TASK-TEST-P2-001 | ☐ |
@@ -228,8 +228,8 @@ Before marking a task as complete, verify:
 | TASK-GWT-P0-002 | `pub async fn step_kuramoto(&self, elapsed: Duration) -> CoreResult<f32>` | GwtSystem | ☑ |
 | TASK-GWT-P0-003 | `pub async fn process_action_awareness(&self, fingerprint: &TeleologicalFingerprint) -> CoreResult<SelfReflectionResult>` | GwtSystem | ☑ |
 | TASK-STORAGE-P1-001 | `pub fn search_hnsw(&self, embedder: EmbedderId, query: &[f32], k: usize) -> Vec<(MemoryId, f32)>` | HnswIndex | ☑ |
-| TASK-GWT-P1-001 | `pub async fn persist_ego(&self) -> Result<()>` | SelfEgoNode | ☐ |
-| TASK-GWT-P1-001 | `pub async fn restore_ego(&mut self) -> Result<()>` | SelfEgoNode | ☐ |
+| TASK-GWT-P1-001 | `async fn save_ego_node(&self, ego_node: &SelfEgoNode) -> CoreResult<()>` | TeleologicalMemoryStore | ☑ |
+| TASK-GWT-P1-001 | `async fn load_ego_node(&self) -> CoreResult<Option<SelfEgoNode>>` | TeleologicalMemoryStore | ☑ |
 | TASK-GWT-P1-002 | `pub fn subscribe_to_workspace(&mut self, listener: Box<dyn WorkspaceEventListener>)` | Workspace | ☐ |
 | TASK-UTL-P1-001 | `fn compute_delta_s(&self, current: &[f32], history: &[Vec<f32>], k: usize) -> UtlResult<f32>` | EmbedderEntropy trait | ☑ |
 | TASK-STORAGE-P2-001 | `pub fn compute_maxsim(&self, query_tokens: &[Vec<f32>], doc_tokens: &[Vec<f32>]) -> f32` | MaxSimScorer | ☐ |
@@ -239,4 +239,4 @@ Before marking a task as complete, verify:
 ---
 
 **Last Updated:** 2026-01-10
-**Coverage Status:** P0 + 2 P1 tasks COMPLETED (P0-001, P0-002, P0-003, STORAGE-P1-001, UTL-P1-001). 50% of tasks complete.
+**Coverage Status:** P0 + 3 P1 tasks COMPLETED (P0-001, P0-002, P0-003, STORAGE-P1-001, UTL-P1-001, GWT-P1-001). 60% of tasks complete.

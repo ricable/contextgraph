@@ -34,6 +34,7 @@ use uuid::Uuid;
 
 use crate::config::constants::alignment;
 use crate::error::CoreResult;
+use crate::gwt::ego_node::SelfEgoNode;
 use crate::types::fingerprint::{
     PurposeVector, SemanticFingerprint, SparseVector, TeleologicalFingerprint,
 };
@@ -689,6 +690,58 @@ pub trait TeleologicalMemoryStore: Send + Sync {
             results.push(self.get_content(*id).await?);
         }
         Ok(results)
+    }
+
+    // ==================== Ego Node Storage (TASK-GWT-P1-001) ====================
+
+    /// Save the singleton SELF_EGO_NODE to persistent storage.
+    ///
+    /// The SELF_EGO_NODE represents the system's persistent identity across
+    /// sessions. Only one ego node ever exists in the database, stored with
+    /// a fixed key ("ego_node").
+    ///
+    /// # Arguments
+    /// * `ego_node` - The SelfEgoNode to persist
+    ///
+    /// # Errors
+    /// - `CoreError::StorageError` - Write failure
+    /// - `CoreError::SerializationError` - Serialization failure
+    ///
+    /// # Default Implementation
+    /// Returns error indicating ego node storage is not supported.
+    /// Backends that support ego node storage must override this method.
+    ///
+    /// # Constitution Reference
+    /// gwt.self_ego_node (lines 371-392): Identity persistence requirements
+    async fn save_ego_node(&self, ego_node: &SelfEgoNode) -> CoreResult<()> {
+        let _ = ego_node; // Suppress unused warnings
+        Err(crate::error::CoreError::Internal(format!(
+            "Ego node storage not supported by {} backend",
+            self.backend_type()
+        )))
+    }
+
+    /// Load the singleton SELF_EGO_NODE from persistent storage.
+    ///
+    /// Returns the system's persisted identity. Returns None if no ego node
+    /// has been saved yet (first run), indicating the system should initialize
+    /// a new identity.
+    ///
+    /// # Returns
+    /// `Some(ego_node)` if persisted, `None` if not yet initialized.
+    ///
+    /// # Errors
+    /// - `CoreError::StorageError` - Read failure
+    /// - `CoreError::SerializationError` - Deserialization failure (FAIL FAST)
+    ///
+    /// # Default Implementation
+    /// Returns Ok(None) for graceful degradation when ego node storage
+    /// is not supported by the backend.
+    ///
+    /// # Constitution Reference
+    /// gwt.self_ego_node (lines 371-392): Identity persistence requirements
+    async fn load_ego_node(&self) -> CoreResult<Option<SelfEgoNode>> {
+        Ok(None)
     }
 }
 

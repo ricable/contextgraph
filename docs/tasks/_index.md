@@ -3,9 +3,9 @@
 ## Overview
 - **Total Tasks:** 10
 - **Foundation:** 1 task (COMPLETED)
-- **Logic:** 7 tasks (4 COMPLETED)
+- **Logic:** 7 tasks (5 COMPLETED)
 - **Surface:** 2 tasks
-- **Current Progress:** 5/10 (50%) - All P0 + 2 P1 tasks COMPLETED
+- **Current Progress:** 6/10 (60%) - All P0 + 3 P1 tasks COMPLETED
 
 ## Priority Breakdown
 | Priority | Description | Count | Target |
@@ -62,7 +62,7 @@ graph TD
 | 3 | TASK-GWT-P0-003 | Self-Awareness Activation | logic | P0-001 | **COMPLETED** |
 | 4 | TASK-STORAGE-P1-001 | HNSW Graph Traversal | logic | None | **COMPLETED** |
 | 5 | TASK-UTL-P1-001 | Per-Embedder DeltaS Methods | logic | None | **COMPLETED** |
-| 6 | TASK-GWT-P1-001 | Ego Node Persistence | logic | P0-003 | Ready |
+| 6 | TASK-GWT-P1-001 | Ego Node Persistence | logic | P0-003 | **COMPLETED** |
 | 7 | TASK-GWT-P1-002 | Workspace Event Wiring | surface | P0-002 | Ready |
 | 8 | TASK-STORAGE-P2-001 | MaxSim Stage 5 | logic | None | Ready |
 | 9 | TASK-TEST-P2-001 | Chaos Tests | surface | P0-*, P1-* | Blocked |
@@ -239,4 +239,4 @@ All task specifications are located in:
 ---
 
 **Last Updated:** 2026-01-10
-**Status:** P0 + 2 P1 tasks COMPLETED (P0-001, P0-002, P0-003, STORAGE-P1-001, UTL-P1-001). Remaining P1 tasks ready.
+**Status:** P0 + 3 P1 tasks COMPLETED (P0-001, P0-002, P0-003, STORAGE-P1-001, UTL-P1-001, GWT-P1-001). TASK-GWT-P1-002 ready.

@@ -56,6 +56,8 @@ mod tests;
 pub use column_families::{
     e13_splade_inverted_cf_options,
     e1_matryoshka_128_cf_options,
+    // TASK-GWT-P1-001: Ego node column family
+    ego_node_cf_options,
     fingerprint_cf_options,
     get_all_teleological_cf_descriptors,
     get_quantized_embedder_cf_descriptors,
@@ -68,6 +70,8 @@ pub use column_families::{
     teleological_vectors_cf_options,
     CF_E13_SPLADE_INVERTED,
     CF_E1_MATRYOSHKA_128,
+    // TASK-GWT-P1-001: Ego node column family constant
+    CF_EGO_NODE,
     CF_EMB_0,
     CF_EMB_1,
     CF_EMB_10,
@@ -100,6 +104,8 @@ pub use quantized::{QuantizedFingerprintStorage, QuantizedStorageError, Quantize
 pub use schema::{
     e13_splade_inverted_key,
     e1_matryoshka_128_key,
+    // TASK-GWT-P1-001: Ego node key functions
+    ego_node_key,
     fingerprint_key,
     parse_e13_splade_key,
     parse_e1_matryoshka_key,
@@ -110,15 +116,29 @@ pub use schema::{
     purpose_vector_key,
     teleological_profile_key,
     teleological_vector_key,
+    // TASK-GWT-P1-001: Ego node key constant
+    EGO_NODE_KEY,
     // TASK-TELEO-006: New key format functions
     SYNERGY_MATRIX_KEY,
 };
 
 // Re-export serialization types
 pub use serialization::{
-    deserialize_e1_matryoshka_128, deserialize_memory_id_list, deserialize_purpose_vector,
-    deserialize_teleological_fingerprint, serialize_e1_matryoshka_128, serialize_memory_id_list,
-    serialize_purpose_vector, serialize_teleological_fingerprint, TELEOLOGICAL_VERSION,
+    deserialize_e1_matryoshka_128,
+    // TASK-GWT-P1-001: Ego node serialization
+    deserialize_ego_node,
+    deserialize_memory_id_list,
+    deserialize_purpose_vector,
+    deserialize_teleological_fingerprint,
+    // TASK-GWT-P1-001: Ego node version constant
+    EGO_NODE_VERSION,
+    serialize_e1_matryoshka_128,
+    // TASK-GWT-P1-001: Ego node serialization
+    serialize_ego_node,
+    serialize_memory_id_list,
+    serialize_purpose_vector,
+    serialize_teleological_fingerprint,
+    TELEOLOGICAL_VERSION,
 };
 
 // Re-export index configuration types (TASK-F005)

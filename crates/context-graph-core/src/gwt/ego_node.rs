@@ -8,14 +8,25 @@
 //! - System's purpose alignment (PurposeVector)
 //! - Identity history (trajectory of purpose evolution)
 //! - Alignment between actions and self-model
+//!
+//! # Persistence (TASK-GWT-P1-001)
+//!
+//! SelfEgoNode and related types implement Serde Serialize/Deserialize for
+//! persistent storage in RocksDB via the CF_EGO_NODE column family.
 
 use crate::error::CoreResult;
 use crate::types::fingerprint::TeleologicalFingerprint;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Special memory node representing the system's identity
-#[derive(Debug, Clone)]
+///
+/// # Persistence (TASK-GWT-P1-001)
+///
+/// This struct is serializable via Serde for RocksDB storage in CF_EGO_NODE.
+/// Uses bincode for efficient binary serialization.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelfEgoNode {
     /// Fixed ID for the SELF_EGO_NODE
     pub id: Uuid,
@@ -32,7 +43,11 @@ pub struct SelfEgoNode {
 }
 
 /// Snapshot of purpose vector at a point in time
-#[derive(Debug, Clone)]
+///
+/// # Persistence (TASK-GWT-P1-001)
+///
+/// Serializable component of SelfEgoNode's identity_trajectory.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PurposeSnapshot {
     /// Purpose vector at this moment
     pub vector: [f32; 13],
@@ -154,7 +169,11 @@ pub struct SelfAwarenessLoop {
 }
 
 /// Tracks identity continuity over time
-#[derive(Debug, Clone)]
+///
+/// # Persistence (TASK-GWT-P1-001)
+///
+/// Serializable for diagnostic/recovery purposes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IdentityContinuity {
     /// Cosine similarity between consecutive purpose vectors
     pub recent_continuity: f32,
@@ -166,7 +185,12 @@ pub struct IdentityContinuity {
     pub status: IdentityStatus,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Identity status enum for SELF_EGO_NODE state tracking.
+///
+/// # Persistence (TASK-GWT-P1-001)
+///
+/// Serializable component of IdentityContinuity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IdentityStatus {
     /// IC > 0.9: Healthy identity continuity
     Healthy,
