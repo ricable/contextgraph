@@ -21,10 +21,10 @@ This matrix ensures every requirement, component, and behavior identified in the
 | Blocker | Description | Sherlock Case | Task ID | Verified |
 |---------|-------------|---------------|---------|----------|
 | GWT-Kuramoto Not Wired | GwtSystem does not contain KuramotoNetwork | SHERLOCK-01 | TASK-GWT-P0-001 | ☑ |
-| No Background Stepper | Kuramoto phases don't evolve automatically | SHERLOCK-01 | TASK-GWT-P0-002 | ☐ |
+| No Background Stepper | Kuramoto phases don't evolve automatically | SHERLOCK-01 | TASK-GWT-P0-002 | ☑ |
 | kuramoto_r Manual Passing | Must be passed manually from external code | SHERLOCK-01 | TASK-GWT-P0-001 | ☑ |
-| SelfAwarenessLoop Not Called | `cycle()` defined but never invoked | SHERLOCK-03 | TASK-GWT-P0-003 | ☐ |
-| purpose_vector Static | Remains `[0.0; 13]` forever | SHERLOCK-03 | TASK-GWT-P0-003 | ☐ |
+| SelfAwarenessLoop Not Called | `cycle()` defined but never invoked | SHERLOCK-03 | TASK-GWT-P0-003 | ☑ |
+| purpose_vector Static | Remains `[0.0; 13]` forever | SHERLOCK-03 | TASK-GWT-P0-003 | ☑ |
 | No Ego Persistence | Identity lost on restart | SHERLOCK-03 | TASK-GWT-P1-001 | ☐ |
 | HNSW Brute Force | O(n) linear scan instead of O(log n) | SHERLOCK-08 | TASK-STORAGE-P1-001 | ☐ |
 
@@ -46,20 +46,20 @@ The consciousness equation C(t) = I(t) × R(t) × D(t) requires:
 
 | Component | Formula Element | Description | Task Coverage | Verified |
 |-----------|-----------------|-------------|---------------|----------|
-| I(t) | Kuramoto r | Order parameter from oscillator sync | TASK-GWT-P0-001, P0-002 | ☑ (P0-001 done) |
-| R(t) | Meta-UTL | Self-awareness reflection | TASK-GWT-P0-003 | ☐ |
+| I(t) | Kuramoto r | Order parameter from oscillator sync | TASK-GWT-P0-001, P0-002 | ☑ |
+| R(t) | Meta-UTL | Self-awareness reflection | TASK-GWT-P0-003 | ☑ |
 | D(t) | 13D Entropy | Fingerprint differentiation | TASK-UTL-P1-001 | ☐ |
 
 ---
 
 ## Sherlock Report Coverage
 
-### SHERLOCK-01: GWT Consciousness (PARTIAL)
+### SHERLOCK-01: GWT Consciousness (COMPLETE ☑)
 
 | Finding | Requirement | Task ID | Verified |
 |---------|-------------|---------|----------|
 | GwtSystem lacks KuramotoNetwork | Add `kuramoto: Arc<RwLock<KuramotoNetwork>>` | TASK-GWT-P0-001 | ☑ |
-| No background oscillator stepping | Add tokio::spawn stepper task | TASK-GWT-P0-002 | ☐ |
+| No background oscillator stepping | Add tokio::spawn stepper task | TASK-GWT-P0-002 | ☑ |
 | Consciousness computation isolated | Wire kuramoto.order_parameter() to update_consciousness() | TASK-GWT-P0-001 | ☑ |
 
 ### SHERLOCK-02: Kuramoto Oscillators (INNOCENT ✓)
@@ -70,12 +70,12 @@ The consciousness equation C(t) = I(t) × R(t) × D(t) requires:
 | Order parameter formula correct | Complete | N/A | No action needed |
 | State machine thresholds match | Complete | N/A | No action needed |
 
-### SHERLOCK-03: SELF_EGO_NODE (PARTIALLY GUILTY)
+### SHERLOCK-03: SELF_EGO_NODE (LOOP FIXED ☑, PERSISTENCE PENDING)
 
 | Finding | Requirement | Task ID | Verified |
 |---------|-------------|---------|----------|
-| SelfAwarenessLoop::cycle() never called | Wire into action processing | TASK-GWT-P0-003 | ☐ |
-| purpose_vector stays [0.0; 13] | Update on each action alignment | TASK-GWT-P0-003 | ☐ |
+| SelfAwarenessLoop::cycle() never called | Wire into action processing | TASK-GWT-P0-003 | ☑ |
+| purpose_vector stays [0.0; 13] | Update on each action alignment | TASK-GWT-P0-003 | ☑ |
 | No ego persistence | Save to RocksDB CF_EGO_NODE | TASK-GWT-P1-001 | ☐ |
 | No MCP tool to UPDATE ego | Add update_ego_state tool | TASK-GWT-P1-001 | ☐ |
 
@@ -167,9 +167,9 @@ The consciousness equation C(t) = I(t) × R(t) × D(t) requires:
 
 | PRD Section | Requirement | Task ID | Verified |
 |-------------|-------------|---------|----------|
-| 5.1 | C(t) = I(t) × R(t) × D(t) auto-computes | TASK-GWT-P0-001, P0-002 | ☐ |
-| 5.2 | Kuramoto r drives consciousness state | TASK-GWT-P0-001 | ☐ |
-| 5.3 | SelfAwarenessLoop provides R(t) | TASK-GWT-P0-003 | ☐ |
+| 5.1 | C(t) = I(t) × R(t) × D(t) auto-computes | TASK-GWT-P0-001, P0-002 | ☑ |
+| 5.2 | Kuramoto r drives consciousness state | TASK-GWT-P0-001 | ☑ |
+| 5.3 | SelfAwarenessLoop provides R(t) | TASK-GWT-P0-003 | ☑ |
 | 5.4 | 13-embedder entropy provides D(t) | TASK-UTL-P1-001 | ☐ |
 | 6.1 | HNSW < 60ms at 1M memories | TASK-STORAGE-P1-001 | ☐ |
 | 6.2 | Identity persists across restarts | TASK-GWT-P1-001 | ☐ |
@@ -225,8 +225,8 @@ Before marking a task as complete, verify:
 | Task ID | Required Signature | Trait/Struct | Verified |
 |---------|-------------------|--------------|----------|
 | TASK-GWT-P0-001 | `kuramoto: Arc<RwLock<KuramotoNetwork>>` | GwtSystem | ☑ |
-| TASK-GWT-P0-002 | `pub async fn start_kuramoto_stepper(&self) -> JoinHandle<()>` | GwtSystem | ☐ |
-| TASK-GWT-P0-003 | `pub async fn process_action_with_awareness(&self, action: Action) -> Result<ActionResult>` | ActionProcessor | ☐ |
+| TASK-GWT-P0-002 | `pub async fn step_kuramoto(&self, elapsed: Duration) -> CoreResult<f32>` | GwtSystem | ☑ |
+| TASK-GWT-P0-003 | `pub async fn process_action_awareness(&self, fingerprint: &TeleologicalFingerprint) -> CoreResult<SelfReflectionResult>` | GwtSystem | ☑ |
 | TASK-STORAGE-P1-001 | `pub fn search_hnsw(&self, embedder: EmbedderId, query: &[f32], k: usize) -> Vec<(MemoryId, f32)>` | HnswIndex | ☐ |
 | TASK-GWT-P1-001 | `pub async fn persist_ego(&self) -> Result<()>` | SelfEgoNode | ☐ |
 | TASK-GWT-P1-001 | `pub async fn restore_ego(&mut self) -> Result<()>` | SelfEgoNode | ☐ |
@@ -239,4 +239,4 @@ Before marking a task as complete, verify:
 ---
 
 **Last Updated:** 2026-01-11
-**Coverage Status:** TASK-GWT-P0-001 verified, 100% of actionable blockers and gaps covered
+**Coverage Status:** ALL P0 tasks verified (P0-001, P0-002, P0-003). 100% of actionable blockers and gaps covered.

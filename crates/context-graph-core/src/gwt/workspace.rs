@@ -250,6 +250,13 @@ pub enum WorkspaceEvent {
         duration_ms: u64,
         timestamp: DateTime<Utc>,
     },
+    /// Identity coherence critical (IC < 0.5) - triggers dream consolidation
+    /// From constitution.yaml lines 387-392: "dream<0.5"
+    IdentityCritical {
+        identity_coherence: f32,
+        reason: String,
+        timestamp: DateTime<Utc>,
+    },
 }
 
 pub trait WorkspaceEventListener: Send + Sync {

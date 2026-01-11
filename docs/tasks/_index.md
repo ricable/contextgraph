@@ -3,9 +3,9 @@
 ## Overview
 - **Total Tasks:** 10
 - **Foundation:** 1 task (COMPLETED)
-- **Logic:** 7 tasks
+- **Logic:** 7 tasks (2 COMPLETED)
 - **Surface:** 2 tasks
-- **Current Progress:** 1/10 (10%)
+- **Current Progress:** 3/10 (30%) - All P0 tasks COMPLETED
 
 ## Priority Breakdown
 | Priority | Description | Count | Target |
@@ -58,12 +58,12 @@ graph TD
 | Order | Task ID | Title | Layer | Dependencies | Status |
 |-------|---------|-------|-------|--------------|--------|
 | 1 | TASK-GWT-P0-001 | Kuramoto-GWT Integration | foundation | None | **COMPLETED** |
-| 2 | TASK-GWT-P0-002 | Background Oscillator Stepper | logic | P0-001 | Ready |
-| 3 | TASK-GWT-P0-003 | Self-Awareness Activation | logic | P0-001 | Ready |
+| 2 | TASK-GWT-P0-002 | Background Oscillator Stepper | logic | P0-001 | **COMPLETED** |
+| 3 | TASK-GWT-P0-003 | Self-Awareness Activation | logic | P0-001 | **COMPLETED** |
 | 4 | TASK-STORAGE-P1-001 | HNSW Graph Traversal | logic | None | Ready |
 | 5 | TASK-UTL-P1-001 | Per-Embedder DeltaS Methods | logic | None | Ready |
-| 6 | TASK-GWT-P1-001 | Ego Node Persistence | logic | P0-003 | Blocked |
-| 7 | TASK-GWT-P1-002 | Workspace Event Wiring | surface | P0-002 | Blocked |
+| 6 | TASK-GWT-P1-001 | Ego Node Persistence | logic | P0-003 | Ready |
+| 7 | TASK-GWT-P1-002 | Workspace Event Wiring | surface | P0-002 | Ready |
 | 8 | TASK-STORAGE-P2-001 | MaxSim Stage 5 | logic | None | Ready |
 | 9 | TASK-TEST-P2-001 | Chaos Tests | surface | P0-*, P1-* | Blocked |
 | 10 | TASK-TEST-P2-002 | Quality Gates CI | surface | P2-001 | Blocked |
@@ -239,4 +239,4 @@ All task specifications are located in:
 ---
 
 **Last Updated:** 2026-01-11
-**Status:** TASK-GWT-P0-001 completed, P0-002/P0-003 now unblocked and ready
+**Status:** ALL P0 tasks completed (P0-001, P0-002, P0-003). P1 tasks now unblocked and ready.

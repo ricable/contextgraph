@@ -98,6 +98,44 @@ impl SelfEgoNode {
     pub fn get_latest_snapshot(&self) -> Option<&PurposeSnapshot> {
         self.identity_trajectory.last()
     }
+
+    /// Update purpose_vector from a TeleologicalFingerprint's purpose alignments.
+    ///
+    /// Copies fingerprint.purpose_vector.alignments to self.purpose_vector,
+    /// updates coherence_with_actions, and sets fingerprint reference.
+    ///
+    /// # Arguments
+    /// * `fingerprint` - The source fingerprint containing purpose_vector.alignments
+    ///
+    /// # Returns
+    /// * `CoreResult<()>` - Ok on success
+    ///
+    /// # Constitution Reference
+    /// From constitution.yaml lines 365-392:
+    /// - self_ego_node.fields includes: fingerprint, purpose_vector, coherence_with_actions
+    /// - loop: "Retrieve→A(action,PV)→if<0.55 self_reflect→update fingerprint→store evolution"
+    pub fn update_from_fingerprint(&mut self, fingerprint: &TeleologicalFingerprint) -> CoreResult<()> {
+        // 1. Copy purpose_vector.alignments to self.purpose_vector
+        self.purpose_vector = fingerprint.purpose_vector.alignments;
+
+        // 2. Update coherence from fingerprint
+        self.coherence_with_actions = fingerprint.purpose_vector.coherence;
+
+        // 3. Store fingerprint reference (clone since we own the data)
+        self.fingerprint = Some(fingerprint.clone());
+
+        // 4. Update timestamp
+        self.last_updated = Utc::now();
+
+        // 5. Log for debugging
+        tracing::debug!(
+            "SelfEgoNode updated from fingerprint: purpose_vector[0]={:.4}, coherence={:.4}",
+            self.purpose_vector[0],
+            self.coherence_with_actions
+        );
+
+        Ok(())
+    }
 }
 
 impl Default for SelfEgoNode {
@@ -195,6 +233,19 @@ impl SelfAwarenessLoop {
             continuity: IdentityContinuity::new(),
             alignment_threshold: 0.55,
         }
+    }
+
+    /// Get the current identity coherence value
+    ///
+    /// Returns the IC value computed as: IC = cos(PV_t, PV_{t-1}) × r(t)
+    /// Per constitution.yaml lines 387-392
+    pub fn identity_coherence(&self) -> f32 {
+        self.continuity.identity_coherence
+    }
+
+    /// Get the current identity status
+    pub fn identity_status(&self) -> IdentityStatus {
+        self.continuity.status
     }
 
     /// Execute self-awareness loop for a single cycle
@@ -412,5 +463,257 @@ mod tests {
 
         let similarity = loop_mgr.cosine_similarity(&v1, &v2);
         assert!(similarity.abs() < 1e-5);
+    }
+
+    // =============================================================================
+    // TASK-GWT-P0-003: Tests for update_from_fingerprint
+    // =============================================================================
+
+    // Import necessary types for TeleologicalFingerprint construction
+    use crate::types::fingerprint::{
+        TeleologicalFingerprint, PurposeVector, SemanticFingerprint,
+        JohariFingerprint,
+    };
+
+    /// Helper to create a test TeleologicalFingerprint with known values
+    fn create_test_fingerprint(alignments: [f32; 13]) -> TeleologicalFingerprint {
+        let purpose_vector = PurposeVector::new(alignments);
+        let semantic = SemanticFingerprint::zeroed();
+        let johari = JohariFingerprint::zeroed();
+
+        TeleologicalFingerprint {
+            id: Uuid::new_v4(),
+            semantic,
+            purpose_vector,
+            johari,
+            purpose_evolution: Vec::new(),
+            theta_to_north_star: alignments.iter().sum::<f32>() / 13.0,
+            content_hash: [0u8; 32],
+            created_at: Utc::now(),
+            last_updated: Utc::now(),
+            access_count: 0,
+        }
+    }
+
+    #[test]
+    fn test_update_from_fingerprint_copies_purpose_vector() {
+        println!("=== TEST: update_from_fingerprint copies purpose_vector ===");
+
+        // BEFORE: Create SelfEgoNode with default purpose_vector
+        let mut ego = SelfEgoNode::new();
+        let initial_pv = ego.purpose_vector;
+        assert_eq!(initial_pv, [0.0; 13], "Initial purpose_vector should be zeros");
+
+        // Create fingerprint with known values
+        let alignments = [0.8, 0.75, 0.9, 0.6, 0.7, 0.65, 0.85, 0.72, 0.78, 0.68, 0.82, 0.71, 0.76];
+        let fingerprint = create_test_fingerprint(alignments);
+
+        // EXECUTE: Update from fingerprint
+        ego.update_from_fingerprint(&fingerprint).unwrap();
+
+        // AFTER: Verify purpose_vector was copied
+        assert_eq!(ego.purpose_vector, alignments,
+            "purpose_vector must match fingerprint.purpose_vector.alignments");
+
+        println!("BEFORE: purpose_vector = {:?}", initial_pv);
+        println!("AFTER: purpose_vector = {:?}", ego.purpose_vector);
+        println!("EVIDENCE: purpose_vector correctly copied from fingerprint");
+    }
+
+    #[test]
+    fn test_update_from_fingerprint_updates_coherence() {
+        println!("=== TEST: update_from_fingerprint updates coherence_with_actions ===");
+
+        let mut ego = SelfEgoNode::new();
+        let initial_coherence = ego.coherence_with_actions;
+        assert_eq!(initial_coherence, 0.0, "Initial coherence should be 0.0");
+
+        // Create fingerprint with uniform alignments (max coherence)
+        let alignments = [0.8; 13]; // Uniform = coherence = 1.0
+        let fingerprint = create_test_fingerprint(alignments);
+        let expected_coherence = fingerprint.purpose_vector.coherence;
+
+        ego.update_from_fingerprint(&fingerprint).unwrap();
+
+        assert!((ego.coherence_with_actions - expected_coherence).abs() < 1e-6,
+            "coherence_with_actions must equal fingerprint.purpose_vector.coherence");
+
+        println!("BEFORE: coherence = {:.4}", initial_coherence);
+        println!("AFTER: coherence = {:.4}", ego.coherence_with_actions);
+        println!("EXPECTED: {:.4}", expected_coherence);
+        println!("EVIDENCE: coherence correctly updated from fingerprint");
+    }
+
+    #[test]
+    fn test_update_from_fingerprint_stores_fingerprint() {
+        println!("=== TEST: update_from_fingerprint stores fingerprint reference ===");
+
+        let mut ego = SelfEgoNode::new();
+        assert!(ego.fingerprint.is_none(), "Initial fingerprint should be None");
+
+        let alignments = [0.5; 13];
+        let fingerprint = create_test_fingerprint(alignments);
+        let fingerprint_id = fingerprint.id;
+
+        ego.update_from_fingerprint(&fingerprint).unwrap();
+
+        assert!(ego.fingerprint.is_some(), "Fingerprint must be stored after update");
+        assert_eq!(ego.fingerprint.as_ref().unwrap().id, fingerprint_id,
+            "Stored fingerprint ID must match input fingerprint ID");
+
+        println!("BEFORE: fingerprint = None");
+        println!("AFTER: fingerprint.id = {:?}", ego.fingerprint.as_ref().unwrap().id);
+        println!("EVIDENCE: fingerprint reference correctly stored");
+    }
+
+    #[test]
+    fn test_update_from_fingerprint_updates_timestamp() {
+        println!("=== TEST: update_from_fingerprint updates last_updated ===");
+
+        let mut ego = SelfEgoNode::new();
+        let initial_time = ego.last_updated;
+
+        // Small delay to ensure timestamps differ
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        let fingerprint = create_test_fingerprint([0.7; 13]);
+        ego.update_from_fingerprint(&fingerprint).unwrap();
+
+        assert!(ego.last_updated > initial_time,
+            "last_updated must be updated after update_from_fingerprint");
+
+        println!("BEFORE: last_updated = {:?}", initial_time);
+        println!("AFTER: last_updated = {:?}", ego.last_updated);
+        println!("EVIDENCE: timestamp correctly updated");
+    }
+
+    // =============================================================================
+    // Full State Verification: purpose_vector update integration
+    // =============================================================================
+
+    #[test]
+    fn test_fsv_purpose_vector_update_integration() {
+        println!("=== FULL STATE VERIFICATION: purpose_vector update ===");
+
+        // SOURCE OF TRUTH: SelfEgoNode.purpose_vector after update
+        let mut ego = SelfEgoNode::new();
+
+        // BEFORE state
+        println!("STATE BEFORE:");
+        println!("  - purpose_vector: {:?}", ego.purpose_vector);
+        println!("  - coherence_with_actions: {:.4}", ego.coherence_with_actions);
+        println!("  - fingerprint: {:?}", ego.fingerprint.as_ref().map(|f| f.id));
+
+        // Create fingerprint with synthetic data
+        let synthetic_alignments = [
+            0.85, 0.78, 0.92, 0.67, 0.73, 0.61, 0.88, 0.75, 0.81, 0.69, 0.84, 0.72, 0.79
+        ];
+        let fingerprint = create_test_fingerprint(synthetic_alignments);
+
+        // EXECUTE
+        let result = ego.update_from_fingerprint(&fingerprint);
+        assert!(result.is_ok(), "update_from_fingerprint must succeed");
+
+        // VERIFY VIA SEPARATE READ
+        println!("\nSTATE AFTER:");
+        println!("  - purpose_vector: {:?}", ego.purpose_vector);
+        println!("  - coherence_with_actions: {:.4}", ego.coherence_with_actions);
+        println!("  - fingerprint.id: {:?}", ego.fingerprint.as_ref().map(|f| f.id));
+
+        // Boundary checks
+        assert_eq!(ego.purpose_vector, synthetic_alignments,
+            "purpose_vector must exactly match input alignments");
+        assert!(ego.coherence_with_actions >= 0.0 && ego.coherence_with_actions <= 1.0,
+            "coherence must be in [0,1]");
+        assert!(ego.fingerprint.is_some(),
+            "fingerprint reference must be stored");
+
+        println!("\nEVIDENCE OF SUCCESS:");
+        println!("  - purpose_vector correctly set to input alignments");
+        println!("  - coherence = {:.4} (valid range)", ego.coherence_with_actions);
+        println!("  - fingerprint reference stored");
+    }
+
+    // =============================================================================
+    // Edge Case Tests
+    // =============================================================================
+
+    #[test]
+    fn test_edge_case_zero_alignments() {
+        println!("=== EDGE CASE: Zero alignments ===");
+
+        let mut ego = SelfEgoNode::new();
+        let fingerprint = create_test_fingerprint([0.0; 13]);
+
+        let result = ego.update_from_fingerprint(&fingerprint);
+        assert!(result.is_ok(), "Should handle zero alignments");
+
+        assert_eq!(ego.purpose_vector, [0.0; 13]);
+        assert!((ego.coherence_with_actions - 1.0).abs() < 1e-6,
+            "Zero uniform alignments should have coherence 1.0");
+
+        println!("EVIDENCE: Zero alignments handled correctly");
+    }
+
+    #[test]
+    fn test_edge_case_max_alignments() {
+        println!("=== EDGE CASE: Maximum alignments ===");
+
+        let mut ego = SelfEgoNode::new();
+        let fingerprint = create_test_fingerprint([1.0; 13]);
+
+        let result = ego.update_from_fingerprint(&fingerprint);
+        assert!(result.is_ok(), "Should handle max alignments");
+
+        assert_eq!(ego.purpose_vector, [1.0; 13]);
+
+        println!("EVIDENCE: Maximum alignments handled correctly");
+    }
+
+    #[test]
+    fn test_edge_case_negative_alignments() {
+        println!("=== EDGE CASE: Negative alignments ===");
+
+        let mut ego = SelfEgoNode::new();
+        // Note: PurposeVector accepts negative values (cosine can be negative)
+        let fingerprint = create_test_fingerprint([-0.5; 13]);
+
+        let result = ego.update_from_fingerprint(&fingerprint);
+        assert!(result.is_ok(), "Should handle negative alignments");
+
+        assert_eq!(ego.purpose_vector, [-0.5; 13]);
+
+        println!("EVIDENCE: Negative alignments handled correctly");
+    }
+
+    #[test]
+    fn test_self_awareness_loop_identity_coherence_getter() {
+        println!("=== TEST: SelfAwarenessLoop.identity_coherence() getter ===");
+
+        let mut loop_mgr = SelfAwarenessLoop::new();
+
+        // Initial state
+        let initial_ic = loop_mgr.identity_coherence();
+        let initial_status = loop_mgr.identity_status();
+        println!("BEFORE: identity_coherence = {:.4}, status = {:?}", initial_ic, initial_status);
+
+        // Create ego and run a cycle
+        let mut ego = SelfEgoNode::with_purpose_vector([0.8; 13]);
+        ego.record_purpose_snapshot("Setup").unwrap();
+
+        let action = [0.8; 13];
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let _ = loop_mgr.cycle(&mut ego, &action, 0.95).await.unwrap();
+        });
+
+        // After cycle
+        let final_ic = loop_mgr.identity_coherence();
+        let final_status = loop_mgr.identity_status();
+        println!("AFTER: identity_coherence = {:.4}, status = {:?}", final_ic, final_status);
+
+        // Verify getters work
+        assert!(final_ic >= 0.0 && final_ic <= 1.0, "IC must be in [0,1]");
+
+        println!("EVIDENCE: identity_coherence getter works correctly");
     }
 }
