@@ -32,9 +32,14 @@
 
 mod calculator;
 mod embedding_distance;
+pub mod embedder_entropy;
 mod kl_divergence;
 
 pub use calculator::SurpriseCalculator;
+pub use embedder_entropy::{
+    AsymmetricKnnEntropy, DefaultKnnEntropy, EmbedderEntropy, EmbedderEntropyFactory,
+    GmmMahalanobisEntropy, HammingPrototypeEntropy, JaccardActiveEntropy,
+};
 pub use embedding_distance::{
     compute_cosine_distance, compute_embedding_surprise, EmbeddingDistanceCalculator,
 };

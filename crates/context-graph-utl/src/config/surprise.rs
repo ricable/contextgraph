@@ -45,6 +45,57 @@ pub struct SurpriseConfig {
     /// EMA alpha (smoothing factor).
     /// Range: `[0.0, 1.0]`
     pub ema_alpha: f32,
+
+    // === Per-Embedder Entropy Configuration ===
+    // These fields configure specialized entropy methods per constitution.yaml delta_sc.ΔS_methods
+
+    /// Number of nearest neighbors for KNN-based entropy methods.
+    /// Used by: DefaultKnnEntropy, AsymmetricKnnEntropy
+    /// Range: `[1, 100]`
+    pub k_neighbors: usize,
+
+    // --- GMM Mahalanobis (E1 Semantic) ---
+
+    /// Number of GMM components for semantic entropy.
+    /// Range: `[1, 20]`
+    pub gmm_n_components: usize,
+
+    /// Regularization term for covariance matrix inversion.
+    /// Range: `[1e-8, 1e-2]`
+    pub gmm_regularization: f32,
+
+    // --- Asymmetric KNN (E5 Causal) ---
+
+    /// Direction modifier for cause→effect relationships.
+    /// Higher values increase surprise for forward causal queries.
+    /// Range: `[0.5, 2.0]`
+    pub causal_cause_to_effect_mod: f32,
+
+    /// Direction modifier for effect→cause relationships.
+    /// Lower values decrease surprise for backward causal queries.
+    /// Range: `[0.5, 2.0]`
+    pub causal_effect_to_cause_mod: f32,
+
+    // --- Hamming Prototype (E9 HDC) ---
+
+    /// Maximum number of prototypes for HDC entropy.
+    /// Range: `[10, 1000]`
+    pub hdc_max_prototypes: usize,
+
+    /// Threshold for binarizing float embeddings in HDC.
+    /// Range: `[0.0, 1.0]`
+    pub hdc_binarization_threshold: f32,
+
+    // --- Jaccard Active (E13 SPLADE) ---
+
+    /// Activation threshold for SPLADE active dimensions.
+    /// Values above this threshold are considered "active".
+    /// Range: `[0.0, 0.1]`
+    pub splade_activation_threshold: f32,
+
+    /// Smoothing factor for empty union handling in Jaccard.
+    /// Range: `[0.001, 0.1]`
+    pub splade_smoothing: f32,
 }
 
 impl Default for SurpriseConfig {
@@ -58,6 +109,17 @@ impl Default for SurpriseConfig {
             sample_count: 100,
             use_ema: true,
             ema_alpha: 0.3,
+
+            // Per-embedder entropy defaults (constitution.yaml compliant)
+            k_neighbors: 5,
+            gmm_n_components: 3,
+            gmm_regularization: 1e-6,
+            causal_cause_to_effect_mod: 1.2,  // constitution.yaml: cause_to_effect=1.2
+            causal_effect_to_cause_mod: 0.8,  // constitution.yaml: effect_to_cause=0.8
+            hdc_max_prototypes: 100,
+            hdc_binarization_threshold: 0.5,
+            splade_activation_threshold: 0.0,
+            splade_smoothing: 0.01,
         }
     }
 }

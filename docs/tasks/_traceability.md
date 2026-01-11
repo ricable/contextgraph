@@ -32,7 +32,7 @@ This matrix ensures every requirement, component, and behavior identified in the
 
 | Gap | Description | Sherlock Case | Task ID | Verified |
 |-----|-------------|---------------|---------|----------|
-| Per-embedder deltaS Missing | E1-E13 lack specific entropy methods | SHERLOCK-05 | TASK-UTL-P1-001 | ☐ |
+| Per-embedder deltaS Missing | E1-E13 lack specific entropy methods | SHERLOCK-05 | TASK-UTL-P1-001 | ☑ |
 | Workspace Dopamine Missing | WTA dynamics incomplete | SHERLOCK-03 | TASK-GWT-P1-002 | ☐ |
 | MaxSim Stage 5 Stub | Late interaction not working | SHERLOCK-08 | TASK-STORAGE-P2-001 | ☐ |
 | Chaos Tests Empty | Resilience unverified | SHERLOCK-10 | TASK-TEST-P2-001 | ☐ |
@@ -48,7 +48,7 @@ The consciousness equation C(t) = I(t) × R(t) × D(t) requires:
 |-----------|-----------------|-------------|---------------|----------|
 | I(t) | Kuramoto r | Order parameter from oscillator sync | TASK-GWT-P0-001, P0-002 | ☑ |
 | R(t) | Meta-UTL | Self-awareness reflection | TASK-GWT-P0-003 | ☑ |
-| D(t) | 13D Entropy | Fingerprint differentiation | TASK-UTL-P1-001 | ☐ |
+| D(t) | 13D Entropy | Fingerprint differentiation | TASK-UTL-P1-001 | ☑ |
 
 ---
 
@@ -92,7 +92,7 @@ The consciousness equation C(t) = I(t) × R(t) × D(t) requires:
 | Finding | Requirement | Task ID | Verified |
 |---------|-------------|---------|----------|
 | Core UTL formula correct | N/A | N/A | No action needed |
-| Per-embedder deltaS not implemented | Implement GMM, Hamming, Jaccard | TASK-UTL-P1-001 | ☐ |
+| Per-embedder deltaS not implemented | Implement GMM, Hamming, Jaccard | TASK-UTL-P1-001 | ☑ |
 
 ### SHERLOCK-06: MCP Handlers (INNOCENT ✓)
 
@@ -114,7 +114,7 @@ The consciousness equation C(t) = I(t) × R(t) × D(t) requires:
 
 | Finding | Requirement | Task ID | Verified |
 |---------|-------------|---------|----------|
-| HNSW brute force | Replace with graph traversal | TASK-STORAGE-P1-001 | ☐ |
+| HNSW brute force | Replace with graph traversal | TASK-STORAGE-P1-001 | ☑ |
 | MaxSim Stage 5 stub | Implement ColBERT late interaction | TASK-STORAGE-P2-001 | ☐ |
 | 21 Column Families correct | N/A | N/A | No action needed |
 
@@ -170,8 +170,8 @@ The consciousness equation C(t) = I(t) × R(t) × D(t) requires:
 | 5.1 | C(t) = I(t) × R(t) × D(t) auto-computes | TASK-GWT-P0-001, P0-002 | ☑ |
 | 5.2 | Kuramoto r drives consciousness state | TASK-GWT-P0-001 | ☑ |
 | 5.3 | SelfAwarenessLoop provides R(t) | TASK-GWT-P0-003 | ☑ |
-| 5.4 | 13-embedder entropy provides D(t) | TASK-UTL-P1-001 | ☐ |
-| 6.1 | HNSW < 60ms at 1M memories | TASK-STORAGE-P1-001 | ☐ |
+| 5.4 | 13-embedder entropy provides D(t) | TASK-UTL-P1-001 | ☑ |
+| 6.1 | HNSW < 60ms at 1M memories | TASK-STORAGE-P1-001 | ☑ |
 | 6.2 | Identity persists across restarts | TASK-GWT-P1-001 | ☐ |
 | 7.1 | Workspace events trigger subsystems | TASK-GWT-P1-002 | ☐ |
 | 8.1 | ColBERT late interaction for E12 | TASK-STORAGE-P2-001 | ☐ |
@@ -227,16 +227,16 @@ Before marking a task as complete, verify:
 | TASK-GWT-P0-001 | `kuramoto: Arc<RwLock<KuramotoNetwork>>` | GwtSystem | ☑ |
 | TASK-GWT-P0-002 | `pub async fn step_kuramoto(&self, elapsed: Duration) -> CoreResult<f32>` | GwtSystem | ☑ |
 | TASK-GWT-P0-003 | `pub async fn process_action_awareness(&self, fingerprint: &TeleologicalFingerprint) -> CoreResult<SelfReflectionResult>` | GwtSystem | ☑ |
-| TASK-STORAGE-P1-001 | `pub fn search_hnsw(&self, embedder: EmbedderId, query: &[f32], k: usize) -> Vec<(MemoryId, f32)>` | HnswIndex | ☐ |
+| TASK-STORAGE-P1-001 | `pub fn search_hnsw(&self, embedder: EmbedderId, query: &[f32], k: usize) -> Vec<(MemoryId, f32)>` | HnswIndex | ☑ |
 | TASK-GWT-P1-001 | `pub async fn persist_ego(&self) -> Result<()>` | SelfEgoNode | ☐ |
 | TASK-GWT-P1-001 | `pub async fn restore_ego(&mut self) -> Result<()>` | SelfEgoNode | ☐ |
 | TASK-GWT-P1-002 | `pub fn subscribe_to_workspace(&mut self, listener: Box<dyn WorkspaceEventListener>)` | Workspace | ☐ |
-| TASK-UTL-P1-001 | `fn delta_s(&self, prev: &Self, next: &Self) -> f64` | EmbedderEntropy trait | ☐ |
+| TASK-UTL-P1-001 | `fn compute_delta_s(&self, current: &[f32], history: &[Vec<f32>], k: usize) -> UtlResult<f32>` | EmbedderEntropy trait | ☑ |
 | TASK-STORAGE-P2-001 | `pub fn compute_maxsim(&self, query_tokens: &[Vec<f32>], doc_tokens: &[Vec<f32>]) -> f32` | MaxSimScorer | ☐ |
 | TASK-TEST-P2-001 | `async fn test_gpu_oom_recovery()` | ChaosTests | ☐ |
 | TASK-TEST-P2-002 | Quality gate job in ci.yml | GitHub Actions | ☐ |
 
 ---
 
-**Last Updated:** 2026-01-11
-**Coverage Status:** ALL P0 tasks verified (P0-001, P0-002, P0-003). 100% of actionable blockers and gaps covered.
+**Last Updated:** 2026-01-10
+**Coverage Status:** P0 + 2 P1 tasks COMPLETED (P0-001, P0-002, P0-003, STORAGE-P1-001, UTL-P1-001). 50% of tasks complete.
