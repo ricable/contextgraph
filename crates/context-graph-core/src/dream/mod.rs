@@ -47,6 +47,7 @@
 pub mod amortized;
 pub mod controller;
 pub mod nrem;
+pub mod poincare_walk;
 pub mod rem;
 pub mod scheduler;
 pub mod types;
@@ -55,6 +56,22 @@ pub mod types;
 pub use amortized::{AmortizedLearner, PathSignature, ShortcutCandidate};
 pub use controller::{DreamController, DreamReport, DreamState, DreamStatus};
 pub use nrem::{NremPhase, NremReport};
+pub use poincare_walk::{
+    PoincareBallConfig,
+    direction_toward,
+    geodesic_distance,
+    inner_product_64,
+    is_far_from_all,
+    mobius_add,
+    norm_64,
+    norm_squared_64,
+    project_to_ball,
+    random_direction,
+    sample_direction_with_temperature,
+    scale_direction,
+    softmax_temperature,
+    validate_in_ball,
+};
 pub use rem::{RemPhase, RemReport};
 pub use scheduler::DreamScheduler;
 pub use types::{
