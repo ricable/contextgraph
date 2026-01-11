@@ -1,91 +1,3 @@
-# TASK-DREAM-P0-003: Hebbian Learning Implementation
-
-## Metadata
-
-| Field | Value |
-|-------|-------|
-| **Task ID** | TASK-DREAM-P0-003 |
-| **Spec Ref** | SPEC-DREAM-001, Constitution v5.0.0 Section dream |
-| **Layer** | 2 (Logic) |
-| **Priority** | P0 - Critical |
-| **Effort** | 4 hours |
-| **Dependencies** | TASK-DREAM-P0-001 (COMPLETED - types.rs exists) |
-| **Blocks** | TASK-DREAM-P0-006 (Wake Controller) |
-| **Status** | Ready |
-| **Last Updated** | 2026-01-11 |
-
----
-
-## 1. Objective
-
-Implement the `HebbianEngine` struct and Hebbian learning algorithm for NREM phase memory consolidation. This **creates a new file** `hebbian.rs` containing:
-- `HebbianEngine` struct for computing weight updates
-- `HebbianUpdateResult` and `EdgeUpdate` types
-- `select_replay_memories()` function for recency-biased memory selection
-- `find_coactivated_pairs()` for detecting co-activated node pairs
-- `kuramoto_coupling()` and `kuramoto_order_parameter()` for neural synchronization
-
-The core Hebbian formula: **`dw_ij = eta * phi_i * phi_j`**
-
----
-
-## 2. Current Codebase State (Verified 2026-01-11)
-
-### 2.1 What EXISTS (do NOT recreate):
-
-| File | Content | Location |
-|------|---------|----------|
-| `types.rs` | `HebbianConfig`, `NodeActivation`, `HyperbolicWalkConfig`, `WalkStep`, `EntropyWindow`, `GpuTriggerState` | `crates/context-graph-core/src/dream/types.rs` |
-| `nrem.rs` | `NremPhase` (stub), `NremReport`, `HebbianUpdateStats`, `ReplayPath` | `crates/context-graph-core/src/dream/nrem.rs` |
-| `mod.rs` | Module exports, constants | `crates/context-graph-core/src/dream/mod.rs` |
-| `poincare_walk.rs` | Poincare ball math (64D), `mobius_add`, `geodesic_distance` | `crates/context-graph-core/src/dream/poincare_walk.rs` |
-| `amortized.rs` | `AmortizedLearner`, `PathSignature`, `ShortcutCandidate` | `crates/context-graph-core/src/dream/amortized.rs` |
-| `GraphEdge` | Edge struct with `weight`, `source_id`, `target_id`, `is_amortized_shortcut` | `crates/context-graph-core/src/types/graph_edge/edge.rs` |
-
-### 2.2 HebbianConfig (already defined in types.rs):
-
-```rust
-pub struct HebbianConfig {
-    pub learning_rate: f32,       // Constitution: 0.01
-    pub weight_decay: f32,        // Constitution: 0.001
-    pub weight_floor: f32,        // Constitution: 0.05
-    pub weight_cap: f32,          // Constitution: 1.0
-    pub coupling_strength: f32,   // Constitution: 0.9 (NOT 10.0)
-}
-```
-
-### 2.3 NodeActivation (already defined in types.rs):
-
-```rust
-pub struct NodeActivation {
-    pub node_id: Uuid,
-    pub phi: f32,           // Activation level [0.0, 1.0]
-    pub timestamp: Option<Instant>,
-}
-```
-
-### 2.4 NremPhase STUB that must be replaced:
-
-The current `nrem.rs:151-221` contains a stub `process()` method with hardcoded values:
-```rust
-// TODO: Agent 2 will implement actual processing:
-// 1. Select memories with recency bias
-// 2. Apply Hebbian updates: delta_w = eta * pre * post
-// 3. Apply tight coupling via Kuramoto
-// 4. Detect shortcut candidates
-```
-
-This stub **MUST** be replaced with real Hebbian processing.
-
----
-
-## 3. Files to Create/Modify
-
-### 3.1 CREATE: `crates/context-graph-core/src/dream/hebbian.rs`
-
-This file does NOT exist. Create it with:
-
-```rust
 //! Hebbian Learning Implementation
 //!
 //! Implements the Hebbian learning rule for NREM phase memory consolidation:
@@ -192,7 +104,10 @@ impl HebbianEngine {
                 self.activations.insert(activation.node_id, activation.phi);
             }
         }
-        debug!("Set {} significant activations for Hebbian update", self.activations.len());
+        debug!(
+            "Set {} significant activations for Hebbian update",
+            self.activations.len()
+        );
     }
 
     /// Load current edge weights for processing.
@@ -227,8 +142,8 @@ impl HebbianEngine {
             let decayed = current_weight * (1.0 - self.config.weight_decay);
 
             // New weight with bounds
-            let new_weight = (decayed + hebbian_delta)
-                .clamp(self.config.weight_floor, self.config.weight_cap);
+            let new_weight =
+                (decayed + hebbian_delta).clamp(self.config.weight_floor, self.config.weight_cap);
 
             // Check for pruning
             let should_prune = new_weight <= self.config.weight_floor;
@@ -260,7 +175,11 @@ impl HebbianEngine {
 
             trace!(
                 "Edge ({}, {}): {} -> {} (delta={:.6})",
-                source, target, current_weight, new_weight, hebbian_delta
+                source,
+                target,
+                current_weight,
+                new_weight,
+                hebbian_delta
             );
 
             self.updated_edges.push(update);
@@ -412,17 +331,22 @@ pub fn kuramoto_coupling(
     let mut new_phases = HashMap::new();
 
     for (node_i, &theta_i) in phases {
-        let coupling_sum: f32 = phases
-            .values()
-            .map(|&theta_j| (theta_j - theta_i).sin())
-            .sum();
+        let coupling_sum: f32 = phases.values().map(|&theta_j| (theta_j - theta_i).sin()).sum();
 
         let d_theta = (coupling_strength / n) * coupling_sum;
         let new_theta = theta_i + d_theta * dt;
 
         // Wrap to [0, 2*PI]
-        let wrapped = new_theta % (2.0 * std::f32::consts::PI);
-        new_phases.insert(*node_i, if wrapped < 0.0 { wrapped + 2.0 * std::f32::consts::PI } else { wrapped });
+        let two_pi = 2.0 * std::f32::consts::PI;
+        let wrapped = new_theta % two_pi;
+        new_phases.insert(
+            *node_i,
+            if wrapped < 0.0 {
+                wrapped + two_pi
+            } else {
+                wrapped
+            },
+        );
     }
 
     new_phases
@@ -555,7 +479,10 @@ mod tests {
         let updates = engine.compute_updates();
 
         assert_eq!(updates.len(), 1);
-        assert!(updates[0].new_weight <= 1.0, "Weight should be capped at 1.0");
+        assert!(
+            updates[0].new_weight <= 1.0,
+            "Weight should be capped at 1.0"
+        );
     }
 
     // ============================================================
@@ -568,11 +495,7 @@ mod tests {
         let mem2 = Uuid::new_v4();
         let mem3 = Uuid::new_v4();
 
-        let memories = vec![
-            (mem1, 1000, 0.5),
-            (mem2, 2000, 0.5),
-            (mem3, 3000, 0.5),
-        ];
+        let memories = vec![(mem1, 1000, 0.5), (mem2, 2000, 0.5), (mem3, 3000, 0.5)];
 
         // High recency bias should prefer recent
         let selected = select_replay_memories(&memories, 0.9, 2);
@@ -687,335 +610,73 @@ mod tests {
 
         let final_r = kuramoto_order_parameter(&current);
 
-        assert!(final_r > initial_r, "Coupling should increase synchronization");
+        assert!(
+            final_r > initial_r,
+            "Coupling should increase synchronization"
+        );
+    }
+
+    // ============================================================
+    // Edge Case Tests
+    // ============================================================
+
+    #[test]
+    fn test_kuramoto_single_node() {
+        let mut phases = HashMap::new();
+        let id = Uuid::new_v4();
+        phases.insert(id, 1.5);
+
+        let result = kuramoto_coupling(&phases, 0.9, 0.01);
+        assert_eq!(result.len(), 1);
+        // Single node should be unchanged (coupling sum is 0)
+        assert!((result[&id] - 1.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_kuramoto_empty() {
+        let phases = HashMap::new();
+        let r = kuramoto_order_parameter(&phases);
+        assert_eq!(r, 0.0);
+    }
+
+    #[test]
+    fn test_select_replay_memories_limit_zero() {
+        let mem1 = Uuid::new_v4();
+        let memories = vec![(mem1, 1000, 0.5)];
+        let selected = select_replay_memories(&memories, 0.8, 0);
+        assert!(selected.is_empty());
+    }
+
+    #[test]
+    fn test_find_coactivated_pairs_single_node() {
+        let node_a = Uuid::new_v4();
+        let mut activations = HashMap::new();
+        activations.insert(node_a, 0.8);
+
+        let pairs = find_coactivated_pairs(&activations, 0.1);
+        assert!(pairs.is_empty());
+    }
+
+    #[test]
+    fn test_find_coactivated_pairs_empty() {
+        let activations = HashMap::new();
+        let pairs = find_coactivated_pairs(&activations, 0.1);
+        assert!(pairs.is_empty());
+    }
+
+    #[test]
+    fn test_hebbian_engine_reset() {
+        let mut engine = HebbianEngine::with_defaults();
+        let node_a = Uuid::new_v4();
+        let node_b = Uuid::new_v4();
+
+        engine.set_activations(&[NodeActivation::new(node_a, 0.8)]);
+        engine.load_edges(&[(node_a, node_b, 0.5)]);
+        engine.compute_updates();
+
+        engine.reset();
+
+        assert!(engine.stats().edges_strengthened == 0);
+        assert!(engine.stats().edges_weakened == 0);
     }
 }
-```
-
-### 3.2 MODIFY: `crates/context-graph-core/src/dream/mod.rs`
-
-Add after line 50 (`pub mod poincare_walk;`):
-
-```rust
-pub mod hebbian;
-```
-
-Add to re-exports section (after line 75):
-
-```rust
-pub use hebbian::{
-    HebbianEngine,
-    HebbianUpdateResult,
-    EdgeUpdate,
-    select_replay_memories,
-    find_coactivated_pairs,
-    kuramoto_coupling,
-    kuramoto_order_parameter,
-};
-```
-
-### 3.3 MODIFY: `crates/context-graph-core/src/dream/nrem.rs`
-
-Replace the stub `process()` method (lines 151-221) with actual Hebbian processing.
-
-**Add imports at top:**
-```rust
-use super::hebbian::{HebbianEngine, HebbianUpdateResult, select_replay_memories, find_coactivated_pairs};
-use super::types::NodeActivation;
-```
-
-**Add field to NremPhase struct (after line 60):**
-```rust
-    /// Hebbian learning engine
-    hebbian_engine: HebbianEngine,
-```
-
-**Update new() method (after line 134):**
-```rust
-    hebbian_engine: HebbianEngine::with_defaults(),
-```
-
-**Replace process() implementation - REMOVE STUB ENTIRELY**
-
----
-
-## 4. Constitution Compliance Requirements
-
-| Parameter | Constitution Value | Location |
-|-----------|-------------------|----------|
-| `learning_rate` | 0.01 | `dream.phases.nrem.params.learning_rate` |
-| `weight_decay` | 0.001 | `dream.phases.nrem.params.weight_decay` |
-| `weight_floor` | 0.05 | `dream.phases.nrem.params.weight_floor` |
-| `weight_cap` | 1.0 | `dream.phases.nrem.params.weight_cap` |
-| `coupling_strength` | **0.9** (NOT 10.0) | `dream.phases.nrem.params.coupling` |
-| `recency_bias` | 0.8 | `dream.phases.nrem.recency_bias` |
-| `NREM_DURATION` | 180 seconds | `dream.phases.nrem.duration` |
-
-**CRITICAL**: `coupling_strength = 0.9` during NREM, NOT 10.0. The task document originally had 10.0 which is WRONG.
-
----
-
-## 5. Definition of Done
-
-### 5.1 Compilation
-
-```bash
-cargo build -p context-graph-core
-# Must compile with zero errors
-```
-
-### 5.2 Tests
-
-```bash
-cargo test -p context-graph-core dream::hebbian
-# All tests must pass
-```
-
-### 5.3 Clippy
-
-```bash
-cargo clippy -p context-graph-core -- -D warnings
-# No warnings
-```
-
-### 5.4 Type Signatures (Exact)
-
-```rust
-pub struct HebbianUpdateResult {
-    pub edges_strengthened: usize,
-    pub edges_weakened: usize,
-    pub edges_to_prune: usize,
-    pub total_delta: f32,
-    pub average_delta: f32,
-    pub max_delta: f32,
-    pub prune_candidates: Vec<(Uuid, Uuid)>,
-}
-
-pub struct EdgeUpdate {
-    pub source_id: Uuid,
-    pub target_id: Uuid,
-    pub old_weight: f32,
-    pub new_weight: f32,
-    pub hebbian_delta: f32,
-    pub should_prune: bool,
-}
-
-impl HebbianEngine {
-    pub fn new(config: HebbianConfig) -> Self;
-    pub fn with_defaults() -> Self;
-    pub fn set_activations(&mut self, activations: &[NodeActivation]);
-    pub fn load_edges(&mut self, edges: &[(Uuid, Uuid, f32)]);
-    pub fn compute_updates(&mut self) -> Vec<EdgeUpdate>;
-    pub fn compute_delta(&self, phi_i: f32, phi_j: f32) -> f32;
-    pub fn stats(&self) -> &HebbianUpdateResult;
-    pub fn config(&self) -> &HebbianConfig;
-    pub fn reset(&mut self);
-}
-
-pub fn select_replay_memories(
-    memories: &[(Uuid, u64, f32)],
-    recency_bias: f32,
-    limit: usize,
-) -> Vec<Uuid>;
-
-pub fn find_coactivated_pairs(
-    activations: &HashMap<Uuid, f32>,
-    threshold: f32,
-) -> HashSet<(Uuid, Uuid)>;
-
-pub fn kuramoto_coupling(
-    phases: &HashMap<Uuid, f32>,
-    coupling_strength: f32,
-    dt: f32,
-) -> HashMap<Uuid, f32>;
-
-pub fn kuramoto_order_parameter(phases: &HashMap<Uuid, f32>) -> f32;
-```
-
----
-
-## 6. Full State Verification (FSV) Requirements
-
-### 6.1 Source of Truth Definition
-
-| Verification Target | Source of Truth | Verification Method |
-|---------------------|-----------------|---------------------|
-| HebbianEngine state | `HebbianEngine.stats` | After compute_updates(), read stats directly |
-| Edge weights | Input/output of compute_updates() | Compare old_weight vs new_weight in EdgeUpdate |
-| Kuramoto sync | kuramoto_order_parameter() return value | Must be f32 in [0.0, 1.0] |
-
-### 6.2 Manual Verification Steps
-
-After implementing, you MUST manually verify:
-
-**Test 1: Hebbian Delta Computation**
-```rust
-// Input: phi_i=0.8, phi_j=0.9, eta=0.01
-// Expected output: 0.01 * 0.8 * 0.9 = 0.0072
-let engine = HebbianEngine::with_defaults();
-let delta = engine.compute_delta(0.8, 0.9);
-println!("STATE BEFORE: phi_i=0.8, phi_j=0.9, eta=0.01");
-println!("STATE AFTER: delta={}", delta);
-assert!((delta - 0.0072).abs() < 1e-6);
-```
-
-**Test 2: Weight Update Full Cycle**
-```rust
-// Input: edge weight 0.5, activations 0.8 and 0.9
-// Expected: weight increases due to Hebbian term, decays by 0.001
-let mut engine = HebbianEngine::with_defaults();
-let node_a = Uuid::new_v4();
-let node_b = Uuid::new_v4();
-engine.set_activations(&[NodeActivation::new(node_a, 0.8), NodeActivation::new(node_b, 0.9)]);
-engine.load_edges(&[(node_a, node_b, 0.5)]);
-println!("STATE BEFORE: weight=0.5, phi_a=0.8, phi_b=0.9");
-let updates = engine.compute_updates();
-println!("STATE AFTER: weight={}", updates[0].new_weight);
-// new_weight = 0.5 * (1 - 0.001) + 0.0072 = 0.4995 + 0.0072 = 0.5067
-assert!(updates[0].new_weight > 0.5);
-```
-
-**Test 3: Pruning Behavior**
-```rust
-// Input: edge weight at floor (0.05), no activations
-// Expected: after decay, weight <= floor, should_prune = true
-let mut engine = HebbianEngine::with_defaults();
-engine.load_edges(&[(Uuid::new_v4(), Uuid::new_v4(), 0.05)]);
-println!("STATE BEFORE: weight=0.05, no activations");
-let updates = engine.compute_updates();
-println!("STATE AFTER: weight={}, should_prune={}", updates[0].new_weight, updates[0].should_prune);
-assert!(updates[0].should_prune);
-```
-
-### 6.3 Edge Case Verification
-
-| Edge Case | Input | Expected Output | Verification |
-|-----------|-------|-----------------|--------------|
-| Empty activations | `set_activations(&[])` | No Hebbian delta, only decay | Check `hebbian_delta == 0.0` |
-| Zero phi values | `phi_i=0.0, phi_j=0.5` | `delta = 0.0` | Check `compute_delta(0.0, 0.5) == 0.0` |
-| Weight at cap | `weight=1.0, high activations` | Weight capped at 1.0 | Check `new_weight <= 1.0` |
-| Empty memory list | `select_replay_memories(&[], 0.8, 10)` | Empty result | Check `result.is_empty()` |
-| Single node | `find_coactivated_pairs({single})` | Empty pairs | Check `pairs.is_empty()` |
-| Kuramoto single node | `kuramoto_coupling({single})` | Unchanged | Check phases unchanged |
-
----
-
-## 7. Evidence of Success Log Template
-
-After completing implementation, you MUST provide this filled out:
-
-```
-=== TASK-DREAM-P0-003 VERIFICATION LOG ===
-Timestamp: [YYYY-MM-DD HH:MM:SS]
-Executor: [Agent ID]
-
-1. COMPILATION
-   $ cargo build -p context-graph-core
-   Result: [PASS/FAIL]
-   Errors: [None / List errors]
-
-2. UNIT TESTS
-   $ cargo test -p context-graph-core dream::hebbian
-   Result: [PASS/FAIL]
-   Tests passed: [N/N]
-   Failed tests: [None / List]
-
-3. CLIPPY
-   $ cargo clippy -p context-graph-core -- -D warnings
-   Result: [PASS/FAIL]
-   Warnings: [None / List]
-
-4. MANUAL VERIFICATION
-
-   4.1 Hebbian Delta Test
-       Input: phi_i=0.8, phi_j=0.9, eta=0.01
-       Expected: 0.0072
-       Actual: [VALUE]
-       PASS/FAIL: [X]
-
-   4.2 Weight Update Test
-       Input: weight=0.5, phi_a=0.8, phi_b=0.9
-       Expected: > 0.5
-       Actual: [VALUE]
-       PASS/FAIL: [X]
-
-   4.3 Pruning Test
-       Input: weight=0.05, no activations
-       Expected: should_prune=true
-       Actual: [VALUE]
-       PASS/FAIL: [X]
-
-   4.4 Kuramoto Sync Test
-       Input: phases=[0.0, 0.0, 0.0]
-       Expected order parameter: 1.0
-       Actual: [VALUE]
-       PASS/FAIL: [X]
-
-   4.5 Kuramoto Desync Test
-       Input: phases=[0, 2π/3, 4π/3]
-       Expected order parameter: < 0.1
-       Actual: [VALUE]
-       PASS/FAIL: [X]
-
-5. EDGE CASES
-
-   5.1 Empty activations: [PASS/FAIL]
-   5.2 Zero phi values: [PASS/FAIL]
-   5.3 Weight at cap: [PASS/FAIL]
-   5.4 Empty memory list: [PASS/FAIL]
-   5.5 Single node coactivation: [PASS/FAIL]
-   5.6 Kuramoto single node: [PASS/FAIL]
-
-6. FILES CREATED/MODIFIED
-   - [ ] Created: crates/context-graph-core/src/dream/hebbian.rs
-   - [ ] Modified: crates/context-graph-core/src/dream/mod.rs
-   - [ ] Modified: crates/context-graph-core/src/dream/nrem.rs
-
-7. CONSTITUTION COMPLIANCE
-   - [ ] learning_rate = 0.01
-   - [ ] weight_decay = 0.001
-   - [ ] weight_floor = 0.05
-   - [ ] weight_cap = 1.0
-   - [ ] coupling_strength = 0.9 (NOT 10.0)
-
-OVERALL RESULT: [PASS/FAIL]
-```
-
----
-
-## 8. Anti-Patterns to Avoid
-
-| Anti-Pattern | Why Forbidden | Correct Approach |
-|--------------|---------------|------------------|
-| `unwrap()` in library code | Crashes in prod | Use `?` or explicit error handling |
-| Hardcoded coupling=10.0 | Constitution says 0.9 | Use `HebbianConfig::default()` |
-| Mock data in tests | Hides bugs | Use real UUIDs, real computations |
-| Stub implementations | AP-35, AP-36 forbidden | Full implementation required |
-| Missing FSV | No proof of correctness | Execute all verification steps |
-
----
-
-## 9. Related Tasks
-
-| Task | Relationship | Status |
-|------|-------------|--------|
-| TASK-DREAM-P0-001 | Provides `HebbianConfig`, `NodeActivation` | **COMPLETED** |
-| TASK-DREAM-P0-002 | Provides Poincare ball math | **COMPLETED** |
-| TASK-DREAM-P0-004 | Uses Poincare walk for REM | Ready |
-| TASK-DREAM-P0-005 | Dream triggers | Ready |
-| TASK-DREAM-P0-006 | Wake controller (blocked by this) | Blocked |
-
----
-
-## 10. Estimated Effort Breakdown
-
-| Phase | Duration |
-|-------|----------|
-| Create hebbian.rs | 90 min |
-| HebbianEngine implementation | 45 min |
-| Kuramoto functions | 30 min |
-| Unit tests | 45 min |
-| Modify mod.rs | 5 min |
-| Modify nrem.rs | 15 min |
-| FSV verification | 20 min |
-| **Total** | **4.5 hours** |

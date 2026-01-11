@@ -78,6 +78,7 @@ mod teleological;
 mod tools_call;
 mod tools_list;
 mod utl;
+mod manual_delta_sc_verification;
 
 use std::sync::Arc;
 

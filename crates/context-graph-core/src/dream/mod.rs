@@ -46,6 +46,7 @@
 
 pub mod amortized;
 pub mod controller;
+pub mod hebbian;
 pub mod nrem;
 pub mod poincare_walk;
 pub mod rem;
@@ -55,6 +56,10 @@ pub mod types;
 // Re-exports for convenience
 pub use amortized::{AmortizedLearner, PathSignature, ShortcutCandidate};
 pub use controller::{DreamController, DreamReport, DreamState, DreamStatus};
+pub use hebbian::{
+    find_coactivated_pairs, kuramoto_coupling, kuramoto_order_parameter, select_replay_memories,
+    EdgeUpdate, HebbianEngine, HebbianUpdateResult,
+};
 pub use nrem::{NremPhase, NremReport};
 pub use poincare_walk::{
     PoincareBallConfig,

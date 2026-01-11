@@ -37,6 +37,7 @@
 //! - Major (ECE > 0.15): Reset to domain priors + Bayesian optimization
 //! - Critical (ECE > 0.25): Fallback to conservative static, alert human
 
+pub mod accessor;
 pub mod calibration;
 pub mod domain;
 pub mod level1_ewma;
@@ -44,6 +45,7 @@ pub mod level2_temperature;
 pub mod level3_bandit;
 pub mod level4_bayesian;
 
+pub use accessor::{ThresholdAccessor, THRESHOLD_NAMES};
 pub use calibration::{CalibrationComputer, CalibrationMetrics, CalibrationStatus, Prediction};
 pub use domain::{Domain, DomainManager, DomainThresholds};
 pub use level1_ewma::{DriftTracker, EwmaState};

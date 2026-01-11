@@ -36,7 +36,9 @@ mod structural;
 mod tracker;
 mod window;
 
-pub use cluster_fit::{ClusterContext, ClusterFitConfig, ClusterFitResult, DistanceMetric};
+pub use cluster_fit::{
+    compute_cluster_fit, ClusterContext, ClusterFitConfig, ClusterFitResult, DistanceMetric,
+};
 pub use structural::{compute_structural_coherence, StructuralCoherenceCalculator};
 pub use tracker::CoherenceTracker;
 pub use window::{RollingWindow, WindowConfig};

@@ -14,7 +14,9 @@ use context_graph_core::teleological::Embedder;
 use context_graph_core::types::fingerprint::{EmbeddingRef, SparseVector, TeleologicalFingerprint};
 use context_graph_core::types::JohariQuadrant;
 use context_graph_core::types::{CognitivePulse, SuggestedAction, UtlContext};
-use context_graph_utl::coherence::CoherenceTracker;
+use context_graph_utl::coherence::{
+    compute_cluster_fit, ClusterContext, ClusterFitConfig, CoherenceTracker,
+};
 use context_graph_utl::config::{CoherenceConfig, SurpriseConfig};
 use context_graph_utl::surprise::embedder_entropy::EmbedderEntropyFactory;
 
@@ -1321,7 +1323,13 @@ impl Handlers {
         let delta_s_aggregate: f32 = delta_s_per_embedder.iter().sum::<f32>() / NUM_EMBEDDERS as f32;
         let delta_s_aggregate = delta_s_aggregate.clamp(0.0, 1.0);
 
-        // Step 4: Compute ΔC using CoherenceTracker
+        // Step 4: Compute ΔC using three-component formula
+        // Per constitution.yaml line 166:
+        // ΔC = 0.4×Connectivity + 0.4×ClusterFit + 0.2×Consistency
+        const ALPHA: f32 = 0.4; // Connectivity weight
+        const BETA: f32 = 0.4; // ClusterFit weight
+        const GAMMA: f32 = 0.2; // Consistency weight
+
         let coherence_config = CoherenceConfig::default();
         let tracker = CoherenceTracker::new(&coherence_config);
 
@@ -1330,9 +1338,37 @@ impl Handlers {
         let new_semantic = &new_fp.semantic.e1_semantic;
         let history = vec![old_semantic.clone()];
 
-        // ΔC = coherence of new embedding against old
-        // NOTE: ClusterFit component NOT YET IMPLEMENTED (TASK-UTL-P1-002)
-        let delta_c = tracker.compute_coherence(new_semantic, &history).clamp(0.0, 1.0);
+        // 1. Connectivity component: similarity between old and new embeddings
+        // Uses CoherenceTracker's similarity computation
+        let connectivity = tracker.compute_coherence(new_semantic, &history).clamp(0.0, 1.0);
+
+        // 2. ClusterFit component: silhouette-based cluster fit
+        // Uses the old embedding as same-cluster context (temporal cluster)
+        // and a synthetic "nearest cluster" based on orthogonal direction
+        let cluster_fit_config = ClusterFitConfig::default();
+
+        // Create cluster context: same_cluster = old embedding, nearest = orthogonal
+        // This measures how well the new embedding fits with the temporal neighborhood
+        let same_cluster = vec![old_semantic.clone()];
+
+        // For nearest_cluster, use an embedding that represents "different" content
+        // We create a synthetic orthogonal embedding to measure distinctiveness
+        let nearest_cluster = create_divergent_cluster(old_semantic, new_semantic);
+
+        let cluster_context = ClusterContext::new(same_cluster, nearest_cluster);
+        let cluster_fit_result = compute_cluster_fit(new_semantic, &cluster_context, &cluster_fit_config);
+        let cluster_fit = cluster_fit_result.score;
+
+        // 3. Consistency component: from CoherenceTracker's window variance
+        // Using the tracker's internal consistency computation via update_and_compute
+        let mut temp_tracker = CoherenceTracker::new(&coherence_config);
+        temp_tracker.update(old_semantic);
+        let consistency_raw = temp_tracker.update_and_compute(new_semantic);
+        let consistency = consistency_raw.clamp(0.0, 1.0);
+
+        // Combine components using constitution weights
+        let delta_c_raw = ALPHA * connectivity + BETA * cluster_fit + GAMMA * consistency;
+        let delta_c = delta_c_raw.clamp(0.0, 1.0);
 
         // Check for NaN/Inf per AP-10
         let delta_c = if delta_c.is_nan() || delta_c.is_infinite() {
@@ -1370,11 +1406,25 @@ impl Handlers {
             response["diagnostics"] = json!({
                 "per_embedder": diagnostics_per_embedder,
                 "johari_threshold": johari_threshold,
+                "delta_c_components": {
+                    "connectivity": connectivity,
+                    "cluster_fit": cluster_fit,
+                    "consistency": consistency,
+                    "weights": {
+                        "alpha_connectivity": ALPHA,
+                        "beta_cluster_fit": BETA,
+                        "gamma_consistency": GAMMA,
+                    },
+                },
+                "cluster_fit_details": {
+                    "silhouette": cluster_fit_result.silhouette,
+                    "intra_distance": cluster_fit_result.intra_distance,
+                    "inter_distance": cluster_fit_result.inter_distance,
+                },
                 "coherence_config": {
                     "similarity_weight": coherence_config.similarity_weight,
                     "consistency_weight": coherence_config.consistency_weight,
                 },
-                "cluster_fit_note": "ClusterFit component NOT YET IMPLEMENTED (TASK-UTL-P1-002)",
             });
         }
 
@@ -1385,6 +1435,48 @@ impl Handlers {
 
         JsonRpcResponse::success(id, response)
     }
+}
+
+/// Create a synthetic "nearest cluster" for ClusterFit computation.
+///
+/// Generates an embedding that represents "different" content from the query
+/// to measure distinctiveness. Uses the difference vector direction to create
+/// a divergent representation (opposite direction of change).
+fn create_divergent_cluster(old: &[f32], new: &[f32]) -> Vec<Vec<f32>> {
+    if old.is_empty() || new.is_empty() || old.len() != new.len() {
+        return vec![vec![0.5; old.len().max(128)]];
+    }
+
+    // Compute the difference vector: represents the change direction
+    let diff: Vec<f32> = old
+        .iter()
+        .zip(new.iter())
+        .map(|(o, n)| n - o)
+        .collect();
+
+    // Compute magnitude for normalization
+    let diff_mag: f32 = diff.iter().map(|x| x * x).sum::<f32>().sqrt();
+
+    if diff_mag < 1e-10 {
+        // If embeddings are identical, use a perpendicular approximation
+        // Shift the vector to create distinctiveness
+        let perpendicular: Vec<f32> = old
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| if i % 2 == 0 { v + 0.1 } else { v - 0.1 })
+            .collect();
+        return vec![perpendicular];
+    }
+
+    // Create the "opposite" direction: old - normalized_diff
+    // This represents content that diverges from the change direction
+    let opposite: Vec<f32> = old
+        .iter()
+        .zip(diff.iter())
+        .map(|(o, d)| o - (d / diff_mag) * 0.5)
+        .collect();
+
+    vec![opposite]
 }
 
 /// Classify a (ΔS, ΔC) pair into a JohariQuadrant.
