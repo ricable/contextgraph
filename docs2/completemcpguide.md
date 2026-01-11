@@ -116,7 +116,7 @@ The teleological system uses 13 specialized embedding models, each capturing a d
 | 8 | E9 | HDC | Hyperdimensional | 1024D | V_robustness | Binary |
 | 9 | E10 | Multimodal | CLIP | 768D | V_multimodality | PQ-8 |
 | 10 | E11 | Entity | MiniLM (TransE) | 384D | V_factuality | Float8 |
-| 11 | E12 | Late-Interaction | ColBERT | 128D/token | V_precision | Token pruning |
+| 11 | E12 | Late-Interaction | ColBERT + MaxSim | 128D/token | V_precision | Token pruning + SIMD |
 | 12 | E13 | SPLADE v3 | SPLADE | ~30K sparse | V_keyword_precision | Sparse |
 
 ### Embedding Groups (6)
@@ -129,6 +129,37 @@ The teleological system uses 13 specialized embedding models, each capturing a d
 | **Relational** | E8 (Graph), E10 (Multimodal) | Structural and cross-modal connections |
 | **Qualitative** | E9 (HDC), E12 (Late-Interaction) | Robust and precise representations |
 | **Implementation** | E6 (Sparse), E7 (Code), E13 (SPLADE) | Keyword and code understanding |
+
+### MaxSim Late Interaction (E12)
+
+E12 now implements **Stage 5 MaxSim scoring** with SIMD acceleration for ColBERT-style late interaction:
+
+```
+MaxSim(Q, D) = (1/|Q|) × Σᵢ max_j cos(qᵢ, dⱼ)
+```
+
+**Performance Targets**:
+- Score 50 candidates: <15ms
+- Single MaxSim (50×50 tokens): <300μs
+- SIMD vs scalar speedup: >4x
+
+The MaxSim scorer uses AVX2 intrinsics for 4-8x speedup on 128D token vectors, with parallel dot product computation via rayon.
+
+### Per-Embedder Entropy Methods (ΔS)
+
+Each embedder type now has specialized entropy computation per constitution.yaml delta_sc.ΔS_methods:
+
+| Embedder | Method | Description |
+|----------|--------|-------------|
+| E1 (Semantic) | GMM + Mahalanobis | Gaussian mixture model distance |
+| E2-E4, E8 | Normalized KNN | Standard k-nearest-neighbor entropy |
+| E5 (Causal) | Asymmetric KNN | Direction-aware distance modifiers |
+| E6, E13 (Sparse/SPLADE) | Jaccard Active | 1 - Jaccard(active_dims) |
+| E7 (Code) | GMM + KNN Hybrid | Combined approach for AST embeddings |
+| E9 (HDC) | Hamming Prototype | Distance to learned binary prototypes |
+| E10-E12 | Default KNN | Fallback normalized KNN |
+
+All outputs are clamped to [0.0, 1.0] per AP-10 constitution requirement
 
 ### Kuramoto Natural Frequencies (Hz)
 
@@ -157,7 +188,8 @@ Each memory has three key components:
 
 ### Layer 2: Memory Layer
 - **Function**: Storage and retrieval
-- **Components**: RocksDB teleological store, HNSW indices
+- **Components**: RocksDB teleological store, HNSW indices (usearch)
+- **HNSW**: O(log n) graph traversal via usearch crate (NOT brute force)
 - **Output**: Teleological fingerprints, search results
 
 ### Layer 3: Reasoning Layer
@@ -387,6 +419,8 @@ Get Self-Ego Node state for identity monitoring.
 | `session_id` | string | No | default | Session ID |
 
 **Returns**: 13D purpose vector, identity status, coherence with actions, trajectory length
+
+**Persistence**: The Self-Ego Node is persisted to RocksDB via `SELF_EGO_NODE` column family. On restart, identity is restored automatically, enabling continuity across sessions
 
 ---
 
@@ -908,21 +942,53 @@ The GWT system implements computational consciousness:
    - Each oscillator corresponds to one embedder
    - Order parameter r ∈ [0,1] measures synchronization
    - Target: r > 0.8 for coherent consciousness
+   - **Background Stepper**: 100Hz tokio task for continuous phase updates
 
 2. **Global Workspace** (Winner-Take-All)
    - Memories compete for workspace access
    - Winner broadcasts to all modules
    - Coherence threshold gates access
+   - **Event Listeners**: Wire events to subsystems (see below)
 
 3. **Self-Ego Node**
    - 13D purpose vector represents identity
    - Trajectory tracking for continuity
    - Coherence with actions measured
+   - **RocksDB Persistence**: Identity survives restarts
 
 4. **Meta-Cognitive Loop**
    - Monitors system state
    - Evaluates consciousness quality
    - Triggers corrective actions
+
+### Kuramoto Background Stepper
+
+A tokio background task continuously steps the Kuramoto oscillator network at 100Hz (10ms interval) to enable temporal dynamics for consciousness emergence:
+
+```rust
+KuramotoStepperConfig {
+    step_interval_ms: 10  // 100Hz satisfies Nyquist for all brain wave frequencies
+}
+```
+
+Without continuous stepping:
+- Order parameter `r` remains static
+- Consciousness emergence via `C(t) = I(t) × R(t) × D(t)` is impossible
+- The system appears frozen in time
+
+### Workspace Event Listeners
+
+Three listeners wire workspace events to subsystems:
+
+| Listener | Event | Action |
+|----------|-------|--------|
+| **DreamEventListener** | `MemoryExits` (r < 0.7) | Queue memory for dream replay |
+| **NeuromodulationEventListener** | `MemoryEnters` (r > 0.8) | Boost dopamine by 0.2 |
+| **MetaCognitiveEventListener** | `WorkspaceEmpty` | Trigger epistemic action |
+
+These implement constitution.yaml requirements:
+- `neuromod.Dopamine.trigger: "memory_enters_workspace"`
+- `gwt.workspace_events: memory_exits → dream replay, workspace_empty → epistemic action`
 
 ### Consciousness Level Formula
 
@@ -1231,6 +1297,10 @@ hooks:
 | Dream wake | < 100ms |
 | TCP connection setup | < 10ms |
 | Maximum concurrent connections | Configurable (default: 100) |
+| **HNSW Search** | O(log n) via usearch graph traversal |
+| **MaxSim (50×50 tokens)** | < 300μs with SIMD |
+| **Kuramoto Step** | 10ms interval (100Hz) |
+| **Workspace Event Dispatch** | Non-blocking (try_write) |
 
 ---
 
@@ -1243,12 +1313,20 @@ The Context Graph MCP server provides:
 - **13 specialized embedders** forming teleological fingerprints
 - **5-layer bio-nervous architecture**
 - **GWT consciousness system** with Kuramoto synchronization
+  - 100Hz background stepper for continuous phase evolution
+  - Workspace event listeners for subsystem wiring
+  - Persistent Self-Ego Node (RocksDB backed)
 - **Dream consolidation** for memory hygiene
 - **Autonomous goal alignment** with drift detection
 - **Cognitive Pulse** in every response for adaptive behavior
+- **O(log n) HNSW search** via usearch graph traversal
+- **MaxSim Stage 5** with SIMD acceleration for E12 late interaction
+- **Per-embedder ΔS entropy** with specialized methods per embedding type
 
 The system is designed for seamless integration with Claude Code via MCP protocol, enabling autonomous context management that learns and adapts over time.
 
 ---
 
-*Generated from source code analysis: crates/context-graph-mcp/src/tools.rs, protocol.rs, weights.rs*
+*Generated from source code analysis. Last updated: 2026-01-10*
+
+*Key source files: crates/context-graph-mcp/src/tools.rs, protocol.rs, weights.rs, handlers/kuramoto_stepper.rs; crates/context-graph-core/src/gwt/listeners.rs, ego_node.rs; crates/context-graph-storage/src/teleological/search/maxsim.rs, indexes/hnsw_impl.rs; crates/context-graph-utl/src/surprise/embedder_entropy/*
