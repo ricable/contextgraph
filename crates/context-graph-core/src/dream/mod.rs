@@ -47,10 +47,12 @@
 pub mod amortized;
 pub mod controller;
 pub mod hebbian;
+pub mod hyperbolic_walk;
 pub mod nrem;
 pub mod poincare_walk;
 pub mod rem;
 pub mod scheduler;
+pub mod triggers;
 pub mod types;
 
 // Re-exports for convenience
@@ -59,6 +61,14 @@ pub use controller::{DreamController, DreamReport, DreamState, DreamStatus};
 pub use hebbian::{
     find_coactivated_pairs, kuramoto_coupling, kuramoto_order_parameter, select_replay_memories,
     EdgeUpdate, HebbianEngine, HebbianUpdateResult,
+};
+pub use hyperbolic_walk::{
+    DiscoveredBlindSpot,
+    ExplorationResult,
+    HyperbolicExplorer,
+    WalkResult,
+    position_to_query,
+    sample_starting_positions,
 };
 pub use nrem::{NremPhase, NremReport};
 pub use poincare_walk::{
@@ -79,6 +89,7 @@ pub use poincare_walk::{
 };
 pub use rem::{RemPhase, RemReport};
 pub use scheduler::DreamScheduler;
+pub use triggers::{EntropyCalculator, GpuMonitor, TriggerManager};
 pub use types::{
     EntropyWindow,
     ExtendedTriggerReason,

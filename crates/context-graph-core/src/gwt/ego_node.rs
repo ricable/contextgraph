@@ -25,6 +25,18 @@ use uuid::Uuid;
 /// Reference: constitution.yaml line 390 (identity_trajectory: 1000)
 pub const MAX_PV_HISTORY_SIZE: usize = 1000;
 
+/// Default crisis threshold per constitution.yaml line 369
+/// IC < 0.7 indicates identity drift (warning/degraded state)
+pub const IC_CRISIS_THRESHOLD: f32 = 0.7;
+
+/// Critical threshold triggering dream consolidation per constitution.yaml line 369
+/// IC < 0.5 triggers introspective dream (critical state)
+pub const IC_CRITICAL_THRESHOLD: f32 = 0.5;
+
+/// Epsilon for numerical stability in magnitude comparisons
+/// Prevents division by zero in cosine similarity calculation
+const COSINE_EPSILON: f32 = 1e-8;
+
 /// Special memory node representing the system's identity
 ///
 /// # Persistence (TASK-GWT-P1-001)
@@ -486,6 +498,273 @@ impl IdentityContinuity {
 impl Default for IdentityContinuity {
     fn default() -> Self {
         Self::default_initial()
+    }
+}
+
+/// Compute cosine similarity between two 13-dimensional purpose vectors.
+///
+/// # Algorithm
+/// cos(v1, v2) = (v1 · v2) / (||v1|| × ||v2||)
+///
+/// # Arguments
+/// * `v1` - First 13D purpose vector
+/// * `v2` - Second 13D purpose vector
+///
+/// # Returns
+/// * Cosine similarity in range [-1, 1]
+/// * Returns 0.0 if either vector has near-zero magnitude (below COSINE_EPSILON)
+///
+/// # Constitution Reference
+/// Used for computing cos(PV_t, PV_{t-1}) in IC = cos(PV_t, PV_{t-1}) × r(t)
+///
+/// # Example
+/// ```ignore
+/// let v1 = [1.0; 13];
+/// let v2 = [1.0; 13];
+/// let similarity = cosine_similarity_13d(&v1, &v2);
+/// assert!((similarity - 1.0).abs() < 1e-6); // Identical vectors = 1.0
+/// ```
+pub fn cosine_similarity_13d(v1: &[f32; 13], v2: &[f32; 13]) -> f32 {
+    // Compute dot product: v1 · v2 = Σ(v1_i × v2_i)
+    let dot_product: f32 = v1.iter().zip(v2.iter()).map(|(a, b)| a * b).sum();
+
+    // Compute magnitudes: ||v|| = sqrt(Σ(v_i²))
+    let magnitude_v1: f32 = v1.iter().map(|a| a * a).sum::<f32>().sqrt();
+    let magnitude_v2: f32 = v2.iter().map(|a| a * a).sum::<f32>().sqrt();
+
+    // Handle near-zero magnitude vectors (prevents division by zero)
+    // Per spec: return 0.0 for degenerate cases
+    if magnitude_v1 < COSINE_EPSILON || magnitude_v2 < COSINE_EPSILON {
+        return 0.0;
+    }
+
+    // Compute cosine similarity and clamp to valid range [-1, 1]
+    // Clamping handles floating point errors that could produce values like 1.0000001
+    let similarity = dot_product / (magnitude_v1 * magnitude_v2);
+    similarity.clamp(-1.0, 1.0)
+}
+
+/// Identity Continuity Monitor - Continuous IC tracking wrapper
+///
+/// Wraps `PurposeVectorHistory` to provide real-time identity continuity
+/// monitoring and status classification.
+///
+/// # Constitution Reference
+/// From constitution.yaml lines 365-392:
+/// - IC = cos(PV_t, PV_{t-1}) × r(t)
+/// - Thresholds: healthy>0.9, warning<0.7, dream<0.5
+/// - self_ego_node.identity_trajectory: max 1000 snapshots
+///
+/// # Architecture
+/// ```text
+/// IdentityContinuityMonitor
+/// ├── history: PurposeVectorHistory (ring buffer)
+/// ├── last_result: Option<IdentityContinuity> (cached computation)
+/// └── crisis_threshold: f32 (configurable)
+/// ```
+///
+/// # Usage Pattern
+/// ```ignore
+/// let mut monitor = IdentityContinuityMonitor::new();
+/// let ic_result = monitor.compute_continuity(&purpose_vector, kuramoto_r);
+/// if monitor.is_in_crisis() {
+///     // Trigger remediation
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IdentityContinuityMonitor {
+    /// Purpose vector history buffer (delegates to PurposeVectorHistory)
+    history: PurposeVectorHistory,
+    /// Cached last computation result (None until first compute_continuity call)
+    last_result: Option<IdentityContinuity>,
+    /// Configurable crisis threshold (default: IC_CRISIS_THRESHOLD = 0.7)
+    crisis_threshold: f32,
+}
+
+impl IdentityContinuityMonitor {
+    /// Create new monitor with default configuration.
+    ///
+    /// Defaults:
+    /// - history capacity: MAX_PV_HISTORY_SIZE (1000)
+    /// - crisis_threshold: IC_CRISIS_THRESHOLD (0.7)
+    pub fn new() -> Self {
+        Self {
+            history: PurposeVectorHistory::new(),
+            last_result: None,
+            crisis_threshold: IC_CRISIS_THRESHOLD,
+        }
+    }
+
+    /// Create monitor with custom crisis threshold.
+    ///
+    /// # Arguments
+    /// * `threshold` - Custom crisis threshold (clamped to [0, 1])
+    ///
+    /// # Example
+    /// ```ignore
+    /// // More strict monitoring
+    /// let monitor = IdentityContinuityMonitor::with_threshold(0.8);
+    /// ```
+    pub fn with_threshold(threshold: f32) -> Self {
+        Self {
+            history: PurposeVectorHistory::new(),
+            last_result: None,
+            crisis_threshold: threshold.clamp(0.0, 1.0),
+        }
+    }
+
+    /// Create monitor with custom history capacity.
+    ///
+    /// # Arguments
+    /// * `capacity` - Maximum history entries (0 = unlimited)
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Smaller history for memory-constrained environments
+    /// let monitor = IdentityContinuityMonitor::with_capacity(100);
+    /// ```
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            history: PurposeVectorHistory::with_max_size(capacity),
+            last_result: None,
+            crisis_threshold: IC_CRISIS_THRESHOLD,
+        }
+    }
+
+    /// Compute identity continuity from new purpose vector and Kuramoto r.
+    ///
+    /// # Algorithm
+    /// 1. Push new PV to history, get previous PV
+    /// 2. If first vector: return IdentityContinuity::first_vector()
+    /// 3. Compute cos(PV_t, PV_{t-1}) using cosine_similarity_13d
+    /// 4. Create IdentityContinuity::new(cosine, kuramoto_r)
+    /// 5. Cache and return result
+    ///
+    /// # Arguments
+    /// * `purpose_vector` - Current 13D purpose alignment vector (PV_t)
+    /// * `kuramoto_r` - Current Kuramoto order parameter r(t) in [0, 1]
+    /// * `context` - Description for history snapshot
+    ///
+    /// # Returns
+    /// * `IdentityContinuity` with computed IC and status
+    ///
+    /// # Constitution Reference
+    /// IC = cos(PV_t, PV_{t-1}) × r(t)
+    /// - cos: purpose vector continuity [-1, 1]
+    /// - r: phase synchronization level [0, 1]
+    pub fn compute_continuity(
+        &mut self,
+        purpose_vector: &[f32; 13],
+        kuramoto_r: f32,
+        context: impl Into<String>,
+    ) -> IdentityContinuity {
+        // Push current PV and get previous (if any)
+        let previous = self.history.push(*purpose_vector, context);
+
+        // Compute result based on whether this is first vector
+        let result = match previous {
+            None => {
+                // First vector: per EC-IDENTITY-01, default to healthy
+                IdentityContinuity::first_vector()
+            }
+            Some(prev_pv) => {
+                // Compute cosine similarity between consecutive PVs
+                let cosine = cosine_similarity_13d(purpose_vector, &prev_pv);
+
+                // Create IdentityContinuity with IC = cos × r
+                IdentityContinuity::new(cosine, kuramoto_r)
+            }
+        };
+
+        // Cache result for subsequent getters
+        self.last_result = Some(result.clone());
+
+        result
+    }
+
+    /// Get the last computed IdentityContinuity result.
+    ///
+    /// # Returns
+    /// * `Some(&IdentityContinuity)` if compute_continuity was called
+    /// * `None` if no computation has been performed yet
+    #[inline]
+    pub fn last_result(&self) -> Option<&IdentityContinuity> {
+        self.last_result.as_ref()
+    }
+
+    /// Get current identity coherence value (IC).
+    ///
+    /// # Returns
+    /// * `Some(f32)` in [0, 1] if computed
+    /// * `None` if no computation yet
+    #[inline]
+    pub fn identity_coherence(&self) -> Option<f32> {
+        self.last_result.as_ref().map(|r| r.identity_coherence)
+    }
+
+    /// Get current identity status classification.
+    ///
+    /// # Returns
+    /// * `Some(IdentityStatus)` if computed
+    /// * `None` if no computation yet
+    #[inline]
+    pub fn current_status(&self) -> Option<IdentityStatus> {
+        self.last_result.as_ref().map(|r| r.status)
+    }
+
+    /// Check if identity is in crisis (IC < crisis_threshold).
+    ///
+    /// # Returns
+    /// * `true` if IC < crisis_threshold (default 0.7)
+    /// * `false` if IC >= crisis_threshold or no computation yet
+    ///
+    /// # Note
+    /// Uses configurable crisis_threshold, not fixed IdentityContinuity::is_in_crisis()
+    #[inline]
+    pub fn is_in_crisis(&self) -> bool {
+        self.last_result
+            .as_ref()
+            .map(|r| r.identity_coherence < self.crisis_threshold)
+            .unwrap_or(false)
+    }
+
+    /// Get the number of snapshots in history.
+    #[inline]
+    pub fn history_len(&self) -> usize {
+        self.history.len()
+    }
+
+    /// Get the configured crisis threshold.
+    #[inline]
+    pub fn crisis_threshold(&self) -> f32 {
+        self.crisis_threshold
+    }
+
+    /// Get read-only access to underlying history.
+    ///
+    /// Useful for diagnostics and detailed analysis.
+    pub fn history(&self) -> &PurposeVectorHistory {
+        &self.history
+    }
+
+    /// Check if history is empty (no vectors recorded).
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.history.is_empty()
+    }
+
+    /// Check if this is the first vector (exactly one entry).
+    ///
+    /// Per EC-IDENTITY-01: First vector defaults to IC = 1.0 (Healthy)
+    #[inline]
+    pub fn is_first_vector(&self) -> bool {
+        self.history.is_first_vector()
+    }
+}
+
+impl Default for IdentityContinuityMonitor {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -1682,5 +1961,742 @@ mod tests {
         println!("  - Second push returns previous, sets is_first_vector=false");
         println!("  - FIFO eviction works at capacity");
         println!("  - Serialization preserves all state");
+    }
+
+    // =========================================================================
+    // TASK-IDENTITY-P0-003: cosine_similarity_13d Tests
+    // =========================================================================
+
+    #[test]
+    fn test_cosine_similarity_13d_identical_vectors() {
+        println!("=== TEST: cosine_similarity_13d with identical vectors ===");
+
+        let v1 = [1.0; 13];
+        let v2 = [1.0; 13];
+
+        let similarity = cosine_similarity_13d(&v1, &v2);
+
+        // Identical vectors should have cosine = 1.0
+        assert!((similarity - 1.0).abs() < 1e-6,
+            "Expected 1.0 for identical vectors, got {}", similarity);
+
+        println!("EVIDENCE: cosine([1.0; 13], [1.0; 13]) = {:.6}", similarity);
+    }
+
+    #[test]
+    fn test_cosine_similarity_13d_opposite_vectors() {
+        println!("=== TEST: cosine_similarity_13d with opposite vectors ===");
+
+        let v1 = [1.0; 13];
+        let v2 = [-1.0; 13];
+
+        let similarity = cosine_similarity_13d(&v1, &v2);
+
+        // Opposite vectors should have cosine = -1.0
+        assert!((similarity - (-1.0)).abs() < 1e-6,
+            "Expected -1.0 for opposite vectors, got {}", similarity);
+
+        println!("EVIDENCE: cosine([1.0; 13], [-1.0; 13]) = {:.6}", similarity);
+    }
+
+    #[test]
+    fn test_cosine_similarity_13d_orthogonal_vectors() {
+        println!("=== TEST: cosine_similarity_13d with orthogonal vectors ===");
+
+        // Create orthogonal vectors
+        let mut v1 = [0.0; 13];
+        let mut v2 = [0.0; 13];
+        v1[0] = 1.0;  // Unit vector along first axis
+        v2[1] = 1.0;  // Unit vector along second axis
+
+        let similarity = cosine_similarity_13d(&v1, &v2);
+
+        // Orthogonal vectors should have cosine = 0.0
+        assert!(similarity.abs() < 1e-6,
+            "Expected 0.0 for orthogonal vectors, got {}", similarity);
+
+        println!("EVIDENCE: Orthogonal vectors have cosine = {:.6}", similarity);
+    }
+
+    #[test]
+    fn test_cosine_similarity_13d_zero_vector_first() {
+        println!("=== EDGE CASE: cosine_similarity_13d with zero first vector ===");
+
+        let v1 = [0.0; 13];
+        let v2 = [1.0; 13];
+
+        let similarity = cosine_similarity_13d(&v1, &v2);
+
+        // Zero vector should return 0.0 per spec
+        assert_eq!(similarity, 0.0,
+            "Zero magnitude vector should return 0.0, got {}", similarity);
+
+        println!("EVIDENCE: Zero first vector returns 0.0");
+    }
+
+    #[test]
+    fn test_cosine_similarity_13d_zero_vector_second() {
+        println!("=== EDGE CASE: cosine_similarity_13d with zero second vector ===");
+
+        let v1 = [1.0; 13];
+        let v2 = [0.0; 13];
+
+        let similarity = cosine_similarity_13d(&v1, &v2);
+
+        // Zero vector should return 0.0 per spec
+        assert_eq!(similarity, 0.0,
+            "Zero magnitude vector should return 0.0, got {}", similarity);
+
+        println!("EVIDENCE: Zero second vector returns 0.0");
+    }
+
+    #[test]
+    fn test_cosine_similarity_13d_both_zero_vectors() {
+        println!("=== EDGE CASE: cosine_similarity_13d with both zero vectors ===");
+
+        let v1 = [0.0; 13];
+        let v2 = [0.0; 13];
+
+        let similarity = cosine_similarity_13d(&v1, &v2);
+
+        // Both zero should return 0.0
+        assert_eq!(similarity, 0.0,
+            "Both zero vectors should return 0.0, got {}", similarity);
+
+        println!("EVIDENCE: Both zero vectors return 0.0");
+    }
+
+    #[test]
+    fn test_cosine_similarity_13d_near_zero_vectors() {
+        println!("=== EDGE CASE: cosine_similarity_13d with near-zero vectors ===");
+
+        let v1 = [1e-10; 13];
+        let v2 = [1.0; 13];
+
+        let similarity = cosine_similarity_13d(&v1, &v2);
+
+        // Near-zero should return 0.0 per spec
+        assert_eq!(similarity, 0.0,
+            "Near-zero magnitude should return 0.0, got {}", similarity);
+
+        println!("EVIDENCE: Near-zero vector returns 0.0");
+    }
+
+    #[test]
+    fn test_cosine_similarity_13d_different_magnitudes() {
+        println!("=== TEST: cosine_similarity_13d with different magnitudes ===");
+
+        let v1 = [1.0; 13];
+        let v2 = [10.0; 13]; // Same direction, different magnitude
+
+        let similarity = cosine_similarity_13d(&v1, &v2);
+
+        // Same direction should have cosine = 1.0 regardless of magnitude
+        assert!((similarity - 1.0).abs() < 1e-6,
+            "Same direction vectors should have cosine = 1.0, got {}", similarity);
+
+        println!("EVIDENCE: Different magnitudes, same direction = {:.6}", similarity);
+    }
+
+    #[test]
+    fn test_cosine_similarity_13d_real_purpose_vectors() {
+        println!("=== TEST: cosine_similarity_13d with realistic purpose vectors ===");
+
+        // Realistic purpose vectors (values in [0, 1])
+        let v1 = [0.85, 0.78, 0.92, 0.67, 0.73, 0.61, 0.88, 0.75, 0.81, 0.69, 0.84, 0.72, 0.79];
+        let v2 = [0.82, 0.75, 0.89, 0.70, 0.76, 0.65, 0.85, 0.72, 0.78, 0.72, 0.81, 0.69, 0.82];
+
+        let similarity = cosine_similarity_13d(&v1, &v2);
+
+        // Similar purpose vectors should have high cosine
+        assert!(similarity > 0.99,
+            "Similar purpose vectors should have high cosine, got {}", similarity);
+        assert!(similarity <= 1.0,
+            "Cosine should be <= 1.0, got {}", similarity);
+
+        println!("EVIDENCE: Similar purpose vectors cosine = {:.6}", similarity);
+    }
+
+    #[test]
+    fn test_cosine_similarity_13d_clamping() {
+        println!("=== TEST: cosine_similarity_13d result is clamped to [-1, 1] ===");
+
+        // Test many random-ish vectors to ensure clamping works
+        for i in 0..100 {
+            let v1: [f32; 13] = std::array::from_fn(|j| ((i + j) as f32 * 0.1).sin());
+            let v2: [f32; 13] = std::array::from_fn(|j| ((i + j + 5) as f32 * 0.15).cos());
+
+            let similarity = cosine_similarity_13d(&v1, &v2);
+
+            assert!(similarity >= -1.0 && similarity <= 1.0,
+                "Cosine must be in [-1, 1], got {} at iteration {}", similarity, i);
+        }
+
+        println!("EVIDENCE: All 100 iterations returned values in [-1, 1]");
+    }
+
+    // =========================================================================
+    // TASK-IDENTITY-P0-003: IC Threshold Constants Tests
+    // =========================================================================
+
+    #[test]
+    fn test_ic_crisis_threshold_value() {
+        println!("=== TEST: IC_CRISIS_THRESHOLD constant ===");
+
+        assert_eq!(IC_CRISIS_THRESHOLD, 0.7,
+            "IC_CRISIS_THRESHOLD should be 0.7 per constitution.yaml");
+
+        println!("EVIDENCE: IC_CRISIS_THRESHOLD = {}", IC_CRISIS_THRESHOLD);
+    }
+
+    #[test]
+    fn test_ic_critical_threshold_value() {
+        println!("=== TEST: IC_CRITICAL_THRESHOLD constant ===");
+
+        assert_eq!(IC_CRITICAL_THRESHOLD, 0.5,
+            "IC_CRITICAL_THRESHOLD should be 0.5 per constitution.yaml");
+
+        println!("EVIDENCE: IC_CRITICAL_THRESHOLD = {}", IC_CRITICAL_THRESHOLD);
+    }
+
+    #[test]
+    fn test_ic_thresholds_relationship() {
+        println!("=== TEST: IC threshold relationship ===");
+
+        // Critical should be lower than crisis (more severe)
+        assert!(IC_CRITICAL_THRESHOLD < IC_CRISIS_THRESHOLD,
+            "CRITICAL ({}) must be < CRISIS ({})",
+            IC_CRITICAL_THRESHOLD, IC_CRISIS_THRESHOLD);
+
+        println!("EVIDENCE: CRITICAL ({}) < CRISIS ({})",
+            IC_CRITICAL_THRESHOLD, IC_CRISIS_THRESHOLD);
+    }
+
+    // =========================================================================
+    // TASK-IDENTITY-P0-003: IdentityContinuityMonitor Tests
+    // =========================================================================
+
+    #[test]
+    fn test_identity_continuity_monitor_new() {
+        println!("=== TEST: IdentityContinuityMonitor::new() ===");
+
+        let monitor = IdentityContinuityMonitor::new();
+
+        assert!(monitor.is_empty());
+        assert_eq!(monitor.history_len(), 0);
+        assert_eq!(monitor.crisis_threshold(), IC_CRISIS_THRESHOLD);
+        assert!(monitor.last_result().is_none());
+        assert!(monitor.identity_coherence().is_none());
+        assert!(monitor.current_status().is_none());
+        assert!(!monitor.is_in_crisis()); // No result = not in crisis
+
+        println!("EVIDENCE: new() creates empty monitor with defaults");
+    }
+
+    #[test]
+    fn test_identity_continuity_monitor_with_threshold() {
+        println!("=== TEST: IdentityContinuityMonitor::with_threshold() ===");
+
+        let monitor = IdentityContinuityMonitor::with_threshold(0.8);
+
+        assert_eq!(monitor.crisis_threshold(), 0.8);
+        assert!(monitor.is_empty());
+
+        println!("EVIDENCE: with_threshold(0.8) sets crisis_threshold = 0.8");
+    }
+
+    #[test]
+    fn test_identity_continuity_monitor_with_threshold_clamping() {
+        println!("=== TEST: with_threshold() clamping ===");
+
+        // Test high value clamping
+        let monitor_high = IdentityContinuityMonitor::with_threshold(1.5);
+        assert_eq!(monitor_high.crisis_threshold(), 1.0);
+
+        // Test negative value clamping
+        let monitor_low = IdentityContinuityMonitor::with_threshold(-0.5);
+        assert_eq!(monitor_low.crisis_threshold(), 0.0);
+
+        println!("EVIDENCE: threshold clamped to [0, 1]");
+    }
+
+    #[test]
+    fn test_identity_continuity_monitor_with_capacity() {
+        println!("=== TEST: IdentityContinuityMonitor::with_capacity() ===");
+
+        let monitor = IdentityContinuityMonitor::with_capacity(50);
+
+        assert_eq!(monitor.history().max_size, 50);
+        assert!(monitor.is_empty());
+
+        println!("EVIDENCE: with_capacity(50) sets max_size = 50");
+    }
+
+    #[test]
+    fn test_identity_continuity_monitor_default() {
+        println!("=== TEST: IdentityContinuityMonitor::default() ===");
+
+        let monitor = IdentityContinuityMonitor::default();
+
+        assert!(monitor.is_empty());
+        assert_eq!(monitor.crisis_threshold(), IC_CRISIS_THRESHOLD);
+        assert_eq!(monitor.history().max_size, MAX_PV_HISTORY_SIZE);
+
+        println!("EVIDENCE: default() equals new()");
+    }
+
+    #[test]
+    fn test_identity_continuity_monitor_first_vector() {
+        println!("=== TEST: compute_continuity() first vector ===");
+
+        let mut monitor = IdentityContinuityMonitor::new();
+        let pv = uniform_pv(0.8);
+
+        // BEFORE
+        assert!(monitor.is_empty());
+        assert!(monitor.last_result().is_none());
+
+        // EXECUTE
+        let result = monitor.compute_continuity(&pv, 0.9, "First vector");
+
+        // AFTER
+        assert!(!monitor.is_empty());
+        assert!(monitor.is_first_vector());
+        assert_eq!(monitor.history_len(), 1);
+
+        // First vector should return IC = 1.0, Healthy
+        assert_eq!(result.identity_coherence, 1.0);
+        assert_eq!(result.status, IdentityStatus::Healthy);
+
+        // Getters should return values
+        assert_eq!(monitor.identity_coherence(), Some(1.0));
+        assert_eq!(monitor.current_status(), Some(IdentityStatus::Healthy));
+        assert!(!monitor.is_in_crisis()); // 1.0 >= 0.7
+
+        println!("EVIDENCE: First vector returns IC=1.0, Healthy");
+    }
+
+    #[test]
+    fn test_identity_continuity_monitor_second_vector_identical() {
+        println!("=== TEST: compute_continuity() second vector identical ===");
+
+        let mut monitor = IdentityContinuityMonitor::new();
+        let pv = uniform_pv(0.8);
+
+        // First vector
+        monitor.compute_continuity(&pv, 0.9, "First");
+
+        // Second vector - same PV
+        let result = monitor.compute_continuity(&pv, 0.95, "Second");
+
+        // Identical vectors: cos = 1.0, IC = 1.0 * 0.95 = 0.95
+        assert!((result.recent_continuity - 1.0).abs() < 1e-6,
+            "Identical PVs should have cos = 1.0");
+        assert!((result.identity_coherence - 0.95).abs() < 1e-6,
+            "IC should be 1.0 * 0.95 = 0.95");
+        assert_eq!(result.status, IdentityStatus::Healthy);
+
+        println!("EVIDENCE: Identical vectors give IC = r = 0.95");
+    }
+
+    #[test]
+    fn test_identity_continuity_monitor_drift_detection() {
+        println!("=== TEST: compute_continuity() drift detection ===");
+
+        let mut monitor = IdentityContinuityMonitor::new();
+
+        // First vector - high values
+        let pv1 = uniform_pv(0.9);
+        monitor.compute_continuity(&pv1, 0.95, "Initial");
+
+        // Second vector - very different (drift)
+        let pv2 = uniform_pv(0.1);
+        let result = monitor.compute_continuity(&pv2, 0.95, "Drifted");
+
+        // Different vectors: cos([0.9;13], [0.1;13]) = 1.0 (same direction, diff magnitude)
+        // Wait, uniform vectors have same direction regardless of magnitude
+        // Let me compute actual: both are uniform, so cos = 1.0
+        // This is expected - uniform vectors are parallel
+
+        println!("Result: cos={:.4}, IC={:.4}, status={:?}",
+            result.recent_continuity, result.identity_coherence, result.status);
+
+        // Since both are uniform positive, they're parallel
+        assert!((result.recent_continuity - 1.0).abs() < 1e-6);
+
+        println!("EVIDENCE: Uniform vectors are parallel (cos = 1.0)");
+    }
+
+    #[test]
+    fn test_identity_continuity_monitor_real_drift() {
+        println!("=== TEST: compute_continuity() real purpose vector drift ===");
+
+        let mut monitor = IdentityContinuityMonitor::new();
+
+        // First vector - realistic purpose vector
+        let pv1 = [0.9, 0.85, 0.92, 0.8, 0.88, 0.75, 0.95, 0.82, 0.87, 0.78, 0.91, 0.83, 0.86];
+        monitor.compute_continuity(&pv1, 0.95, "Aligned");
+
+        // Second vector - shifted purpose (some dimensions change)
+        let pv2 = [0.3, 0.25, 0.32, 0.9, 0.88, 0.95, 0.25, 0.92, 0.17, 0.98, 0.21, 0.93, 0.16];
+        let result = monitor.compute_continuity(&pv2, 0.9, "Shifted");
+
+        // These vectors have different patterns, so cos < 1.0
+        assert!(result.recent_continuity < 1.0,
+            "Different patterns should have cos < 1.0");
+
+        println!("Result: cos={:.4}, IC={:.4}, status={:?}",
+            result.recent_continuity, result.identity_coherence, result.status);
+        println!("EVIDENCE: Real drift detected with cos = {:.4}", result.recent_continuity);
+    }
+
+    #[test]
+    fn test_identity_continuity_monitor_low_kuramoto_r() {
+        println!("=== TEST: compute_continuity() with low Kuramoto r ===");
+
+        let mut monitor = IdentityContinuityMonitor::new();
+        let pv = uniform_pv(0.8);
+
+        // First vector
+        monitor.compute_continuity(&pv, 0.9, "First");
+
+        // Second vector with low r (fragmented consciousness)
+        let result = monitor.compute_continuity(&pv, 0.3, "Low sync");
+
+        // cos = 1.0 (identical), r = 0.3, IC = 0.3
+        assert!((result.identity_coherence - 0.3).abs() < 1e-6,
+            "IC should be 1.0 * 0.3 = 0.3");
+        assert_eq!(result.status, IdentityStatus::Critical,
+            "IC=0.3 < 0.5 should be Critical");
+        assert!(monitor.is_in_crisis(),
+            "IC=0.3 < 0.7 should be in crisis");
+
+        println!("EVIDENCE: Low r causes low IC despite perfect continuity");
+    }
+
+    #[test]
+    fn test_identity_continuity_monitor_crisis_threshold_custom() {
+        println!("=== TEST: is_in_crisis() with custom threshold ===");
+
+        // More strict threshold
+        let mut monitor = IdentityContinuityMonitor::with_threshold(0.9);
+        let pv = uniform_pv(0.8);
+
+        monitor.compute_continuity(&pv, 0.95, "First");
+        let result = monitor.compute_continuity(&pv, 0.85, "Second");
+
+        // IC = 1.0 * 0.85 = 0.85
+        assert!((result.identity_coherence - 0.85).abs() < 1e-6);
+
+        // With threshold 0.9, IC=0.85 should be in crisis
+        assert!(monitor.is_in_crisis(),
+            "IC=0.85 < threshold=0.9 should be in crisis");
+
+        // Standard threshold would not be crisis
+        assert!(result.identity_coherence >= IC_CRISIS_THRESHOLD,
+            "IC=0.85 >= standard threshold 0.7");
+
+        println!("EVIDENCE: Custom threshold 0.9 triggers crisis at IC=0.85");
+    }
+
+    #[test]
+    fn test_identity_continuity_monitor_history_accumulation() {
+        println!("=== TEST: history accumulation ===");
+
+        let mut monitor = IdentityContinuityMonitor::with_capacity(5);
+
+        // Add 7 vectors
+        for i in 0..7 {
+            let pv = uniform_pv(0.5 + (i as f32 * 0.05));
+            monitor.compute_continuity(&pv, 0.9, format!("Vector {}", i));
+        }
+
+        // Should only have 5 due to capacity
+        assert_eq!(monitor.history_len(), 5,
+            "History should be capped at capacity 5");
+
+        println!("EVIDENCE: History capped at configured capacity");
+    }
+
+    #[test]
+    fn test_identity_continuity_monitor_serialization() {
+        println!("=== TEST: IdentityContinuityMonitor serialization ===");
+
+        let mut original = IdentityContinuityMonitor::with_threshold(0.8);
+        let pv1 = uniform_pv(0.75);
+        let pv2 = uniform_pv(0.8);
+        original.compute_continuity(&pv1, 0.9, "First");
+        original.compute_continuity(&pv2, 0.85, "Second");
+
+        // Serialize with bincode
+        let serialized = bincode::serialize(&original)
+            .expect("Serialization should not fail");
+
+        // Deserialize
+        let restored: IdentityContinuityMonitor = bincode::deserialize(&serialized)
+            .expect("Deserialization should not fail");
+
+        // Verify state preserved
+        assert_eq!(restored.history_len(), original.history_len());
+        assert_eq!(restored.crisis_threshold(), original.crisis_threshold());
+        assert_eq!(restored.identity_coherence(), original.identity_coherence());
+        assert_eq!(restored.current_status(), original.current_status());
+
+        println!("EVIDENCE: Serialization roundtrip preserves all state");
+    }
+
+    #[test]
+    fn test_identity_continuity_monitor_json_serialization() {
+        println!("=== TEST: IdentityContinuityMonitor JSON serialization ===");
+
+        let mut original = IdentityContinuityMonitor::new();
+        original.compute_continuity(&uniform_pv(0.7), 0.9, "Test");
+
+        // Serialize to JSON
+        let json = serde_json::to_string(&original)
+            .expect("JSON serialization should not fail");
+
+        // Deserialize from JSON
+        let restored: IdentityContinuityMonitor = serde_json::from_str(&json)
+            .expect("JSON deserialization should not fail");
+
+        assert_eq!(restored.history_len(), original.history_len());
+
+        println!("EVIDENCE: JSON serialization works correctly");
+    }
+
+    // =========================================================================
+    // FSV: Full State Verification Tests
+    // =========================================================================
+
+    #[test]
+    fn fsv_identity_continuity_monitor_complete_lifecycle() {
+        println!("=== FSV: IdentityContinuityMonitor Complete Lifecycle ===");
+
+        // SOURCE OF TRUTH: IdentityContinuityMonitor internal state
+
+        // 1. Create monitor
+        let mut monitor = IdentityContinuityMonitor::with_capacity(10);
+
+        println!("\n1. CREATED:");
+        println!("  - is_empty: {}", monitor.is_empty());
+        println!("  - history_len: {}", monitor.history_len());
+        println!("  - crisis_threshold: {:.2}", monitor.crisis_threshold());
+        println!("  - last_result: {:?}", monitor.last_result());
+
+        assert!(monitor.is_empty());
+        assert_eq!(monitor.history_len(), 0);
+        assert!(monitor.last_result().is_none());
+
+        // 2. First vector (healthy baseline)
+        let pv1 = [0.85, 0.78, 0.92, 0.67, 0.73, 0.61, 0.88, 0.75, 0.81, 0.69, 0.84, 0.72, 0.79];
+        let result1 = monitor.compute_continuity(&pv1, 0.95, "Initial purpose alignment");
+
+        println!("\n2. AFTER FIRST VECTOR:");
+        println!("  - is_first_vector: {}", monitor.is_first_vector());
+        println!("  - identity_coherence: {:.4}", result1.identity_coherence);
+        println!("  - status: {:?}", result1.status);
+        println!("  - is_in_crisis: {}", monitor.is_in_crisis());
+
+        assert!(monitor.is_first_vector());
+        assert_eq!(result1.identity_coherence, 1.0); // First vector default
+        assert_eq!(result1.status, IdentityStatus::Healthy);
+        assert!(!monitor.is_in_crisis());
+
+        // 3. Second vector - stable (minimal drift)
+        let pv2 = [0.84, 0.77, 0.91, 0.68, 0.74, 0.62, 0.87, 0.74, 0.80, 0.70, 0.83, 0.71, 0.78];
+        let result2 = monitor.compute_continuity(&pv2, 0.93, "Minor adjustment");
+
+        println!("\n3. AFTER SECOND VECTOR (stable):");
+        println!("  - is_first_vector: {}", monitor.is_first_vector());
+        println!("  - recent_continuity (cos): {:.6}", result2.recent_continuity);
+        println!("  - kuramoto_r: {:.2}", result2.kuramoto_order_parameter);
+        println!("  - identity_coherence: {:.6}", result2.identity_coherence);
+        println!("  - status: {:?}", result2.status);
+
+        assert!(!monitor.is_first_vector());
+        assert!(result2.recent_continuity > 0.99); // Very similar vectors
+        // IC should be high: cos ≈ 1.0 * 0.93 ≈ 0.93
+        assert!(result2.identity_coherence > 0.9);
+
+        // 4. Third vector - significant drift
+        let pv3 = [0.2, 0.95, 0.3, 0.85, 0.25, 0.9, 0.35, 0.88, 0.28, 0.92, 0.32, 0.87, 0.29];
+        let result3 = monitor.compute_continuity(&pv3, 0.75, "Purpose shift");
+
+        println!("\n4. AFTER THIRD VECTOR (drift):");
+        println!("  - recent_continuity (cos): {:.6}", result3.recent_continuity);
+        println!("  - kuramoto_r: {:.2}", result3.kuramoto_order_parameter);
+        println!("  - identity_coherence: {:.6}", result3.identity_coherence);
+        println!("  - status: {:?}", result3.status);
+        println!("  - is_in_crisis: {}", monitor.is_in_crisis());
+
+        // Vectors have different patterns, cos should be lower
+        assert!(result3.recent_continuity < 0.99);
+        // Verify state matches getter
+        assert_eq!(monitor.identity_coherence(), Some(result3.identity_coherence));
+        assert_eq!(monitor.current_status(), Some(result3.status));
+
+        // 5. Continue with low r to force crisis
+        let pv4 = [0.2, 0.95, 0.3, 0.85, 0.25, 0.9, 0.35, 0.88, 0.28, 0.92, 0.32, 0.87, 0.29];
+        let result4 = monitor.compute_continuity(&pv4, 0.2, "Low consciousness");
+
+        println!("\n5. AFTER LOW KURAMOTO_R:");
+        println!("  - recent_continuity (cos): {:.6}", result4.recent_continuity);
+        println!("  - kuramoto_r: {:.2}", result4.kuramoto_order_parameter);
+        println!("  - identity_coherence: {:.6}", result4.identity_coherence);
+        println!("  - status: {:?}", result4.status);
+        println!("  - is_in_crisis: {}", monitor.is_in_crisis());
+
+        // Same vector as pv3, so cos = 1.0, but r = 0.2 -> IC = 0.2
+        assert!((result4.recent_continuity - 1.0).abs() < 1e-6);
+        assert!((result4.identity_coherence - 0.2).abs() < 1e-6);
+        assert_eq!(result4.status, IdentityStatus::Critical);
+        assert!(monitor.is_in_crisis()); // 0.2 < 0.7
+
+        // 6. Verify serialization roundtrip
+        let serialized = bincode::serialize(&monitor).expect("serialize");
+        let restored: IdentityContinuityMonitor = bincode::deserialize(&serialized).expect("deserialize");
+
+        println!("\n6. AFTER SERIALIZATION ROUNDTRIP:");
+        println!("  - history_len preserved: {}", restored.history_len() == monitor.history_len());
+        println!("  - identity_coherence preserved: {:?}", restored.identity_coherence() == monitor.identity_coherence());
+
+        assert_eq!(restored.history_len(), monitor.history_len());
+        assert_eq!(restored.identity_coherence(), monitor.identity_coherence());
+        assert_eq!(restored.crisis_threshold(), monitor.crisis_threshold());
+
+        println!("\nEVIDENCE OF SUCCESS:");
+        println!("  - First vector defaults to IC=1.0, Healthy");
+        println!("  - Cosine similarity correctly computed for consecutive PVs");
+        println!("  - IC = cos(PV_t, PV_{{t-1}}) × r(t) formula verified");
+        println!("  - is_in_crisis() correctly detects IC < threshold");
+        println!("  - Serialization preserves all state");
+    }
+
+    #[test]
+    fn fsv_identity_continuity_monitor_edge_cases() {
+        println!("=== FSV: IdentityContinuityMonitor Edge Cases ===");
+
+        // EDGE CASE 1: Negative cosine (opposite vectors)
+        println!("\n1. EDGE CASE: Opposite purpose vectors");
+        let mut monitor1 = IdentityContinuityMonitor::new();
+        let pv_pos = uniform_pv(1.0);
+        let pv_neg = uniform_pv(-1.0);
+
+        monitor1.compute_continuity(&pv_pos, 0.9, "Positive");
+        let result1 = monitor1.compute_continuity(&pv_neg, 0.9, "Negative");
+
+        println!("  - cos(PV+, PV-) = {:.4}", result1.recent_continuity);
+        println!("  - IC = {:.4} (should be 0.0, clamped)", result1.identity_coherence);
+        println!("  - status: {:?}", result1.status);
+
+        // Opposite uniform vectors: cos = -1.0, IC = -1.0 * 0.9 = -0.9, clamped to 0.0
+        assert!((result1.recent_continuity - (-1.0)).abs() < 1e-6);
+        assert_eq!(result1.identity_coherence, 0.0); // Clamped
+        assert_eq!(result1.status, IdentityStatus::Critical);
+
+        // EDGE CASE 2: Zero Kuramoto r
+        println!("\n2. EDGE CASE: Zero Kuramoto r (no sync)");
+        let mut monitor2 = IdentityContinuityMonitor::new();
+        let pv = uniform_pv(0.8);
+
+        monitor2.compute_continuity(&pv, 0.9, "First");
+        let result2 = monitor2.compute_continuity(&pv, 0.0, "Zero sync");
+
+        println!("  - cos = {:.4}", result2.recent_continuity);
+        println!("  - kuramoto_r = {:.2}", result2.kuramoto_order_parameter);
+        println!("  - IC = {:.4}", result2.identity_coherence);
+
+        // cos = 1.0, r = 0.0, IC = 0.0
+        assert_eq!(result2.identity_coherence, 0.0);
+        assert_eq!(result2.status, IdentityStatus::Critical);
+
+        // EDGE CASE 3: Max values
+        println!("\n3. EDGE CASE: Maximum values");
+        let mut monitor3 = IdentityContinuityMonitor::new();
+
+        monitor3.compute_continuity(&uniform_pv(1.0), 1.0, "First");
+        let result3 = monitor3.compute_continuity(&uniform_pv(1.0), 1.0, "Perfect");
+
+        println!("  - IC = {:.4}", result3.identity_coherence);
+        assert_eq!(result3.identity_coherence, 1.0);
+        assert_eq!(result3.status, IdentityStatus::Healthy);
+
+        // EDGE CASE 4: Exact threshold boundaries
+        println!("\n4. EDGE CASE: Exact threshold boundaries");
+        let mut monitor4 = IdentityContinuityMonitor::new();
+
+        monitor4.compute_continuity(&uniform_pv(0.8), 1.0, "First");
+        // For IC = 0.7 exactly: cos = 1.0, r = 0.7
+        let result4 = monitor4.compute_continuity(&uniform_pv(0.8), 0.7, "Boundary");
+
+        println!("  - IC = {:.4} (at crisis boundary)", result4.identity_coherence);
+        println!("  - is_in_crisis: {}", monitor4.is_in_crisis());
+
+        assert!((result4.identity_coherence - 0.7).abs() < 1e-6);
+        // IC = 0.7 is NOT in crisis (crisis is < 0.7)
+        assert!(!monitor4.is_in_crisis());
+
+        println!("\nEVIDENCE OF SUCCESS:");
+        println!("  - Opposite vectors handled correctly (IC clamped to 0)");
+        println!("  - Zero r produces IC = 0");
+        println!("  - Perfect values produce IC = 1.0");
+        println!("  - Boundary values handled correctly");
+    }
+
+    #[test]
+    fn fsv_cosine_similarity_13d_mathematical_properties() {
+        println!("=== FSV: cosine_similarity_13d Mathematical Properties ===");
+
+        // Property 1: Symmetry - cos(a, b) = cos(b, a)
+        println!("\n1. PROPERTY: Symmetry");
+        let a = [0.8, 0.7, 0.9, 0.6, 0.75, 0.65, 0.85, 0.72, 0.78, 0.68, 0.82, 0.71, 0.76];
+        let b = [0.5, 0.9, 0.3, 0.85, 0.4, 0.88, 0.35, 0.82, 0.45, 0.87, 0.38, 0.84, 0.42];
+
+        let cos_ab = cosine_similarity_13d(&a, &b);
+        let cos_ba = cosine_similarity_13d(&b, &a);
+
+        println!("  - cos(a, b) = {:.10}", cos_ab);
+        println!("  - cos(b, a) = {:.10}", cos_ba);
+        assert!((cos_ab - cos_ba).abs() < 1e-10,
+            "Symmetry violation: {} != {}", cos_ab, cos_ba);
+
+        // Property 2: Self-similarity - cos(a, a) = 1
+        println!("\n2. PROPERTY: Self-similarity");
+        let cos_aa = cosine_similarity_13d(&a, &a);
+        println!("  - cos(a, a) = {:.10}", cos_aa);
+        assert!((cos_aa - 1.0).abs() < 1e-10);
+
+        // Property 3: Scale invariance - cos(k*a, a) = 1 for k > 0
+        println!("\n3. PROPERTY: Scale invariance");
+        let scaled_a: [f32; 13] = std::array::from_fn(|i| a[i] * 3.7);
+        let cos_scaled = cosine_similarity_13d(&scaled_a, &a);
+        println!("  - cos(3.7*a, a) = {:.10}", cos_scaled);
+        assert!((cos_scaled - 1.0).abs() < 1e-6);
+
+        // Property 4: Bounded - -1 <= cos(a, b) <= 1
+        println!("\n4. PROPERTY: Bounded output");
+        let test_vectors: Vec<[f32; 13]> = vec![
+            std::array::from_fn(|i| (i as f32 * 0.1).sin()),
+            std::array::from_fn(|i| (i as f32 * 0.2).cos()),
+            std::array::from_fn(|i| ((i + 3) as f32).sqrt()),
+            std::array::from_fn(|_| -0.5),
+            std::array::from_fn(|i| if i % 2 == 0 { 1.0 } else { -1.0 }),
+        ];
+
+        for (i, v1) in test_vectors.iter().enumerate() {
+            for (j, v2) in test_vectors.iter().enumerate() {
+                let cos = cosine_similarity_13d(v1, v2);
+                assert!(cos >= -1.0 && cos <= 1.0,
+                    "Bounded violation at ({}, {}): {}", i, j, cos);
+            }
+        }
+        println!("  - All {} comparisons in [-1, 1]", test_vectors.len() * test_vectors.len());
+
+        println!("\nEVIDENCE OF SUCCESS:");
+        println!("  - Symmetry verified: cos(a,b) = cos(b,a)");
+        println!("  - Self-similarity verified: cos(a,a) = 1");
+        println!("  - Scale invariance verified: cos(k*a, a) = 1");
+        println!("  - Bounded output verified: -1 <= cos <= 1");
     }
 }

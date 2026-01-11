@@ -50,7 +50,11 @@ pub mod state_machine;
 pub mod workspace;
 
 pub use consciousness::{ConsciousnessCalculator, ConsciousnessMetrics};
-pub use ego_node::{IdentityContinuity, IdentityStatus, SelfAwarenessLoop, SelfEgoNode, SelfReflectionResult};
+pub use ego_node::{
+    cosine_similarity_13d, IdentityContinuity, IdentityContinuityMonitor, IdentityStatus,
+    SelfAwarenessLoop, SelfEgoNode, SelfReflectionResult, IC_CRISIS_THRESHOLD, IC_CRITICAL_THRESHOLD,
+    MAX_PV_HISTORY_SIZE, PurposeVectorHistory, PurposeVectorHistoryProvider,
+};
 pub use listeners::{DreamEventListener, MetaCognitiveEventListener, NeuromodulationEventListener};
 pub use meta_cognitive::{MetaCognitiveLoop, MetaCognitiveState};
 pub use state_machine::{ConsciousnessState, StateMachineManager, StateTransition};

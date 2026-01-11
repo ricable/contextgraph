@@ -1,108 +1,3 @@
-# TASK-DREAM-P0-004: Hyperbolic Random Walk Implementation
-
-## Metadata
-
-| Field | Value |
-|-------|-------|
-| **Task ID** | TASK-DREAM-P0-004 |
-| **Spec Ref** | SPEC-DREAM-001 |
-| **Layer** | 2 (Logic) |
-| **Priority** | P0 - Critical |
-| **Effort** | 4 hours |
-| **Dependencies** | TASK-DREAM-P0-001 (types.rs), TASK-DREAM-P0-002 (poincare_walk.rs) |
-| **Blocks** | TASK-DREAM-P0-006 |
-| **Last Audited** | 2026-01-11 |
-
----
-
-## 1. Objective
-
-Implement the hyperbolic random walk algorithm for REM phase blind spot discovery. Create `hyperbolic_walk.rs` module that uses existing Poincare ball utilities to perform temperature-controlled exploration and blind spot detection.
-
-**Critical**: This replaces the stub implementation in `rem.rs` (lines 178-224) with actual Poincare ball exploration.
-
----
-
-## 2. Source of Truth
-
-### 2.1 Constitution Reference
-
-**File**: `docs2/constitution.yaml` (lines 390-398)
-
-| Parameter | Constitution Value | Enforcement Location |
-|-----------|-------------------|---------------------|
-| `temperature` | 2.0 | `HyperbolicWalkConfig.temperature` |
-| `semantic_leap` | >= 0.7 | `HyperbolicWalkConfig.min_blind_spot_distance` |
-| `query_limit` | 100 | `HyperbolicExplorer.query_limit` |
-| `coupling_strength` | 0.9 | `HebbianConfig.coupling_strength` (NREM) |
-| `gpu_usage` | < 30% | Dream abort trigger |
-| `wake_latency` | < 100ms | Interrupt response |
-
-### 2.2 Existing Types (ALREADY IMPLEMENTED - DO NOT RECREATE)
-
-**File**: `crates/context-graph-core/src/dream/types.rs`
-
-```rust
-// HyperbolicWalkConfig - lines 173-206
-pub struct HyperbolicWalkConfig {
-    pub step_size: f32,              // default: 0.1
-    pub max_steps: usize,            // default: 50
-    pub temperature: f32,            // default: 2.0 (Constitution)
-    pub min_blind_spot_distance: f32,// default: 0.7 (Constitution semantic_leap)
-    pub direction_samples: usize,    // default: 8
-}
-
-// WalkStep - lines 243-303
-pub struct WalkStep {
-    pub position: [f32; 64],
-    pub step_direction: [f32; 64],
-    pub distance_from_start: f32,
-    pub step_index: usize,
-    pub blind_spot_detected: bool,
-}
-impl WalkStep {
-    pub fn new(position: [f32; 64], direction: [f32; 64], distance: f32, index: usize) -> Self;
-    pub fn mark_blind_spot(&mut self);
-    pub fn position_norm(&self) -> f32;
-}
-```
-
-### 2.3 Existing Utilities (USE THESE - DO NOT REIMPLEMENT)
-
-**File**: `crates/context-graph-core/src/dream/poincare_walk.rs`
-
-```rust
-// Configuration
-pub struct PoincareBallConfig { max_norm, epsilon, curvature }
-
-// Core operations
-pub fn mobius_add(p: &[f32; 64], v: &[f32; 64], config: &PoincareBallConfig) -> [f32; 64];
-pub fn geodesic_distance(p: &[f32; 64], q: &[f32; 64], config: &PoincareBallConfig) -> f32;
-pub fn project_to_ball(point: &mut [f32; 64], config: &PoincareBallConfig) -> bool;
-pub fn validate_in_ball(point: &[f32; 64], config: &PoincareBallConfig, context: &str);
-
-// Direction operations
-pub fn random_direction<R: Rng>(rng: &mut R) -> [f32; 64];
-pub fn scale_direction(direction: &[f32; 64], step_size: f32, current_norm: f32, config: &PoincareBallConfig) -> [f32; 64];
-pub fn sample_direction_with_temperature<R: Rng>(rng: &mut R, n_samples: usize, scores: Option<&[f32]>, temperature: f32) -> [f32; 64];
-
-// Distance operations
-pub fn norm_64(v: &[f32; 64]) -> f32;
-pub fn is_far_from_all(point: &[f32; 64], reference_points: &[[f32; 64]], min_distance: f32, config: &PoincareBallConfig) -> bool;
-
-// Softmax
-pub fn softmax_temperature(scores: &[f32], temperature: f32) -> Vec<f32>;
-```
-
----
-
-## 3. Files to Create/Modify
-
-### 3.1 CREATE: `crates/context-graph-core/src/dream/hyperbolic_walk.rs`
-
-**Purpose**: HyperbolicExplorer engine for REM phase blind spot discovery.
-
-```rust
 //! Hyperbolic Random Walk Implementation
 //!
 //! Implements random walks in the Poincare ball model for REM phase
@@ -116,13 +11,13 @@ pub fn softmax_temperature(scores: &[f32], temperature: f32) -> Vec<f32>;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use rand::rngs::SmallRng;
+use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, info, trace};
 use uuid::Uuid;
 
 use super::poincare_walk::{
-    geodesic_distance, is_far_from_all, mobius_add, norm_64, random_direction,
+    geodesic_distance, is_far_from_all, mobius_add, norm_64,
     sample_direction_with_temperature, scale_direction, PoincareBallConfig,
 };
 use super::types::{HyperbolicWalkConfig, WalkStep};
@@ -223,7 +118,7 @@ pub struct HyperbolicExplorer {
     ball_config: PoincareBallConfig,
 
     /// Random number generator
-    rng: SmallRng,
+    rng: StdRng,
 
     /// Known memory positions (for blind spot detection)
     known_positions: Vec<[f32; 64]>,
@@ -246,7 +141,7 @@ impl HyperbolicExplorer {
         Self {
             config,
             ball_config: PoincareBallConfig::default(),
-            rng: SmallRng::from_entropy(),
+            rng: StdRng::from_entropy(),
             known_positions: Vec::new(),
             query_limit: 100, // Constitution limit - HARD CODED
             queries_used: 0,
@@ -260,7 +155,7 @@ impl HyperbolicExplorer {
 
     /// Set the seed for reproducible walks (testing).
     pub fn with_seed(mut self, seed: u64) -> Self {
-        self.rng = SmallRng::seed_from_u64(seed);
+        self.rng = StdRng::seed_from_u64(seed);
         self
     }
 
@@ -610,7 +505,7 @@ pub fn sample_starting_positions(
         return Vec::new();
     }
 
-    let mut rng = SmallRng::from_entropy();
+    let mut rng = StdRng::from_entropy();
 
     // Score by phi value
     let scores: Vec<f32> = node_positions.iter().map(|(phi, _)| *phi).collect();
@@ -824,14 +719,14 @@ mod tests {
         let interrupt = make_interrupt_flag();
 
         // Two starting positions
-        let mut start1 = [0.0f32; 64];
+        let start1 = [0.0f32; 64];
         let mut start2 = [0.0f32; 64];
         start2[0] = 0.3;
 
         let starts = vec![start1, start2];
         let result = explorer.explore(&starts, &interrupt);
 
-        assert!(result.walks.len() >= 1, "should have at least 1 walk");
+        assert!(!result.walks.is_empty(), "should have at least 1 walk");
         assert!(result.queries_generated > 0, "should generate queries");
         assert!(result.queries_generated <= 100, "should respect query limit");
     }
@@ -883,7 +778,7 @@ mod tests {
         // Low temperature should strongly prefer high phi
         // Run multiple times to verify statistical preference
         let mut high_phi_count = 0;
-        for seed in 0..100u64 {
+        for _seed in 0..100u64 {
             // Use deterministic sampling
             let selected = sample_starting_positions(&node_positions, 1, 0.1);
             if selected[0][0] == 0.1 { // high_phi position
@@ -933,304 +828,3 @@ mod tests {
         explorer.set_known_positions(vec![invalid_pos]);
     }
 }
-```
-
-### 3.2 MODIFY: `crates/context-graph-core/src/dream/mod.rs`
-
-Add module export and re-exports:
-
-```rust
-// Add after line 49 (after hebbian module):
-pub mod hyperbolic_walk;
-
-// Add to re-exports section (around line 57-63):
-pub use hyperbolic_walk::{
-    DiscoveredBlindSpot,
-    ExplorationResult,
-    HyperbolicExplorer,
-    WalkResult,
-    position_to_query,
-    sample_starting_positions,
-};
-```
-
-### 3.3 MODIFY: `crates/context-graph-core/src/dream/rem.rs` (FUTURE - TASK-DREAM-P0-005)
-
-**NOTE**: Full integration with RemPhase will be done in TASK-DREAM-P0-005. This task only creates the HyperbolicExplorer engine.
-
----
-
-## 4. Definition of Done
-
-### 4.1 Type Signatures (Exact)
-
-```rust
-pub struct DiscoveredBlindSpot {
-    pub position: [f32; 64],
-    pub distance_from_nearest: f32,
-    pub discovery_step: usize,
-    pub confidence: f32,
-    pub id: Uuid,
-}
-impl DiscoveredBlindSpot {
-    pub fn is_significant(&self) -> bool;
-}
-
-pub struct WalkResult {
-    pub trajectory: Vec<WalkStep>,
-    pub blind_spots: Vec<DiscoveredBlindSpot>,
-    pub total_distance: f32,
-    pub start_position: [f32; 64],
-    pub end_position: [f32; 64],
-    pub completed: bool,
-}
-
-pub struct ExplorationResult {
-    pub walks: Vec<WalkResult>,
-    pub all_blind_spots: Vec<DiscoveredBlindSpot>,
-    pub queries_generated: usize,
-    pub coverage_estimate: f32,
-    pub average_semantic_leap: f32,
-    pub unique_positions: usize,
-}
-
-pub struct HyperbolicExplorer { /* internal */ }
-impl HyperbolicExplorer {
-    pub fn new(config: HyperbolicWalkConfig) -> Self;
-    pub fn with_defaults() -> Self;
-    pub fn with_seed(self, seed: u64) -> Self;
-    pub fn set_known_positions(&mut self, positions: Vec<[f32; 64]>);
-    pub fn reset_queries(&mut self);
-    pub fn remaining_queries(&self) -> usize;
-    pub fn walk(&mut self, start: &[f32; 64], interrupt_flag: &Arc<AtomicBool>) -> WalkResult;
-    pub fn explore(&mut self, starting_positions: &[[f32; 64]], interrupt_flag: &Arc<AtomicBool>) -> ExplorationResult;
-    pub fn config(&self) -> &HyperbolicWalkConfig;
-}
-
-pub fn position_to_query(position: &[f32; 64]) -> Vec<f32>;
-pub fn sample_starting_positions(
-    node_positions: &[(f32, [f32; 64])],
-    count: usize,
-    temperature: f32,
-) -> Vec<[f32; 64]>;
-```
-
-### 4.2 Validation Criteria
-
-| Criterion | Command | Expected |
-|-----------|---------|----------|
-| Compiles | `cargo build -p context-graph-core` | Success, no errors |
-| Tests pass | `cargo test -p context-graph-core dream::hyperbolic_walk` | All pass |
-| No clippy warnings | `cargo clippy -p context-graph-core -- -D warnings` | No warnings |
-| Constitution compliance | Run compliance tests | All pass |
-
-### 4.3 Test Coverage Requirements (All Must Pass)
-
-- [x] Explorer creation with defaults verifies Constitution values
-- [x] Walk from origin produces non-empty trajectory
-- [x] Walk stays inside Poincare ball (all positions have norm < 1.0)
-- [x] Walk respects query limit (100 per Constitution)
-- [x] Walk respects interrupt flag (abort_on_query behavior)
-- [x] Blind spot detection works with no known positions
-- [x] Blind spot detection respects 0.7 threshold
-- [x] Significant blind spot threshold (distance >= 0.7, confidence >= 0.5)
-- [x] Multi-walk exploration aggregates results
-- [x] Starting position sampling prefers high-phi nodes
-- [x] Position to query conversion preserves values
-- [x] Fail-fast on invalid start position
-- [x] Fail-fast on invalid known positions
-
----
-
-## 5. Full State Verification
-
-### 5.1 Source of Truth Verification
-
-After implementation, verify these values match Constitution:
-
-```bash
-# Extract constants from code and verify
-grep -n "temperature.*2.0" crates/context-graph-core/src/dream/hyperbolic_walk.rs
-grep -n "query_limit.*100" crates/context-graph-core/src/dream/hyperbolic_walk.rs
-grep -n "min_blind_spot_distance.*0.7" crates/context-graph-core/src/dream/types.rs
-```
-
-### 5.2 Execute & Inspect
-
-Run all tests and verify output:
-
-```bash
-# Run all hyperbolic_walk tests with output
-cargo test -p context-graph-core dream::hyperbolic_walk -- --nocapture
-
-# Verify no regressions in related modules
-cargo test -p context-graph-core dream:: -- --nocapture
-```
-
-### 5.3 Boundary & Edge Case Audit
-
-| Edge Case | Expected Behavior | Test Method |
-|-----------|-------------------|-------------|
-| Walk from origin (norm=0) | Valid trajectory produced | `test_walk_from_origin_produces_trajectory` |
-| Walk near boundary (norm~0.99) | Steps shrink, stays inside | Manual test with start at norm=0.95 |
-| Query limit exactly 100 | Stops at 100, not 101 | `test_explorer_query_limit_enforced` |
-| Empty known_positions | Every position is blind spot | `test_blind_spot_detection_with_no_known_positions` |
-| Interrupt during walk | Immediate stop, completed=false | `test_walk_respects_interrupt_flag` |
-
-### 5.4 Evidence of Success
-
-After implementation, this file should show:
-
-```
-test dream::hyperbolic_walk::tests::test_explorer_constitution_defaults ... ok
-test dream::hyperbolic_walk::tests::test_explorer_query_limit_enforced ... ok
-test dream::hyperbolic_walk::tests::test_walk_from_origin_produces_trajectory ... ok
-test dream::hyperbolic_walk::tests::test_walk_stays_inside_poincare_ball ... ok
-test dream::hyperbolic_walk::tests::test_walk_respects_interrupt_flag ... ok
-test dream::hyperbolic_walk::tests::test_blind_spot_detection_with_no_known_positions ... ok
-test dream::hyperbolic_walk::tests::test_blind_spot_detection_with_known_positions ... ok
-test dream::hyperbolic_walk::tests::test_blind_spot_significance_threshold ... ok
-test dream::hyperbolic_walk::tests::test_explore_multiple_starting_positions ... ok
-test dream::hyperbolic_walk::tests::test_explore_empty_positions_starts_from_origin ... ok
-test dream::hyperbolic_walk::tests::test_sample_starting_positions_empty_input ... ok
-test dream::hyperbolic_walk::tests::test_sample_starting_positions_respects_count ... ok
-test dream::hyperbolic_walk::tests::test_sample_starting_positions_prefers_high_phi ... ok
-test dream::hyperbolic_walk::tests::test_position_to_query_preserves_values ... ok
-test dream::hyperbolic_walk::tests::test_walk_rejects_invalid_start ... ok
-test dream::hyperbolic_walk::tests::test_set_known_positions_rejects_invalid ... ok
-```
-
----
-
-## 6. Manual Testing with Synthetic Data
-
-### 6.1 Test Case 1: Walk from Origin
-
-**Input**:
-- Start position: `[0.0; 64]` (origin)
-- Seed: 42 (deterministic)
-- Config: defaults (temp=2.0, max_steps=50)
-
-**Expected Output**:
-- Trajectory length: 50 steps (or until query limit)
-- All position norms < 1.0
-- total_distance > 0
-- completed = true
-
-**Verification**:
-```rust
-let mut explorer = HyperbolicExplorer::with_defaults().with_seed(42);
-let result = explorer.walk(&[0.0f32; 64], &make_interrupt_flag());
-assert_eq!(result.trajectory.len(), 50);
-assert!(result.completed);
-```
-
-### 6.2 Test Case 2: Blind Spot Near Known Position
-
-**Input**:
-- Start position: `[0.0; 64]`
-- Known position: `[0.1, 0.0, ..., 0.0]` (at norm=0.1)
-- Walk 20 steps
-
-**Expected Output**:
-- Steps near known position (geodesic distance < 0.7) NOT marked as blind spots
-- Steps far from known position (geodesic distance >= 0.7) marked as blind spots
-
-**Verification**:
-```rust
-let mut explorer = HyperbolicExplorer::with_defaults().with_seed(42);
-let mut known = [0.0f32; 64];
-known[0] = 0.1;
-explorer.set_known_positions(vec![known]);
-
-let result = explorer.walk(&[0.0f32; 64], &make_interrupt_flag());
-
-for step in &result.trajectory {
-    let dist = geodesic_distance(&step.position, &known, &PoincareBallConfig::default());
-    if step.blind_spot_detected {
-        assert!(dist >= 0.7);
-    }
-}
-```
-
-### 6.3 Test Case 3: Query Limit Enforcement
-
-**Input**:
-- max_steps: 200 (exceeds limit)
-- query_limit: 100 (Constitution)
-
-**Expected Output**:
-- queries_used == 100 (exactly at limit)
-- trajectory.len() <= 100
-
-**Verification**:
-```rust
-let config = HyperbolicWalkConfig { max_steps: 200, ..Default::default() };
-let mut explorer = HyperbolicExplorer::new(config).with_seed(42);
-let result = explorer.walk(&[0.0f32; 64], &make_interrupt_flag());
-assert!(explorer.queries_used <= 100);
-```
-
----
-
-## 7. Implementation Notes
-
-### 7.1 Walk Algorithm
-
-```
-1. Validate start position (norm < 1.0) - FAIL FAST if invalid
-2. For each step (up to max_steps AND within query_limit):
-   a. Check interrupt flag - abort immediately if set
-   b. Check query budget - stop if exhausted
-   c. Increment query counter
-   d. Sample random direction with temperature=2.0
-   e. Scale direction based on distance from boundary
-   f. Apply Mobius addition: p' = p ⊕ v
-   g. Check if new position is a blind spot (distance >= 0.7 from all known)
-   h. Record step in trajectory
-3. Return trajectory and discovered blind spots
-```
-
-### 7.2 Error Handling Philosophy
-
-**FAIL FAST** - No graceful degradation:
-- Invalid inputs PANIC with detailed error messages
-- Constitution violations PANIC immediately
-- All panic messages include `[HYPERBOLIC_WALK]` prefix and file:line
-
-### 7.3 Dependencies
-
-```toml
-# In Cargo.toml (already present)
-rand = "0.8"
-rand_distr = "0.4"
-tracing = "0.1"
-uuid = { version = "1.0", features = ["v4"] }
-```
-
----
-
-## 8. Effort Breakdown
-
-| Phase | Duration |
-|-------|----------|
-| HyperbolicExplorer core struct | 30 min |
-| Walk algorithm implementation | 45 min |
-| Blind spot detection logic | 30 min |
-| Multi-walk exploration | 30 min |
-| Starting position sampling | 20 min |
-| Unit tests (comprehensive) | 60 min |
-| mod.rs integration | 10 min |
-| Manual verification | 15 min |
-| **Total** | **4 hours** |
-
----
-
-## 9. Related Tasks
-
-| Task | Relationship |
-|------|-------------|
-| TASK-DREAM-P0-001 | Provides `HyperbolicWalkConfig`, `WalkStep` types |
-| TASK-DREAM-P0-002 | Provides Poincare ball math utilities |
-| TASK-DREAM-P0-005 | Will integrate HyperbolicExplorer into RemPhase |
-| TASK-DREAM-P0-006 | Blocked by this task |

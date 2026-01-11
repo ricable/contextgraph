@@ -274,7 +274,7 @@ impl DomainThresholds {
         // === NEW: Autonomous thresholds - MUST enforce monotonicity ===
         if !(0.20..=0.50).contains(&self.theta_obsolescence_low) { return false; }
         if !(0.65..=0.90).contains(&self.theta_obsolescence_high) { return false; }
-        if !(self.theta_obsolescence_high > self.theta_obsolescence_low) { return false; }
+        if self.theta_obsolescence_high <= self.theta_obsolescence_low { return false; }
 
         true
     }
