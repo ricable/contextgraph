@@ -279,7 +279,7 @@ async fn test_workspace_empty_condition() {
 #[tokio::test]
 async fn test_identity_continuity_critical_state() {
     // Test 14: Identity continuity detects critical drift
-    let mut continuity = IdentityContinuity::new();
+    let mut continuity = IdentityContinuity::default_initial();
 
     // Large misalignment
     let status = continuity.update(0.2, 0.3).unwrap();

@@ -170,19 +170,25 @@ pub struct SelfAwarenessLoop {
 
 /// Tracks identity continuity over time
 ///
-/// # Persistence (TASK-GWT-P1-001)
+/// # Constitution Reference
+/// From constitution.yaml lines 365-392:
+/// - identity_continuity: "IC = cos(PV_t, PV_{t-1}) x r(t)"
+/// - Thresholds: healthy>0.9, warning<0.7, dream<0.5
 ///
+/// # Persistence (TASK-GWT-P1-001)
 /// Serializable for diagnostic/recovery purposes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct IdentityContinuity {
+    /// IC = cos(PV_t, PV_{t-1}) x r(t), clamped to [0, 1]
+    pub identity_coherence: f32,
     /// Cosine similarity between consecutive purpose vectors
     pub recent_continuity: f32,
     /// Order parameter r from Kuramoto sync
     pub kuramoto_order_parameter: f32,
-    /// Overall identity coherence: IC = cos(PV_t, PV_{t-1}) × r(t)
-    pub identity_coherence: f32,
-    /// Status of identity continuity
+    /// Status classification based on IC thresholds
     pub status: IdentityStatus,
+    /// Timestamp of computation
+    pub computed_at: DateTime<Utc>,
 }
 
 /// Identity status enum for SELF_EGO_NODE state tracking.
@@ -203,16 +209,87 @@ pub enum IdentityStatus {
 }
 
 impl IdentityContinuity {
-    /// Create new IdentityContinuity with correct initial status per constitution.yaml lines 387-392
-    /// Starting with identity_coherence=0.0 means status=Critical (IC < 0.5 triggers dream consolidation)
-    pub fn new() -> Self {
+    /// Create a new result with computed values
+    ///
+    /// # Arguments
+    /// * `purpose_continuity` - cos(PV_t, PV_{t-1})
+    /// * `kuramoto_r` - Kuramoto order parameter r(t)
+    ///
+    /// # Returns
+    /// Result with IC = purpose_continuity * kuramoto_r, clamped to [0, 1]
+    ///
+    /// # Example
+    /// ```ignore
+    /// let result = IdentityContinuity::new(0.9, 0.85);
+    /// assert!((result.identity_coherence - 0.765).abs() < 1e-6);
+    /// ```
+    pub fn new(purpose_continuity: f32, kuramoto_r: f32) -> Self {
+        // Clamp inputs to valid ranges
+        let cos_clamped = purpose_continuity.clamp(-1.0, 1.0);
+        let r_clamped = kuramoto_r.clamp(0.0, 1.0);
+
+        // Compute IC = cos * r, clamp negative to 0
+        let ic = (cos_clamped * r_clamped).clamp(0.0, 1.0);
+
+        // Determine status from IC
+        let status = Self::compute_status_from_coherence(ic);
+
+        Self {
+            identity_coherence: ic,
+            recent_continuity: cos_clamped,
+            kuramoto_order_parameter: r_clamped,
+            status,
+            computed_at: Utc::now(),
+        }
+    }
+
+    /// Create new IdentityContinuity with default initial state
+    ///
+    /// Starting with identity_coherence=0.0 means status=Critical (IC < 0.5)
+    /// per constitution.yaml lines 387-392
+    pub fn default_initial() -> Self {
         let identity_coherence = 0.0;
         Self {
+            identity_coherence,
             recent_continuity: 1.0,
             kuramoto_order_parameter: 0.0,
-            identity_coherence,
             status: Self::compute_status_from_coherence(identity_coherence),
+            computed_at: Utc::now(),
         }
+    }
+
+    /// Create result for first purpose vector (no previous)
+    ///
+    /// Returns IC = 1.0, Status = Healthy
+    /// Per EC-IDENTITY-01: First purpose vector defaults to healthy
+    pub fn first_vector() -> Self {
+        Self {
+            identity_coherence: 1.0,
+            recent_continuity: 1.0,
+            kuramoto_order_parameter: 1.0,
+            status: IdentityStatus::Healthy,
+            computed_at: Utc::now(),
+        }
+    }
+
+    /// Check if identity is in crisis (IC < 0.7)
+    ///
+    /// # Constitution Reference
+    /// From constitution.yaml line 369:
+    /// - warning<0.7 threshold indicates identity drift
+    #[inline]
+    pub fn is_in_crisis(&self) -> bool {
+        self.identity_coherence < 0.7
+    }
+
+    /// Check if identity is critical (IC < 0.5)
+    ///
+    /// # Constitution Reference
+    /// From constitution.yaml line 369:
+    /// - dream<0.5 threshold triggers introspective dream
+    #[inline]
+    pub fn is_critical(&self) -> bool {
+        self.identity_coherence < 0.5
     }
 
     /// Compute status per constitution.yaml lines 387-392:
@@ -240,13 +317,16 @@ impl IdentityContinuity {
         // Determine status using canonical computation
         self.status = Self::compute_status_from_coherence(self.identity_coherence);
 
+        // Update timestamp
+        self.computed_at = Utc::now();
+
         Ok(self.status)
     }
 }
 
 impl Default for IdentityContinuity {
     fn default() -> Self {
-        Self::new()
+        Self::default_initial()
     }
 }
 
@@ -254,7 +334,7 @@ impl SelfAwarenessLoop {
     /// Create a new self-awareness loop
     pub fn new() -> Self {
         Self {
-            continuity: IdentityContinuity::new(),
+            continuity: IdentityContinuity::default_initial(),
             alignment_threshold: 0.55,
         }
     }
@@ -390,7 +470,7 @@ mod tests {
     /// Because identity_coherence=0.0 at initialization, which is < 0.5 (Critical threshold)
     #[test]
     fn test_identity_continuity_initial_status_is_critical() {
-        let continuity = IdentityContinuity::new();
+        let continuity = IdentityContinuity::default_initial();
 
         // Per constitution: IC < 0.5 should be Critical, not Healthy
         assert_eq!(
@@ -405,7 +485,7 @@ mod tests {
     #[test]
     fn test_identity_status_from_coherence_all_states() {
         // Verify compute_status_from_coherence works correctly
-        let mut continuity = IdentityContinuity::new();
+        let mut continuity = IdentityContinuity::default_initial();
 
         // Update to each threshold and verify status
         // Critical: IC < 0.5
@@ -427,7 +507,7 @@ mod tests {
 
     #[test]
     fn test_identity_continuity_healthy() {
-        let mut continuity = IdentityContinuity::new();
+        let mut continuity = IdentityContinuity::default_initial();
         let status = continuity.update(0.95, 0.95).unwrap();
 
         assert_eq!(status, IdentityStatus::Healthy);
@@ -436,7 +516,7 @@ mod tests {
 
     #[test]
     fn test_identity_continuity_critical() {
-        let mut continuity = IdentityContinuity::new();
+        let mut continuity = IdentityContinuity::default_initial();
         let status = continuity.update(0.3, 0.3).unwrap();
 
         assert_eq!(status, IdentityStatus::Critical);
@@ -739,5 +819,320 @@ mod tests {
         assert!(final_ic >= 0.0 && final_ic <= 1.0, "IC must be in [0,1]");
 
         println!("EVIDENCE: identity_coherence getter works correctly");
+    }
+
+    // =========================================================================
+    // TASK-IDENTITY-P0-001: Factory Method Tests
+    // =========================================================================
+
+    #[test]
+    fn test_identity_continuity_new_factory_computes_ic_correctly() {
+        println!("=== TEST: new() factory computes IC = cos * r ===");
+
+        // BEFORE: No IdentityContinuity exists
+        // EXECUTE: Create with known values
+        let result = IdentityContinuity::new(0.9, 0.85);
+
+        // AFTER: Verify IC computation
+        let expected_ic = 0.9 * 0.85; // 0.765
+        assert!((result.identity_coherence - expected_ic).abs() < 1e-6,
+            "IC should be {} but was {}", expected_ic, result.identity_coherence);
+        assert_eq!(result.status, IdentityStatus::Warning,
+            "IC=0.765 should be Warning (0.7 <= IC <= 0.9)");
+
+        // EVIDENCE: Print computed state
+        println!("INPUT: purpose_continuity=0.9, kuramoto_r=0.85");
+        println!("OUTPUT: identity_coherence={:.4}, status={:?}",
+            result.identity_coherence, result.status);
+        println!("EVIDENCE: IC = 0.9 * 0.85 = 0.765 (Warning)");
+    }
+
+    #[test]
+    fn test_identity_continuity_new_factory_clamps_negative_cosine() {
+        println!("=== TEST: new() clamps negative cosine to IC >= 0 ===");
+
+        // BEFORE: Negative cosine (opposite vectors)
+        let result = IdentityContinuity::new(-0.8, 0.9);
+
+        // AFTER: IC should be 0.0 (clamped), not -0.72
+        assert!(result.identity_coherence >= 0.0,
+            "IC must be >= 0, but was {}", result.identity_coherence);
+        assert_eq!(result.status, IdentityStatus::Critical,
+            "IC=0.0 should be Critical");
+
+        println!("INPUT: purpose_continuity=-0.8, kuramoto_r=0.9");
+        println!("OUTPUT: identity_coherence={:.4}, status={:?}",
+            result.identity_coherence, result.status);
+        println!("EVIDENCE: Negative cosine clamped to IC=0.0");
+    }
+
+    #[test]
+    fn test_identity_continuity_new_factory_clamps_inputs() {
+        println!("=== TEST: new() clamps inputs to valid ranges ===");
+
+        // Out-of-range inputs
+        let result = IdentityContinuity::new(1.5, 2.0); // Should clamp to 1.0, 1.0
+
+        assert!((result.recent_continuity - 1.0).abs() < 1e-6,
+            "purpose_continuity should clamp to 1.0");
+        assert!((result.kuramoto_order_parameter - 1.0).abs() < 1e-6,
+            "kuramoto_r should clamp to 1.0");
+        assert!((result.identity_coherence - 1.0).abs() < 1e-6,
+            "IC should be 1.0 * 1.0 = 1.0");
+
+        println!("INPUT: purpose_continuity=1.5, kuramoto_r=2.0");
+        println!("OUTPUT: recent_continuity={:.4}, kuramoto_order_parameter={:.4}",
+            result.recent_continuity, result.kuramoto_order_parameter);
+        println!("EVIDENCE: Inputs clamped to [−1,1] and [0,1]");
+    }
+
+    #[test]
+    fn test_identity_continuity_first_vector_returns_healthy() {
+        println!("=== TEST: first_vector() returns IC=1.0, Healthy ===");
+
+        let result = IdentityContinuity::first_vector();
+
+        assert_eq!(result.identity_coherence, 1.0);
+        assert_eq!(result.status, IdentityStatus::Healthy);
+        assert_eq!(result.recent_continuity, 1.0);
+        assert_eq!(result.kuramoto_order_parameter, 1.0);
+
+        println!("OUTPUT: identity_coherence=1.0, status=Healthy");
+        println!("EVIDENCE: First vector defaults to perfect continuity");
+    }
+
+    #[test]
+    fn test_identity_continuity_first_vector_has_timestamp() {
+        println!("=== TEST: first_vector() has computed_at timestamp ===");
+
+        let before = Utc::now();
+        let result = IdentityContinuity::first_vector();
+        let after = Utc::now();
+
+        assert!(result.computed_at >= before && result.computed_at <= after,
+            "computed_at should be between test start and end");
+
+        println!("computed_at: {:?}", result.computed_at);
+        println!("EVIDENCE: Timestamp is set correctly");
+    }
+
+    // =========================================================================
+    // is_in_crisis() and is_critical() Tests
+    // =========================================================================
+
+    #[test]
+    fn test_identity_continuity_is_in_crisis_boundary() {
+        println!("=== TEST: is_in_crisis() boundary at IC=0.7 ===");
+
+        // Exactly 0.7 should NOT be crisis
+        let at_boundary = IdentityContinuity::new(0.7, 1.0);
+        assert!(!at_boundary.is_in_crisis(),
+            "IC=0.7 should NOT be in crisis (boundary is < 0.7)");
+
+        // Just below 0.7 IS crisis
+        let below_boundary = IdentityContinuity::new(0.699, 1.0);
+        assert!(below_boundary.is_in_crisis(),
+            "IC=0.699 should be in crisis");
+
+        println!("IC=0.7: is_in_crisis={}", at_boundary.is_in_crisis());
+        println!("IC=0.699: is_in_crisis={}", below_boundary.is_in_crisis());
+        println!("EVIDENCE: Boundary at 0.7 is exclusive (< not <=)");
+    }
+
+    #[test]
+    fn test_identity_continuity_is_critical_boundary() {
+        println!("=== TEST: is_critical() boundary at IC=0.5 ===");
+
+        // Exactly 0.5 should NOT be critical
+        let at_boundary = IdentityContinuity::new(0.5, 1.0);
+        assert!(!at_boundary.is_critical(),
+            "IC=0.5 should NOT be critical (boundary is < 0.5)");
+
+        // Just below 0.5 IS critical
+        let below_boundary = IdentityContinuity::new(0.499, 1.0);
+        assert!(below_boundary.is_critical(),
+            "IC=0.499 should be critical");
+
+        println!("IC=0.5: is_critical={}", at_boundary.is_critical());
+        println!("IC=0.499: is_critical={}", below_boundary.is_critical());
+        println!("EVIDENCE: Boundary at 0.5 is exclusive (< not <=)");
+    }
+
+    #[test]
+    fn test_identity_continuity_crisis_methods_consistent_with_status() {
+        println!("=== TEST: is_in_crisis/is_critical consistent with status ===");
+
+        // Healthy: IC > 0.9
+        let healthy = IdentityContinuity::new(1.0, 0.95);
+        assert!(!healthy.is_in_crisis());
+        assert!(!healthy.is_critical());
+        assert_eq!(healthy.status, IdentityStatus::Healthy);
+
+        // Warning: 0.7 <= IC <= 0.9
+        let warning = IdentityContinuity::new(0.8, 1.0);
+        assert!(!warning.is_in_crisis());
+        assert!(!warning.is_critical());
+        assert_eq!(warning.status, IdentityStatus::Warning);
+
+        // Degraded: 0.5 <= IC < 0.7
+        let degraded = IdentityContinuity::new(0.6, 1.0);
+        assert!(degraded.is_in_crisis()); // < 0.7
+        assert!(!degraded.is_critical()); // >= 0.5
+        assert_eq!(degraded.status, IdentityStatus::Degraded);
+
+        // Critical: IC < 0.5
+        let critical = IdentityContinuity::new(0.3, 1.0);
+        assert!(critical.is_in_crisis());
+        assert!(critical.is_critical());
+        assert_eq!(critical.status, IdentityStatus::Critical);
+
+        println!("Healthy: is_in_crisis={}, is_critical={}", healthy.is_in_crisis(), healthy.is_critical());
+        println!("Warning: is_in_crisis={}, is_critical={}", warning.is_in_crisis(), warning.is_critical());
+        println!("Degraded: is_in_crisis={}, is_critical={}", degraded.is_in_crisis(), degraded.is_critical());
+        println!("Critical: is_in_crisis={}, is_critical={}", critical.is_in_crisis(), critical.is_critical());
+    }
+
+    // =========================================================================
+    // Serialization Tests
+    // =========================================================================
+
+    #[test]
+    fn test_identity_continuity_bincode_roundtrip() {
+        println!("=== TEST: bincode serialization roundtrip ===");
+
+        let original = IdentityContinuity::new(0.85, 0.9);
+
+        // Serialize
+        let serialized = bincode::serialize(&original)
+            .expect("Serialization must not fail");
+
+        // Deserialize
+        let deserialized: IdentityContinuity = bincode::deserialize(&serialized)
+            .expect("Deserialization must not fail");
+
+        // Verify all fields
+        assert_eq!(original.identity_coherence, deserialized.identity_coherence);
+        assert_eq!(original.recent_continuity, deserialized.recent_continuity);
+        assert_eq!(original.kuramoto_order_parameter, deserialized.kuramoto_order_parameter);
+        assert_eq!(original.status, deserialized.status);
+        assert_eq!(original.computed_at, deserialized.computed_at);
+
+        println!("Original: {:?}", original);
+        println!("Deserialized: {:?}", deserialized);
+        println!("EVIDENCE: All fields preserved through serialization");
+    }
+
+    #[test]
+    fn test_identity_continuity_json_roundtrip() {
+        println!("=== TEST: JSON serialization roundtrip ===");
+
+        let original = IdentityContinuity::new(0.75, 0.8);
+
+        // Serialize to JSON
+        let json = serde_json::to_string(&original)
+            .expect("JSON serialization must not fail");
+
+        // Deserialize from JSON
+        let deserialized: IdentityContinuity = serde_json::from_str(&json)
+            .expect("JSON deserialization must not fail");
+
+        assert_eq!(original.identity_coherence, deserialized.identity_coherence);
+        assert_eq!(original.status, deserialized.status);
+
+        println!("JSON: {}", json);
+        println!("EVIDENCE: JSON serialization works correctly");
+    }
+
+    // =========================================================================
+    // Edge Case Tests
+    // =========================================================================
+
+    #[test]
+    fn test_identity_continuity_zero_r_gives_critical() {
+        println!("=== EDGE CASE: Zero Kuramoto r ===");
+
+        // r = 0 means no synchronization, IC = 0
+        let result = IdentityContinuity::new(1.0, 0.0);
+
+        assert_eq!(result.identity_coherence, 0.0);
+        assert_eq!(result.status, IdentityStatus::Critical);
+        assert!(result.is_critical());
+
+        println!("INPUT: purpose_continuity=1.0, kuramoto_r=0.0");
+        println!("OUTPUT: IC=0.0, status=Critical");
+        println!("EVIDENCE: Zero sync means zero identity coherence");
+    }
+
+    #[test]
+    fn test_identity_continuity_perfect_values() {
+        println!("=== EDGE CASE: Perfect values ===");
+
+        let result = IdentityContinuity::new(1.0, 1.0);
+
+        assert_eq!(result.identity_coherence, 1.0);
+        assert_eq!(result.status, IdentityStatus::Healthy);
+        assert!(!result.is_in_crisis());
+        assert!(!result.is_critical());
+
+        println!("EVIDENCE: Perfect continuity and sync gives IC=1.0, Healthy");
+    }
+
+    // =========================================================================
+    // Full State Verification
+    // =========================================================================
+
+    #[test]
+    fn fsv_identity_continuity_full_lifecycle() {
+        println!("=== FULL STATE VERIFICATION: IdentityContinuity lifecycle ===");
+
+        // SOURCE OF TRUTH: IdentityContinuity struct fields after operations
+
+        // 1. Create with factory
+        let result = IdentityContinuity::new(0.8, 0.9);
+
+        println!("\nSTATE AFTER new(0.8, 0.9):");
+        println!("  identity_coherence: {:.4}", result.identity_coherence);
+        println!("  recent_continuity: {:.4}", result.recent_continuity);
+        println!("  kuramoto_order_parameter: {:.4}", result.kuramoto_order_parameter);
+        println!("  status: {:?}", result.status);
+        println!("  computed_at: {:?}", result.computed_at);
+        println!("  is_in_crisis: {}", result.is_in_crisis());
+        println!("  is_critical: {}", result.is_critical());
+
+        // Verify expected values
+        assert!((result.identity_coherence - 0.72).abs() < 1e-6,
+            "IC should be 0.8 * 0.9 = 0.72");
+        assert_eq!(result.status, IdentityStatus::Warning,
+            "0.72 is in Warning range [0.7, 0.9]");
+        assert!(!result.is_in_crisis(),
+            "0.72 >= 0.7, not in crisis");
+
+        // 2. Create first_vector
+        let first = IdentityContinuity::first_vector();
+
+        println!("\nSTATE AFTER first_vector():");
+        println!("  identity_coherence: {:.4}", first.identity_coherence);
+        println!("  status: {:?}", first.status);
+
+        assert_eq!(first.identity_coherence, 1.0);
+        assert_eq!(first.status, IdentityStatus::Healthy);
+
+        // 3. Verify serialization persistence
+        let serialized = bincode::serialize(&result).unwrap();
+        let restored: IdentityContinuity = bincode::deserialize(&serialized).unwrap();
+
+        println!("\nSTATE AFTER serialization roundtrip:");
+        println!("  identity_coherence preserved: {}",
+            result.identity_coherence == restored.identity_coherence);
+        println!("  computed_at preserved: {}",
+            result.computed_at == restored.computed_at);
+
+        assert_eq!(result, restored, "Serialization must preserve all fields");
+
+        println!("\nEVIDENCE OF SUCCESS:");
+        println!("  - Factory method computes IC correctly");
+        println!("  - first_vector() returns healthy initial state");
+        println!("  - Crisis methods work correctly");
+        println!("  - Serialization preserves all fields including timestamp");
     }
 }

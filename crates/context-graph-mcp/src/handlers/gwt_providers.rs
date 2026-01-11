@@ -365,7 +365,7 @@ impl SelfEgoProviderImpl {
     pub fn new() -> Self {
         Self {
             ego_node: SelfEgoNode::new(),
-            identity_continuity: IdentityContinuity::new(),
+            identity_continuity: IdentityContinuity::default_initial(),
         }
     }
 
@@ -374,7 +374,7 @@ impl SelfEgoProviderImpl {
     pub fn with_purpose_vector(purpose_vector: [f32; 13]) -> Self {
         Self {
             ego_node: SelfEgoNode::with_purpose_vector(purpose_vector),
-            identity_continuity: IdentityContinuity::new(),
+            identity_continuity: IdentityContinuity::default_initial(),
         }
     }
 
