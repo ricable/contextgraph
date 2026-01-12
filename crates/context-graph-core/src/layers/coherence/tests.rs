@@ -2,11 +2,12 @@
 
 use std::time::{Duration, Instant};
 
+use crate::atc::{AdaptiveThresholdCalibration, Domain};
 use crate::traits::NervousLayer;
 use crate::types::{LayerId, LayerInput, LayerResult};
 
-use super::constants::GW_THRESHOLD;
 use super::layer::CoherenceLayer;
+use super::thresholds::GwtThresholds;
 
 #[tokio::test]
 async fn test_coherence_layer_process() {
@@ -90,11 +91,16 @@ async fn test_coherence_layer_with_learning_context() {
 #[tokio::test]
 async fn test_coherence_layer_properties() {
     let layer = CoherenceLayer::new();
+    let default_thresholds = GwtThresholds::default_general();
 
     assert_eq!(layer.layer_id(), LayerId::Coherence);
     assert_eq!(layer.latency_budget(), Duration::from_millis(10));
     assert_eq!(layer.layer_name(), "Coherence Layer");
-    assert!((layer.gw_threshold() - GW_THRESHOLD).abs() < 1e-6);
+    // Use new GwtThresholds API instead of deprecated GW_THRESHOLD constant
+    assert!(
+        (layer.gw_threshold() - default_thresholds.gate).abs() < 1e-6,
+        "gw_threshold should match GwtThresholds::default_general().gate"
+    );
 
     println!("[VERIFIED] CoherenceLayer properties correct");
 }
@@ -312,4 +318,291 @@ async fn test_consciousness_equation() {
     assert!((c_nan).abs() < 1e-6, "NaN input should return 0");
 
     println!("[VERIFIED] Consciousness equation C(t) = I × R × D");
+}
+
+// ============================================================
+// GwtThresholds API Tests - TASK-ATC-P2-003
+// ============================================================
+
+#[tokio::test]
+async fn test_gwt_thresholds_default_general() {
+    let t = GwtThresholds::default_general();
+
+    // Verify legacy values per constitution
+    assert!(
+        (t.gate - 0.70).abs() < 1e-6,
+        "gate should be 0.70, got {}",
+        t.gate
+    );
+    assert!(
+        (t.hypersync - 0.95).abs() < 1e-6,
+        "hypersync should be 0.95, got {}",
+        t.hypersync
+    );
+    assert!(
+        (t.fragmentation - 0.50).abs() < 1e-6,
+        "fragmentation should be 0.50, got {}",
+        t.fragmentation
+    );
+
+    // Verify validity
+    assert!(t.is_valid(), "default_general should be valid");
+
+    println!("[VERIFIED] GwtThresholds::default_general() returns legacy values");
+}
+
+#[tokio::test]
+async fn test_gwt_thresholds_from_atc() {
+    let atc = AdaptiveThresholdCalibration::new();
+
+    // Test all domains
+    let domains = [
+        Domain::Medical,
+        Domain::Legal,
+        Domain::Code,
+        Domain::General,
+        Domain::Creative,
+    ];
+
+    for domain in domains {
+        let thresholds = GwtThresholds::from_atc(&atc, domain);
+        assert!(
+            thresholds.is_ok(),
+            "from_atc should succeed for {:?}",
+            domain
+        );
+
+        let t = thresholds.unwrap();
+        assert!(t.is_valid(), "thresholds for {:?} should be valid", domain);
+
+        // Verify ranges
+        assert!(
+            (0.65..=0.95).contains(&t.gate),
+            "{:?} gate {} out of range",
+            domain,
+            t.gate
+        );
+        assert!(
+            (0.90..=0.99).contains(&t.hypersync),
+            "{:?} hypersync {} out of range",
+            domain,
+            t.hypersync
+        );
+        assert!(
+            (0.35..=0.65).contains(&t.fragmentation),
+            "{:?} fragmentation {} out of range",
+            domain,
+            t.fragmentation
+        );
+
+        println!(
+            "[VERIFIED] {:?}: gate={:.3}, hypersync={:.3}, frag={:.3}",
+            domain, t.gate, t.hypersync, t.fragmentation
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_gwt_thresholds_domain_strictness() {
+    let atc = AdaptiveThresholdCalibration::new();
+
+    let medical = GwtThresholds::from_atc(&atc, Domain::Medical).unwrap();
+    let creative = GwtThresholds::from_atc(&atc, Domain::Creative).unwrap();
+
+    // Medical (strictest) should have higher gate than Creative (loosest)
+    assert!(
+        medical.gate > creative.gate,
+        "Medical gate ({}) should be > Creative gate ({})",
+        medical.gate,
+        creative.gate
+    );
+
+    println!(
+        "[VERIFIED] Domain strictness: Medical gate ({:.3}) > Creative gate ({:.3})",
+        medical.gate, creative.gate
+    );
+}
+
+#[tokio::test]
+async fn test_gwt_thresholds_helper_methods() {
+    let t = GwtThresholds::default_general();
+
+    // Test should_broadcast (r >= gate)
+    assert!(!t.should_broadcast(0.50), "r=0.50 should not broadcast");
+    assert!(!t.should_broadcast(0.69), "r=0.69 should not broadcast");
+    assert!(t.should_broadcast(0.70), "r=0.70 should broadcast");
+    assert!(t.should_broadcast(0.85), "r=0.85 should broadcast");
+
+    // Test is_hypersync (r > hypersync)
+    assert!(!t.is_hypersync(0.90), "r=0.90 not hypersync");
+    assert!(!t.is_hypersync(0.95), "r=0.95 not hypersync (boundary)");
+    assert!(t.is_hypersync(0.96), "r=0.96 is hypersync");
+    assert!(t.is_hypersync(0.99), "r=0.99 is hypersync");
+
+    // Test is_fragmented (r < fragmentation)
+    assert!(t.is_fragmented(0.30), "r=0.30 is fragmented");
+    assert!(t.is_fragmented(0.49), "r=0.49 is fragmented");
+    assert!(!t.is_fragmented(0.50), "r=0.50 not fragmented (boundary)");
+    assert!(!t.is_fragmented(0.70), "r=0.70 not fragmented");
+
+    println!("[VERIFIED] GwtThresholds helper methods work correctly");
+}
+
+#[tokio::test]
+async fn test_coherence_layer_with_atc() {
+    let atc = AdaptiveThresholdCalibration::new();
+
+    // Create layer with Code domain thresholds
+    let layer = CoherenceLayer::with_atc(&atc, Domain::Code).unwrap();
+    let code_thresholds = GwtThresholds::from_atc(&atc, Domain::Code).unwrap();
+
+    // Verify layer uses correct thresholds
+    assert!(
+        (layer.gw_threshold() - code_thresholds.gate).abs() < 1e-6,
+        "Layer gw_threshold should match Code domain gate"
+    );
+
+    // Process an input
+    let input = LayerInput::new("atc-test".to_string(), "Test with ATC thresholds".to_string());
+    let result = layer.process(input).await.unwrap();
+
+    assert!(result.result.success);
+    println!("[VERIFIED] CoherenceLayer::with_atc() works correctly");
+}
+
+#[tokio::test]
+async fn test_coherence_layer_with_explicit_thresholds() {
+    // Create custom thresholds
+    let custom_t = GwtThresholds {
+        gate: 0.80,
+        hypersync: 0.97,
+        fragmentation: 0.45,
+    };
+
+    assert!(custom_t.is_valid(), "Custom thresholds should be valid");
+
+    let layer = CoherenceLayer::with_thresholds(custom_t).unwrap();
+
+    assert!(
+        (layer.gw_threshold() - 0.80).abs() < 1e-6,
+        "Layer should use custom gate threshold"
+    );
+
+    // Verify thresholds accessor
+    let t = layer.thresholds();
+    assert!(
+        (t.gate - 0.80).abs() < 1e-6,
+        "thresholds().gate should be 0.80"
+    );
+    assert!(
+        (t.hypersync - 0.97).abs() < 1e-6,
+        "thresholds().hypersync should be 0.97"
+    );
+    assert!(
+        (t.fragmentation - 0.45).abs() < 1e-6,
+        "thresholds().fragmentation should be 0.45"
+    );
+
+    println!("[VERIFIED] CoherenceLayer::with_thresholds() works correctly");
+}
+
+#[tokio::test]
+async fn test_gwt_thresholds_validation_rejects_invalid() {
+    // Test invalid: gate > hypersync
+    let invalid1 = GwtThresholds {
+        gate: 0.96,
+        hypersync: 0.95,
+        fragmentation: 0.50,
+    };
+    assert!(
+        !invalid1.is_valid(),
+        "gate > hypersync should be invalid"
+    );
+
+    // Test invalid: fragmentation > gate
+    let invalid2 = GwtThresholds {
+        gate: 0.70,
+        hypersync: 0.95,
+        fragmentation: 0.75,
+    };
+    assert!(
+        !invalid2.is_valid(),
+        "fragmentation > gate should be invalid"
+    );
+
+    // Test invalid: gate out of range (too low)
+    let invalid3 = GwtThresholds {
+        gate: 0.50,
+        hypersync: 0.95,
+        fragmentation: 0.40,
+    };
+    assert!(!invalid3.is_valid(), "gate < 0.65 should be invalid");
+
+    // Test CoherenceLayer::with_thresholds rejects invalid
+    let result = CoherenceLayer::with_thresholds(invalid1);
+    assert!(result.is_err(), "with_thresholds should reject invalid thresholds");
+
+    println!("[VERIFIED] GwtThresholds validation rejects invalid configurations");
+}
+
+// ============================================================
+// Full State Verification (FSV) Test
+// ============================================================
+
+#[tokio::test]
+async fn test_fsv_gwt_thresholds_comprehensive() {
+    println!("\n=== FSV: GwtThresholds Comprehensive Test ===\n");
+
+    // 1. Verify default_general returns legacy values
+    let t = GwtThresholds::default_general();
+    println!("1. default_general(): gate={}, hypersync={}, frag={}",
+             t.gate, t.hypersync, t.fragmentation);
+    assert!((t.gate - 0.70).abs() < 1e-6);
+    assert!((t.hypersync - 0.95).abs() < 1e-6);
+    assert!((t.fragmentation - 0.50).abs() < 1e-6);
+
+    // 2. Verify from_atc works for all domains
+    let atc = AdaptiveThresholdCalibration::new();
+    println!("\n2. from_atc() domain thresholds:");
+    for domain in [Domain::Medical, Domain::Legal, Domain::Code, Domain::General, Domain::Creative] {
+        let dt = GwtThresholds::from_atc(&atc, domain).unwrap();
+        println!("   {:?}: gate={:.3}, hypersync={:.3}, frag={:.3}",
+                 domain, dt.gate, dt.hypersync, dt.fragmentation);
+        assert!(dt.is_valid());
+    }
+
+    // 3. Verify helper methods
+    println!("\n3. Helper method tests:");
+    let test_r_values = [0.30, 0.50, 0.70, 0.95, 0.96];
+    for r in test_r_values {
+        println!("   r={:.2}: broadcast={}, hypersync={}, fragmented={}",
+                 r, t.should_broadcast(r), t.is_hypersync(r), t.is_fragmented(r));
+    }
+
+    // 4. Verify CoherenceLayer integration
+    println!("\n4. CoherenceLayer integration:");
+    let layer_default = CoherenceLayer::new();
+    let layer_atc = CoherenceLayer::with_atc(&atc, Domain::Code).unwrap();
+    let layer_custom = CoherenceLayer::with_thresholds(GwtThresholds {
+        gate: 0.75,
+        hypersync: 0.96,
+        fragmentation: 0.45,
+    }).unwrap();
+
+    println!("   Default layer gate: {:.3}", layer_default.gw_threshold());
+    println!("   ATC Code layer gate: {:.3}", layer_atc.gw_threshold());
+    println!("   Custom layer gate: {:.3}", layer_custom.gw_threshold());
+
+    // 5. Process test to verify end-to-end
+    println!("\n5. End-to-end processing:");
+    let input = LayerInput::new("fsv-test".to_string(), "FSV comprehensive test".to_string());
+    let result = layer_atc.process(input).await.unwrap();
+
+    let resonance = result.result.data["resonance"].as_f64().unwrap();
+    let gw_threshold = result.result.data["gw_threshold"].as_f64().unwrap();
+    println!("   Resonance: {:.4}", resonance);
+    println!("   GW Threshold: {:.4}", gw_threshold);
+    println!("   GW Ignited: {}", result.result.data["gw_ignited"]);
+
+    println!("\n=== FSV COMPLETE ===\n");
 }

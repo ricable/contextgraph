@@ -469,7 +469,7 @@ mod full_state_verification {
         println!("  Actual consciousness = {:.4}", consciousness);
         println!("\n=== KURAMOTO SYNC RESULTS ===");
         println!("  Resonance R(t) = {:.4} (should be in [0,1])", resonance);
-        println!("  GW Threshold = {:.2}", GW_THRESHOLD);
+        println!("  GW Threshold = {:.2}", GwtThresholds::default_general().gate);
         println!("  GW Ignited = {} (R >= threshold)", gw_ignited);
         println!("  Consciousness State = {}", state);
 

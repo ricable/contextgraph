@@ -23,12 +23,14 @@ use async_trait::async_trait;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+use crate::atc::{AdaptiveThresholdCalibration, Domain};
 use crate::error::{CoreError, CoreResult};
 use crate::traits::NervousLayer;
 use crate::types::{LayerId, LayerInput, LayerOutput, LayerResult};
 
-use super::constants::{GW_THRESHOLD, INTEGRATION_STEPS, KURAMOTO_DT, KURAMOTO_K, KURAMOTO_N};
+use super::constants::{INTEGRATION_STEPS, KURAMOTO_DT, KURAMOTO_K, KURAMOTO_N};
 use super::network::KuramotoNetwork;
+use super::thresholds::GwtThresholds;
 use super::workspace::{ConsciousnessState, GlobalWorkspace};
 
 /// L5 Coherence Layer - Kuramoto sync and Global Workspace broadcast.
@@ -51,12 +53,17 @@ use super::workspace::{ConsciousnessState, GlobalWorkspace};
 /// - I(t) = Information (from pulse entropy, normalized)
 /// - R(t) = Resonance (Kuramoto order parameter)
 /// - D(t) = Differentiation (inversely related to coherence clustering)
+///
+/// # Domain-Aware Thresholds
+///
+/// The layer now supports domain-aware thresholds via the ATC system.
+/// Use [`with_atc`](Self::with_atc) to create a layer with domain-specific thresholds.
 #[derive(Debug)]
 pub struct CoherenceLayer {
     /// Kuramoto oscillator network
     kuramoto: KuramotoNetwork,
-    /// Global Workspace ignition threshold
-    gw_threshold: f32,
+    /// GWT thresholds (domain-aware)
+    thresholds: GwtThresholds,
     /// Number of integration steps per process
     pub(crate) integration_steps: usize,
     /// Total processing time in microseconds
@@ -69,22 +76,86 @@ pub struct CoherenceLayer {
 
 impl CoherenceLayer {
     /// Create a new CoherenceLayer with default configuration.
+    ///
+    /// Uses legacy General domain thresholds (gate=0.70, hypersync=0.95, fragmentation=0.50).
+    /// For domain-aware behavior, use [`with_atc`](Self::with_atc) instead.
     pub fn new() -> Self {
         Self {
             kuramoto: KuramotoNetwork::new(KURAMOTO_N, KURAMOTO_K),
-            gw_threshold: GW_THRESHOLD,
+            thresholds: GwtThresholds::default_general(),
             integration_steps: INTEGRATION_STEPS,
             total_processing_us: AtomicU64::new(0),
             invocation_count: AtomicU64::new(0),
             ignition_count: AtomicU64::new(0),
         }
+    }
+
+    /// Create with ATC-managed thresholds for a specific domain.
+    ///
+    /// Domain strictness affects thresholds:
+    /// - Stricter domains (Medical, Code) have higher gates
+    /// - Looser domains (Creative) have lower gates
+    ///
+    /// # Errors
+    ///
+    /// Returns error if ATC doesn't have the domain or thresholds are invalid.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use context_graph_core::atc::{AdaptiveThresholdCalibration, Domain};
+    /// use context_graph_core::layers::CoherenceLayer;
+    ///
+    /// let atc = AdaptiveThresholdCalibration::new();
+    /// let layer = CoherenceLayer::with_atc(&atc, Domain::Code)?;
+    /// ```
+    pub fn with_atc(atc: &AdaptiveThresholdCalibration, domain: Domain) -> CoreResult<Self> {
+        let thresholds = GwtThresholds::from_atc(atc, domain)?;
+        Ok(Self {
+            kuramoto: KuramotoNetwork::new(KURAMOTO_N, KURAMOTO_K),
+            thresholds,
+            integration_steps: INTEGRATION_STEPS,
+            total_processing_us: AtomicU64::new(0),
+            invocation_count: AtomicU64::new(0),
+            ignition_count: AtomicU64::new(0),
+        })
+    }
+
+    /// Create with explicit GwtThresholds.
+    ///
+    /// Use this when you need custom thresholds that don't come from ATC.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if thresholds fail validation.
+    pub fn with_thresholds(thresholds: GwtThresholds) -> CoreResult<Self> {
+        if !thresholds.is_valid() {
+            return Err(CoreError::ValidationError {
+                field: "GwtThresholds".to_string(),
+                message: format!(
+                    "Invalid thresholds: gate={}, hypersync={}, fragmentation={}. \
+                    Check ranges and monotonicity.",
+                    thresholds.gate, thresholds.hypersync, thresholds.fragmentation
+                ),
+            });
+        }
+        Ok(Self {
+            kuramoto: KuramotoNetwork::new(KURAMOTO_N, KURAMOTO_K),
+            thresholds,
+            integration_steps: INTEGRATION_STEPS,
+            total_processing_us: AtomicU64::new(0),
+            invocation_count: AtomicU64::new(0),
+            ignition_count: AtomicU64::new(0),
+        })
     }
 
     /// Create with custom Kuramoto parameters.
+    ///
+    /// Uses legacy General domain thresholds.
     pub fn with_kuramoto(n: usize, k: f32) -> Self {
         Self {
             kuramoto: KuramotoNetwork::new(n, k),
-            gw_threshold: GW_THRESHOLD,
+            thresholds: GwtThresholds::default_general(),
             integration_steps: INTEGRATION_STEPS,
             total_processing_us: AtomicU64::new(0),
             invocation_count: AtomicU64::new(0),
@@ -92,9 +163,20 @@ impl CoherenceLayer {
         }
     }
 
-    /// Create with custom GW threshold.
+    /// Create with custom GW threshold (gate).
+    ///
+    /// # Note
+    ///
+    /// This only sets the gate threshold. For full control over all thresholds,
+    /// use [`with_thresholds`](Self::with_thresholds).
     pub fn with_gw_threshold(mut self, threshold: f32) -> Self {
-        self.gw_threshold = threshold.clamp(0.1, 0.99);
+        // Create new thresholds with custom gate, keeping hypersync and fragmentation
+        let clamped = threshold.clamp(0.65, 0.95);
+        self.thresholds = GwtThresholds {
+            gate: clamped,
+            hypersync: self.thresholds.hypersync,
+            fragmentation: self.thresholds.fragmentation,
+        };
         self
     }
 
@@ -104,9 +186,14 @@ impl CoherenceLayer {
         self
     }
 
-    /// Get the current GW threshold.
+    /// Get the current GWT thresholds.
+    pub fn thresholds(&self) -> &GwtThresholds {
+        &self.thresholds
+    }
+
+    /// Get the current GW threshold (gate).
     pub fn gw_threshold(&self) -> f32 {
-        self.gw_threshold
+        self.thresholds.gate
     }
 
     /// Get ignition count.
@@ -226,11 +313,12 @@ impl NervousLayer for CoherenceLayer {
         // Compute consciousness C(t) = I(t) × R(t) × D(t)
         let consciousness = self.compute_consciousness(info, resonance, differentiation);
 
-        // Determine consciousness state from order parameter
-        let state = ConsciousnessState::from_order_parameter(resonance);
+        // Determine consciousness state from order parameter using domain-aware thresholds
+        let state =
+            ConsciousnessState::from_order_parameter_with_thresholds(resonance, &self.thresholds);
 
-        // Check for Global Workspace ignition
-        let gw_ignited = resonance >= self.gw_threshold;
+        // Check for Global Workspace ignition (using gate threshold)
+        let gw_ignited = resonance >= self.thresholds.gate;
 
         if gw_ignited {
             self.ignition_count.fetch_add(1, Ordering::Relaxed);
@@ -291,7 +379,7 @@ impl NervousLayer for CoherenceLayer {
             "differentiation": differentiation,
             "information": info,
             "gw_ignited": gw_ignited,
-            "gw_threshold": self.gw_threshold,
+            "gw_threshold": self.gw_threshold(),
             "state": format!("{:?}", state),
             "broadcast": broadcast,
             "oscillator_phases": kuramoto.phases(),

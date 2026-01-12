@@ -39,16 +39,23 @@ mod constants;
 mod layer;
 mod network;
 mod oscillator;
+mod thresholds;
 mod workspace;
 
 #[cfg(test)]
 mod tests;
 
-// Re-export all public items for backwards compatibility
+// Re-export new thresholds module
+pub use thresholds::GwtThresholds;
+
+// Re-export constants (deprecated re-exports with warnings)
+#[allow(deprecated)]
 pub use constants::{
     FRAGMENTATION_THRESHOLD, GW_THRESHOLD, HYPERSYNC_THRESHOLD, INTEGRATION_STEPS, KURAMOTO_DT,
     KURAMOTO_K, KURAMOTO_N,
 };
+
+// Re-export layer components
 pub use layer::CoherenceLayer;
 pub use network::KuramotoNetwork;
 pub use oscillator::KuramotoOscillator;

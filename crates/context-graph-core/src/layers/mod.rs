@@ -28,10 +28,12 @@ mod sensing;
 mod tests_full_state_verification;
 
 pub use coherence::{
-    CoherenceLayer, ConsciousnessState, GlobalWorkspace, KuramotoNetwork, KuramotoOscillator,
-    FRAGMENTATION_THRESHOLD, GW_THRESHOLD, HYPERSYNC_THRESHOLD, INTEGRATION_STEPS, KURAMOTO_DT,
-    KURAMOTO_K, KURAMOTO_N,
+    CoherenceLayer, ConsciousnessState, GlobalWorkspace, GwtThresholds, KuramotoNetwork,
+    KuramotoOscillator, INTEGRATION_STEPS, KURAMOTO_DT, KURAMOTO_K, KURAMOTO_N,
 };
+// Re-export deprecated constants with warning suppression for backwards compatibility
+#[allow(deprecated)]
+pub use coherence::{FRAGMENTATION_THRESHOLD, GW_THRESHOLD, HYPERSYNC_THRESHOLD};
 pub use learning::{
     LearningLayer, UtlWeightComputer, WeightDelta, DEFAULT_CONSOLIDATION_THRESHOLD,
     DEFAULT_LEARNING_RATE, GRADIENT_CLIP, TARGET_FREQUENCY_HZ,
