@@ -96,6 +96,26 @@ pub struct SurpriseConfig {
     /// Smoothing factor for empty union handling in Jaccard.
     /// Range: `[0.001, 0.1]`
     pub splade_smoothing: f32,
+
+    // --- Hybrid GMM+KNN (E7 Code) ---
+
+    /// GMM component weight for Code entropy.
+    /// Constitution: 0.5 (GMM+KNN hybrid uses equal weights)
+    /// Range: `[0.0, 1.0]`
+    pub code_gmm_weight: f32,
+
+    /// KNN component weight for Code entropy.
+    /// Constitution: 0.5 (GMM+KNN hybrid uses equal weights)
+    /// Range: `[0.0, 1.0]`
+    pub code_knn_weight: f32,
+
+    /// Number of GMM components for Code entropy.
+    /// Range: `[2, 10]`
+    pub code_n_components: usize,
+
+    /// k for KNN component in Code entropy.
+    /// Range: `[1, 20]`
+    pub code_k_neighbors: usize,
 }
 
 impl Default for SurpriseConfig {
@@ -120,6 +140,12 @@ impl Default for SurpriseConfig {
             hdc_binarization_threshold: 0.5,
             splade_activation_threshold: 0.0,
             splade_smoothing: 0.01,
+
+            // Hybrid GMM+KNN (E7 Code) - per constitution.yaml delta_methods.ΔS E7
+            code_gmm_weight: 0.5,
+            code_knn_weight: 0.5,
+            code_n_components: 5,
+            code_k_neighbors: 5,
         }
     }
 }

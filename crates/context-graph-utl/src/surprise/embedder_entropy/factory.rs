@@ -10,12 +10,13 @@
 //! - E2-4,E8: "KNN: ΔS=σ((d_k-μ)/σ)"
 //! - E5: "Asymmetric KNN: ΔS=d_k×direction_mod"
 //! - E6,E13: "IDF/Jaccard: ΔS=IDF(dims) or 1-jaccard"
-//! - E7,E10-12: "KNN: ΔS=σ((d_k-μ)/σ)"
+//! - E7: "GMM+KNN hybrid: ΔS=0.5×ΔS_GMM + 0.5×ΔS_KNN"
+//! - E10-12: "KNN: ΔS=σ((d_k-μ)/σ)"
 //! - E9: "Hamming: ΔS=min_hamming/dim"
 
 use super::{
     AsymmetricKnnEntropy, DefaultKnnEntropy, EmbedderEntropy, GmmMahalanobisEntropy,
-    HammingPrototypeEntropy, JaccardActiveEntropy,
+    HammingPrototypeEntropy, HybridGmmKnnEntropy, JaccardActiveEntropy,
 };
 use crate::config::SurpriseConfig;
 use context_graph_core::teleological::Embedder;
@@ -39,6 +40,7 @@ impl EmbedderEntropyFactory {
     /// # Routing
     /// - E1 (Semantic) → GmmMahalanobisEntropy
     /// - E5 (Causal) → AsymmetricKnnEntropy
+    /// - E7 (Code) → HybridGmmKnnEntropy (GMM+KNN hybrid per constitution)
     /// - E9 (Hdc) → HammingPrototypeEntropy
     /// - E13 (KeywordSplade) → JaccardActiveEntropy
     /// - All others → DefaultKnnEntropy
@@ -69,12 +71,14 @@ impl EmbedderEntropyFactory {
                     .with_smoothing(config.splade_smoothing),
             ),
 
-            // E2-E4, E6-E8, E10-E12: Default KNN-based entropy
+            // E7 (Code): Hybrid GMM+KNN per constitution.yaml delta_methods.ΔS E7
+            Embedder::Code => Box::new(HybridGmmKnnEntropy::from_config(config)),
+
+            // E2-E4, E6, E8, E10-E12: Default KNN-based entropy
             Embedder::TemporalRecent
             | Embedder::TemporalPeriodic
             | Embedder::TemporalPositional
             | Embedder::Sparse
-            | Embedder::Code
             | Embedder::Graph
             | Embedder::Multimodal
             | Embedder::Entity

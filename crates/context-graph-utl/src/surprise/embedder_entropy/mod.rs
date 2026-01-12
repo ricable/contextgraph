@@ -37,6 +37,7 @@ mod default_knn;
 mod factory;
 mod gmm_mahalanobis;
 mod hamming_prototype;
+mod hybrid_gmm_knn;
 mod jaccard_active;
 
 pub use asymmetric_knn::AsymmetricKnnEntropy;
@@ -44,6 +45,7 @@ pub use default_knn::DefaultKnnEntropy;
 pub use factory::EmbedderEntropyFactory;
 pub use gmm_mahalanobis::GmmMahalanobisEntropy;
 pub use hamming_prototype::HammingPrototypeEntropy;
+pub use hybrid_gmm_knn::HybridGmmKnnEntropy;
 pub use jaccard_active::JaccardActiveEntropy;
 
 use crate::error::UtlResult;
