@@ -40,9 +40,10 @@ mod tests {
         // + 3 Meta-UTL tools (TASK-METAUTL-P0-005) = 39 total
         // + 1 Epistemic tool (TASK-MCP-001) = 40 total
         // + 1 Merge tool (TASK-MCP-003) = 41 total
+        // + 1 Johari classification tool (TASK-MCP-005) = 42 total
         // NOTE: 6 manual North Star tools REMOVED (created single 1024D embeddings
         // incompatible with 13-embedder teleological arrays)
-        assert_eq!(tools.len(), 41);
+        assert_eq!(tools.len(), 42);
 
         let tool_names: Vec<_> = tools.iter().map(|t| t.name.as_str()).collect();
 
@@ -110,6 +111,9 @@ mod tests {
 
         // Merge tools (TASK-MCP-003)
         assert!(tool_names.contains(&"merge_concepts"));
+
+        // Johari classification tools (TASK-MCP-005)
+        assert!(tool_names.contains(&"get_johari_classification"));
     }
 
     #[test]

@@ -155,6 +155,10 @@ impl Handlers {
             tool_names::EPISTEMIC_ACTION => self.call_epistemic_action(id, arguments).await,
             // TASK-MCP-004: Merge concepts for node consolidation
             tool_names::MERGE_CONCEPTS => self.call_merge_concepts(id, arguments).await,
+            // TASK-MCP-005: Johari classification from delta_s/delta_c
+            tool_names::GET_JOHARI_CLASSIFICATION => {
+                self.call_get_johari_classification(id, arguments).await
+            }
             _ => JsonRpcResponse::error(
                 id,
                 error_codes::TOOL_NOT_FOUND,

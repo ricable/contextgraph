@@ -1,6 +1,7 @@
 //! Johari quadrant handlers.
 //!
 //! TASK-S004: MCP handlers for JohariTransitionManager operations.
+//! TASK-MCP-005: get_johari_classification tool handler.
 //!
 //! # Methods
 //!
@@ -10,6 +11,7 @@
 //! - `johari/transition_batch`: Atomic multi-embedder transitions
 //! - `johari/cross_space_analysis`: Blind spots, learning opportunities
 //! - `johari/transition_probabilities`: Get transition matrix for embedder
+//! - `get_johari_classification`: Classify into quadrant from delta_s/delta_c
 //!
 //! # Error Handling
 //!
@@ -24,8 +26,10 @@
 //! - `transition_single`: Single transition handler
 //! - `transition_batch`: Batch transition handler
 //! - `analysis`: cross_space_analysis and transition_probabilities handlers
+//! - `classification`: get_johari_classification handler (TASK-MCP-005)
 
 mod analysis;
+mod classification;
 mod distribution;
 mod helpers;
 mod transition_batch;

@@ -24,7 +24,7 @@ async fn test_tools_list_returns_all_35_tools() {
         .as_array()
         .expect("tools must be an array");
 
-    // Verify exactly 41 tools returned:
+    // Verify exactly 42 tools returned:
     // Original 6: inject_context, store_memory, get_memetic_status, get_graph_manifest, search_graph, utl_status
     // GWT 6: get_consciousness_state, get_kuramoto_sync, get_workspace_status, get_ego_state, trigger_workspace_broadcast, adjust_coupling
     // ATC 3 (TASK-ATC-001): get_threshold_status, get_calibration_metrics, trigger_recalibration
@@ -37,12 +37,13 @@ async fn test_tools_list_returns_all_35_tools() {
     // Autonomous 7 (TASK-AUTONOMOUS-MCP): auto_bootstrap_north_star, get_alignment_drift, trigger_drift_correction, get_pruning_candidates, trigger_consolidation, discover_sub_goals, get_autonomous_status
     // UTL 1 (TASK-UTL-P1-001): gwt/compute_delta_sc
     // Meta-UTL 3 (TASK-METAUTL-P0-005): get_meta_learning_status, trigger_lambda_recalibration, get_meta_learning_log
-    // Epistemic 1 (TASK-MCP-001): epistemic_action
-    // Merge 1 (TASK-MCP-003): merge_concepts
+    // Epistemic 1 (TASK-MCP-002): epistemic_action
+    // Merge 1 (TASK-MCP-004): merge_concepts
+    // Johari 1 (TASK-MCP-005): get_johari_classification
     assert_eq!(
         tools.len(),
-        41,
-        "Must return exactly 41 tools, got {}",
+        42,
+        "Must return exactly 42 tools, got {}",
         tools.len()
     );
 }
@@ -165,5 +166,11 @@ async fn test_tools_list_contains_expected_tool_names() {
     assert!(
         tool_names.contains(&"gwt/compute_delta_sc"),
         "Missing gwt/compute_delta_sc tool (TASK-UTL-P1-001)"
+    );
+
+    // Verify Johari classification tool is present (TASK-MCP-005)
+    assert!(
+        tool_names.contains(&"get_johari_classification"),
+        "Missing get_johari_classification tool (TASK-MCP-005)"
     );
 }

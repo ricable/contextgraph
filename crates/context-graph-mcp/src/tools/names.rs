@@ -120,3 +120,9 @@ pub const EPISTEMIC_ACTION: &str = "epistemic_action";
 /// TASK-MCP-003: Merge related concept nodes into a unified node
 /// Returns reversal_hash for 30-day undo per SEC-06
 pub const MERGE_CONCEPTS: &str = "merge_concepts";
+
+// ========== JOHARI CLASSIFICATION TOOLS (TASK-MCP-005) ==========
+
+/// TASK-MCP-005: Get Johari quadrant classification from delta_s/delta_c
+/// Constitution: utl.johari lines 154-157
+pub const GET_JOHARI_CLASSIFICATION: &str = "get_johari_classification";
