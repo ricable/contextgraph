@@ -36,6 +36,7 @@
 //! ```
 
 pub mod cone;
+pub mod context;
 pub mod error;
 pub mod ffi;
 pub mod ops;
@@ -77,6 +78,19 @@ pub use ffi::{
 };
 // Safe RAII wrappers (TASK-04)
 pub use safe::GpuDevice;
+// Green Contexts GPU partitioning (TASK-13)
+pub use context::{
+    should_enable_green_contexts,
+    should_enable_green_contexts_with_config,
+    GreenContexts,
+    GreenContextsConfig,
+    GreenContext,
+    GREEN_CONTEXTS_MIN_COMPUTE_MAJOR,
+    GREEN_CONTEXTS_MIN_COMPUTE_MINOR,
+    INFERENCE_PARTITION_PERCENT,
+    BACKGROUND_PARTITION_PERCENT,
+    MIN_SMS_FOR_PARTITIONING,
+};
 #[cfg(feature = "cuda")]
 pub use ffi::gpu_count_direct;
 pub use ops::VectorOps;
