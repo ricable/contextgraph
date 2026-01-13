@@ -162,7 +162,10 @@ pub trait GwtSystemProvider: Send + Sync {
 /// Provider trait for workspace selection operations.
 ///
 /// Handles winner-take-all memory selection for global workspace.
+/// All methods are async to prevent deadlock with single-threaded runtimes.
+///
 /// TASK-GWT-001: Required for workspace broadcast operations.
+/// Constitution: AP-08 ("No sync I/O in async context")
 #[async_trait]
 pub trait WorkspaceProvider: Send + Sync {
     /// Select winning memory via winner-take-all algorithm.
@@ -178,19 +181,19 @@ pub trait WorkspaceProvider: Send + Sync {
     ) -> CoreResult<Option<Uuid>>;
 
     /// Get currently active (conscious) memory if broadcasting.
-    fn get_active_memory(&self) -> Option<Uuid>;
+    async fn get_active_memory(&self) -> Option<Uuid>;
 
     /// Check if broadcast window is still active.
-    fn is_broadcasting(&self) -> bool;
+    async fn is_broadcasting(&self) -> bool;
 
     /// Check for workspace conflict (multiple memories with r > 0.8).
-    fn has_conflict(&self) -> bool;
+    async fn has_conflict(&self) -> bool;
 
     /// Get conflicting memory IDs if present.
-    fn get_conflict_details(&self) -> Option<Vec<Uuid>>;
+    async fn get_conflict_details(&self) -> Option<Vec<Uuid>>;
 
     /// Get coherence threshold for workspace entry.
-    fn coherence_threshold(&self) -> f32;
+    async fn coherence_threshold(&self) -> f32;
 }
 
 /// Provider trait for meta-cognitive loop operations.
