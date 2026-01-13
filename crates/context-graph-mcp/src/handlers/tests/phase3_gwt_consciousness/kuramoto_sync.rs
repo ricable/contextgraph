@@ -60,7 +60,7 @@ async fn test_get_kuramoto_sync_returns_13_oscillators() {
     // FSV: Verify psi (mean phase) is in [0, 2*PI] (allowing some tolerance)
     let psi = data.get("psi").and_then(|v| v.as_f64()).expect("psi must exist");
     assert!(
-        psi >= 0.0 && psi <= 2.0 * std::f64::consts::PI + 0.01,
+        (0.0..=2.0 * std::f64::consts::PI + 0.01).contains(&psi),
         "[FSV] psi must be in [0, 2*PI], got {}",
         psi
     );

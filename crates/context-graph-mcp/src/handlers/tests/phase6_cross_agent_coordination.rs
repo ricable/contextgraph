@@ -55,11 +55,9 @@ async fn phase6_agent_a_stores_ml_knowledge() {
 
     let (handlers, store, _tempdir) = create_test_handlers_with_rocksdb_store_access().await;
 
-    let agent_a_memories = vec![
-        "Deep learning architectures for image classification including ResNet and EfficientNet",
+    let agent_a_memories = ["Deep learning architectures for image classification including ResNet and EfficientNet",
         "Transformer models for natural language processing with attention mechanisms",
-        "Reinforcement learning algorithms like PPO and DQN for game playing",
-    ];
+        "Reinforcement learning algorithms like PPO and DQN for game playing"];
 
     println!("\n[AGENT A] Storing {} ML-focused memories:", agent_a_memories.len());
 
@@ -107,11 +105,9 @@ async fn phase6_agent_b_stores_systems_knowledge() {
 
     let (handlers, store, _tempdir) = create_test_handlers_with_rocksdb_store_access().await;
 
-    let agent_b_memories = vec![
-        "Distributed consensus protocols including Raft and Paxos for fault tolerance",
+    let agent_b_memories = ["Distributed consensus protocols including Raft and Paxos for fault tolerance",
         "Database sharding strategies for horizontal scaling of large datasets",
-        "Microservices architecture patterns with service mesh and API gateway",
-    ];
+        "Microservices architecture patterns with service mesh and API gateway"];
 
     println!("\n[AGENT B] Storing {} systems-focused memories:", agent_b_memories.len());
 
@@ -153,12 +149,10 @@ async fn phase6_cross_agent_memory_search() {
     let (handlers, _store, _tempdir) = create_test_handlers_with_rocksdb_store_access().await;
 
     // Setup: Store mixed memories
-    let memories = vec![
-        ("ML", "Neural network optimization using gradient descent and Adam"),
+    let memories = [("ML", "Neural network optimization using gradient descent and Adam"),
         ("Systems", "Load balancing algorithms for distributed web servers"),
         ("ML", "Computer vision techniques for object detection"),
-        ("Systems", "Message queue patterns with Kafka and RabbitMQ"),
-    ];
+        ("Systems", "Message queue patterns with Kafka and RabbitMQ")];
 
     println!("\n[SETUP] Storing mixed agent memories:");
     for (i, (domain, content)) in memories.iter().enumerate() {

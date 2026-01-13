@@ -26,6 +26,7 @@
 
 mod awareness_loop;
 mod cosine;
+mod crisis_protocol;
 mod identity_continuity;
 mod monitor;
 mod purpose_vector_history;
@@ -38,11 +39,14 @@ mod tests;
 // Re-export all public types for backwards compatibility
 pub use awareness_loop::SelfAwarenessLoop;
 pub use cosine::cosine_similarity_13d;
+pub use crisis_protocol::{
+    CrisisAction, CrisisProtocol, CrisisProtocolResult, IdentityCrisisEvent,
+};
 pub use identity_continuity::IdentityContinuity;
-pub use monitor::IdentityContinuityMonitor;
+pub use monitor::{CrisisDetectionResult, IdentityContinuityMonitor};
 pub use purpose_vector_history::{PurposeVectorHistory, PurposeVectorHistoryProvider};
 pub use self_ego_node::SelfEgoNode;
 pub use types::{
-    IdentityStatus, PurposeSnapshot, SelfReflectionResult,
+    IdentityStatus, PurposeSnapshot, SelfReflectionResult, CRISIS_EVENT_COOLDOWN,
     IC_CRISIS_THRESHOLD, IC_CRITICAL_THRESHOLD, MAX_PV_HISTORY_SIZE,
 };

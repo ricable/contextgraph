@@ -68,6 +68,7 @@ async fn test_dream_listener_ignores_other_events() {
         id: Uuid::new_v4(),
         order_parameter: 0.85,
         timestamp: Utc::now(),
+        fingerprint: None, // TASK-IDENTITY-P0-006
     };
     listener.on_event(&event);
 
@@ -97,6 +98,8 @@ async fn test_dream_listener_identity_critical() {
     // Send IdentityCritical - should log but not queue
     let event = WorkspaceEvent::IdentityCritical {
         identity_coherence: 0.35,
+        previous_status: "Warning".to_string(),
+        current_status: "Critical".to_string(),
         reason: "Test critical".to_string(),
         timestamp: Utc::now(),
     };

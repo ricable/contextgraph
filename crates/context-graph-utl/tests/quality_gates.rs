@@ -80,7 +80,7 @@ fn generate_context(count: usize, dim: usize) -> Vec<Vec<f32>> {
 fn test_utl_average_meets_threshold() {
     println!("\n=== QUALITY GATE: UTL System Validation ===");
     println!("CONSTITUTION REFERENCE: quality.utl_avg > 0.6");
-    println!("");
+    println!();
 
     // IMPORTANT: The UTL formula L = (ΔS × ΔC) × wₑ × cos(φ) creates inherent tension:
     // - High ΔS (surprise) = content differs from context → tends to lower ΔC
@@ -107,13 +107,11 @@ fn test_utl_average_meets_threshold() {
     let mut processor = UtlProcessor::with_defaults();
 
     // High-emotional content to maximize wₑ
-    let contents = vec![
-        "AMAZING breakthrough in understanding consciousness!",
+    let contents = ["AMAZING breakthrough in understanding consciousness!",
         "INCREDIBLE discovery about neural pathways!",
         "EXCITING new algorithm for memory consolidation!",
         "WONDERFUL insight about semantic relationships!",
-        "FANTASTIC understanding of cognitive processes!",
-    ];
+        "FANTASTIC understanding of cognitive processes!"];
 
     // BEFORE state
     println!("BEFORE: Testing UTL computation across {} scenarios", contents.len() * 20);
@@ -506,7 +504,7 @@ fn test_utl_edge_cases() {
             let utl_empty = signal.magnitude;
             println!("  BEFORE: content=\"\", AFTER: utl={:.4}", utl_empty);
             assert!(
-                utl_empty >= 0.0 && utl_empty <= 1.0,
+                (0.0..=1.0).contains(&utl_empty),
                 "UTL should be in [0,1]"
             );
         }
@@ -527,7 +525,7 @@ fn test_utl_edge_cases() {
                 emotional_content, utl_emotional
             );
             assert!(
-                utl_emotional >= 0.0 && utl_emotional <= 1.0,
+                (0.0..=1.0).contains(&utl_emotional),
                 "UTL should be in [0,1]"
             );
         }
@@ -544,7 +542,7 @@ fn test_utl_edge_cases() {
             let utl_no_ctx = signal.magnitude;
             println!("  BEFORE: context=[], AFTER: utl={:.4}", utl_no_ctx);
             assert!(
-                utl_no_ctx >= 0.0 && utl_no_ctx <= 1.0,
+                (0.0..=1.0).contains(&utl_no_ctx),
                 "UTL should be in [0,1]"
             );
         }

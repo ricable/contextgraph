@@ -157,7 +157,7 @@ fn test_self_awareness_loop_identity_coherence_getter() {
     let final_status = loop_mgr.identity_status();
 
     // Verify getters work
-    assert!(final_ic >= 0.0 && final_ic <= 1.0, "IC must be in [0,1]");
+    assert!((0.0..=1.0).contains(&final_ic), "IC must be in [0,1]");
 
     // Just ensure values are retrievable
     let _ = initial_ic;

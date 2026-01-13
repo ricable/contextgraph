@@ -397,7 +397,7 @@ fn fsv_mcp_events_broadcaster_integration() {
     println!("\n=== FSV: MCP Events Broadcaster Integration ===");
 
     // Test NoOpBroadcaster
-    let noop = NoOpBroadcaster::default();
+    let noop = NoOpBroadcaster;
     assert!(!noop.is_connected(), "NoOp should not be connected");
 
     let event = DreamCycleStarted::new(ExtendedTriggerReason::Manual);
@@ -406,7 +406,7 @@ fn fsv_mcp_events_broadcaster_integration() {
     println!("NoOpBroadcaster: PASS");
 
     // Test LoggingBroadcaster
-    let logger = LoggingBroadcaster::default();
+    let logger = LoggingBroadcaster;
     assert!(logger.is_connected(), "Logger should be connected");
 
     let result = logger.broadcast(&event);
@@ -542,5 +542,5 @@ fn fsv_evidence_of_success_log() {
     println!("╠══════════════════════════════════════════════════════════════════╣");
     println!("║                    ALL TESTS PASSED                               ║");
     println!("╚══════════════════════════════════════════════════════════════════╝");
-    println!("");
+    println!();
 }

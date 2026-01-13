@@ -235,7 +235,7 @@ async fn phase1_verify_mcp_retrieve_matches_store() {
     println!("[DIRECT STORE] Retrieved fingerprint:");
     println!("  - ID: {}", direct_fp.id);
     println!("  - theta_to_north_star: {:.4}", direct_fp.theta_to_north_star);
-    println!("  - content_hash: {}", hex::encode(&direct_fp.content_hash));
+    println!("  - content_hash: {}", hex::encode(direct_fp.content_hash));
 
     // === MCP HANDLER RETRIEVE ===
     let retrieve_params = json!({ "fingerprintId": fingerprint_id_str });

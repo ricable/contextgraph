@@ -2,8 +2,12 @@
 //!
 //! TASK-S005: Prediction types for meta-UTL tracking.
 //! TASK-METAUTL-P0-001: Domain and meta-learning event types.
+//! TASK-METAUTL-P0-004: Added serializable timestamp to MetaLearningEvent.
 
 use std::time::Instant;
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Prediction type for tracking
@@ -16,8 +20,9 @@ pub enum PredictionType {
 
 /// Domain enum for domain-specific accuracy tracking.
 /// TASK-METAUTL-P0-001: Enables per-domain meta-learning optimization.
+/// TASK-METAUTL-P0-004: Added Serialize/Deserialize for event log persistence.
 #[allow(dead_code)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub enum Domain {
     /// Source code, programming-related content
     Code,
@@ -30,19 +35,16 @@ pub enum Domain {
     /// Research papers, scientific content
     Research,
     /// General purpose, unclassified
+    #[default]
     General,
 }
 
-impl Default for Domain {
-    fn default() -> Self {
-        Self::General
-    }
-}
 
 /// Meta-learning event types for logging and auditing.
 /// TASK-METAUTL-P0-001: Used to track significant meta-learning state changes.
+/// TASK-METAUTL-P0-004: Added Serialize/Deserialize for event log persistence.
 #[allow(dead_code)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MetaLearningEventType {
     /// Lambda weight adjustment occurred
     LambdaAdjustment,
@@ -56,15 +58,31 @@ pub enum MetaLearningEventType {
     WeightClamped,
 }
 
+/// Helper function for Instant default (serde skip requires a function)
+fn instant_now() -> Instant {
+    Instant::now()
+}
+
 /// Meta-learning event for logging significant state changes.
 /// TASK-METAUTL-P0-001: Provides audit trail for meta-learning behavior.
+/// TASK-METAUTL-P0-004: Added serializable created_at timestamp and domain field.
 #[allow(dead_code)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MetaLearningEvent {
     /// Type of event
     pub event_type: MetaLearningEventType,
-    /// When the event occurred
+    /// When the event occurred (monotonic, not serializable).
+    /// Uses Instant::now() as default during deserialization since Instant
+    /// cannot be meaningfully restored from serialization.
+    #[serde(skip, default = "instant_now")]
     pub timestamp: Instant,
+    /// Serializable wall-clock timestamp for persistence and queries
+    /// TASK-METAUTL-P0-004: Required for time-range queries and JSON serialization
+    pub created_at: DateTime<Utc>,
+    /// Domain this event belongs to (for domain-specific filtering)
+    /// TASK-METAUTL-P0-004: Required for domain-based event queries
+    #[serde(default)]
+    pub domain: Domain,
     /// Embedder index affected (if applicable)
     pub embedder_index: Option<usize>,
     /// Previous value (if applicable)
@@ -73,6 +91,9 @@ pub struct MetaLearningEvent {
     pub new_value: Option<f32>,
     /// Optional description
     pub description: Option<String>,
+    /// Accuracy at the time of the event (for stats computation)
+    /// TASK-METAUTL-P0-004: Used for EventLogStats.avg_accuracy
+    pub accuracy: Option<f32>,
 }
 
 #[allow(dead_code)]
@@ -82,10 +103,33 @@ impl MetaLearningEvent {
         Self {
             event_type: MetaLearningEventType::LambdaAdjustment,
             timestamp: Instant::now(),
+            created_at: Utc::now(),
+            domain: Domain::default(),
             embedder_index: Some(embedder_idx),
             previous_value: Some(previous),
             new_value: Some(new),
             description: None,
+            accuracy: None,
+        }
+    }
+
+    /// Create a lambda adjustment event with domain.
+    pub fn lambda_adjustment_with_domain(
+        embedder_idx: usize,
+        previous: f32,
+        new: f32,
+        domain: Domain,
+    ) -> Self {
+        Self {
+            event_type: MetaLearningEventType::LambdaAdjustment,
+            timestamp: Instant::now(),
+            created_at: Utc::now(),
+            domain,
+            embedder_index: Some(embedder_idx),
+            previous_value: Some(previous),
+            new_value: Some(new),
+            description: None,
+            accuracy: None,
         }
     }
 
@@ -94,6 +138,8 @@ impl MetaLearningEvent {
         Self {
             event_type: MetaLearningEventType::BayesianEscalation,
             timestamp: Instant::now(),
+            created_at: Utc::now(),
+            domain: Domain::default(),
             embedder_index: None,
             previous_value: None,
             new_value: Some(consecutive_low as f32),
@@ -101,6 +147,7 @@ impl MetaLearningEvent {
                 "Escalation triggered after {} consecutive low accuracy cycles",
                 consecutive_low
             )),
+            accuracy: None,
         }
     }
 
@@ -109,11 +156,64 @@ impl MetaLearningEvent {
         Self {
             event_type: MetaLearningEventType::WeightClamped,
             timestamp: Instant::now(),
+            created_at: Utc::now(),
+            domain: Domain::default(),
             embedder_index: Some(embedder_idx),
             previous_value: Some(original),
             new_value: Some(clamped),
             description: None,
+            accuracy: None,
         }
+    }
+
+    /// Create an accuracy alert event.
+    /// TASK-METAUTL-P0-004: For logging when accuracy drops below threshold.
+    pub fn accuracy_alert(current_accuracy: f32, threshold: f32) -> Self {
+        Self {
+            event_type: MetaLearningEventType::AccuracyAlert,
+            timestamp: Instant::now(),
+            created_at: Utc::now(),
+            domain: Domain::default(),
+            embedder_index: None,
+            previous_value: Some(threshold),
+            new_value: Some(current_accuracy),
+            description: Some(format!(
+                "Accuracy {} dropped below threshold {}",
+                current_accuracy, threshold
+            )),
+            accuracy: Some(current_accuracy),
+        }
+    }
+
+    /// Create an accuracy recovery event.
+    /// TASK-METAUTL-P0-004: For logging when accuracy recovers above threshold.
+    pub fn accuracy_recovery(previous_accuracy: f32, current_accuracy: f32) -> Self {
+        Self {
+            event_type: MetaLearningEventType::AccuracyRecovery,
+            timestamp: Instant::now(),
+            created_at: Utc::now(),
+            domain: Domain::default(),
+            embedder_index: None,
+            previous_value: Some(previous_accuracy),
+            new_value: Some(current_accuracy),
+            description: Some(format!(
+                "Accuracy recovered from {} to {}",
+                previous_accuracy, current_accuracy
+            )),
+            accuracy: Some(current_accuracy),
+        }
+    }
+
+    /// Set the domain for this event.
+    pub fn with_domain(mut self, domain: Domain) -> Self {
+        self.domain = domain;
+        self
+    }
+
+    /// Set the accuracy for this event.
+    pub fn with_accuracy(mut self, accuracy: f32) -> Self {
+        self.accuracy = Some(accuracy);
+        self
     }
 }
 
@@ -137,6 +237,25 @@ pub struct SelfCorrectionConfig {
     pub max_weight: f32,
     /// Escalation strategy
     pub escalation_strategy: String,
+    /// Base learning rate for lambda adjustment (TASK-METAUTL-P0-002)
+    /// Modulated by ACh level: alpha = base_alpha * (1.0 + ach_normalized)
+    pub base_alpha: f32,
+}
+
+/// Record of a single lambda adjustment.
+/// TASK-METAUTL-P0-002: Tracks adjustment details for auditing and rollback.
+/// TASK-METAUTL-P0-005: Added Serialize/Deserialize for MCP handlers.
+#[allow(dead_code)] // Will be used in TASK-METAUTL-P0-005/006
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct LambdaAdjustment {
+    /// Change in surprise weight (lambda_s)
+    pub delta_lambda_s: f32,
+    /// Change in coherence weight (lambda_c)
+    pub delta_lambda_c: f32,
+    /// Learning rate used for this adjustment
+    pub alpha: f32,
+    /// Prediction error that triggered this adjustment
+    pub trigger_error: f32,
 }
 
 impl Default for SelfCorrectionConfig {
@@ -147,6 +266,7 @@ impl Default for SelfCorrectionConfig {
     /// - max_consecutive_failures: 10
     /// - escalation_strategy: "bayesian_optimization"
     /// - NORTH-016_WeightAdjuster: min=0.05, max_delta=0.10
+    /// - base_alpha: 0.05 (SPEC-METAUTL-001)
     fn default() -> Self {
         Self {
             enabled: true,
@@ -156,6 +276,7 @@ impl Default for SelfCorrectionConfig {
             min_weight: 0.05, // NORTH-016: min=0.05 (13×0.05=0.65 < 1.0, sum is achievable)
             max_weight: 0.9,
             escalation_strategy: "bayesian_optimization".to_string(),
+            base_alpha: 0.05, // TASK-METAUTL-P0-002: base learning rate for lambda adjustment
         }
     }
 }

@@ -452,7 +452,7 @@ mod tests {
         println!("STATE AFTER 500ms: r = {:.4}", after_r);
 
         // r should be valid (within bounds)
-        assert!(after_r >= 0.0 && after_r <= 1.0, "r must be valid: {}", after_r);
+        assert!((0.0..=1.0).contains(&after_r), "r must be valid: {}", after_r);
 
         // === STOP ===
         stepper.stop().await.expect("stop must succeed");
@@ -601,7 +601,7 @@ mod tests {
         stepper.stop().await.expect("stop must succeed");
 
         // Verify r is still valid (may or may not have changed depending on coupling)
-        assert!(after_r >= 0.0 && after_r <= 1.0, "r must be in [0,1]");
+        assert!((0.0..=1.0).contains(&after_r), "r must be in [0,1]");
 
         println!(
             "EVIDENCE: Order parameter tracked correctly, initial={:.6}, final={:.6}",
@@ -629,7 +629,7 @@ mod tests {
                     let net = network_clone.read();
                     net.order_parameter().0
                 };
-                assert!(r >= 0.0 && r <= 1.0, "r must be valid during concurrent read");
+                assert!((0.0..=1.0).contains(&r), "r must be valid during concurrent read");
                 if i % 5 == 0 {
                     println!("  Concurrent read {}: r = {:.4}", i, r);
                 }

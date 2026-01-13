@@ -216,7 +216,7 @@ impl RocksDbTeleologicalStore {
                 );
                 unsafe { libc::flock(fd, libc::LOCK_UN) };
                 drop(file);
-                return Self::try_remove_lock_file(&lock_path, &lock_path_str);
+                Self::try_remove_lock_file(&lock_path, &lock_path_str)
             } else {
                 let errno = std::io::Error::last_os_error();
                 if errno.raw_os_error() == Some(libc::EWOULDBLOCK) {
@@ -224,10 +224,10 @@ impl RocksDbTeleologicalStore {
                         "LOCK file at '{}' is held by another process - NOT stale",
                         lock_path_str
                     );
-                    return Ok(false);
+                    Ok(false)
                 } else {
                     warn!("flock() failed with unexpected error: {}", errno);
-                    return Self::try_remove_lock_file(&lock_path, &lock_path_str);
+                    Self::try_remove_lock_file(&lock_path, &lock_path_str)
                 }
             }
         }

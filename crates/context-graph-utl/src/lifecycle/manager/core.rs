@@ -2,6 +2,8 @@
 //!
 //! This module contains constructors and basic accessors for the
 //! `LifecycleManager`.
+//!
+//! TASK-METAUTL-P0-006: Added lambda override support for meta-learning integration.
 
 use crate::config::LifecycleConfig;
 
@@ -40,6 +42,7 @@ impl LifecycleManager {
             last_transition_count: 0,
             smooth_transitions: config.smooth_transitions,
             smoothing_window: config.smoothing_window,
+            lambda_override: None, // TASK-METAUTL-P0-006
         }
     }
 
@@ -77,6 +80,7 @@ impl LifecycleManager {
             last_transition_count: interaction_count,
             smooth_transitions: config.smooth_transitions,
             smoothing_window: config.smoothing_window,
+            lambda_override: None, // TASK-METAUTL-P0-006
         }
     }
 
@@ -194,6 +198,106 @@ impl LifecycleManager {
     /// Enable or disable smooth transitions.
     pub fn set_smooth_transitions(&mut self, enabled: bool) {
         self.smooth_transitions = enabled;
+    }
+
+    // ========================================================================
+    // TASK-METAUTL-P0-006: Lambda Override Methods
+    // ========================================================================
+
+    /// Set lambda weight override from meta-learning correction.
+    ///
+    /// TASK-METAUTL-P0-006: When set, `get_effective_weights()` returns the
+    /// override instead of the lifecycle-determined weights.
+    ///
+    /// # Arguments
+    ///
+    /// * `override_weights` - Weights to use instead of lifecycle defaults
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use context_graph_utl::config::LifecycleConfig;
+    /// use context_graph_utl::lifecycle::{LifecycleManager, LifecycleLambdaWeights};
+    ///
+    /// let config = LifecycleConfig::default();
+    /// let mut manager = LifecycleManager::new(&config);
+    ///
+    /// // Set override weights
+    /// let override_weights = LifecycleLambdaWeights::new(0.6, 0.4).unwrap();
+    /// manager.set_lambda_override(override_weights);
+    ///
+    /// assert!(manager.has_lambda_override());
+    /// assert!((manager.get_effective_weights().lambda_s() - 0.6).abs() < 0.001);
+    /// ```
+    pub fn set_lambda_override(&mut self, override_weights: LifecycleLambdaWeights) {
+        self.lambda_override = Some(override_weights);
+    }
+
+    /// Clear lambda weight override.
+    ///
+    /// TASK-METAUTL-P0-006: Returns to using lifecycle-determined weights.
+    pub fn clear_lambda_override(&mut self) {
+        self.lambda_override = None;
+    }
+
+    /// Check if override is active.
+    ///
+    /// TASK-METAUTL-P0-006: Returns `true` if an override is currently set.
+    #[inline]
+    pub fn has_lambda_override(&self) -> bool {
+        self.lambda_override.is_some()
+    }
+
+    /// Get current effective weights.
+    ///
+    /// TASK-METAUTL-P0-006: Returns override weights if set, otherwise
+    /// lifecycle weights.
+    ///
+    /// # Returns
+    ///
+    /// The currently effective lambda weights.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use context_graph_utl::config::LifecycleConfig;
+    /// use context_graph_utl::lifecycle::{LifecycleManager, LifecycleLambdaWeights};
+    ///
+    /// let config = LifecycleConfig::default();
+    /// let mut manager = LifecycleManager::new(&config);
+    ///
+    /// // Without override: returns lifecycle weights
+    /// let weights = manager.get_effective_weights();
+    /// assert!((weights.lambda_s() - 0.7).abs() < 0.001); // Infancy
+    ///
+    /// // With override: returns override weights
+    /// manager.set_lambda_override(LifecycleLambdaWeights::new(0.4, 0.6).unwrap());
+    /// let weights = manager.get_effective_weights();
+    /// assert!((weights.lambda_s() - 0.4).abs() < 0.001);
+    /// ```
+    pub fn get_effective_weights(&self) -> LifecycleLambdaWeights {
+        self.lambda_override.unwrap_or_else(|| self.current_weights())
+    }
+
+    /// Get override deviation from base weights.
+    ///
+    /// TASK-METAUTL-P0-006: Returns (delta_s, delta_c) if override is active,
+    /// (0.0, 0.0) otherwise.
+    ///
+    /// # Returns
+    ///
+    /// Tuple of (delta_lambda_s, delta_lambda_c) showing deviation from base.
+    pub fn override_deviation(&self) -> (f32, f32) {
+        match self.lambda_override {
+            Some(override_weights) => {
+                let base = self.current_weights();
+                (
+                    override_weights.lambda_s() - base.lambda_s(),
+                    override_weights.lambda_c() - base.lambda_c(),
+                )
+            }
+            None => (0.0, 0.0),
+        }
     }
 }
 

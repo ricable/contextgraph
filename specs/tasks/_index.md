@@ -9,7 +9,7 @@ Foundation tasks create types, interfaces, and data structures with no business 
 | TASK-DREAM-P0-001 | DREAM | Types and Interfaces | **COMPLETED** |
 | TASK-DREAM-P0-002 | DREAM | Poincare Ball Math | **COMPLETED** |
 | TASK-IDENTITY-P0-001 | IDENTITY | Identity Continuity Types | **COMPLETED** |
-| TASK-IDENTITY-P0-002 | IDENTITY | Purpose Vector History | Ready |
+| TASK-IDENTITY-P0-002 | IDENTITY | Purpose Vector History | **COMPLETED** |
 | TASK-METAUTL-P0-001 | META-UTL | Core Types | Ready |
 | TASK-GWT-P1-001 | GWT | SELF_EGO_NODE Persistence | **COMPLETED** |
 | TASK-UTL-P1-001 | UTL | DeltaSc Request/Response | **COMPLETED** |
@@ -27,9 +27,9 @@ Logic tasks implement core algorithms and business logic.
 | TASK-DREAM-P0-003 | DREAM | Hebbian Learning | Ready |
 | TASK-DREAM-P0-004 | DREAM | Hyperbolic Random Walk | **COMPLETED** |
 | TASK-DREAM-P0-005 | DREAM | Dream Triggers | **COMPLETED** |
-| TASK-IDENTITY-P0-003 | IDENTITY | IC Computation | Ready |
-| TASK-IDENTITY-P0-004 | IDENTITY | Crisis Detection | Ready |
-| TASK-IDENTITY-P0-005 | IDENTITY | Crisis Protocol | Ready |
+| TASK-IDENTITY-P0-003 | IDENTITY | IC Computation | **COMPLETED** |
+| TASK-IDENTITY-P0-004 | IDENTITY | Crisis Detection | **COMPLETED** |
+| TASK-IDENTITY-P0-005 | IDENTITY | Crisis Protocol | **COMPLETED** |
 | TASK-METAUTL-P0-002 | META-UTL | Lambda Adjustment | Ready |
 | TASK-METAUTL-P0-003 | META-UTL | Escalation/Bayesian | Ready |
 | TASK-GWT-P1-002 | GWT | Workspace Events | **COMPLETED** |
@@ -54,8 +54,8 @@ Surface tasks integrate with external APIs (MCP), write tests, and provide user-
 | ID | Subsystem | Title | Status |
 |----|-----------|-------|--------|
 | TASK-DREAM-P0-006 | DREAM | Wake Controller + MCP | Ready |
-| TASK-IDENTITY-P0-006 | IDENTITY | GWT Attention Wiring | Ready |
-| TASK-IDENTITY-P0-007 | IDENTITY | MCP Tool Exposure | Ready |
+| TASK-IDENTITY-P0-006 | IDENTITY | GWT Attention Wiring | **COMPLETED** |
+| TASK-IDENTITY-P0-007 | IDENTITY | MCP Tool Exposure | **COMPLETED** |
 | TASK-METAUTL-P0-004 | META-UTL | Event Log | Ready |
 | TASK-METAUTL-P0-005 | META-UTL | MCP Tool Wiring | Ready |
 | TASK-GWT-P1-003 | GWT | Integration Tests | Ready |

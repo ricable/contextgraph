@@ -14,13 +14,13 @@
 mod adjuster;
 mod types;
 
+// Re-export all public items for backwards compatibility
+pub use adjuster::WeightAdjuster;
+pub use types::{AdjustmentReason, AdjustmentReport, WeightAdjusterConfig};
+
 #[cfg(test)]
 mod tests {
     mod adjuster_tests;
     mod config_tests;
     mod integration_tests;
 }
-
-// Re-export all public items for backwards compatibility
-pub use adjuster::WeightAdjuster;
-pub use types::{AdjustmentReason, AdjustmentReport, WeightAdjusterConfig};

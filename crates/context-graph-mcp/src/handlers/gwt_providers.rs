@@ -20,7 +20,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use context_graph_core::error::CoreResult;
 use context_graph_core::gwt::{
-    ego_node::{IdentityContinuity, IdentityStatus},
+    ego_node::{CrisisDetectionResult, IdentityContinuity, IdentityContinuityMonitor, IdentityStatus},
     ConsciousnessCalculator, ConsciousnessMetrics, ConsciousnessState, GlobalWorkspace,
     MetaCognitiveLoop, MetaCognitiveState, SelfEgoNode, StateMachineManager, StateTransition,
 };
@@ -139,18 +139,25 @@ impl KuramotoProvider for KuramotoProviderImpl {
 // ============================================================================
 
 /// Wrapper implementing GwtSystemProvider using real GWT components
+///
+/// TASK-IDENTITY-P0-007: Added identity_monitor for identity continuity exposure.
 #[derive(Debug)]
 pub struct GwtSystemProviderImpl {
     calculator: ConsciousnessCalculator,
     state_machine: RwLock<StateMachineManager>,
+    /// Identity continuity monitor for IC tracking (TASK-IDENTITY-P0-007)
+    identity_monitor: TokioRwLock<IdentityContinuityMonitor>,
 }
 
 impl GwtSystemProviderImpl {
     /// Create a new GwtSystemProvider with fresh components
+    ///
+    /// TASK-IDENTITY-P0-007: Initializes identity_monitor for IC tracking.
     pub fn new() -> Self {
         Self {
             calculator: ConsciousnessCalculator::new(),
             state_machine: RwLock::new(StateMachineManager::new()),
+            identity_monitor: TokioRwLock::new(IdentityContinuityMonitor::new()),
         }
     }
 }
@@ -161,6 +168,7 @@ impl Default for GwtSystemProviderImpl {
     }
 }
 
+#[async_trait]
 impl GwtSystemProvider for GwtSystemProviderImpl {
     fn compute_consciousness(
         &self,
@@ -213,6 +221,36 @@ impl GwtSystemProvider for GwtSystemProviderImpl {
 
         // Convert chrono::Duration to std::time::Duration
         Duration::from_millis(chrono_duration.num_milliseconds().max(0) as u64)
+    }
+
+    // === TASK-IDENTITY-P0-007: Identity Continuity Methods ===
+
+    async fn identity_coherence(&self) -> f32 {
+        self.identity_monitor
+            .read()
+            .await
+            .identity_coherence()
+            .unwrap_or(0.0)
+    }
+
+    async fn identity_status(&self) -> IdentityStatus {
+        self.identity_monitor
+            .read()
+            .await
+            .current_status()
+            .unwrap_or(IdentityStatus::Critical)
+    }
+
+    async fn is_identity_crisis(&self) -> bool {
+        self.identity_monitor.read().await.is_in_crisis()
+    }
+
+    async fn identity_history_len(&self) -> usize {
+        self.identity_monitor.read().await.history_len()
+    }
+
+    async fn last_detection(&self) -> Option<CrisisDetectionResult> {
+        self.identity_monitor.read().await.last_detection()
     }
 }
 

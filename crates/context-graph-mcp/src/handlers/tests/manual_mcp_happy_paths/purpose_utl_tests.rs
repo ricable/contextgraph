@@ -85,7 +85,7 @@ async fn test_08_utl_compute() {
 
     // Verify learning score is in valid range [0.0, 1.0]
     if let Some(score) = result.get("learningScore").and_then(|v| v.as_f64()) {
-        assert!(score >= 0.0 && score <= 1.0, "Learning score should be in [0.0, 1.0]");
+        assert!((0.0..=1.0).contains(&score), "Learning score should be in [0.0, 1.0]");
     }
 
     println!("\n[PASSED] utl/compute works correctly");

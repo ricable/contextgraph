@@ -533,7 +533,7 @@ mod tests {
         let score = compute_maxsim_direct(&query, &doc);
 
         println!("MaxSim score: {}", score);
-        assert!(score >= -1.0 && score <= 1.0);
+        assert!((-1.0..=1.0).contains(&score));
 
         println!("[VERIFIED] Different tokens produce valid MaxSim score");
     }

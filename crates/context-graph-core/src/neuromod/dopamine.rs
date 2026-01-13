@@ -366,7 +366,7 @@ mod tests {
     fn test_dopamine_on_goal_progress_zero_delta() {
         let mut modulator = DopamineModulator::new();
         let initial = modulator.value();
-        let initial_trigger = modulator.level().last_trigger.clone();
+        let initial_trigger = modulator.level().last_trigger;
 
         modulator.on_goal_progress(0.0);
 
@@ -423,7 +423,7 @@ mod tests {
         println!("  last_trigger: {:?}", modulator.level().last_trigger);
 
         let before_value = modulator.level().value;
-        let before_trigger = modulator.level().last_trigger.clone();
+        let before_trigger = modulator.level().last_trigger;
 
         // === STEP 2: Execute the operation ===
         modulator.on_goal_progress(0.5);
@@ -434,7 +434,7 @@ mod tests {
         println!("  last_trigger: {:?}", modulator.level().last_trigger);
 
         let after_value = modulator.level().value;
-        let after_trigger = modulator.level().last_trigger.clone();
+        let after_trigger = modulator.level().last_trigger;
 
         // === STEP 4: Verify changes in Source of Truth ===
         let expected_delta = 0.5 * DA_GOAL_SENSITIVITY; // 0.05

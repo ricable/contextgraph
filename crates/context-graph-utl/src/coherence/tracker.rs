@@ -765,7 +765,7 @@ mod tests {
         let coherence = tracker.compute_coherence(&vertex, connectivity, &cluster_context);
 
         // Verify result is in valid range
-        assert!(coherence >= 0.0 && coherence <= 1.0);
+        assert!((0.0..=1.0).contains(&coherence));
 
         // Verify formula: ΔC = 0.4×Connectivity + 0.4×ClusterFit + 0.2×Consistency
         // With connectivity = 0.8, expect contribution of 0.4 * 0.8 = 0.32
@@ -858,7 +858,7 @@ mod tests {
         let coherence = tracker.compute_coherence(&vertex, connectivity, &cluster_context);
 
         // Should still return valid result with fallback for ClusterFit
-        assert!(coherence >= 0.0 && coherence <= 1.0);
+        assert!((0.0..=1.0).contains(&coherence));
 
         // With fallback ClusterFit = 0.5, connectivity = 0.8, consistency = 0.5
         // Expected: 0.4*0.8 + 0.4*0.5 + 0.2*0.5 = 0.32 + 0.2 + 0.1 = 0.62
@@ -885,7 +885,7 @@ mod tests {
         let coherence = tracker.compute_coherence(&vertex, f32::NAN, &cluster_context);
 
         // Should still return valid result with fallback for connectivity
-        assert!(coherence >= 0.0 && coherence <= 1.0);
+        assert!((0.0..=1.0).contains(&coherence));
         assert!(
             !coherence.is_nan(),
             "Output should not be NaN per AP-10"
@@ -893,7 +893,7 @@ mod tests {
 
         // Test with infinity
         let coherence_inf = tracker.compute_coherence(&vertex, f32::INFINITY, &cluster_context);
-        assert!(coherence_inf >= 0.0 && coherence_inf <= 1.0);
+        assert!((0.0..=1.0).contains(&coherence_inf));
         assert!(
             !coherence_inf.is_infinite(),
             "Output should not be Inf per AP-10"
@@ -917,7 +917,7 @@ mod tests {
         let coherence = tracker.compute_coherence(&vertex, connectivity, &cluster_context);
 
         // Should return valid result (fallback will be used)
-        assert!(coherence >= 0.0 && coherence <= 1.0);
+        assert!((0.0..=1.0).contains(&coherence));
     }
 
     #[test]
@@ -937,7 +937,7 @@ mod tests {
         let coherence = tracker.compute_coherence(&vertex, connectivity, &cluster_context);
 
         // All components at max should give high coherence
-        assert!(coherence >= 0.0 && coherence <= 1.0);
+        assert!((0.0..=1.0).contains(&coherence));
         assert!(
             coherence > 0.8,
             "Expected high coherence with all max values, got {}",
@@ -1006,7 +1006,7 @@ mod tests {
         let coherence = tracker.compute_coherence(&vertex, connectivity, &cluster_context);
 
         // Verify result is in valid range
-        assert!(coherence >= 0.0 && coherence <= 1.0);
+        assert!((0.0..=1.0).contains(&coherence));
 
         // With vertex well-clustered:
         // - connectivity = 0.8 (provided)
@@ -1043,7 +1043,7 @@ mod tests {
         let coherence = tracker.compute_coherence(&vertex, connectivity, &cluster_context);
 
         // Verify result is in valid range
-        assert!(coherence >= 0.0 && coherence <= 1.0);
+        assert!((0.0..=1.0).contains(&coherence));
 
         // Misclassified point should have lower ClusterFit (silhouette < 0)
         // This means cluster_fit score < 0.5 (since score = (silhouette + 1) / 2)

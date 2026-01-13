@@ -275,6 +275,9 @@ impl Handlers {
     /// TASK-GWT-001: Returns Self-Ego Node state including purpose vector,
     /// identity continuity, coherence with actions, and trajectory length.
     ///
+    /// TASK-IDENTITY-P0-007: Enhanced with identity_continuity object containing
+    /// crisis detection state from IdentityContinuityMonitor.
+    ///
     /// FAIL FAST on missing self-ego provider - no stubs or fallbacks.
     ///
     /// Returns:
@@ -283,6 +286,7 @@ impl Handlers {
     /// - coherence_with_actions: Alignment between actions and purpose
     /// - identity_status: Healthy/Warning/Degraded/Critical
     /// - trajectory_length: Number of purpose snapshots stored
+    /// - identity_continuity: Crisis detection state from GwtSystemProvider (TASK-IDENTITY-P0-007)
     pub(crate) async fn call_get_ego_state(&self, id: Option<JsonRpcId>) -> JsonRpcResponse {
         debug!("Handling get_ego_state tool call");
 
@@ -295,6 +299,19 @@ impl Handlers {
                     id,
                     error_codes::GWT_NOT_INITIALIZED,
                     "Self-ego provider not initialized - use with_gwt() constructor",
+                );
+            }
+        };
+
+        // FAIL FAST: Check gwt_system provider for identity_continuity (TASK-IDENTITY-P0-007)
+        let gwt_system = match &self.gwt_system {
+            Some(g) => g,
+            None => {
+                error!("get_ego_state: GWT system not initialized - cannot provide identity_continuity");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::GWT_NOT_INITIALIZED,
+                    "GWT system not initialized - use with_gwt() constructor",
                 );
             }
         };
@@ -317,6 +334,31 @@ impl Handlers {
         // Get trajectory length
         let trajectory_length = ego.trajectory_length();
 
+        // Drop ego lock before calling gwt_system async methods
+        drop(ego);
+
+        // === TASK-IDENTITY-P0-007: Get identity continuity from GwtSystemProvider ===
+        let ic_value = gwt_system.identity_coherence().await;
+        let ic_status = gwt_system.identity_status().await;
+        let ic_in_crisis = gwt_system.is_identity_crisis().await;
+        let ic_history_len = gwt_system.identity_history_len().await;
+        let ic_last_detection = gwt_system.last_detection().await;
+
+        // Format last_detection for JSON output
+        let last_detection_json = ic_last_detection.map(|det| {
+            json!({
+                "identity_coherence": det.identity_coherence,
+                "previous_status": format!("{:?}", det.previous_status),
+                "current_status": format!("{:?}", det.current_status),
+                "status_changed": det.status_changed,
+                "entering_crisis": det.entering_crisis,
+                "entering_critical": det.entering_critical,
+                "recovering": det.recovering,
+                "time_since_last_event_ms": det.time_since_last_event.map(|d| d.as_millis()),
+                "can_emit_event": det.can_emit_event
+            })
+        });
+
         self.tool_result_with_pulse(
             id,
             json!({
@@ -330,6 +372,14 @@ impl Handlers {
                     "warning": 0.7,
                     "degraded": 0.5,
                     "critical": 0.0
+                },
+                // TASK-IDENTITY-P0-007: Identity continuity from GwtSystemProvider
+                "identity_continuity": {
+                    "ic": ic_value,
+                    "status": format!("{:?}", ic_status),
+                    "in_crisis": ic_in_crisis,
+                    "history_len": ic_history_len,
+                    "last_detection": last_detection_json
                 }
             }),
         )

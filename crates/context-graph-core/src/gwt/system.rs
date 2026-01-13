@@ -22,9 +22,9 @@ use crate::layers::{KuramotoNetwork, KURAMOTO_K, KURAMOTO_N};
 use crate::neuromod::NeuromodulationManager;
 
 use super::{
-    ConsciousnessCalculator, DreamEventListener, GlobalWorkspace,
-    MetaCognitiveEventListener, MetaCognitiveLoop, NeuromodulationEventListener,
-    SelfAwarenessLoop, SelfEgoNode, StateMachineManager,
+    ConsciousnessCalculator, DreamEventListener, GlobalWorkspace, IdentityContinuityListener,
+    IdentityContinuityMonitor, IdentityStatus, MetaCognitiveEventListener, MetaCognitiveLoop,
+    NeuromodulationEventListener, SelfAwarenessLoop, SelfEgoNode, StateMachineManager,
     WorkspaceEventBroadcaster,
 };
 
@@ -76,6 +76,12 @@ pub struct GwtSystem {
     ///
     /// MetaCognitiveLoop uses this to trigger exploratory behavior.
     pub epistemic_action_triggered: Arc<AtomicBool>,
+
+    /// Identity continuity monitor for IC queries (TASK-IDENTITY-P0-006)
+    ///
+    /// Shared with the registered IdentityContinuityListener for state queries.
+    /// The listener processes events; this Arc provides query access.
+    pub identity_monitor: Arc<RwLock<IdentityContinuityMonitor>>,
 }
 
 impl GwtSystem {
@@ -90,12 +96,14 @@ impl GwtSystem {
     /// - `DreamEventListener`: Queues exiting memories for dream replay
     /// - `NeuromodulationEventListener`: Boosts dopamine on memory entry
     /// - `MetaCognitiveEventListener`: Triggers epistemic action on workspace empty
+    /// - `IdentityContinuityListener`: Monitors IC on memory entry (TASK-IDENTITY-P0-006)
     pub async fn new() -> crate::CoreResult<Self> {
         // Create shared state for listeners
         let neuromod_manager = Arc::new(RwLock::new(NeuromodulationManager::new()));
         let meta_cognitive = Arc::new(RwLock::new(MetaCognitiveLoop::new()));
         let dream_queue: Arc<RwLock<Vec<Uuid>>> = Arc::new(RwLock::new(Vec::new()));
         let epistemic_action_triggered = Arc::new(AtomicBool::new(false));
+        let self_ego_node = Arc::new(RwLock::new(SelfEgoNode::new()));
 
         // Create event broadcaster
         let event_broadcaster = Arc::new(WorkspaceEventBroadcaster::new());
@@ -107,6 +115,14 @@ impl GwtSystem {
             Arc::clone(&meta_cognitive),
             Arc::clone(&epistemic_action_triggered),
         );
+        // TASK-IDENTITY-P0-006: Create identity continuity listener
+        // Create listener, get its monitor Arc for state queries, then register the listener
+        let identity_listener = IdentityContinuityListener::new(
+            Arc::clone(&self_ego_node),
+            Arc::clone(&event_broadcaster),
+        );
+        // Get the shared monitor BEFORE moving the listener into Box
+        let identity_monitor = identity_listener.monitor();
 
         event_broadcaster
             .register_listener(Box::new(dream_listener))
@@ -117,6 +133,10 @@ impl GwtSystem {
         event_broadcaster
             .register_listener(Box::new(meta_listener))
             .await;
+        // TASK-IDENTITY-P0-006: Register identity listener (now using same monitor instance)
+        event_broadcaster
+            .register_listener(Box::new(identity_listener))
+            .await;
 
         tracing::info!(
             "GwtSystem initialized with {} event listeners",
@@ -126,7 +146,7 @@ impl GwtSystem {
         Ok(Self {
             consciousness_calc: Arc::new(ConsciousnessCalculator::new()),
             workspace: Arc::new(RwLock::new(GlobalWorkspace::new())),
-            self_ego_node: Arc::new(RwLock::new(SelfEgoNode::new())),
+            self_ego_node,
             state_machine: Arc::new(RwLock::new(StateMachineManager::new())),
             meta_cognitive,
             event_broadcaster,
@@ -135,6 +155,7 @@ impl GwtSystem {
             neuromod_manager,
             dream_queue,
             epistemic_action_triggered,
+            identity_monitor,
         })
     }
 
@@ -176,5 +197,57 @@ impl GwtSystem {
     ) -> crate::CoreResult<Option<Uuid>> {
         let mut workspace = self.workspace.write().await;
         workspace.select_winning_memory(candidates).await
+    }
+
+    // =========================================================================
+    // TASK-IDENTITY-P0-006: Identity Continuity Accessors
+    // =========================================================================
+
+    /// Get current identity coherence value (0.0-1.0)
+    ///
+    /// Returns the IC value from the identity continuity monitor.
+    /// Returns 0.0 if no IC computation has occurred yet.
+    pub async fn identity_coherence(&self) -> f32 {
+        self.identity_monitor
+            .read()
+            .await
+            .identity_coherence()
+            .unwrap_or(0.0)
+    }
+
+    /// Get current identity status classification
+    ///
+    /// Returns the status from the identity continuity monitor.
+    pub async fn identity_status(&self) -> IdentityStatus {
+        self.identity_monitor
+            .read()
+            .await
+            .current_status()
+            .unwrap_or(IdentityStatus::Critical)
+    }
+
+    /// Check if the system is currently in identity crisis
+    ///
+    /// Returns `true` if IC is below the crisis threshold (0.5).
+    pub async fn is_identity_crisis(&self) -> bool {
+        self.identity_monitor.read().await.is_in_crisis()
+    }
+
+    /// Get the number of purpose vectors in IC history
+    pub async fn identity_history_len(&self) -> usize {
+        self.identity_monitor.read().await.history_len()
+    }
+
+    // === TASK-IDENTITY-P0-007: MCP Tool Exposure Methods ===
+
+    /// Get the last crisis detection result from the identity monitor.
+    ///
+    /// Returns `None` if no crisis detection has been performed yet.
+    /// This method provides access to cached crisis state for MCP tools
+    /// without triggering a new detection cycle.
+    ///
+    /// # TASK-IDENTITY-P0-007
+    pub async fn last_detection(&self) -> Option<super::ego_node::CrisisDetectionResult> {
+        self.identity_monitor.read().await.last_detection()
     }
 }

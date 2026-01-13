@@ -2,6 +2,8 @@
 //!
 //! Tests mathematical properties and edge cases for cosine similarity.
 
+#![allow(clippy::assertions_on_constants)] // Intentional assertions on constant thresholds for documentation
+
 use super::super::{cosine_similarity_13d, IC_CRISIS_THRESHOLD, IC_CRITICAL_THRESHOLD};
 
 #[test]
@@ -154,7 +156,7 @@ fn test_cosine_similarity_13d_clamping() {
         let similarity = cosine_similarity_13d(&v1, &v2);
 
         assert!(
-            similarity >= -1.0 && similarity <= 1.0,
+            (-1.0..=1.0).contains(&similarity),
             "Cosine must be in [-1, 1], got {} at iteration {}",
             similarity,
             i

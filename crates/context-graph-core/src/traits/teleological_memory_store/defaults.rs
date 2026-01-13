@@ -33,6 +33,7 @@ use super::backend::TeleologicalStorageBackend;
 ///
 /// Backends that support these features should override the corresponding
 /// methods in `TeleologicalMemoryStore` directly.
+#[allow(dead_code)] // Reserved for future extension trait implementations
 #[async_trait]
 pub trait TeleologicalMemoryStoreDefaults: Send + Sync {
     /// Get the storage backend type for error messages.

@@ -44,6 +44,9 @@ mod teleological;
 mod tools;
 mod utl;
 
+// TASK-METAUTL-P0-005: Meta-learning handlers for self-correction tools
+pub mod meta_learning;
+
 // TASK-GWT-P0-002: Background stepper for Kuramoto oscillator network
 pub mod kuramoto_stepper;
 

@@ -27,7 +27,7 @@ async fn test_gwt_system_has_kuramoto_network() {
     let r = network.order_parameter();
 
     println!("BEFORE: order_parameter r = {:.4}", r);
-    assert!(r >= 0.0 && r <= 1.0, "Initial r must be valid");
+    assert!((0.0..=1.0).contains(&r), "Initial r must be valid");
     assert_eq!(
         network.size(),
         KURAMOTO_N,
@@ -67,7 +67,7 @@ async fn test_step_kuramoto_advances_phases() {
 
     // With coupling K=2.0, phases should evolve
     // Order parameter may increase (sync) or fluctuate
-    assert!(final_r >= 0.0 && final_r <= 1.0);
+    assert!((0.0..=1.0).contains(&final_r));
 
     println!(
         "EVIDENCE: Phases evolved from r={:.4} to r={:.4}",
@@ -129,7 +129,7 @@ async fn test_update_consciousness_auto() {
 
     // Verify C(t) is valid
     assert!(
-        consciousness >= 0.0 && consciousness <= 1.0,
+        (0.0..=1.0).contains(&consciousness),
         "C(t) must be in [0,1], got {}",
         consciousness
     );
@@ -161,7 +161,7 @@ async fn test_gwt_kuramoto_integration_full_verification() {
 
     let initial_r = network.order_parameter();
     println!("STATE BEFORE: r = {:.4}", initial_r);
-    assert!(initial_r >= 0.0 && initial_r <= 1.0, "r must be in [0,1]");
+    assert!((0.0..=1.0).contains(&initial_r), "r must be in [0,1]");
     drop(network);
 
     // === EXECUTE ===
@@ -174,7 +174,7 @@ async fn test_gwt_kuramoto_integration_full_verification() {
 
     // Verify phases actually changed (phases evolved)
     // Note: With coupling, phases should synchronize over time
-    assert!(final_r >= 0.0 && final_r <= 1.0, "r must remain in [0,1]");
+    assert!((0.0..=1.0).contains(&final_r), "r must remain in [0,1]");
 
     // === EVIDENCE OF SUCCESS ===
     println!(
@@ -203,7 +203,7 @@ async fn test_step_kuramoto_zero_elapsed() {
     println!("AFTER: r = {:.4}", after_r);
 
     // Phases may have changed slightly due to minimum 1 step
-    assert!(after_r >= 0.0 && after_r <= 1.0, "r must remain valid");
+    assert!((0.0..=1.0).contains(&after_r), "r must remain valid");
 
     println!("EVIDENCE: Zero duration handled correctly");
 }
@@ -228,7 +228,7 @@ async fn test_step_kuramoto_large_elapsed() {
 
     // r should still be valid
     assert!(
-        final_r >= 0.0 && final_r <= 1.0,
+        (0.0..=1.0).contains(&final_r),
         "r must remain in [0,1] after large step, got {}",
         final_r
     );
@@ -254,7 +254,7 @@ async fn test_kuramoto_concurrent_access() {
                     gwt_clone.step_kuramoto(Duration::from_millis(1)).await;
                     let r = gwt_clone.get_kuramoto_r().await;
                     assert!(
-                        r >= 0.0 && r <= 1.0,
+                        (0.0..=1.0).contains(&r),
                         "r must be valid during concurrent access"
                     );
                 }

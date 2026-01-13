@@ -3,6 +3,8 @@
 //! TASK-INTEG-002: Implements the `purpose/drift_check` MCP method for
 //! per-embedder drift analysis using TeleologicalDriftDetector.
 
+#![allow(clippy::result_large_err)] // JsonRpcResponse has large error variants by design
+
 use serde_json::json;
 use tracing::{debug, error, info, instrument};
 use uuid::Uuid;

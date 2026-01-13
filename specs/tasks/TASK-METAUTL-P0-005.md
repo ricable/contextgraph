@@ -1,8 +1,8 @@
 # Task Specification: MCP Tool Wiring for Meta-UTL
 
 **Task ID:** TASK-METAUTL-P0-005
-**Version:** 1.0.0
-**Status:** Ready
+**Version:** 2.0.0
+**Status:** NOT STARTED - Ready for Implementation
 **Layer:** Surface (Layer 3)
 **Sequence:** 5
 **Priority:** P0 (Critical)
@@ -18,19 +18,30 @@
 |----------------|-------------|
 | REQ-METAUTL-013 | System SHALL provide MCP tool `get_meta_learning_status` |
 | REQ-METAUTL-014 | System SHALL provide MCP tool `trigger_lambda_recalibration` |
+| REQ-METAUTL-015 | System SHALL provide MCP tool `get_meta_learning_log` |
 
 ### 1.2 Dependencies
 
 | Task ID | Description | Status |
 |---------|-------------|--------|
-| TASK-METAUTL-P0-001 | Core types | Must complete first |
-| TASK-METAUTL-P0-002 | Lambda adjustment | Must complete first |
-| TASK-METAUTL-P0-003 | Escalation logic | Must complete first |
-| TASK-METAUTL-P0-004 | Event logging | Must complete first |
+| TASK-METAUTL-P0-001 | Core types | ✅ COMPLETE |
+| TASK-METAUTL-P0-002 | Lambda adjustment | ❌ NOT STARTED |
+| TASK-METAUTL-P0-003 | Escalation logic | ❌ NOT STARTED |
+| TASK-METAUTL-P0-004 | Event logging | ❌ NOT STARTED |
 
 ### 1.3 Blocked By
 
-- TASK-METAUTL-P0-004 (all meta components must exist)
+- ~~TASK-METAUTL-P0-004 (all meta components must exist)~~
+- **NOTE**: This task can proceed in parallel. Basic status tool can use existing MetaUtlTracker.
+  Full functionality requires TASK-002/003/004 but basic scaffolding can be implemented now.
+
+### 1.4 Existing Infrastructure
+
+The MCP crate already has:
+- Tool definitions in `crates/context-graph-mcp/src/tools/definitions/`
+- Existing patterns: `utl.rs`, `gwt.rs`, `autonomous.rs`
+- Handler patterns in `crates/context-graph-mcp/src/handlers/`
+- MetaUtlTracker in `handlers/core/meta_utl_tracker.rs`
 
 ---
 
@@ -55,9 +66,11 @@ These tools enable operators to:
 | File | Purpose |
 |------|---------|
 | `crates/context-graph-mcp/src/handlers/mod.rs` | Existing handler patterns |
-| `crates/context-graph-mcp/src/handlers/utl.rs` | UTL-related handlers |
-| `crates/context-graph-mcp/src/schema/tools.rs` | Tool schema definitions |
-| `crates/context-graph-utl/src/meta/` | All meta types from previous tasks |
+| `crates/context-graph-mcp/src/handlers/core/meta_utl_tracker.rs` | MetaUtlTracker implementation |
+| `crates/context-graph-mcp/src/handlers/core/types.rs` | MetaLearningEvent, Domain, SelfCorrectionConfig |
+| `crates/context-graph-mcp/src/tools/definitions/utl.rs` | Existing UTL tool definitions |
+| `crates/context-graph-mcp/src/tools/definitions/gwt.rs` | Pattern reference for tool definitions |
+| `crates/context-graph-mcp/src/tools/mod.rs` | Tool module exports |
 | `specs/functional/SPEC-METAUTL-001.md` | MCP tool contracts |
 
 ---
@@ -87,12 +100,15 @@ These tools enable operators to:
 
 ## 5. Prerequisites
 
-| Check | Description |
-|-------|-------------|
-| [ ] | TASK-METAUTL-P0-004 completed |
-| [ ] | All meta types compile |
-| [ ] | MCP handler pattern understood |
-| [ ] | `context-graph-mcp` crate exists |
+| Check | Description | Status |
+|-------|-------------|--------|
+| [ ] | TASK-METAUTL-P0-004 completed | ⏳ Not started (optional) |
+| [x] | Core meta types compile | ✅ In types.rs |
+| [x] | MCP handler pattern understood | ✅ See gwt.rs, utl.rs |
+| [x] | `context-graph-mcp` crate exists | ✅ Exists |
+| [x] | MetaUtlTracker available | ✅ In handlers/core/ |
+| [ ] | MetaLearningEventLog available | ⏳ TASK-004 |
+| [ ] | AdaptiveLambdaWeights available | ⏳ TASK-002 |
 
 ---
 
@@ -103,14 +119,20 @@ These tools enable operators to:
 #### File: `crates/context-graph-mcp/src/handlers/meta_learning.rs`
 
 ```rust
-use crate::error::{McpError, McpResult};
-use crate::schema::{ToolInput, ToolOutput};
-use context_graph_utl::meta::{
-    MetaLearningEventLog, AdaptiveLambdaWeights, EscalationManager,
-    SelfCorrectionState, MetaLearningEvent, EventLogQuery,
-};
+//! MCP handlers for Meta-UTL self-correction tools.
+//!
+//! TASK-METAUTL-P0-005: Exposes meta-learning status, recalibration, and event log.
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use crate::error::McpError;
+
+// Types from the same crate (MCP crate)
+use super::core::types::{MetaLearningEvent, MetaLearningEventType, Domain, SelfCorrectionConfig};
+use super::core::meta_utl_tracker::MetaUtlTracker;
+
+// When TASK-004 is complete, add:
+// use super::core::event_log::{MetaLearningEventLog, EventLogQuery};
 
 /// Input for get_meta_learning_status tool
 #[derive(Debug, Clone, Deserialize)]
@@ -287,9 +309,13 @@ fn parse_event_type(s: &str) -> McpResult<MetaLearningEventType>;
 fn parse_domain(s: &str) -> McpResult<Domain>;
 ```
 
-#### File: `crates/context-graph-mcp/src/schema/meta_learning_tools.rs`
+#### File: `crates/context-graph-mcp/src/tools/definitions/meta_utl.rs`
 
 ```rust
+//! Tool definitions for Meta-UTL self-correction MCP tools.
+//!
+//! TASK-METAUTL-P0-005: Defines schemas for status, recalibration, and log tools.
+
 use serde_json::json;
 
 /// Tool schema for get_meta_learning_status
@@ -400,16 +426,21 @@ pub fn register_meta_learning_tools(registry: &mut ToolRegistry) {
 
 ### 6.2 Service Interface
 
-#### File: `crates/context-graph-utl/src/meta/service.rs`
+#### File: `crates/context-graph-mcp/src/handlers/core/meta_utl_service.rs`
 
 ```rust
-use super::{
-    AdaptiveLambdaWeights, EmbedderAccuracyTracker, EscalationManager,
-    MetaLearningEventLog, SelfCorrectionConfig, SelfCorrectionState,
-    MetaLearningEvent, LambdaAdjustment, Domain,
-};
-use crate::error::UtlResult;
-use crate::lifecycle::LifecycleLambdaWeights;
+//! Meta-learning service facade for MCP handlers.
+//!
+//! TASK-METAUTL-P0-005: Provides unified access to all meta-UTL components.
+//! Lives in MCP crate because MetaUtlTracker and all types are here.
+
+use super::types::{MetaLearningEvent, Domain, SelfCorrectionConfig};
+use super::meta_utl_tracker::MetaUtlTracker;
+// When TASK-004 is complete:
+// use super::event_log::{MetaLearningEventLog, EventLogQuery, EventLogStats};
+
+// Reference lifecycle from UTL crate
+use context_graph_utl::lifecycle::LifecycleLambdaWeights;
 
 /// Meta-learning service facade
 ///
@@ -586,9 +617,8 @@ cargo clippy -p context-graph-mcp -- -D warnings
 | Path | Description |
 |------|-------------|
 | `crates/context-graph-mcp/src/handlers/meta_learning.rs` | Handler implementations |
-| `crates/context-graph-mcp/src/schema/meta_learning_tools.rs` | Tool schema definitions |
-| `crates/context-graph-utl/src/meta/service.rs` | Service facade |
-| `crates/context-graph-mcp/tests/meta_learning_integration.rs` | Integration tests |
+| `crates/context-graph-mcp/src/tools/definitions/meta_utl.rs` | Tool schema definitions |
+| `crates/context-graph-mcp/src/handlers/core/meta_utl_service.rs` | Service facade |
 
 ---
 
@@ -597,10 +627,9 @@ cargo clippy -p context-graph-mcp -- -D warnings
 | Path | Modification |
 |------|--------------|
 | `crates/context-graph-mcp/src/handlers/mod.rs` | Add `pub mod meta_learning;` |
-| `crates/context-graph-mcp/src/schema/mod.rs` | Add `pub mod meta_learning_tools;` |
-| `crates/context-graph-mcp/src/router.rs` | Register meta-learning tools |
-| `crates/context-graph-utl/src/meta/mod.rs` | Add `pub mod service;` |
-| `crates/context-graph-utl/src/lib.rs` | Re-export `MetaLearningService` |
+| `crates/context-graph-mcp/src/tools/definitions/mod.rs` | Add `pub mod meta_utl;` |
+| `crates/context-graph-mcp/src/handlers/core/mod.rs` | Add `pub mod meta_utl_service;` |
+| `crates/context-graph-mcp/src/server.rs` | Register meta-learning tools with dispatcher |
 
 ---
 
@@ -949,14 +978,236 @@ If this task fails validation:
 
 ---
 
-## 13. Notes
+## 13. Source of Truth
 
-- Handlers follow existing MCP pattern in codebase
+| State | Location | Type |
+|-------|----------|------|
+| Meta-learning status | `MetaUtlTracker` fields | Struct in MCP handlers |
+| Lambda weights | `MetaUtlTracker.current_weights` | `[f32; NUM_EMBEDDERS]` |
+| Accuracy history | `MetaUtlTracker.embedder_accuracy` | `[[f32; 100]; NUM_EMBEDDERS]` |
+| Escalation state | `MetaUtlTracker.escalation_triggered` | `bool` |
+| Event log | `MetaLearningEventLog.events` | `VecDeque<MetaLearningEvent>` (TASK-004) |
+
+**FSV Verification for MCP Tools**:
+1. After `get_meta_learning_status`: Compare returned values with direct MetaUtlTracker access
+2. After `trigger_lambda_recalibration` (non-dry-run): Verify weights changed in tracker
+3. After `get_meta_learning_log`: Verify event count matches log state
+
+---
+
+## 14. FSV Requirements
+
+### 14.1 Full State Verification Pattern
+
+```rust
+/// FSV: Verify MCP tool response matches actual state
+#[cfg(test)]
+async fn fsv_verify_status_tool(service: &MetaLearningService) {
+    // 1. Call MCP tool
+    let input = GetMetaLearningStatusInput::default();
+    let output = handle_get_meta_learning_status(input, service).await.unwrap();
+
+    // 2. INSPECT: Read actual state directly (not from tool response)
+    let tracker_accuracy = service.current_accuracy();
+    let tracker_consecutive = service.consecutive_low_count();
+
+    // 3. VERIFY: Compare tool output with actual state
+    assert!(
+        (output.current_accuracy - tracker_accuracy).abs() < 0.001,
+        "FSV: Status tool accuracy {} does not match tracker {}",
+        output.current_accuracy, tracker_accuracy
+    );
+    assert_eq!(
+        output.consecutive_low_count as usize, tracker_consecutive as usize,
+        "FSV: Status tool consecutive_low_count mismatch"
+    );
+}
+```
+
+### 14.2 Edge Case Audit (3 Cases)
+
+#### Edge Case 1: Dry Run Does Not Mutate State
+
+```rust
+#[tokio::test]
+async fn fsv_edge_case_dry_run_no_mutation() {
+    let mut service = MetaLearningService::with_defaults();
+
+    // BEFORE STATE
+    let before_weights = service.current_lambdas();
+    let before_adjustment_count = service.adjustment_count();
+    println!("BEFORE: weights={:?}, adjustment_count={}", before_weights, before_adjustment_count);
+
+    // ACTION: Dry run recalibration
+    let input = TriggerRecalibrationInput {
+        force_bayesian: false,
+        domain: None,
+        dry_run: true, // <-- DRY RUN
+    };
+    let output = handle_trigger_lambda_recalibration(input, &mut service).await.unwrap();
+
+    // AFTER STATE (FSV)
+    let after_weights = service.current_lambdas();
+    let after_adjustment_count = service.adjustment_count();
+    println!("AFTER: weights={:?}, adjustment_count={}", after_weights, after_adjustment_count);
+    println!("OUTPUT: dry_run={}, success={}", output.dry_run, output.success);
+
+    // VERIFY: State unchanged
+    assert!(output.dry_run, "FSV: Output should indicate dry_run=true");
+    assert_eq!(before_weights.lambda_s, after_weights.lambda_s, "FSV: Dry run mutated lambda_s!");
+    assert_eq!(before_adjustment_count, after_adjustment_count, "FSV: Dry run changed adjustment_count!");
+}
+```
+
+#### Edge Case 2: Invalid Enum Values Rejected
+
+```rust
+#[tokio::test]
+async fn fsv_edge_case_invalid_input() {
+    let service = MetaLearningService::with_defaults();
+
+    // BEFORE STATE
+    println!("BEFORE: Testing invalid inputs");
+
+    // ACTION: Query with invalid event type
+    let input = GetMetaLearningLogInput {
+        event_type: Some("invalid_event_type".to_string()), // <-- INVALID
+        ..Default::default()
+    };
+    let result = handle_get_meta_learning_log(input, &service).await;
+
+    // AFTER STATE (FSV)
+    println!("AFTER: result.is_err()={}", result.is_err());
+
+    // VERIFY: Should fail fast with clear error
+    assert!(result.is_err(), "FSV: Invalid event_type should return error");
+    let err = result.unwrap_err();
+    assert!(
+        format!("{:?}", err).contains("invalid") || format!("{:?}", err).contains("event_type"),
+        "FSV: Error message should mention invalid event_type"
+    );
+}
+```
+
+#### Edge Case 3: Pagination Returns Correct Subset
+
+```rust
+#[tokio::test]
+async fn fsv_edge_case_pagination() {
+    let mut service = MetaLearningService::with_defaults();
+
+    // Setup: Create 25 events
+    for i in 0..25 {
+        service.record_prediction(i % 13, 0.8, 0.5, None, 0.001).unwrap();
+    }
+
+    // BEFORE STATE
+    let total_events = service.event_stats().current_count;
+    println!("BEFORE: total_events={}", total_events);
+
+    // ACTION: Query page 2 (offset=10, limit=10)
+    let input = GetMetaLearningLogInput {
+        limit: 10,
+        offset: 10,
+        ..Default::default()
+    };
+    let output = handle_get_meta_learning_log(input, &service).await.unwrap();
+
+    // AFTER STATE (FSV)
+    println!("AFTER: returned={}, total_count={}, has_more={}",
+        output.events.len(), output.total_count, output.has_more);
+
+    // VERIFY
+    assert_eq!(output.events.len(), 10, "FSV: Should return exactly 10 events");
+    assert_eq!(output.total_count, total_events, "FSV: total_count should match all events");
+    assert!(output.has_more, "FSV: has_more should be true (5 more events after offset 20)");
+}
+```
+
+### 14.3 Evidence of Success
+
+When tests pass, output should show:
+
+```
+BEFORE: weights=LambdaValues { lambda_s: 0.5, lambda_c: 0.5 }, adjustment_count=0
+AFTER: weights=LambdaValues { lambda_s: 0.5, lambda_c: 0.5 }, adjustment_count=0
+OUTPUT: dry_run=true, success=true
+✓ FSV: Dry run verified - no mutation
+
+BEFORE: Testing invalid inputs
+AFTER: result.is_err()=true
+✓ FSV: Invalid input rejected with error
+
+BEFORE: total_events=25
+AFTER: returned=10, total_count=25, has_more=true
+✓ FSV: Pagination verified
+```
+
+---
+
+## 15. Fail-Fast Error Handling
+
+```rust
+/// Error types for meta-learning MCP handlers
+#[derive(Debug, thiserror::Error)]
+pub enum MetaLearningMcpError {
+    #[error("Invalid event type '{value}'. Valid types: lambda_adjustment, bayesian_escalation, accuracy_alert, accuracy_recovery, weight_clamped")]
+    InvalidEventType { value: String },
+
+    #[error("Invalid domain '{value}'. Valid domains: code, medical, legal, creative, research, general")]
+    InvalidDomain { value: String },
+
+    #[error("Invalid timestamp format '{value}'. Expected ISO 8601 (e.g., 2024-01-15T10:30:00Z)")]
+    InvalidTimestamp { value: String },
+
+    #[error("Pagination offset {offset} exceeds total count {total}")]
+    InvalidPaginationOffset { offset: usize, total: usize },
+
+    #[error("Service unavailable: {reason}")]
+    ServiceUnavailable { reason: String },
+}
+
+impl From<MetaLearningMcpError> for McpError {
+    fn from(err: MetaLearningMcpError) -> Self {
+        match err {
+            MetaLearningMcpError::InvalidEventType { .. } |
+            MetaLearningMcpError::InvalidDomain { .. } |
+            MetaLearningMcpError::InvalidTimestamp { .. } |
+            MetaLearningMcpError::InvalidPaginationOffset { .. } => {
+                McpError::InvalidParams(err.to_string())
+            }
+            MetaLearningMcpError::ServiceUnavailable { .. } => {
+                McpError::InternalError(err.to_string())
+            }
+        }
+    }
+}
+
+/// FAIL-FAST: Validate input before processing
+fn parse_event_type(s: &str) -> Result<MetaLearningEventType, MetaLearningMcpError> {
+    match s.to_lowercase().as_str() {
+        "lambda_adjustment" => Ok(MetaLearningEventType::LambdaAdjustment),
+        "bayesian_escalation" => Ok(MetaLearningEventType::BayesianEscalation),
+        "accuracy_alert" => Ok(MetaLearningEventType::AccuracyAlert),
+        "accuracy_recovery" => Ok(MetaLearningEventType::AccuracyRecovery),
+        "weight_clamped" => Ok(MetaLearningEventType::WeightClamped),
+        _ => Err(MetaLearningMcpError::InvalidEventType { value: s.to_string() }),
+    }
+}
+```
+
+---
+
+## 16. Notes
+
+- Handlers follow existing MCP pattern in codebase (see gwt.rs, utl.rs)
 - Service facade simplifies handler implementation
 - Thread safety via Arc<RwLock<>> in actual usage
 - Pagination uses offset/limit (not cursor) for simplicity
 - Timestamp parsing uses chrono's flexible parser
 - Dry run enables testing without side effects
+- **Architecture Decision**: All meta-learning components in MCP crate for direct integration
+  with MCP request/response cycle
 
 ---
 
@@ -965,3 +1216,4 @@ If this task fails validation:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0.0 | 2026-01-11 | ContextGraph Team | Initial task specification |
+| 2.0.0 | 2026-01-12 | AI Agent | Updated paths to MCP crate, added FSV sections, Source of Truth, Edge Cases, Fail-Fast error handling |

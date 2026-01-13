@@ -283,7 +283,7 @@ async fn inject_synthetic_production() {
 
     for (i, (topic, content)) in SYNTHETIC_MEMORIES.iter().enumerate() {
         let fingerprint = create_synthetic_fingerprint(content, topic);
-        let id = fingerprint.id;
+        let _id = fingerprint.id;
 
         match store.store(fingerprint).await {
             Ok(stored_id) => {

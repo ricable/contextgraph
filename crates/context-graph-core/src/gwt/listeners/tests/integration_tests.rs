@@ -36,6 +36,7 @@ async fn test_all_listeners_receive_all_events() {
             id: Uuid::new_v4(),
             order_parameter: 0.85,
             timestamp: Utc::now(),
+            fingerprint: None, // TASK-IDENTITY-P0-006
         },
         WorkspaceEvent::MemoryExits {
             id: Uuid::new_v4(),
@@ -52,6 +53,8 @@ async fn test_all_listeners_receive_all_events() {
         },
         WorkspaceEvent::IdentityCritical {
             identity_coherence: 0.4,
+            previous_status: "Warning".to_string(),
+            current_status: "Critical".to_string(),
             reason: "Test".to_string(),
             timestamp: Utc::now(),
         },

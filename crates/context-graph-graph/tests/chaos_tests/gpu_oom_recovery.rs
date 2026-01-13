@@ -157,7 +157,7 @@ fn test_gpu_cascading_oom_prevention() {
 
     // STEP 2: WorkingMemory should still work
     println!("AFTER FaissIndex exhaustion: Testing WorkingMemory");
-    let h2 = manager.allocate(1 * 1024 * 1024, MemoryCategory::WorkingMemory);
+    let h2 = manager.allocate(1024 * 1024, MemoryCategory::WorkingMemory);
     assert!(h2.is_ok(), "WorkingMemory should still work");
     println!("WorkingMemory allocation succeeded: {}", h2.is_ok());
 
@@ -183,7 +183,7 @@ fn test_gpu_cascading_oom_prevention() {
     assert_eq!(faiss_usage, 2 * 1024 * 1024, "FaissIndex should be 2MB");
     assert_eq!(
         working_usage,
-        1 * 1024 * 1024,
+        1024 * 1024,
         "WorkingMemory should be 1MB"
     );
 

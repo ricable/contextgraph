@@ -1,3 +1,5 @@
+#![allow(clippy::field_reassign_with_default)]
+
 //! TCP Transport Integration Tests
 //!
 //! TASK-INTEG-020: Full integration tests for TCP transport.
@@ -89,7 +91,7 @@ fn test_tcp_error_codes_in_range() {
 
     for code in codes {
         assert!(
-            code >= -32119 && code <= -32110,
+            (-32119..=-32110).contains(&code),
             "Error code {} should be in range -32119 to -32110",
             code
         );
@@ -381,7 +383,6 @@ async fn test_tcp_multiple_connections() {
     // Open multiple connections
     let mut handles = Vec::new();
     for i in 0..3 {
-        let addr = addr.clone();
         let handle = tokio::spawn(async move {
             let mut stream = connect_with_timeout(&addr, 5)
                 .await

@@ -1,4 +1,7 @@
 #![deny(deprecated)]
+#![allow(clippy::field_reassign_with_default)]
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::type_complexity)]
 
 //! UTL (Unified Theory of Learning) computation engine for Context Graph.
 //!

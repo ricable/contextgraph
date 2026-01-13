@@ -6,6 +6,8 @@
 //! Tests use deterministic RNG (seed=42) for reproducibility.
 //! All expected outputs are computed from known mathematical formulas.
 
+#![allow(clippy::needless_range_loop)] // Intentional index-based iteration for clarity in tests
+
 use context_graph_core::dream::{
     PoincareBallConfig,
     direction_toward,

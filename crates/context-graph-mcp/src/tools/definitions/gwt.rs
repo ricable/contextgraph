@@ -61,11 +61,14 @@ pub fn definitions() -> Vec<ToolDefinition> {
             }),
         ),
 
-        // get_ego_state - Self-Ego Node state (TASK-GWT-001)
+        // get_ego_state - Self-Ego Node state (TASK-GWT-001, TASK-IDENTITY-P0-007)
         ToolDefinition::new(
             "get_ego_state",
             "Get Self-Ego Node state including purpose vector (13D), identity continuity, \
-             coherence with actions, and trajectory length. Used for identity monitoring. \
+             coherence with actions, trajectory length, and crisis detection state. \
+             TASK-IDENTITY-P0-007: Response includes identity_continuity object with: \
+             ic (0.0-1.0), status (Healthy/Warning/Degraded/Critical), in_crisis (bool), \
+             history_len (int), and last_detection (CrisisDetectionResult or null). \
              Requires GWT providers to be initialized via with_gwt() constructor.",
             json!({
                 "type": "object",

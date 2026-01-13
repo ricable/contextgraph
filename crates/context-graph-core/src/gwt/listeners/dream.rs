@@ -57,14 +57,18 @@ impl WorkspaceEventListener for DreamEventListener {
             }
             WorkspaceEvent::IdentityCritical {
                 identity_coherence,
+                previous_status,
+                current_status,
                 reason,
                 timestamp: _,
             } => {
                 // Log identity critical - DreamController handles separately via direct wiring
                 tracing::warn!(
-                    "Identity critical (IC={:.3}): {}",
+                    "Identity critical (IC={:.3}): {} (transition: {} -> {})",
                     identity_coherence,
-                    reason
+                    reason,
+                    previous_status,
+                    current_status,
                 );
             }
             // No-op for other events

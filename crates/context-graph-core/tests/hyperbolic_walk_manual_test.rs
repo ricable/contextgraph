@@ -112,7 +112,7 @@ fn edge_case_2_many_starting_positions_high_temp() {
         .collect();
 
     println!("  - Unique starting positions explored: {}", unique_starts.len());
-    assert!(unique_starts.len() >= 1, "Should explore from at least one starting position");
+    assert!(!unique_starts.is_empty(), "Should explore from at least one starting position");
 
     // Log some blind spot details if found
     for (i, blind_spot) in result.all_blind_spots.iter().take(5).enumerate() {

@@ -1,4 +1,7 @@
 #![deny(deprecated)]
+#![allow(clippy::field_reassign_with_default)]
+#![allow(clippy::module_inception)]
+#![allow(clippy::needless_range_loop)]
 
 //! Context Graph Core Library
 //!

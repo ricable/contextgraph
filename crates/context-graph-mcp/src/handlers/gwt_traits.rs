@@ -78,6 +78,8 @@ pub trait KuramotoProvider: Send + Sync {
 ///
 /// Wraps ConsciousnessCalculator from context-graph-core for handler access.
 /// TASK-GWT-001: Required for consciousness computation C(t) = I(t) x R(t) x D(t).
+/// TASK-IDENTITY-P0-007: Added async identity continuity methods.
+#[async_trait]
 pub trait GwtSystemProvider: Send + Sync {
     /// Compute consciousness level: C(t) = I(t) x R(t) x D(t)
     ///
@@ -117,6 +119,44 @@ pub trait GwtSystemProvider: Send + Sync {
 
     /// Get time spent in current state.
     fn time_in_state(&self) -> Duration;
+
+    // === TASK-IDENTITY-P0-007: Identity Continuity Methods ===
+
+    /// Get current identity coherence value (0.0-1.0).
+    ///
+    /// Returns the IC value from the identity continuity monitor.
+    /// Returns 0.0 if no IC computation has occurred yet.
+    ///
+    /// # TASK-IDENTITY-P0-007
+    async fn identity_coherence(&self) -> f32;
+
+    /// Get current identity status classification.
+    ///
+    /// Returns the status from the identity continuity monitor.
+    ///
+    /// # TASK-IDENTITY-P0-007
+    async fn identity_status(&self) -> context_graph_core::gwt::ego_node::IdentityStatus;
+
+    /// Check if the system is currently in identity crisis.
+    ///
+    /// Returns `true` if IC is below the crisis threshold (0.5).
+    ///
+    /// # TASK-IDENTITY-P0-007
+    async fn is_identity_crisis(&self) -> bool;
+
+    /// Get the number of purpose vectors in IC history.
+    ///
+    /// # TASK-IDENTITY-P0-007
+    async fn identity_history_len(&self) -> usize;
+
+    /// Get the last crisis detection result.
+    ///
+    /// Returns `None` if no crisis detection has been performed yet.
+    /// This method provides access to cached crisis state for MCP tools
+    /// without triggering a new detection cycle.
+    ///
+    /// # TASK-IDENTITY-P0-007
+    async fn last_detection(&self) -> Option<context_graph_core::gwt::ego_node::CrisisDetectionResult>;
 }
 
 /// Provider trait for workspace selection operations.

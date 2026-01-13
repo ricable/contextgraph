@@ -1,8 +1,8 @@
 # Task Specification: Escalation Logic and Bayesian Optimization
 
 **Task ID:** TASK-METAUTL-P0-003
-**Version:** 1.0.0
-**Status:** Ready
+**Version:** 2.0.0
+**Status:** NOT STARTED - Ready for Implementation
 **Layer:** Logic (Layer 2)
 **Sequence:** 3
 **Priority:** P0 (Critical)
@@ -14,21 +14,31 @@
 
 ### 1.1 Implements
 
-| Requirement ID | Description |
-|----------------|-------------|
-| REQ-METAUTL-008 | Escalate to Bayesian optimization when accuracy < 0.7 for 10 cycles |
-| REQ-METAUTL-009 | Bayesian optimization SHALL use GP surrogate with EI acquisition |
+| Requirement ID | Description | Current Status |
+|----------------|-------------|----------------|
+| REQ-METAUTL-008 | Escalate to Bayesian optimization when accuracy < 0.7 for 10 cycles | ⚠️ Partial - escalation detection exists in MetaUtlTracker |
+| REQ-METAUTL-009 | Bayesian optimization SHALL use GP surrogate with EI acquisition | ❌ Not Implemented |
 
 ### 1.2 Dependencies
 
 | Task ID | Description | Status |
 |---------|-------------|--------|
-| TASK-METAUTL-P0-001 | Core types | Must complete first |
-| TASK-METAUTL-P0-002 | Lambda adjustment | Must complete first |
+| TASK-METAUTL-P0-001 | Core types | ✅ COMPLETE |
+| TASK-METAUTL-P0-002 | Lambda adjustment | ❌ NOT STARTED |
 
 ### 1.3 Blocked By
 
-- TASK-METAUTL-P0-002 (adjustment algorithm must exist)
+- TASK-METAUTL-P0-002 (AdaptiveLambdaWeights must exist for BO to adjust)
+
+### 1.4 Partial Implementation Note
+
+The `MetaUtlTracker` (TASK-001) already has:
+- `consecutive_low_count: usize` - Tracks low accuracy cycles
+- `escalation_triggered: bool` - Flag for when escalation is needed
+- `needs_escalation() -> bool` - Checks if threshold reached
+- `config.max_consecutive_failures: 10` - Threshold setting
+
+What this task adds: The actual Bayesian optimization algorithm to find better lambda values.
 
 ---
 
@@ -50,14 +60,16 @@ This aligns with the 4-level Adaptive Threshold Calibration (ATC) architecture i
 
 ---
 
-## 3. Input Context Files
+## 3. Input Context Files (MUST READ)
 
-| File | Purpose |
-|------|---------|
-| `crates/context-graph-utl/src/meta/types.rs` | EscalationStatus, config types |
-| `crates/context-graph-utl/src/meta/correction.rs` | AdaptiveLambdaWeights |
-| `docs2/constitution.yaml` | ATC L4 Bayesian spec |
-| `specs/functional/SPEC-METAUTL-001.md` | Escalation requirements |
+| File | Purpose | Read Priority |
+|------|---------|---------------|
+| `crates/context-graph-mcp/src/handlers/core/meta_utl_tracker.rs` | Existing escalation detection | P0 |
+| `crates/context-graph-mcp/src/handlers/core/types.rs` | SelfCorrectionConfig, Domain | P0 |
+| `crates/context-graph-mcp/src/handlers/core/lambda_correction.rs` | AdaptiveLambdaWeights (after TASK-002) | P0 |
+| `crates/context-graph-utl/src/lifecycle/lambda.rs` | LifecycleLambdaWeights | P0 |
+| `docs2/constitution.yaml` | ATC L4 Bayesian spec | P0 |
+| `specs/functional/SPEC-METAUTL-001.md` | Escalation requirements | P1 |
 
 ---
 
@@ -85,10 +97,12 @@ This aligns with the 4-level Adaptive Threshold Calibration (ATC) architecture i
 
 ## 5. Prerequisites
 
-| Check | Description |
-|-------|-------------|
-| [ ] | TASK-METAUTL-P0-002 completed |
-| [ ] | `AdaptiveLambdaWeights` exists and compiles |
+| Check | Description | Status |
+|-------|-------------|--------|
+| [x] | TASK-METAUTL-P0-001 completed | ✅ DONE |
+| [ ] | TASK-METAUTL-P0-002 completed | ❌ BLOCKED |
+| [ ] | `AdaptiveLambdaWeights` exists and compiles | ❌ BLOCKED |
+| [x] | `needs_escalation()` method exists in MetaUtlTracker | ✅ EXISTS |
 
 ---
 
@@ -96,15 +110,14 @@ This aligns with the 4-level Adaptive Threshold Calibration (ATC) architecture i
 
 ### 6.1 Required Signatures
 
-#### File: `crates/context-graph-utl/src/meta/escalation.rs`
+#### File: `crates/context-graph-mcp/src/handlers/core/bayesian_optimizer.rs` (NEW FILE)
 
 ```rust
-use crate::error::{UtlError, UtlResult};
-use crate::lifecycle::LifecycleLambdaWeights;
-use super::types::{
-    EscalationStatus, SelfCorrectionConfig, MetaAccuracyHistory,
-};
-use super::correction::AdaptiveLambdaWeights;
+// NOTE: This file goes in MCP crate, per architecture decision
+use context_graph_utl::error::{UtlError, UtlResult};
+use context_graph_utl::lifecycle::LifecycleLambdaWeights;
+use super::types::SelfCorrectionConfig;
+use super::lambda_correction::AdaptiveLambdaWeights;  // From TASK-002
 
 /// Maximum BO iterations per escalation
 pub const MAX_BO_ITERATIONS: usize = 10;
@@ -316,16 +329,19 @@ pub struct EscalationStats {
 
 ```bash
 # Type check
-cargo check -p context-graph-utl
+cargo check -p context-graph-mcp
 
 # Unit tests
-cargo test -p context-graph-utl meta::escalation
+cargo test -p context-graph-mcp handlers::core::bayesian_optimizer
 
 # Specific GP tests
-cargo test -p context-graph-utl test_gaussian_process
+cargo test -p context-graph-mcp test_gaussian_process
+
+# BO convergence tests
+cargo test -p context-graph-mcp test_bo_finds_better_lambda
 
 # Clippy
-cargo clippy -p context-graph-utl -- -D warnings
+cargo clippy -p context-graph-mcp -- -D warnings
 ```
 
 ---
@@ -334,8 +350,7 @@ cargo clippy -p context-graph-utl -- -D warnings
 
 | Path | Description |
 |------|-------------|
-| `crates/context-graph-utl/src/meta/escalation.rs` | Escalation logic |
-| `crates/context-graph-utl/src/meta/tests_escalation.rs` | Unit tests |
+| `crates/context-graph-mcp/src/handlers/core/bayesian_optimizer.rs` | GP and BO implementation |
 
 ---
 
@@ -343,8 +358,19 @@ cargo clippy -p context-graph-utl -- -D warnings
 
 | Path | Modification |
 |------|--------------|
-| `crates/context-graph-utl/src/meta/mod.rs` | Add `pub mod escalation;` |
-| `crates/context-graph-utl/src/lib.rs` | Re-export escalation types |
+| `crates/context-graph-mcp/src/handlers/core/mod.rs` | Add `pub mod bayesian_optimizer;` |
+| `crates/context-graph-mcp/src/handlers/core/meta_utl_tracker.rs` | Integrate with BO when `needs_escalation()` returns true |
+
+---
+
+## 8.1 Source of Truth
+
+| Data Element | Source of Truth | Location |
+|--------------|-----------------|----------|
+| Escalation threshold (10 cycles) | SelfCorrectionConfig | `handlers/core/types.rs` |
+| Accuracy threshold (0.7) | SelfCorrectionConfig | `handlers/core/types.rs` |
+| Lambda bounds | Constitution NORTH-016 | `docs2/constitution.yaml` |
+| GP hyperparameters | Constants in this file | `bayesian_optimizer.rs` |
 
 ---
 
@@ -597,20 +623,94 @@ mod tests {
 
 If this task fails validation:
 
-1. Revert `crates/context-graph-utl/src/meta/escalation.rs`
-2. Remove mod declaration
-3. TASK-002 changes remain unaffected
-4. Document failure in task notes
+1. Revert `crates/context-graph-mcp/src/handlers/core/bayesian_optimizer.rs`
+2. Remove mod declaration from `core/mod.rs`
+3. TASK-002 AdaptiveLambdaWeights remain unaffected
+4. MetaUtlTracker escalation detection remains functional
+5. Document failure in task notes
 
 ---
 
-## 13. Notes
+## 13. Full State Verification (FSV) Requirements
+
+### 13.1 FSV Pattern
+
+```rust
+// DO NOT trust BO result blindly - verify it improves accuracy
+let result = manager.run_bayesian_optimization(current, evaluate_fn);
+
+if let Ok(proposed) = result {
+    // VERIFY: Actually evaluate proposed weights
+    let proposed_accuracy = evaluate_fn(proposed);
+    let current_accuracy = evaluate_fn(current);
+
+    // FSV assertion
+    assert!(proposed_accuracy >= current_accuracy * 0.95,
+        "FSV FAIL: BO proposed worse weights: {} vs {}",
+        proposed_accuracy, current_accuracy);
+}
+```
+
+### 13.2 Edge Case Audit (3 Required)
+
+| Edge Case ID | Condition | Before State | After State | Expected |
+|--------------|-----------|--------------|-------------|----------|
+| EC-001 | All GP observations same accuracy | [0.5,0.5,0.5] | ? | Should not crash, return best observed |
+| EC-002 | BO hits max iterations | iter=10 | timeout | Return best so far, not error |
+| EC-003 | Human escalation threshold | 3 failed BOs | needs_human=true | Trigger human review flag |
+
+### 13.3 Evidence of Success
+
+```rust
+#[test]
+fn test_fsv_bo_evidence() {
+    let mut manager = EscalationManager::new(config);
+
+    // BEFORE
+    let current = LifecycleLambdaWeights::for_stage(Growth);
+    println!("BEFORE: lambda_s={}", current.lambda_s());
+
+    // BO with known optimum at 0.6
+    let evaluate = |w: LifecycleLambdaWeights| 1.0 - (w.lambda_s() - 0.6).powi(2);
+    let result = manager.run_bayesian_optimization(current, evaluate);
+
+    // AFTER
+    let best = result.unwrap();
+    println!("AFTER: lambda_s={}", best.lambda_s());
+    println!("ITERATIONS: {}", manager.gp.num_observations());
+    println!("BEST_ACCURACY: {}", evaluate(best));
+}
+```
+
+---
+
+## 14. Notes
 
 - The GP implementation is simplified (1D only) for lambda_s optimization
 - lambda_c is computed as 1.0 - lambda_s to maintain sum invariant
 - Full multi-dimensional BO with botorch/gpytorch is Phase 2
 - Human escalation provides safety valve for pathological cases
 - Initial samples use Latin hypercube-like spacing for coverage
+- **NO BACKWARDS COMPATIBILITY**: If BO fails, FAIL FAST with error
+
+---
+
+## 15. Fail-Fast Error Handling
+
+```rust
+fn run_bayesian_optimization<F>(...) -> UtlResult<LifecycleLambdaWeights>
+where F: FnMut(LifecycleLambdaWeights) -> f32 {
+    // FAIL FAST on invalid state
+    if self.status == EscalationStatus::HumanReviewRequired {
+        tracing::error!("BO rejected: Human review already required");
+        return Err(UtlError::EscalationBlocked {
+            reason: "Human review required before further optimization".into()
+        });
+    }
+
+    // ... implementation
+}
+```
 
 ---
 
@@ -619,3 +719,4 @@ If this task fails validation:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0.0 | 2026-01-11 | ContextGraph Team | Initial task specification |
+| 2.0.0 | 2026-01-12 | AI Agent | Updated file paths to MCP crate, added FSV sections, fail-fast requirements |

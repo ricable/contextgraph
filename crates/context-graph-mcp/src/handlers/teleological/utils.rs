@@ -8,12 +8,18 @@
 //! Constitution AP-03: "No dimension projection to fake compatibility"
 //!
 //! The 13 embedders produce vectors of different native dimensions:
-//! - E1 Semantic: 1024D          - E8 Graph: 384D
-//! - E2-E4 Temporal: 512D each   - E9 HDC: 1024D
-//! - E5 Causal: 768D             - E10 Multimodal: 768D
-//! - E6 Sparse: ~30K vocab       - E11 Entity: 384D
-//! - E7 Code: 1536D              - E12 Late Interaction: 128D/token
-//!                               - E13 SPLADE: ~30K vocab (sparse)
+//!
+//! - E1 Semantic: 1024D
+//! - E2-E4 Temporal: 512D each
+//! - E5 Causal: 768D
+//! - E6 Sparse: ~30K vocab
+//! - E7 Code: 1536D
+//! - E8 Graph: 384D
+//! - E9 HDC: 1024D
+//! - E10 Multimodal: 768D
+//! - E11 Entity: 384D
+//! - E12 Late Interaction: 128D/token
+//! - E13 SPLADE: ~30K vocab (sparse)
 //!
 //! Per constitution, embeddings MUST be kept in native dimensions.
 //! Use FusionEngine::fuse_from_alignments() which works with alignment scores

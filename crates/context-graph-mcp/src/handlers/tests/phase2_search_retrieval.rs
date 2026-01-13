@@ -423,7 +423,7 @@ async fn phase2_memory_retrieve_by_fingerprint_id() {
             .expect("retrieve() should work")
             .expect("Fingerprint must exist");
 
-        let store_content_hash = hex::encode(&direct_fp.content_hash);
+        let store_content_hash = hex::encode(direct_fp.content_hash);
 
         println!(
             "    - MCP content_hash:   {}",

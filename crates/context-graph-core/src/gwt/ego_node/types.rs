@@ -4,6 +4,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 /// Maximum purpose vector history size per constitution
 /// Reference: constitution.yaml line 390 (identity_trajectory: 1000)
@@ -20,6 +21,12 @@ pub const IC_CRITICAL_THRESHOLD: f32 = 0.5;
 /// Epsilon for numerical stability in magnitude comparisons
 /// Prevents division by zero in cosine similarity calculation
 pub(crate) const COSINE_EPSILON: f32 = 1e-8;
+
+/// Minimum time between crisis event emissions (30 seconds)
+/// Prevents event spam during IC fluctuations
+/// Per constitution.yaml: throttle workspace events
+/// TASK-IDENTITY-P0-004: Crisis Detection
+pub const CRISIS_EVENT_COOLDOWN: Duration = Duration::from_secs(30);
 
 /// Snapshot of purpose vector at a point in time
 ///

@@ -181,7 +181,7 @@ fn fsv_cosine_similarity_13d_mathematical_properties() {
         for (j, v2) in test_vectors.iter().enumerate() {
             let cos = cosine_similarity_13d(v1, v2);
             assert!(
-                cos >= -1.0 && cos <= 1.0,
+                (-1.0..=1.0).contains(&cos),
                 "Bounded violation at ({}, {}): {}",
                 i,
                 j,

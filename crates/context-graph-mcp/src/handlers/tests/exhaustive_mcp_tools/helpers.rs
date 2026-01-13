@@ -27,7 +27,7 @@ pub fn assert_success(response: &crate::protocol::JsonRpcResponse, tool_name: &s
     let result = response
         .result
         .as_ref()
-        .expect(&format!("{} must return a result", tool_name));
+        .unwrap_or_else(|| panic!("{} must return a result", tool_name));
     let is_error = result
         .get("isError")
         .and_then(|v| v.as_bool())
@@ -45,7 +45,7 @@ pub fn assert_tool_error(response: &crate::protocol::JsonRpcResponse, tool_name:
     let result = response
         .result
         .as_ref()
-        .expect(&format!("{} must return a result with isError", tool_name));
+        .unwrap_or_else(|| panic!("{} must return a result with isError", tool_name));
     let is_error = result
         .get("isError")
         .and_then(|v| v.as_bool())

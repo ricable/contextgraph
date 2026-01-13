@@ -384,6 +384,7 @@ impl MetaUtlTracker {
     ///
     /// TASK-METAUTL-P0-001: Returns true when accuracy has been below 0.7
     /// for 10 or more consecutive cycles.
+    #[allow(dead_code)] // API reserved for TASK-METAUTL-P0-005 integration
     pub fn needs_escalation(&self) -> bool {
         self.escalation_triggered
     }
@@ -392,6 +393,7 @@ impl MetaUtlTracker {
     ///
     /// TASK-METAUTL-P0-001: Returns the number of consecutive cycles
     /// with overall accuracy below 0.7.
+    #[allow(dead_code)] // API reserved for TASK-METAUTL-P0-005 integration
     pub fn consecutive_low_count(&self) -> usize {
         self.consecutive_low_count
     }
@@ -400,6 +402,7 @@ impl MetaUtlTracker {
     ///
     /// TASK-METAUTL-P0-001: Call this after taking corrective action
     /// (e.g., after Bayesian optimization completes).
+    #[allow(dead_code)] // API reserved for TASK-METAUTL-P0-005 integration
     pub fn reset_consecutive_low(&mut self) {
         if self.consecutive_low_count > 0 || self.escalation_triggered {
             debug!(
@@ -415,6 +418,7 @@ impl MetaUtlTracker {
     /// Get the self-correction configuration.
     ///
     /// TASK-METAUTL-P0-001: Provides access to constitution-defined parameters.
+    #[allow(dead_code)] // API reserved for TASK-METAUTL-P0-005 integration
     pub fn config(&self) -> &SelfCorrectionConfig {
         &self.config
     }

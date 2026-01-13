@@ -13,6 +13,9 @@
 //!
 //! 3. **Identical**: No change between fingerprints
 //!    - Expected: Delta_S ~= 0, valid Delta_C
+
+#![allow(clippy::absurd_extreme_comparisons)] // Comparisons against 0.0 intentional for validation
+#![allow(clippy::type_complexity)] // Complex tuples needed for test result extraction
 //!
 //! # Running the Test
 //!
@@ -78,7 +81,7 @@ fn verify_delta_s_count(delta_s_per_embedder: &[f64]) -> Result<(), String> {
 
 /// Verify all values are in [0, 1] range.
 fn verify_range_01(value: f64, name: &str) -> Result<(), String> {
-    if value < 0.0 || value > 1.0 {
+    if !(0.0..=1.0).contains(&value) {
         return Err(format!(
             "FAIL: {} = {} is outside [0, 1] range",
             name, value

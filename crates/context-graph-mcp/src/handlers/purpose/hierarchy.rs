@@ -64,7 +64,7 @@ impl Handlers {
         match operation {
             "get_all" => {
                 let goals: Vec<serde_json::Value> =
-                    hierarchy.iter().map(|g| goal_to_json(g)).collect();
+                    hierarchy.iter().map(goal_to_json).collect();
 
                 let stats = compute_hierarchy_stats(&hierarchy);
 
@@ -152,7 +152,7 @@ impl Handlers {
                 let children: Vec<serde_json::Value> = hierarchy
                     .children(&goal_id)
                     .into_iter()
-                    .map(|g| goal_to_json(g))
+                    .map(goal_to_json)
                     .collect();
 
                 JsonRpcResponse::success(
@@ -201,7 +201,7 @@ impl Handlers {
                 let ancestors: Vec<serde_json::Value> = path
                     .iter()
                     .filter_map(|gid| hierarchy.get(gid))
-                    .map(|g| goal_to_json(g))
+                    .map(goal_to_json)
                     .collect();
 
                 JsonRpcResponse::success(

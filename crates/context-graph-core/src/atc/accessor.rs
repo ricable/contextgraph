@@ -122,7 +122,7 @@ mod tests {
             assert!(value.is_some(), "Threshold {} should exist", name);
             let v = value.unwrap();
             assert!(
-                v >= 0.0 && v <= 1.0,
+                (0.0..=1.0).contains(&v),
                 "Threshold {} = {} out of [0,1]",
                 name,
                 v
@@ -141,7 +141,7 @@ mod tests {
     fn test_get_threshold_or_general_fallback() {
         let atc = AdaptiveThresholdCalibration::new();
         let value = atc.get_threshold_or_general("theta_opt", Domain::Code);
-        assert!(value >= 0.60 && value <= 0.90);
+        assert!((0.60..=0.90).contains(&value));
     }
 
     #[test]

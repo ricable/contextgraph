@@ -673,7 +673,7 @@ mod tests {
     #[test]
     fn test_transport_mode_clone() {
         let original = TransportMode::Tcp;
-        let cloned = original.clone();
+        let cloned = original;
 
         assert!(matches!(cloned, TransportMode::Tcp));
     }

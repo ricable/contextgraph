@@ -24,7 +24,7 @@ async fn test_tools_list_returns_all_35_tools() {
         .as_array()
         .expect("tools must be an array");
 
-    // Verify exactly 36 tools returned:
+    // Verify exactly 39 tools returned:
     // Original 6: inject_context, store_memory, get_memetic_status, get_graph_manifest, search_graph, utl_status
     // GWT 6: get_consciousness_state, get_kuramoto_sync, get_workspace_status, get_ego_state, trigger_workspace_broadcast, adjust_coupling
     // ATC 3 (TASK-ATC-001): get_threshold_status, get_calibration_metrics, trigger_recalibration
@@ -36,10 +36,11 @@ async fn test_tools_list_returns_all_35_tools() {
     // Teleological 5 (TELEO-007 to TELEO-011): search_teleological, compute_teleological_vector, fuse_embeddings, update_synergy_matrix, manage_teleological_profile
     // Autonomous 7 (TASK-AUTONOMOUS-MCP): auto_bootstrap_north_star, get_alignment_drift, trigger_drift_correction, get_pruning_candidates, trigger_consolidation, discover_sub_goals, get_autonomous_status
     // UTL 1 (TASK-UTL-P1-001): gwt/compute_delta_sc
+    // Meta-UTL 3 (TASK-METAUTL-P0-005): get_meta_learning_status, trigger_lambda_recalibration, get_meta_learning_log
     assert_eq!(
         tools.len(),
-        36,
-        "Must return exactly 36 tools, got {}",
+        39,
+        "Must return exactly 39 tools, got {}",
         tools.len()
     );
 }

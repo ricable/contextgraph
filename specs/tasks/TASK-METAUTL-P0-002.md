@@ -1,8 +1,8 @@
 # Task Specification: Lambda Adjustment Algorithm
 
 **Task ID:** TASK-METAUTL-P0-002
-**Version:** 1.0.0
-**Status:** Ready
+**Version:** 2.0.0
+**Status:** NOT STARTED - Ready for Implementation
 **Layer:** Logic (Layer 2)
 **Sequence:** 2
 **Priority:** P0 (Critical)
@@ -14,48 +14,69 @@
 
 ### 1.1 Implements
 
-| Requirement ID | Description |
-|----------------|-------------|
-| REQ-METAUTL-003 | Adjust lambda_s and lambda_c when prediction_error > 0.2 |
-| REQ-METAUTL-004 | Lambda adjustment formula: lambda_new = lambda_old + alpha * (target - actual) |
-| REQ-METAUTL-005 | Alpha modulated by current ACh level |
-| REQ-METAUTL-006 | Lambda weights SHALL always sum to 1.0 |
-| REQ-METAUTL-007 | Lambda weights SHALL be clamped to [0.1, 0.9] |
+| Requirement ID | Description | Current Status |
+|----------------|-------------|----------------|
+| REQ-METAUTL-003 | Adjust lambda_s and lambda_c when prediction_error > 0.2 | ❌ Not Implemented |
+| REQ-METAUTL-004 | Lambda adjustment formula: lambda_new = lambda_old + alpha * (target - actual) | ❌ Not Implemented |
+| REQ-METAUTL-005 | Alpha modulated by current ACh level | ❌ Not Implemented |
+| REQ-METAUTL-006 | Lambda weights SHALL always sum to 1.0 | ✅ Enforced in LifecycleLambdaWeights |
+| REQ-METAUTL-007 | Lambda weights SHALL be clamped to [0.05, 0.9] | ⚠️ Partial - per-embedder weights clamped, not lambda_s/lambda_c |
 
 ### 1.2 Dependencies
 
 | Task ID | Description | Status |
 |---------|-------------|--------|
-| TASK-METAUTL-P0-001 | Core types and accuracy history | Must complete first |
+| TASK-METAUTL-P0-001 | Core types and accuracy history | ✅ COMPLETE |
 
 ### 1.3 Blocked By
 
-- TASK-METAUTL-P0-001 (types must exist)
+- ~~TASK-METAUTL-P0-001~~ ✅ COMPLETE - No longer blocked
 
 ---
 
 ## 2. Context
 
-This task implements the core lambda adjustment algorithm that enables the system to self-correct its learning parameters based on prediction errors. The algorithm must:
+### 2.1 Problem Statement
+
+This task implements the core lambda adjustment algorithm that enables the system to self-correct its learning parameters (lambda_s for surprise, lambda_c for coherence) based on prediction errors. This is DISTINCT from the per-embedder weight adjustment already implemented in `MetaUtlTracker`.
+
+**Key distinction:**
+- `MetaUtlTracker.current_weights[13]` - Per-embedder weights (implemented in TASK-001)
+- `LifecycleLambdaWeights.lambda_s/lambda_c` - Surprise/coherence weights (THIS TASK)
+
+### 2.2 Algorithm Requirements
 
 1. Detect when prediction error exceeds threshold (0.2)
 2. Compute adjustment delta using ACh-modulated learning rate
 3. Apply adjustment while maintaining sum-to-one invariant
-4. Clamp values to valid bounds [0.1, 0.9]
-5. Integrate with existing LifecycleLambdaWeights
+4. Clamp values to valid bounds [0.05, 0.9] per NORTH-016
+5. Create `AdaptiveLambdaWeights` wrapper around `LifecycleLambdaWeights`
 
-The current `LifecycleLambdaWeights` in `lambda.rs` only provides fixed weights per lifecycle stage. This task adds dynamic adjustment capability.
+### 2.3 Current State
+
+The current `LifecycleLambdaWeights` in `lambda.rs` provides:
+- Fixed weights per lifecycle stage (Infancy: 0.7/0.3, Growth: 0.5/0.5, Maturity: 0.3/0.7)
+- Interpolation between stages
+- No self-correction capability
+
+This task adds dynamic adjustment capability via a wrapper struct.
+
+### 2.4 Architecture Decision
+
+**IMPORTANT**: Following the architecture decision from TASK-001, new Meta-UTL types should be placed in `crates/context-graph-mcp/src/handlers/core/` directory, NOT in `crates/context-graph-utl/src/meta/`. The MCP crate owns Meta-UTL state.
 
 ---
 
-## 3. Input Context Files
+## 3. Input Context Files (MUST READ)
 
-| File | Purpose |
-|------|---------|
-| `crates/context-graph-utl/src/lifecycle/lambda.rs` | Existing lambda weights |
-| `crates/context-graph-utl/src/meta/types.rs` | Types from TASK-001 |
-| `crates/context-graph-core/src/gwt/meta_cognitive.rs` | ACh level access patterns |
-| `specs/functional/SPEC-METAUTL-001.md` | Algorithm specification |
+| File | Purpose | Read Priority |
+|------|---------|---------------|
+| `crates/context-graph-mcp/src/handlers/core/meta_utl_tracker.rs` | Existing Meta-UTL tracker | P0 |
+| `crates/context-graph-mcp/src/handlers/core/types.rs` | SelfCorrectionConfig, MetaLearningEvent | P0 |
+| `crates/context-graph-utl/src/lifecycle/lambda.rs` | LifecycleLambdaWeights (643 lines) | P0 |
+| `crates/context-graph-core/src/gwt/meta_cognitive/` | ACh level access patterns | P1 |
+| `docs2/constitution.yaml` | NORTH-016 weight bounds | P0 |
+| `specs/functional/SPEC-METAUTL-001.md` | Algorithm specification | P1 |
 
 ---
 
@@ -82,11 +103,12 @@ The current `LifecycleLambdaWeights` in `lambda.rs` only provides fixed weights 
 
 ## 5. Prerequisites
 
-| Check | Description |
-|-------|-------------|
-| [ ] | TASK-METAUTL-P0-001 completed |
-| [ ] | `crates/context-graph-utl/src/meta/types.rs` exists |
-| [ ] | Types compile successfully |
+| Check | Description | Status |
+|-------|-------------|--------|
+| [x] | TASK-METAUTL-P0-001 completed | ✅ DONE |
+| [x] | `crates/context-graph-mcp/src/handlers/core/types.rs` exists | ✅ EXISTS |
+| [x] | SelfCorrectionConfig, MetaLearningEvent types compile | ✅ COMPILES |
+| [ ] | Understand LifecycleLambdaWeights in `lifecycle/lambda.rs` | READ REQUIRED |
 
 ---
 
@@ -94,14 +116,14 @@ The current `LifecycleLambdaWeights` in `lambda.rs` only provides fixed weights 
 
 ### 6.1 Required Signatures
 
-#### File: `crates/context-graph-utl/src/meta/correction.rs`
+#### File: `crates/context-graph-mcp/src/handlers/core/lambda_correction.rs` (NEW FILE)
 
 ```rust
-use crate::error::{UtlError, UtlResult};
-use crate::lifecycle::LifecycleLambdaWeights;
+// NOTE: This file goes in MCP crate, not UTL crate, per architecture decision
+use context_graph_utl::error::{UtlError, UtlResult};
+use context_graph_utl::lifecycle::LifecycleLambdaWeights;
 use super::types::{
-    LambdaAdjustment, MetaAccuracyHistory, SelfCorrectionConfig,
-    EmbedderAccuracyTracker, Domain,
+    LambdaAdjustment, SelfCorrectionConfig, Domain,
 };
 
 /// Acetylcholine baseline for normalization
@@ -252,16 +274,19 @@ pub fn clamp_and_normalize(
 
 ```bash
 # Type check
-cargo check -p context-graph-utl
+cargo check -p context-graph-mcp
 
-# Unit tests
-cargo test -p context-graph-utl meta::correction
+# Unit tests (in MCP crate, not UTL)
+cargo test -p context-graph-mcp handlers::core::lambda_correction
 
 # Specific algorithm tests
-cargo test -p context-graph-utl test_adjustment_algorithm
+cargo test -p context-graph-mcp test_adjustment_algorithm
 
 # Clippy
-cargo clippy -p context-graph-utl -- -D warnings
+cargo clippy -p context-graph-mcp -- -D warnings
+
+# Verify sum invariant across random inputs
+cargo test -p context-graph-mcp test_sum_invariant_maintained
 ```
 
 ---
@@ -270,8 +295,7 @@ cargo clippy -p context-graph-utl -- -D warnings
 
 | Path | Description |
 |------|-------------|
-| `crates/context-graph-utl/src/meta/correction.rs` | Adjustment algorithm implementation |
-| `crates/context-graph-utl/src/meta/tests_correction.rs` | Unit tests |
+| `crates/context-graph-mcp/src/handlers/core/lambda_correction.rs` | Adjustment algorithm implementation |
 
 ---
 
@@ -279,8 +303,20 @@ cargo clippy -p context-graph-utl -- -D warnings
 
 | Path | Modification |
 |------|--------------|
-| `crates/context-graph-utl/src/meta/mod.rs` | Add `pub mod correction;` |
-| `crates/context-graph-utl/src/lib.rs` | Re-export `AdaptiveLambdaWeights`, `SelfCorrectingLambda` |
+| `crates/context-graph-mcp/src/handlers/core/mod.rs` | Add `pub mod lambda_correction;` |
+| `crates/context-graph-mcp/src/handlers/core/types.rs` | Add `LambdaAdjustment` struct if not present |
+
+---
+
+## 8.1 Source of Truth
+
+| Data Element | Source of Truth | Location |
+|--------------|-----------------|----------|
+| Lambda bounds (min/max) | Constitution NORTH-016 | `docs2/constitution.yaml` |
+| SelfCorrectionConfig defaults | types.rs Default impl | `handlers/core/types.rs` |
+| LifecycleLambdaWeights | UTL lifecycle module | `context-graph-utl/src/lifecycle/lambda.rs` |
+| ACh baseline/max constants | THIS FILE defines | `lambda_correction.rs` |
+| Prediction error threshold | SelfCorrectionConfig | `handlers/core/types.rs` |
 
 ---
 
@@ -546,20 +582,92 @@ mod tests {
 
 If this task fails validation:
 
-1. Revert files: `git checkout -- crates/context-graph-utl/src/meta/correction.rs`
-2. Remove mod declaration
+1. Revert files: `git checkout -- crates/context-graph-mcp/src/handlers/core/lambda_correction.rs`
+2. Remove mod declaration from `core/mod.rs`
 3. Document failure in task notes
 4. Types from TASK-001 remain unaffected
+5. Existing MetaUtlTracker functionality unaffected
 
 ---
 
-## 13. Notes
+## 13. Full State Verification (FSV) Requirements
+
+### 13.1 FSV Pattern
+
+```rust
+// DO NOT rely on return values alone - always verify state
+let adjustment = adaptive.adjust_lambdas(0.3, ACH_BASELINE);
+
+// VERIFY: Read back actual state after adjustment
+let current = adaptive.corrected_weights();
+let sum = current.lambda_s() + current.lambda_c();
+
+// FSV assertions
+assert!((sum - 1.0).abs() < 0.001, "FSV FAIL: sum invariant violated");
+assert!(current.lambda_s() >= 0.05, "FSV FAIL: lambda_s below min");
+assert!(current.lambda_s() <= 0.9, "FSV FAIL: lambda_s above max");
+```
+
+### 13.2 Edge Case Audit (3 Required)
+
+| Edge Case ID | Condition | Before State | After State | Expected |
+|--------------|-----------|--------------|-------------|----------|
+| EC-001 | Both lambdas at min bound (impossible) | λ_s=0.05, λ_c=0.05 | N/A | Should reject, sum != 1.0 |
+| EC-002 | Lambda_s at max, try to increase | λ_s=0.9, λ_c=0.1 | λ_s=0.9, λ_c=0.1 | No change, clamped |
+| EC-003 | Extreme negative error with high ACh | λ_s=0.5, error=-0.9, ACh=max | λ_s<=0.9 | Should not exceed max |
+
+### 13.3 Evidence of Success
+
+Test must print actual values:
+```rust
+#[test]
+fn test_fsv_lambda_adjustment_evidence() {
+    let mut adaptive = AdaptiveLambdaWeights::with_defaults(...);
+
+    // BEFORE state
+    println!("BEFORE: lambda_s={}, lambda_c={}",
+        adaptive.corrected_weights().lambda_s(),
+        adaptive.corrected_weights().lambda_c());
+
+    // Execute
+    let adj = adaptive.adjust_lambdas(0.35, ACH_MAX);
+
+    // AFTER state
+    println!("AFTER: lambda_s={}, lambda_c={}",
+        adaptive.corrected_weights().lambda_s(),
+        adaptive.corrected_weights().lambda_c());
+    println!("ADJUSTMENT: delta_s={:?}", adj.map(|a| a.delta_lambda_s));
+}
+```
+
+---
+
+## 14. Notes
 
 - The adjustment algorithm is conservative by design (alpha clamped to 0.1 max)
 - Direction convention: positive prediction_error means over-prediction
 - ACh modulation provides feedback from GWT consciousness level
-- Bounds of [0.1, 0.9] prevent extreme lambda values that would break learning
+- Bounds of [0.05, 0.9] per NORTH-016 (not [0.1, 0.9] as originally specified)
 - Sum normalization happens AFTER clamping to handle edge cases
+- **NO BACKWARDS COMPATIBILITY**: If invariants are violated, FAIL FAST with error
+
+---
+
+## 15. Fail-Fast Error Handling
+
+```rust
+// NO silent failures - all errors must be logged and returned
+fn adjust_lambdas(&mut self, error: f32, ach: f32) -> Result<Option<LambdaAdjustment>, UtlError> {
+    if error.is_nan() || error.is_infinite() {
+        tracing::error!("INVALID INPUT: prediction_error={}", error);
+        return Err(UtlError::InvalidInput {
+            field: "prediction_error".into(),
+            reason: format!("NaN or Infinite: {}", error)
+        });
+    }
+    // ... rest of implementation
+}
+```
 
 ---
 
@@ -568,3 +676,4 @@ If this task fails validation:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0.0 | 2026-01-11 | ContextGraph Team | Initial task specification |
+| 2.0.0 | 2026-01-12 | AI Agent | Updated file paths to MCP crate, added FSV sections, fail-fast requirements |

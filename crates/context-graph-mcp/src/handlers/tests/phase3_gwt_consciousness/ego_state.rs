@@ -5,6 +5,10 @@
 //! - 13-element purpose vector verification
 //! - Warm state non-zero values
 
+#![allow(clippy::type_complexity)] // Complex types needed for test infrastructure
+#![allow(clippy::absurd_extreme_comparisons)] // Intentional FSV checks for documentation
+#![allow(unused_comparisons)] // Intentional FSV checks for documentation
+
 use serde_json::json;
 
 use crate::handlers::tests::{create_test_handlers_with_warm_gwt, extract_mcp_tool_data};
@@ -58,7 +62,7 @@ async fn test_get_ego_state_returns_valid_data() {
     for (i, val) in pv.iter().enumerate() {
         let v = val.as_f64().expect("purpose_vector elements must be f64");
         assert!(
-            v >= -1.0 && v <= 1.0,
+            (-1.0..=1.0).contains(&v),
             "[FSV] Purpose vector[{}] must be in [-1, 1], got {}",
             i,
             v
@@ -179,4 +183,201 @@ async fn test_get_ego_state_warm_has_non_zero_purpose_vector() {
 
     println!("[FSV] Phase 3 - get_ego_state WARM state verification PASSED");
     println!("[FSV]   Non-zero purpose vector elements: {}/13", non_zero_count);
+}
+
+// =============================================================================
+// TASK-IDENTITY-P0-007: Identity Continuity MCP Tool Exposure Tests
+// =============================================================================
+
+/// FSV Test: get_ego_state includes identity_continuity object.
+///
+/// TASK-IDENTITY-P0-007: Verify the enhanced get_ego_state response includes
+/// the identity_continuity object with:
+/// - ic: float 0.0-1.0
+/// - status: Healthy|Warning|Degraded|Critical
+/// - in_crisis: bool
+/// - history_len: int
+/// - last_detection: null or CrisisDetectionResult
+///
+/// Source of Truth: GwtSystemProvider.identity_*() async methods
+#[tokio::test]
+async fn test_get_ego_state_includes_identity_continuity() {
+    let handlers = create_test_handlers_with_warm_gwt();
+
+    // EXECUTE: Call get_ego_state
+    let request = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        id: Some(JsonRpcId::Number(1)),
+        method: "tools/call".to_string(),
+        params: Some(json!({
+            "name": tool_names::GET_EGO_STATE,
+            "arguments": {}
+        })),
+    };
+    let response = handlers.dispatch(request).await;
+
+    // VERIFY: Response is successful
+    assert!(
+        response.error.is_none(),
+        "[FSV] Expected success, got error: {:?}",
+        response.error
+    );
+
+    let result = response.result.expect("Should have result");
+    let data = extract_mcp_tool_data(&result);
+
+    // FSV: CRITICAL - Verify identity_continuity object exists
+    let identity_continuity = data
+        .get("identity_continuity")
+        .expect("[FSV] TASK-IDENTITY-P0-007: identity_continuity object must exist in get_ego_state response");
+
+    // FSV: Verify ic field is in [0, 1]
+    let ic = identity_continuity
+        .get("ic")
+        .and_then(|v| v.as_f64())
+        .expect("[FSV] identity_continuity.ic must exist and be a number");
+    assert!(
+        (0.0..=1.0).contains(&ic),
+        "[FSV] identity_continuity.ic must be in [0, 1], got {}",
+        ic
+    );
+
+    // FSV: Verify status field is a valid status string
+    let status = identity_continuity
+        .get("status")
+        .and_then(|v| v.as_str())
+        .expect("[FSV] identity_continuity.status must exist and be a string");
+    let valid_statuses = ["Healthy", "Warning", "Degraded", "Critical"];
+    let status_valid = valid_statuses.iter().any(|s| status.contains(s));
+    assert!(
+        status_valid,
+        "[FSV] identity_continuity.status must contain one of {:?}, got {}",
+        valid_statuses, status
+    );
+
+    // FSV: Verify in_crisis field is a boolean
+    let in_crisis = identity_continuity
+        .get("in_crisis")
+        .and_then(|v| v.as_bool())
+        .expect("[FSV] identity_continuity.in_crisis must exist and be a boolean");
+    // Just verify it's parseable - actual value depends on state
+    let _ = in_crisis;
+
+    // FSV: Verify history_len field is a non-negative integer
+    let history_len = identity_continuity
+        .get("history_len")
+        .and_then(|v| v.as_u64())
+        .expect("[FSV] identity_continuity.history_len must exist and be a number");
+    // History length is non-negative (obviously)
+    let _ = history_len;
+
+    // FSV: Verify last_detection field exists (can be null)
+    let _last_detection = identity_continuity
+        .get("last_detection")
+        .expect("[FSV] identity_continuity.last_detection field must exist (can be null)");
+    // Note: last_detection can be null initially before any detect_crisis() call
+
+    println!("[FSV] TASK-IDENTITY-P0-007 - get_ego_state identity_continuity verification PASSED");
+    println!(
+        "[FSV]   ic={:.4}, status={}, in_crisis={}, history_len={}",
+        ic, status, in_crisis, history_len
+    );
+}
+
+/// FSV Test: identity_continuity last_detection contains valid CrisisDetectionResult when present.
+///
+/// TASK-IDENTITY-P0-007: When last_detection is not null, verify it contains:
+/// - identity_coherence: float
+/// - previous_status: string
+/// - current_status: string
+/// - status_changed: bool
+/// - entering_crisis: bool
+/// - entering_critical: bool
+/// - recovering: bool
+/// - time_since_last_event_ms: int or null
+/// - can_emit_event: bool
+#[tokio::test]
+async fn test_get_ego_state_last_detection_structure_when_present() {
+    let handlers = create_test_handlers_with_warm_gwt();
+
+    let request = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        id: Some(JsonRpcId::Number(1)),
+        method: "tools/call".to_string(),
+        params: Some(json!({
+            "name": tool_names::GET_EGO_STATE,
+            "arguments": {}
+        })),
+    };
+    let response = handlers.dispatch(request).await;
+    assert!(response.error.is_none());
+
+    let data = extract_mcp_tool_data(&response.result.unwrap());
+    let identity_continuity = data
+        .get("identity_continuity")
+        .expect("identity_continuity must exist");
+
+    let last_detection = identity_continuity.get("last_detection");
+
+    // If last_detection is null, that's valid - no crisis detection has occurred yet
+    if last_detection.map(|v| v.is_null()).unwrap_or(true) {
+        println!("[FSV] TASK-IDENTITY-P0-007 - last_detection is null (no detection yet) - VALID");
+        return;
+    }
+
+    // If last_detection is present and not null, verify its structure
+    let det = last_detection.unwrap();
+
+    // Verify all required fields exist
+    let ic_det = det
+        .get("identity_coherence")
+        .and_then(|v| v.as_f64())
+        .expect("[FSV] last_detection.identity_coherence must exist");
+    assert!(
+        (0.0..=1.0).contains(&ic_det),
+        "[FSV] last_detection.identity_coherence must be in [0, 1]"
+    );
+
+    let _prev_status = det
+        .get("previous_status")
+        .and_then(|v| v.as_str())
+        .expect("[FSV] last_detection.previous_status must exist");
+
+    let _curr_status = det
+        .get("current_status")
+        .and_then(|v| v.as_str())
+        .expect("[FSV] last_detection.current_status must exist");
+
+    let _status_changed = det
+        .get("status_changed")
+        .and_then(|v| v.as_bool())
+        .expect("[FSV] last_detection.status_changed must exist");
+
+    let _entering_crisis = det
+        .get("entering_crisis")
+        .and_then(|v| v.as_bool())
+        .expect("[FSV] last_detection.entering_crisis must exist");
+
+    let _entering_critical = det
+        .get("entering_critical")
+        .and_then(|v| v.as_bool())
+        .expect("[FSV] last_detection.entering_critical must exist");
+
+    let _recovering = det
+        .get("recovering")
+        .and_then(|v| v.as_bool())
+        .expect("[FSV] last_detection.recovering must exist");
+
+    // time_since_last_event_ms can be null or a number
+    let _time_since = det
+        .get("time_since_last_event_ms")
+        .expect("[FSV] last_detection.time_since_last_event_ms field must exist");
+
+    let _can_emit = det
+        .get("can_emit_event")
+        .and_then(|v| v.as_bool())
+        .expect("[FSV] last_detection.can_emit_event must exist");
+
+    println!("[FSV] TASK-IDENTITY-P0-007 - last_detection structure verification PASSED");
+    println!("[FSV]   last_detection.identity_coherence={:.4}", ic_det);
 }

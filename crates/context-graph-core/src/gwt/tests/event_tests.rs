@@ -20,12 +20,12 @@ async fn test_gwt_system_listeners_wired() {
 
     let gwt = GwtSystem::new().await.expect("GwtSystem must create");
 
-    // VERIFY: 3 listeners should be registered
+    // VERIFY: 4 listeners should be registered (TASK-IDENTITY-P0-006 adds identity listener)
     let listener_count = gwt.event_broadcaster.listener_count().await;
     println!("Listener count: {}", listener_count);
 
-    assert_eq!(listener_count, 3, "Should have 3 listeners registered");
-    println!("EVIDENCE: GwtSystem correctly wired 3 event listeners");
+    assert_eq!(listener_count, 4, "Should have 4 listeners registered");
+    println!("EVIDENCE: GwtSystem correctly wired 4 event listeners (including identity)");
 }
 
 // ============================================================
@@ -49,6 +49,7 @@ async fn test_memory_enters_boosts_dopamine() {
         id: Uuid::new_v4(),
         order_parameter: 0.85,
         timestamp: chrono::Utc::now(),
+        fingerprint: None, // TASK-IDENTITY-P0-006
     };
     gwt.event_broadcaster.broadcast(event).await;
 
@@ -187,6 +188,7 @@ async fn test_full_event_flow_integration() {
             id: winner_id,
             order_parameter: 0.88,
             timestamp: chrono::Utc::now(),
+            fingerprint: None, // TASK-IDENTITY-P0-006
         })
         .await;
 
@@ -267,6 +269,7 @@ async fn test_concurrent_event_broadcast() {
                     id: Uuid::new_v4(),
                     order_parameter: 0.8 + (i as f32 * 0.01),
                     timestamp: chrono::Utc::now(),
+                    fingerprint: None, // TASK-IDENTITY-P0-006
                 };
                 gwt_clone.event_broadcaster.broadcast(event).await;
                 i

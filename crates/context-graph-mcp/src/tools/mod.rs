@@ -26,7 +26,6 @@ pub mod types;
 // Re-export for backwards compatibility
 pub use self::definitions::get_tool_definitions;
 pub use self::names as tool_names;
-pub use self::types::ToolDefinition;
 
 #[cfg(test)]
 mod tests {
@@ -37,9 +36,10 @@ mod tests {
         let tools = get_tool_definitions();
         // 6 original + 6 GWT tools + 1 UTL delta-S/C + 3 ATC tools + 4 Dream tools
         // + 2 Neuromod tools + 1 Steering + 1 Causal + 5 Teleological + 7 Autonomous = 36 total
+        // + 3 Meta-UTL tools (TASK-METAUTL-P0-005) = 39 total
         // NOTE: 6 manual North Star tools REMOVED (created single 1024D embeddings
         // incompatible with 13-embedder teleological arrays)
-        assert_eq!(tools.len(), 36);
+        assert_eq!(tools.len(), 39);
 
         let tool_names: Vec<_> = tools.iter().map(|t| t.name.as_str()).collect();
 

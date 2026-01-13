@@ -56,13 +56,11 @@ async fn phase7_comprehensive_store_retrieve_fsv() {
     let (handlers, store, _tempdir) = create_test_handlers_with_rocksdb_store_access().await;
 
     // Store varied content types
-    let test_contents = vec![
-        ("ML", "Deep learning optimization with gradient descent and backpropagation"),
+    let test_contents = [("ML", "Deep learning optimization with gradient descent and backpropagation"),
         ("Systems", "Kubernetes container orchestration for microservices"),
         ("Database", "PostgreSQL query optimization with indexing strategies"),
         ("Security", "OAuth 2.0 authentication flow with JWT tokens"),
-        ("API", "GraphQL schema design with resolvers and mutations"),
-    ];
+        ("API", "GraphQL schema design with resolvers and mutations")];
 
     println!("\n[STORE PHASE] Storing {} diverse memories:", test_contents.len());
 
@@ -148,13 +146,11 @@ async fn phase7_mcp_tool_inventory_verification() {
     println!("\n[INVENTORY] Found {} MCP tools:", tools.len());
 
     // Expected tool categories (for documentation)
-    let _expected_categories = vec![
-        ("Memory", vec!["store_memory", "get_memetic_status"]),
+    let _expected_categories = [("Memory", vec!["store_memory", "get_memetic_status"]),
         ("Search", vec!["search_graph", "search_teleological"]),
         ("GWT", vec!["get_consciousness_state", "get_kuramoto_sync"]),
         ("Teleological", vec!["compute_teleological_vector", "fuse_embeddings"]),
-        ("Autonomous", vec!["auto_bootstrap_north_star", "get_autonomous_status"]),
-    ];
+        ("Autonomous", vec!["auto_bootstrap_north_star", "get_autonomous_status"])];
 
     // Count by prefix
     let mut category_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
@@ -232,14 +228,14 @@ async fn phase7_gwt_consciousness_state_verification() {
     } else if let Some(result) = &response.result {
         // Verify state field
         if let Some(state) = result.get("state").and_then(|s| s.as_str()) {
-            let valid_states = vec!["Awake", "NREM", "REM", "Waking", "Dormant"];
+            let valid_states = ["Awake", "NREM", "REM", "Waking", "Dormant"];
             let is_valid = valid_states.contains(&state);
             println!("  - State: {} (valid={})", state, is_valid);
         }
 
         // Verify attention level
         if let Some(attention) = result.get("attentionLevel").and_then(|a| a.as_f64()) {
-            let in_range = attention >= 0.0 && attention <= 1.0;
+            let in_range = (0.0..=1.0).contains(&attention);
             println!("  - Attention level: {:.4} (in_range={})", attention, in_range);
         }
     }

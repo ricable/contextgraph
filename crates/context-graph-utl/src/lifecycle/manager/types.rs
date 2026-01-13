@@ -1,7 +1,10 @@
 //! Type definitions for the lifecycle manager.
+//!
+//! TASK-METAUTL-P0-006: Added lambda_override field for meta-learning integration.
 
 use serde::{Deserialize, Serialize};
 
+use super::super::lambda::LifecycleLambdaWeights;
 use super::super::stage::LifecycleStage;
 
 /// Manager for lifecycle stage tracking and transitions.
@@ -9,6 +12,12 @@ use super::super::stage::LifecycleStage;
 /// Tracks the current interaction count and lifecycle stage, providing
 /// automatic stage transitions as interactions accumulate. Supports both
 /// discrete stage weights and smooth interpolated weights at boundaries.
+///
+/// # TASK-METAUTL-P0-006: Lambda Override Support
+///
+/// The manager now supports lambda weight overrides from the meta-learning
+/// system. When an override is set, `get_effective_weights()` returns the
+/// override instead of the lifecycle-determined weights.
 ///
 /// # Example
 ///
@@ -54,4 +63,9 @@ pub struct LifecycleManager {
 
     /// Smoothing window size for interpolation.
     pub(crate) smoothing_window: u64,
+
+    /// TASK-METAUTL-P0-006: Lambda weight override from meta-learning correction.
+    /// When set, `get_effective_weights()` returns this instead of lifecycle weights.
+    #[serde(skip, default)]
+    pub(crate) lambda_override: Option<LifecycleLambdaWeights>,
 }

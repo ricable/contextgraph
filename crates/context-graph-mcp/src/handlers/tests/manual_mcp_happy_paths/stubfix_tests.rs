@@ -65,7 +65,7 @@ async fn test_stubfix_steering_feedback_happy_path() {
                     println!("  reward.curator_score: {:.4}", curator_score);
                     println!("  reward.assessor_score: {:.4}", assessor_score);
 
-                    assert!(value >= -1.0 && value <= 1.0, "Reward value should be in [-1, 1]");
+                    assert!((-1.0..=1.0).contains(&value), "Reward value should be in [-1, 1]");
                 }
 
                 // Verify gardener details
@@ -76,7 +76,7 @@ async fn test_stubfix_steering_feedback_happy_path() {
                     println!("  gardener.connectivity: {:.4}", connectivity);
                     println!("  gardener.dead_ends_removed: {}", dead_ends);
 
-                    assert!(connectivity >= 0.0 && connectivity <= 1.0, "Connectivity should be in [0, 1]");
+                    assert!((0.0..=1.0).contains(&connectivity), "Connectivity should be in [0, 1]");
                 }
 
                 println!("\n[PASSED] get_steering_feedback returns REAL computed data");

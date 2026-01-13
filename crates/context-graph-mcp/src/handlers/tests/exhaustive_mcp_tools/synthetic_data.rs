@@ -1,4 +1,9 @@
 //! Synthetic test data with known inputs and expected outputs.
+//!
+//! These constants are provided as a reference library for test fixtures.
+//! Not all constants are used in every test suite.
+
+#![allow(dead_code)]
 
 /// Content strings for testing with known semantic properties.
 pub mod content {

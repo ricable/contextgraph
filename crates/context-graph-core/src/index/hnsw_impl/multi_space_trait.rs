@@ -342,12 +342,10 @@ impl MultiSpaceIndexManager for HnswMultiSpaceIndex {
                         }
                     }
                 }
-            } else {
-                if let Some(config) = Self::config_for_embedder(embedder) {
-                    if let Ok(index) = RealHnswIndex::new(config.clone()) {
-                        self.insert_hnsw_index(embedder, index);
-                        self.insert_config(embedder, config);
-                    }
+            } else if let Some(config) = Self::config_for_embedder(embedder) {
+                if let Ok(index) = RealHnswIndex::new(config.clone()) {
+                    self.insert_hnsw_index(embedder, index);
+                    self.insert_config(embedder, config);
                 }
             }
         }

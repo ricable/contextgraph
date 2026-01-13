@@ -59,6 +59,7 @@ async fn test_meta_listener_ignores_other_events() {
         id: Uuid::new_v4(),
         order_parameter: 0.85,
         timestamp: Utc::now(),
+        fingerprint: None, // TASK-IDENTITY-P0-006
     };
     listener.on_event(&event);
 

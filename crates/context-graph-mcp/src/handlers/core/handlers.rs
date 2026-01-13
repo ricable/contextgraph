@@ -500,6 +500,7 @@ impl Handlers {
     /// * `amortized_learner` - Amortized shortcut learner for get_amortized_shortcuts
     /// * `neuromod_manager` - Neuromodulation manager for get_neuromodulation_state, adjust_neuromodulator
     #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)] // Reserved for future production integration
     pub fn with_gwt_and_subsystems(
         teleological_store: Arc<dyn TeleologicalMemoryStore>,
         utl_processor: Arc<dyn UtlProcessor>,

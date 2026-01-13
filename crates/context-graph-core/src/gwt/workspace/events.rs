@@ -6,14 +6,26 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use crate::types::fingerprint::TeleologicalFingerprint;
+
 /// Events fired by workspace state changes
 #[derive(Debug, Clone)]
 pub enum WorkspaceEvent {
     /// Memory entered workspace (r crossed 0.8 upward)
+    ///
+    /// # TASK-IDENTITY-P0-006: Added fingerprint field
+    ///
+    /// The fingerprint is used by `IdentityContinuityListener` to extract
+    /// the purpose vector for identity continuity computation:
+    /// - IC = cos(PV_t, PV_{t-1}) × r(t)
     MemoryEnters {
         id: Uuid,
         order_parameter: f32,
         timestamp: DateTime<Utc>,
+        /// Teleological fingerprint of entering memory for IC computation.
+        /// None if memory doesn't have a fingerprint (legacy compatibility during migration).
+        /// Boxed to reduce enum variant size (TeleologicalFingerprint is ~1.6KB).
+        fingerprint: Option<Box<TeleologicalFingerprint>>,
     },
     /// Memory exited workspace (r dropped below 0.7)
     MemoryExits {
@@ -33,8 +45,14 @@ pub enum WorkspaceEvent {
     },
     /// Identity coherence critical (IC < 0.5) - triggers dream consolidation
     /// From constitution.yaml lines 387-392: "dream<0.5"
+    ///
+    /// # TASK-IDENTITY-P0-005: Added previous_status and current_status
     IdentityCritical {
         identity_coherence: f32,
+        /// Status before crisis (e.g., "Healthy", "Warning", "Degraded")
+        previous_status: String,
+        /// Current status (should be "Critical")
+        current_status: String,
         reason: String,
         timestamp: DateTime<Utc>,
     },
@@ -171,6 +189,7 @@ mod tests {
             id: Uuid::new_v4(),
             order_parameter: 0.85,
             timestamp: Utc::now(),
+            fingerprint: None, // TASK-IDENTITY-P0-006: Test without fingerprint
         };
         broadcaster.broadcast(event).await;
 
@@ -193,6 +212,7 @@ mod tests {
             id: Uuid::new_v4(),
             order_parameter: 0.85,
             timestamp: Utc::now(),
+            fingerprint: None, // TASK-IDENTITY-P0-006: Test without fingerprint
         };
         broadcaster.broadcast(event).await;
 
@@ -221,6 +241,7 @@ mod tests {
             id: Uuid::new_v4(),
             order_parameter: 0.85,
             timestamp: Utc::now(),
+            fingerprint: None, // TASK-IDENTITY-P0-006: Test without fingerprint
         };
         broadcaster.broadcast(event).await;
 

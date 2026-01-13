@@ -198,7 +198,7 @@ impl RocksDbTeleologicalStore {
         let key = content_key(&id);
         let cf = self.cf_content();
 
-        let exists = match self.db.get_cf(cf, &key) {
+        let exists = match self.db.get_cf(cf, key) {
             Ok(Some(_)) => true,
             Ok(None) => {
                 debug!("No content to delete for fingerprint {}", id);

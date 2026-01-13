@@ -99,6 +99,8 @@ impl GwtSystem {
         // (DreamController will be wired in TASK-GWT-P1-002)
         self.event_broadcaster.broadcast(WorkspaceEvent::IdentityCritical {
             identity_coherence,
+            previous_status: "Unknown".to_string(), // System awareness doesn't track status transitions
+            current_status: "Critical".to_string(),
             reason: reason.to_string(),
             timestamp: chrono::Utc::now(),
         }).await;

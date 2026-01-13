@@ -14,15 +14,13 @@ async fn test_pbt_all_outputs_valid_range() {
     let handlers = create_test_handlers();
 
     // Test with various input combinations
-    let test_cases = vec![
-        (vec![0.0; 1024], vec![0.0; 1024]),
+    let test_cases = [(vec![0.0; 1024], vec![0.0; 1024]),
         (vec![1.0; 1024], vec![1.0; 1024]),
         (vec![0.0; 1024], vec![1.0; 1024]),
         (vec![1.0; 1024], vec![0.0; 1024]),
         (vec![0.5; 1024], vec![0.5; 1024]),
         (vec![0.1; 1024], vec![0.9; 1024]),
-        (vec![0.25; 1024], vec![0.75; 1024]),
-    ];
+        (vec![0.25; 1024], vec![0.75; 1024])];
 
     for (i, (old_vals, new_vals)) in test_cases.iter().enumerate() {
         let old_fp = create_test_fingerprint_with_semantic(old_vals.clone());

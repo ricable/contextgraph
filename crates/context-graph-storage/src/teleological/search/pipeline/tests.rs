@@ -257,7 +257,7 @@ mod tests {
         // Query: 2 tokens
         let query = vec![vec![1.0, 0.0]; 2];
         // Document: 3 tokens
-        let document = vec![vec![1.0, 0.0], vec![0.0, 1.0], vec![0.5, 0.5]];
+        let document = [vec![1.0, 0.0], vec![0.0, 1.0], vec![0.5, 0.5]];
 
         // For each query token, find max similarity to any doc token
         // q[0] = [1, 0] -> max sim is 1.0 (to d[0])

@@ -1,4 +1,7 @@
 #![deny(deprecated)]
+#![allow(clippy::field_reassign_with_default)]
+#![allow(clippy::type_complexity)]
+#![allow(clippy::result_large_err)]
 
 //! Context Graph MCP Server Library
 //!

@@ -47,6 +47,7 @@ pub mod consciousness;
 pub mod ego_node;
 pub mod listeners;
 pub mod meta_cognitive;
+pub mod meta_learning_trait;
 pub mod state_machine;
 mod system;
 mod system_awareness;
@@ -61,17 +62,27 @@ pub use consciousness::{ConsciousnessCalculator, ConsciousnessMetrics};
 
 // Re-export from ego_node
 pub use ego_node::{
-    cosine_similarity_13d, IdentityContinuity, IdentityContinuityMonitor, IdentityStatus,
-    PurposeSnapshot, PurposeVectorHistory, PurposeVectorHistoryProvider,
-    SelfAwarenessLoop, SelfEgoNode, SelfReflectionResult,
+    cosine_similarity_13d, CrisisAction, CrisisDetectionResult, CrisisProtocol,
+    CrisisProtocolResult, IdentityContinuity, IdentityContinuityMonitor, IdentityCrisisEvent,
+    IdentityStatus, PurposeSnapshot, PurposeVectorHistory, PurposeVectorHistoryProvider,
+    SelfAwarenessLoop, SelfEgoNode, SelfReflectionResult, CRISIS_EVENT_COOLDOWN,
     IC_CRISIS_THRESHOLD, IC_CRITICAL_THRESHOLD, MAX_PV_HISTORY_SIZE,
 };
 
 // Re-export from listeners
-pub use listeners::{DreamEventListener, MetaCognitiveEventListener, NeuromodulationEventListener};
+pub use listeners::{
+    DreamEventListener, IdentityContinuityListener, MetaCognitiveEventListener,
+    NeuromodulationEventListener,
+};
 
 // Re-export from meta_cognitive
 pub use meta_cognitive::{MetaCognitiveLoop, MetaCognitiveState};
+
+// Re-export from meta_learning_trait - TASK-METAUTL-P0-006
+pub use meta_learning_trait::{
+    EnhancedMetaCognitiveState, LambdaValues, MetaCallbackStatus, MetaDomain,
+    MetaLambdaAdjustment, MetaLearningCallback, NoOpMetaLearningCallback,
+};
 
 // Re-export from state_machine
 pub use state_machine::{ConsciousnessState, StateMachineManager, StateTransition, TransitionAnalysis};

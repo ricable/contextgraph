@@ -1,4 +1,7 @@
 #![deny(deprecated)]
+#![allow(clippy::module_inception)]
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::type_complexity)]
 
 //! Context Graph Storage Layer
 //!

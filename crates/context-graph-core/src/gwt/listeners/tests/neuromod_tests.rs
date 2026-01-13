@@ -38,6 +38,7 @@ async fn test_fsv_neuromod_listener_dopamine_boost() {
         id: memory_id,
         order_parameter: 0.85,
         timestamp: Utc::now(),
+        fingerprint: None, // TASK-IDENTITY-P0-006
     };
     listener.on_event(&event);
 
@@ -128,6 +129,7 @@ async fn test_neuromod_listener_at_max() {
         id: Uuid::new_v4(),
         order_parameter: 0.85,
         timestamp: Utc::now(),
+        fingerprint: None, // TASK-IDENTITY-P0-006
     };
     listener.on_event(&event);
 

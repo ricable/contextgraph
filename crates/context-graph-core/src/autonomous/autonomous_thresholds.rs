@@ -249,6 +249,7 @@ impl AutonomousThresholds {
     /// };
     /// assert!(!invalid.is_valid());
     /// ```
+    #[allow(clippy::neg_cmp_op_on_partial_ord)] // Intentional - NaN checks done separately above
     pub fn is_valid(&self) -> bool {
         // Check for NaN or negative values
         if self.obsolescence_low.is_nan()

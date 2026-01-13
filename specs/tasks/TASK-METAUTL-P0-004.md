@@ -1,8 +1,8 @@
 # Task Specification: Meta-Learning Event Log Implementation
 
 **Task ID:** TASK-METAUTL-P0-004
-**Version:** 1.0.0
-**Status:** Ready
+**Version:** 2.0.0
+**Status:** NOT STARTED - Ready for Implementation
 **Layer:** Surface (Layer 3)
 **Sequence:** 4
 **Priority:** P0 (Critical)
@@ -23,13 +23,23 @@
 
 | Task ID | Description | Status |
 |---------|-------------|--------|
-| TASK-METAUTL-P0-001 | Core types (MetaLearningEvent) | Must complete first |
-| TASK-METAUTL-P0-002 | Lambda adjustment (event source) | Must complete first |
-| TASK-METAUTL-P0-003 | Escalation (event source) | Must complete first |
+| TASK-METAUTL-P0-001 | Core types (MetaLearningEvent) | ✅ COMPLETE |
+| TASK-METAUTL-P0-002 | Lambda adjustment (event source) | ❌ NOT STARTED |
+| TASK-METAUTL-P0-003 | Escalation (event source) | ❌ NOT STARTED |
 
 ### 1.3 Blocked By
 
-- TASK-METAUTL-P0-003 (all event sources must exist)
+- ~~TASK-METAUTL-P0-003 (all event sources must exist)~~
+- **NOTE**: This task CAN proceed independently since MetaLearningEvent exists.
+  Event sources (TASK-002, TASK-003) can emit events to the log later.
+
+### 1.4 Implementation Note
+
+**Timestamp Migration Required**: The existing `MetaLearningEvent` in `types.rs` uses `std::time::Instant`
+for timestamps, which cannot be serialized to JSON. This task MUST:
+1. Add a serializable timestamp field (`DateTime<Utc>`) alongside or replacing `Instant`
+2. OR create a separate `SerializableMetaLearningEvent` for logging purposes
+3. Ensure backwards compatibility with existing code using `Instant`
 
 ---
 
@@ -37,12 +47,26 @@
 
 This task implements the meta-learning event log for introspection and debugging. The log captures all self-correction events including:
 
-- Lambda adjustments
-- Escalation triggers
-- Accuracy alerts
-- Human escalation requests
+- Lambda adjustments (MetaLearningEventType::LambdaAdjustment)
+- Escalation triggers (MetaLearningEventType::BayesianEscalation)
+- Accuracy alerts (MetaLearningEventType::AccuracyAlert)
+- Accuracy recovery (MetaLearningEventType::AccuracyRecovery)
+- Weight clamping (MetaLearningEventType::WeightClamped)
 
 The log supports time-range queries and provides the foundation for the `get_meta_learning_log` MCP tool.
+
+### 2.1 Current Implementation State
+
+**What Exists:**
+- `MetaLearningEvent` struct in `handlers/core/types.rs`
+- `MetaLearningEventType` enum with 5 variants
+- `Domain` enum for domain-specific filtering
+- Factory methods: `lambda_adjustment()`, `bayesian_escalation()`, `weight_clamped()`
+
+**What's Missing:**
+- `MetaLearningEventLog` struct (this task)
+- `MetaLearningLogger` trait (this task)
+- Time-range queries, FIFO eviction, JSON serialization
 
 ---
 
@@ -50,10 +74,11 @@ The log supports time-range queries and provides the foundation for the `get_met
 
 | File | Purpose |
 |------|---------|
-| `crates/context-graph-utl/src/meta/types.rs` | MetaLearningEvent, MetaLearningEventType |
-| `crates/context-graph-utl/src/meta/correction.rs` | Event generation patterns |
-| `crates/context-graph-utl/src/meta/escalation.rs` | Escalation events |
+| `crates/context-graph-mcp/src/handlers/core/types.rs` | MetaLearningEvent, MetaLearningEventType, Domain |
+| `crates/context-graph-mcp/src/handlers/core/meta_utl_tracker.rs` | MetaUtlTracker (event producer) |
+| `crates/context-graph-mcp/src/handlers/core/mod.rs` | Module declarations |
 | `specs/functional/SPEC-METAUTL-001.md` | Logging requirements |
+| `docs2/constitution.yaml` | NORTH-016 bounds for context |
 
 ---
 
@@ -79,12 +104,15 @@ The log supports time-range queries and provides the foundation for the `get_met
 
 ## 5. Prerequisites
 
-| Check | Description |
-|-------|-------------|
-| [ ] | TASK-METAUTL-P0-001 completed |
-| [ ] | TASK-METAUTL-P0-002 completed |
-| [ ] | TASK-METAUTL-P0-003 completed |
-| [ ] | MetaLearningEvent type exists |
+| Check | Description | Status |
+|-------|-------------|--------|
+| [x] | TASK-METAUTL-P0-001 completed | ✅ Done |
+| [ ] | TASK-METAUTL-P0-002 completed | ⏳ Not required (event source) |
+| [ ] | TASK-METAUTL-P0-003 completed | ⏳ Not required (event source) |
+| [x] | MetaLearningEvent type exists | ✅ In types.rs |
+| [x] | MetaLearningEventType enum exists | ✅ In types.rs |
+| [x] | Domain enum exists | ✅ In types.rs |
+| [ ] | chrono crate available | ✅ Already in MCP crate |
 
 ---
 
@@ -92,15 +120,17 @@ The log supports time-range queries and provides the foundation for the `get_met
 
 ### 6.1 Required Signatures
 
-#### File: `crates/context-graph-utl/src/meta/event_log.rs`
+#### File: `crates/context-graph-mcp/src/handlers/core/event_log.rs`
 
 ```rust
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
-use crate::error::{UtlError, UtlResult};
 use super::types::{MetaLearningEvent, MetaLearningEventType, Domain};
+
+// NOTE: MetaLearningEvent uses Instant for runtime, but we need DateTime<Utc> for JSON.
+// Create a SerializableMetaLearningEvent wrapper for persistence.
 
 /// Default maximum events in memory
 pub const DEFAULT_MAX_EVENTS: usize = 1000;
@@ -289,16 +319,19 @@ pub struct EventTypeCount {
 
 ```bash
 # Type check
-cargo check -p context-graph-utl
+cargo check -p context-graph-mcp
 
 # Unit tests
-cargo test -p context-graph-utl meta::event_log
+cargo test -p context-graph-mcp handlers::core::event_log
 
 # JSON serialization tests
-cargo test -p context-graph-utl test_event_log_json
+cargo test -p context-graph-mcp test_event_log_json
 
 # Clippy
-cargo clippy -p context-graph-utl -- -D warnings
+cargo clippy -p context-graph-mcp -- -D warnings
+
+# FSV: Verify event log state after operations
+cargo test -p context-graph-mcp test_event_log_fsv -- --nocapture
 ```
 
 ---
@@ -307,8 +340,7 @@ cargo clippy -p context-graph-utl -- -D warnings
 
 | Path | Description |
 |------|-------------|
-| `crates/context-graph-utl/src/meta/event_log.rs` | Event log implementation |
-| `crates/context-graph-utl/src/meta/tests_event_log.rs` | Unit tests |
+| `crates/context-graph-mcp/src/handlers/core/event_log.rs` | Event log implementation |
 
 ---
 
@@ -316,8 +348,9 @@ cargo clippy -p context-graph-utl -- -D warnings
 
 | Path | Modification |
 |------|--------------|
-| `crates/context-graph-utl/src/meta/mod.rs` | Add `pub mod event_log;` |
-| `crates/context-graph-utl/src/lib.rs` | Re-export event log types |
+| `crates/context-graph-mcp/src/handlers/core/mod.rs` | Add `pub mod event_log;` |
+| `crates/context-graph-mcp/src/handlers/core/types.rs` | Add `created_at: DateTime<Utc>` to MetaLearningEvent |
+| `crates/context-graph-mcp/src/lib.rs` | Re-export event log types if needed |
 
 ---
 
@@ -569,20 +602,234 @@ mod tests {
 
 If this task fails validation:
 
-1. Revert `crates/context-graph-utl/src/meta/event_log.rs`
-2. Remove mod declaration
+1. Revert `crates/context-graph-mcp/src/handlers/core/event_log.rs`
+2. Remove mod declaration from `handlers/core/mod.rs`
 3. Previous tasks remain unaffected
 4. Document failure in task notes
 
 ---
 
-## 13. Notes
+## 13. Source of Truth
+
+| State | Location | Type |
+|-------|----------|------|
+| Event buffer | `MetaLearningEventLog.events` | `VecDeque<MetaLearningEvent>` |
+| Event count | `MetaLearningEventLog.events.len()` | Runtime count |
+| Total logged | `MetaLearningEventLog.total_logged` | `u64` counter |
+| Total evicted | `MetaLearningEventLog.total_evicted` | `u64` counter |
+| Configuration | `MetaLearningEventLog.max_events`, `retention_days` | Struct fields |
+
+**FSV Verification**: After any mutation (log_event, clear, evict), verify state by:
+1. Calling `event_count()` and comparing to `events.len()`
+2. Calling `stats()` and verifying counts match insertions
+3. For JSON roundtrip: deserialize and compare all fields
+
+---
+
+## 14. FSV Requirements
+
+### 14.1 Full State Verification Pattern
+
+```rust
+/// FSV: Execute & Inspect pattern for event log operations
+#[cfg(test)]
+fn fsv_verify_log_event(log: &MetaLearningEventLog, expected_count: usize) {
+    // 1. INSPECT: Read the actual state (not return value)
+    let actual_count = log.event_count();
+    let stats = log.stats();
+
+    // 2. VERIFY: Compare against expected
+    assert_eq!(actual_count, expected_count,
+        "FSV: event_count mismatch. Expected {}, got {}", expected_count, actual_count);
+    assert_eq!(stats.current_count, expected_count,
+        "FSV: stats.current_count mismatch");
+
+    // 3. INVARIANTS: Check log invariants
+    assert!(stats.total_logged >= stats.current_count as u64,
+        "FSV: total_logged must be >= current_count");
+    assert_eq!(
+        stats.total_logged - stats.current_count as u64,
+        stats.total_evicted,
+        "FSV: total_evicted calculation wrong"
+    );
+}
+```
+
+### 14.2 Edge Case Audit (3 Cases)
+
+#### Edge Case 1: FIFO Eviction at Max Capacity
+
+```rust
+#[test]
+fn fsv_edge_case_fifo_eviction() {
+    // BEFORE STATE
+    let mut log = MetaLearningEventLog::with_config(3, 7); // max 3 events
+    println!("BEFORE: count={}, total_logged={}", log.event_count(), log.stats().total_logged);
+
+    // ACTION: Add 5 events (should evict 2)
+    for i in 0..5 {
+        let mut e = create_test_event();
+        e.description = Some(format!("event_{}", i));
+        log.log_event(e).unwrap();
+    }
+
+    // AFTER STATE (FSV)
+    let stats = log.stats();
+    println!("AFTER: count={}, total_logged={}, total_evicted={}",
+        stats.current_count, stats.total_logged, stats.total_evicted);
+
+    // VERIFY
+    assert_eq!(stats.current_count, 3, "Should have exactly 3 events");
+    assert_eq!(stats.total_logged, 5, "Should have logged 5 total");
+    assert_eq!(stats.total_evicted, 2, "Should have evicted 2 events");
+
+    // Verify oldest remaining is event_2 (events 0,1 evicted)
+    let oldest = log.recent_events(3).first().unwrap();
+    assert!(oldest.description.as_ref().unwrap().contains("event_2"));
+}
+```
+
+#### Edge Case 2: Empty Log Query
+
+```rust
+#[test]
+fn fsv_edge_case_empty_log() {
+    let log = MetaLearningEventLog::new();
+
+    // BEFORE STATE
+    println!("BEFORE: count={}", log.event_count());
+
+    // ACTION: Query empty log (should not panic, return empty vec)
+    let by_time = log.query_by_time(Utc::now() - Duration::hours(1), Utc::now());
+    let by_type = log.query_by_type(MetaLearningEventType::LambdaAdjustment);
+    let recent = log.recent_events(10);
+    let stats = log.stats();
+
+    // AFTER STATE (FSV)
+    println!("AFTER: query_by_time={}, query_by_type={}, recent={}",
+        by_time.len(), by_type.len(), recent.len());
+
+    // VERIFY: All should be empty, not error
+    assert!(by_time.is_empty(), "FSV: Empty log should return empty vec for time query");
+    assert!(by_type.is_empty(), "FSV: Empty log should return empty vec for type query");
+    assert!(recent.is_empty(), "FSV: Empty log should return empty vec for recent");
+    assert_eq!(stats.current_count, 0, "FSV: Stats should show 0 events");
+    assert!(stats.oldest_event.is_none(), "FSV: oldest_event should be None");
+}
+```
+
+#### Edge Case 3: JSON Roundtrip Preserves All Fields
+
+```rust
+#[test]
+fn fsv_edge_case_json_roundtrip() {
+    // BEFORE STATE
+    let mut log = MetaLearningEventLog::new();
+    log.log_event(MetaLearningEvent::lambda_adjustment(5, 0.3, 0.35)).unwrap();
+    log.log_event(MetaLearningEvent::bayesian_escalation(7)).unwrap();
+    let before_stats = log.stats();
+    let before_json = log.to_json().unwrap();
+    println!("BEFORE: count={}, json_len={}", before_stats.current_count, before_json.len());
+
+    // ACTION: Serialize and deserialize
+    let restored = MetaLearningEventLog::from_json(&before_json).unwrap();
+
+    // AFTER STATE (FSV)
+    let after_stats = restored.stats();
+    println!("AFTER: count={}, total_logged={}", after_stats.current_count, after_stats.total_logged);
+
+    // VERIFY: All fields preserved
+    assert_eq!(before_stats.current_count, after_stats.current_count, "FSV: count mismatch");
+    assert_eq!(before_stats.total_logged, after_stats.total_logged, "FSV: total_logged mismatch");
+    assert_eq!(before_stats.by_type.lambda_adjustment, after_stats.by_type.lambda_adjustment);
+    assert_eq!(before_stats.by_type.bayesian_escalation, after_stats.by_type.bayesian_escalation);
+
+    // Verify events have correct data
+    let events = restored.recent_events(2);
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].event_type, MetaLearningEventType::LambdaAdjustment);
+    assert_eq!(events[1].event_type, MetaLearningEventType::BayesianEscalation);
+}
+```
+
+### 14.3 Evidence of Success
+
+When tests pass, output should show:
+
+```
+BEFORE: count=0, total_logged=0
+AFTER: count=3, total_logged=5, total_evicted=2
+✓ FSV: FIFO eviction verified
+
+BEFORE: count=0
+AFTER: query_by_time=0, query_by_type=0, recent=0
+✓ FSV: Empty log queries verified
+
+BEFORE: count=2, json_len=1847
+AFTER: count=2, total_logged=2
+✓ FSV: JSON roundtrip verified
+```
+
+---
+
+## 15. Fail-Fast Error Handling
+
+```rust
+impl MetaLearningEventLog {
+    pub fn log_event(&mut self, event: MetaLearningEvent) -> Result<(), EventLogError> {
+        // FAIL-FAST: Validate event before accepting
+        if event.timestamp > Utc::now() + Duration::seconds(60) {
+            return Err(EventLogError::FutureTimestamp {
+                timestamp: event.timestamp,
+                now: Utc::now(),
+            });
+        }
+
+        // Proceed with logging...
+        self.evict_old_events();
+        self.events.push_back(event);
+        self.total_logged += 1;
+        self.evict_over_limit();
+
+        Ok(())
+    }
+
+    pub fn from_json(json: &str) -> Result<Self, EventLogError> {
+        // FAIL-FAST: Reject invalid JSON immediately
+        serde_json::from_str(json).map_err(|e| EventLogError::InvalidJson {
+            message: e.to_string(),
+            json_preview: json.chars().take(100).collect(),
+        })
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum EventLogError {
+    #[error("Event timestamp {timestamp:?} is in the future (now: {now:?})")]
+    FutureTimestamp {
+        timestamp: DateTime<Utc>,
+        now: DateTime<Utc>,
+    },
+
+    #[error("Invalid JSON: {message}. Preview: {json_preview}")]
+    InvalidJson {
+        message: String,
+        json_preview: String,
+    },
+}
+```
+
+---
+
+## 16. Notes
 
 - In-memory storage is Phase 1; database persistence is Phase 2
 - VecDeque enables efficient FIFO operations
 - Stats computation is O(n) but called infrequently
 - JSON export enables backup and debugging
 - Event timestamps use UTC for consistency
+- **Architecture Decision**: Event log lives in MCP crate alongside MetaLearningEvent types
+  for direct integration with MCP tool handlers
 
 ---
 
@@ -591,3 +838,4 @@ If this task fails validation:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0.0 | 2026-01-11 | ContextGraph Team | Initial task specification |
+| 2.0.0 | 2026-01-12 | AI Agent | Updated paths to MCP crate, added FSV sections, Source of Truth, Edge Cases, Fail-Fast error handling |

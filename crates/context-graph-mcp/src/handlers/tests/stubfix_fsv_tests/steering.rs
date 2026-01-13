@@ -60,7 +60,7 @@ async fn test_steering_feedback_empty_store_returns_zero_metrics() {
 
     // With empty store: connectivity should be 0.0 (no aligned nodes)
     assert!(
-        connectivity >= 0.0 && connectivity <= 0.01,
+        (0.0..=0.01).contains(&connectivity),
         "Empty store connectivity should be ~0.0, got {}",
         connectivity
     );
@@ -133,7 +133,7 @@ async fn test_steering_feedback_all_orphans_low_connectivity() {
 
     // All orphans with theta < 0.5 means connectivity = 0 (none aligned to North Star)
     assert!(
-        connectivity >= 0.0 && connectivity < 0.1,
+        (0.0..0.1).contains(&connectivity),
         "All orphans should have low connectivity, got {}",
         connectivity
     );

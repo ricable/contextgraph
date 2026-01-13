@@ -8,9 +8,11 @@ mod manual_verification {
     use crate::config::CoherenceConfig;
 
     /// Test Case 1: Perfect coherence scenario
+    ///
     /// - Connectivity: 1.0 (vertex identical to neighbors)
     /// - ClusterFit: ~1.0 (vertex in tight same_cluster, far from nearest_cluster)
     /// - Consistency: ~1.0 (stable history with similar embeddings)
+    ///
     /// Expected: ΔC ≈ 1.0
     #[test]
     fn manual_test_perfect_coherence() {
@@ -58,9 +60,11 @@ mod manual_verification {
     }
 
     /// Test Case 2: Zero coherence scenario
+    ///
     /// - Connectivity: 0.0 (vertex orthogonal to neighbors)
     /// - ClusterFit: ~0.0 (vertex closer to nearest_cluster than same_cluster)
     /// - Consistency: ~0.0 (chaotic history)
+    ///
     /// Expected: ΔC ≈ 0.0
     #[test]
     fn manual_test_zero_coherence() {
@@ -178,7 +182,7 @@ mod manual_verification {
         
         // Build history
         for i in 0..5 {
-            tracker.update(&vec![0.5 + i as f32 * 0.01, 0.5 - i as f32 * 0.01, 0.0, 0.0]);
+            tracker.update(&[0.5 + i as f32 * 0.01, 0.5 - i as f32 * 0.01, 0.0, 0.0]);
         }
         
         let vertex = vec![0.55, 0.45, 0.0, 0.0];
@@ -218,7 +222,7 @@ mod manual_verification {
         let mut tracker = CoherenceTracker::new(&config);
         
         for _ in 0..3 {
-            tracker.update(&vec![0.5, 0.5, 0.0, 0.0]);
+            tracker.update(&[0.5, 0.5, 0.0, 0.0]);
         }
         
         let vertex = vec![0.5, 0.5, 0.0, 0.0];

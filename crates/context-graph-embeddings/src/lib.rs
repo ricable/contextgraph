@@ -1,4 +1,5 @@
 #![deny(deprecated)]
+#![allow(clippy::module_inception)]
 
 //! Embedding pipeline for Context Graph.
 //!

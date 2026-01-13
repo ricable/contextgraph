@@ -35,6 +35,7 @@ impl WorkspaceEventListener for NeuromodulationEventListener {
                 id,
                 order_parameter,
                 timestamp: _,
+                fingerprint: _, // TASK-IDENTITY-P0-006: Not used by neuromod
             } => {
                 // Boost dopamine on workspace entry - non-blocking acquire
                 match self.neuromod_manager.try_write() {

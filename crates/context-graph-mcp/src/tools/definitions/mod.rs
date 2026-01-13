@@ -8,6 +8,7 @@ mod causal;
 mod core;
 mod dream;
 mod gwt;
+mod meta_utl;
 mod neuromod;
 mod steering;
 mod teleological;
@@ -18,9 +19,9 @@ use crate::tools::types::ToolDefinition;
 /// Get all tool definitions for the `tools/list` response.
 ///
 /// Returns the complete list of MCP tools exposed by the Context Graph server.
-/// Currently returns 36 tools across 10 categories.
+/// Currently returns 39 tools across 11 categories.
 pub fn get_tool_definitions() -> Vec<ToolDefinition> {
-    let mut tools = Vec::with_capacity(36);
+    let mut tools = Vec::with_capacity(39);
 
     // Core tools (6)
     tools.extend(core::definitions());
@@ -51,6 +52,9 @@ pub fn get_tool_definitions() -> Vec<ToolDefinition> {
 
     // Autonomous tools (7)
     tools.extend(autonomous::definitions());
+
+    // Meta-UTL tools (3) - TASK-METAUTL-P0-005
+    tools.extend(meta_utl::definitions());
 
     tools
 }

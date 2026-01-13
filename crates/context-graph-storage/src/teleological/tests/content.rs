@@ -334,7 +334,7 @@ fn test_content_unicode_comprehensive() {
             store.store(fingerprint).await.expect("Should store fingerprint");
 
             store.store_content(id, content).await
-                .expect(&format!("Should store Unicode content case {}", i));
+                .unwrap_or_else(|_| panic!("Should store Unicode content case {}", i));
 
             let retrieved = store.get_content(id).await
                 .expect("Should retrieve")
