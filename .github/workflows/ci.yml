@@ -59,6 +59,23 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   # =============================================================================
+  # FFI Consolidation Gate (TASK-05)
+  # =============================================================================
+  # Enforces ARCH-06: All CUDA/FAISS FFI must be in context-graph-cuda only
+  ffi-consolidation:
+    name: FFI Consolidation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check FFI consolidation
+        run: |
+          chmod +x scripts/check-ffi-consolidation.sh
+          ./scripts/check-ffi-consolidation.sh
+
+  # =============================================================================
   # Unit Tests
   # =============================================================================
   test:

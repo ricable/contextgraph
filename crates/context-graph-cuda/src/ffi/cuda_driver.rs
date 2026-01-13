@@ -12,6 +12,7 @@
 //! Reference: NVIDIA Pro Tip - cuDeviceGetAttribute is orders of
 //! magnitude faster than cudaGetDeviceProperties.
 
+use std::ffi::c_void;
 use std::os::raw::{c_char, c_int, c_uint};
 
 // =============================================================================
@@ -26,6 +27,9 @@ pub type CUdevice = c_int;
 
 /// CUDA device attribute enumeration.
 pub type CUdevice_attribute = c_int;
+
+/// CUDA context handle (opaque pointer).
+pub type CUcontext = *mut c_void;
 
 // =============================================================================
 // RESULT CODES
@@ -168,6 +172,71 @@ extern "C" {
     ///
     /// * `CUDA_SUCCESS` on success
     pub fn cuDriverGetVersion(version: *mut c_int) -> CUresult;
+
+    // =========================================================================
+    // CONTEXT MANAGEMENT (for GpuDevice RAII wrapper)
+    // =========================================================================
+
+    /// Create a new CUDA context on the specified device.
+    ///
+    /// # Arguments
+    ///
+    /// * `pctx` - Output pointer for context handle
+    /// * `flags` - Context creation flags (0 for default)
+    /// * `dev` - Device handle from cuDeviceGet
+    ///
+    /// # Returns
+    ///
+    /// * `CUDA_SUCCESS` on success
+    /// * `CUDA_ERROR_INVALID_DEVICE` if device is invalid
+    pub fn cuCtxCreate_v2(pctx: *mut CUcontext, flags: c_uint, dev: CUdevice) -> CUresult;
+
+    /// Destroy a CUDA context.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - Context handle to destroy
+    ///
+    /// # Returns
+    ///
+    /// * `CUDA_SUCCESS` on success
+    /// * May fail if context has active allocations
+    pub fn cuCtxDestroy_v2(ctx: CUcontext) -> CUresult;
+
+    /// Get free and total memory available on current context.
+    ///
+    /// # Arguments
+    ///
+    /// * `free` - Output pointer for free bytes
+    /// * `total` - Output pointer for total bytes
+    ///
+    /// # Returns
+    ///
+    /// * `CUDA_SUCCESS` on success
+    /// * Requires active CUDA context (from cuCtxCreate_v2 or cuCtxSetCurrent)
+    pub fn cuMemGetInfo_v2(free: *mut usize, total: *mut usize) -> CUresult;
+
+    /// Set the current CUDA context for the calling thread.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - Context to make current (or null to unbind)
+    ///
+    /// # Returns
+    ///
+    /// * `CUDA_SUCCESS` on success
+    pub fn cuCtxSetCurrent(ctx: CUcontext) -> CUresult;
+
+    /// Get the current CUDA context for the calling thread.
+    ///
+    /// # Arguments
+    ///
+    /// * `pctx` - Output pointer for current context (null if none)
+    ///
+    /// # Returns
+    ///
+    /// * `CUDA_SUCCESS` on success
+    pub fn cuCtxGetCurrent(pctx: *mut CUcontext) -> CUresult;
 }
 
 // =============================================================================

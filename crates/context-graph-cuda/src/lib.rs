@@ -40,6 +40,7 @@ pub mod error;
 pub mod ffi;
 pub mod ops;
 pub mod poincare;
+pub mod safe;
 
 // AP-007: StubVectorOps is TEST ONLY - not available in production builds
 #[cfg(test)]
@@ -57,7 +58,9 @@ pub use ffi::{
     cuda_result_to_string, decode_driver_version, is_cuda_success,
     cuDeviceGet, cuDeviceGetAttribute, cuDeviceGetCount, cuDeviceGetName,
     cuDeviceTotalMem_v2, cuDriverGetVersion, cuInit,
-    CUdevice, CUdevice_attribute, CUresult,
+    // Context management (TASK-04)
+    cuCtxCreate_v2, cuCtxDestroy_v2, cuCtxGetCurrent, cuCtxSetCurrent, cuMemGetInfo_v2,
+    CUcontext, CUdevice, CUdevice_attribute, CUresult,
     CUDA_ERROR_INVALID_DEVICE, CUDA_ERROR_NO_DEVICE, CUDA_ERROR_NOT_INITIALIZED, CUDA_SUCCESS,
     CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR,
     CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_X, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK,
@@ -72,6 +75,8 @@ pub use ffi::{
     faiss_index_cpu_to_gpu, faiss_get_num_gpus,
     FAISS_OK,
 };
+// Safe RAII wrappers (TASK-04)
+pub use safe::GpuDevice;
 #[cfg(feature = "cuda")]
 pub use ffi::gpu_count_direct;
 pub use ops::VectorOps;

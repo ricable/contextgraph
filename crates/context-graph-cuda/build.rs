@@ -221,6 +221,14 @@ fn compile_kernel(
         println!("cargo:rustc-link-search=native=/usr/lib/wsl/lib");
     }
 
+    // Add FAISS library path (/usr/local/lib contains libfaiss_c.so)
+    // Required for FAISS C API bindings in ffi/faiss.rs
+    if PathBuf::from("/usr/local/lib/libfaiss_c.so").exists() {
+        println!("cargo:rustc-link-search=native=/usr/local/lib");
+    } else if PathBuf::from("/usr/lib/libfaiss_c.so").exists() {
+        println!("cargo:rustc-link-search=native=/usr/lib");
+    }
+
     // Add CUDA library path for cudart
     if let Ok(cuda_path) = env::var("CUDA_PATH") {
         let lib64_path = PathBuf::from(&cuda_path).join("lib64");
