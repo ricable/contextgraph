@@ -1,132 +1,3 @@
-# TASK-32: Add SSE transport types (TASK-MCP-006)
-
-```xml
-<task_spec id="TASK-MCP-006" version="2.0">
-<metadata>
-  <title>Add SSE transport types</title>
-  <status>complete</status>
-  <layer>surface</layer>
-  <sequence>32</sequence>
-  <implements><requirement_ref>REQ-MCP-006</requirement_ref></implements>
-  <depends_on>NONE</depends_on>
-  <blocks>TASK-33</blocks>
-  <estimated_hours>2</estimated_hours>
-  <last_updated>2026-01-13</last_updated>
-</metadata>
-```
-
----
-
-## EXECUTIVE SUMMARY
-
-Create SSE (Server-Sent Events) transport type definitions for MCP JSON-RPC 2.0 streaming. This task ONLY defines types and configuration - handler implementation is TASK-33.
-
-**Key Deliverables:**
-1. New `transport` module with `mod.rs` and `sse.rs`
-2. `SseConfig` struct with keep-alive, max duration, and buffer settings
-3. `McpSseEvent` enum for Response/Error/Notification/Ping events
-4. Re-export `JsonRpcError` from existing `protocol.rs` (DO NOT duplicate)
-5. Add axum dependency to workspace and crate
-
----
-
-## CODEBASE CONTEXT (CURRENT STATE)
-
-### Existing Files You MUST Know
-| File | Relevance |
-|------|-----------|
-| `crates/context-graph-mcp/src/lib.rs` | Add `pub mod transport;` here |
-| `crates/context-graph-mcp/src/protocol.rs:42` | Contains `JsonRpcError` - REUSE THIS |
-| `crates/context-graph-mcp/Cargo.toml` | Add axum dependency here |
-| `Cargo.toml` (workspace root) | Add axum to workspace dependencies |
-
-### What Does NOT Exist Yet
-- `crates/context-graph-mcp/src/transport/` directory - **CREATE THIS**
-- `crates/context-graph-mcp/src/transport/mod.rs` - **CREATE THIS**
-- `crates/context-graph-mcp/src/transport/sse.rs` - **CREATE THIS**
-- axum dependency - **NOT IN WORKSPACE - MUST ADD**
-
-### TransportMode Enum Already Exists
-`crates/context-graph-mcp/src/server.rs:30-39` already has:
-```rust
-pub enum TransportMode {
-    Stdio,  // default
-    Tcp,
-}
-```
-**DO NOT** add SSE variant here in TASK-32. That is for TASK-42.
-
----
-
-## PREREQUISITE VERIFICATION
-
-Before implementing, verify these exist:
-
-```bash
-# 1. Verify JsonRpcError exists in protocol.rs
-grep -n "pub struct JsonRpcError" crates/context-graph-mcp/src/protocol.rs
-# Expected: Line ~42
-
-# 2. Verify lib.rs structure
-cat crates/context-graph-mcp/src/lib.rs
-# Must see: pub mod protocol;
-
-# 3. Verify workspace builds
-cargo check -p context-graph-mcp
-```
-
-If any verification fails, STOP and investigate.
-
----
-
-## IMPLEMENTATION SPECIFICATION
-
-### Step 1: Add axum to workspace root Cargo.toml
-
-**File:** `/home/cabdru/contextgraph/Cargo.toml`
-**Action:** Add after `async-trait = "0.1"` line (~27):
-
-```toml
-# Web framework (for SSE transport)
-axum = "0.8"
-tokio-stream = "0.1"
-async-stream = "0.3"
-```
-
-### Step 2: Add axum to context-graph-mcp Cargo.toml
-
-**File:** `/home/cabdru/contextgraph/crates/context-graph-mcp/Cargo.toml`
-**Action:** Add to `[dependencies]` section:
-
-```toml
-# SSE Transport (TASK-32)
-axum = { workspace = true }
-tokio-stream = "0.1"
-async-stream = "0.3"
-```
-
-### Step 3: Create transport/mod.rs
-
-**File:** `/home/cabdru/contextgraph/crates/context-graph-mcp/src/transport/mod.rs`
-
-```rust
-//! MCP Transport layer.
-//!
-//! TASK-32: SSE transport types for real-time streaming.
-//! TASK-33: SSE handler implementation (future).
-//!
-//! PRD Section 5.1: "JSON-RPC 2.0, stdio/SSE"
-
-pub mod sse;
-
-pub use sse::{McpSseEvent, SseConfig};
-```
-
-### Step 4: Create transport/sse.rs (FULL IMPLEMENTATION)
-
-**File:** `/home/cabdru/contextgraph/crates/context-graph-mcp/src/transport/sse.rs`
-
-```rust
 //! SSE (Server-Sent Events) transport types for MCP.
 //!
 //! TASK-32: Defines types and configuration for SSE transport.
@@ -486,6 +357,18 @@ mod tests {
         let _ = SseConfig::default().with_keepalive(Duration::ZERO);
     }
 
+    #[test]
+    #[should_panic(expected = "max_connection_duration cannot be zero")]
+    fn test_sse_config_with_max_duration_zero_panics() {
+        let _ = SseConfig::default().with_max_duration(Duration::ZERO);
+    }
+
+    #[test]
+    #[should_panic(expected = "buffer_size cannot be zero")]
+    fn test_sse_config_with_buffer_size_zero_panics() {
+        let _ = SseConfig::default().with_buffer_size(0);
+    }
+
     // -------------------------------------------------------------------------
     // McpSseEvent Tests
     // -------------------------------------------------------------------------
@@ -568,213 +451,52 @@ mod tests {
             _ => panic!("Expected Notification"),
         }
     }
+
+    #[test]
+    fn test_mcp_sse_event_error_roundtrip() {
+        let error = JsonRpcError {
+            code: -32700,
+            message: "Parse error".to_string(),
+            data: Some(serde_json::json!({"details": "unexpected token"})),
+        };
+        let original = McpSseEvent::error(serde_json::Value::Null, error);
+
+        let json = original.to_json().unwrap();
+        let parsed: McpSseEvent = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(original, parsed);
+    }
+
+    #[test]
+    fn test_mcp_sse_event_response_with_string_id() {
+        let event = McpSseEvent::response("abc-123", serde_json::json!({"data": [1, 2, 3]}));
+
+        let json = event.to_json().unwrap();
+        assert!(json.contains(r#""id":"abc-123""#));
+    }
+
+    #[test]
+    fn test_sse_config_validate_keepalive_equals_max() {
+        // Edge case: keepalive == max_duration should fail
+        let config = SseConfig {
+            keepalive_interval: Duration::from_secs(100),
+            max_connection_duration: Duration::from_secs(100),
+            buffer_size: 50,
+        };
+        assert_eq!(
+            config.validate(),
+            Err(SseConfigError::KeepaliveExceedsMaxDuration)
+        );
+    }
+
+    #[test]
+    fn test_mcp_sse_event_ping_has_valid_timestamp() {
+        let event = McpSseEvent::ping();
+        if let McpSseEvent::Ping { timestamp } = event {
+            // Should be a recent timestamp (after year 2020)
+            assert!(timestamp > 1577836800); // 2020-01-01
+        } else {
+            panic!("Expected Ping event");
+        }
+    }
 }
-```
-
-### Step 5: Update lib.rs to export transport module
-
-**File:** `/home/cabdru/contextgraph/crates/context-graph-mcp/src/lib.rs`
-**Action:** Add after line 29 (`pub mod weights;`):
-
-```rust
-pub mod transport;
-```
-
----
-
-## FILES TO CREATE
-
-| File | Description |
-|------|-------------|
-| `crates/context-graph-mcp/src/transport/mod.rs` | Module declaration |
-| `crates/context-graph-mcp/src/transport/sse.rs` | SSE types and tests |
-
-## FILES TO MODIFY
-
-| File | Change |
-|------|--------|
-| `Cargo.toml` (workspace) | Add axum, tokio-stream, async-stream |
-| `crates/context-graph-mcp/Cargo.toml` | Add axum, tokio-stream, async-stream |
-| `crates/context-graph-mcp/src/lib.rs` | Add `pub mod transport;` |
-
----
-
-## DEFINITION OF DONE
-
-### Compilation Check
-```bash
-cargo check -p context-graph-mcp
-# MUST: Exit 0, no errors
-# MUST: No warnings about unused imports/code
-```
-
-### Test Execution
-```bash
-cargo test -p context-graph-mcp transport::sse
-# MUST: All tests pass
-# MUST: At least 10 test cases run
-```
-
-### Integration Verification
-```bash
-# Verify exports work from lib.rs
-cargo rustdoc -p context-graph-mcp -- --document-private-items 2>&1 | grep -E "(SseConfig|McpSseEvent)"
-# MUST: Show documented types
-```
-
----
-
-## FULL STATE VERIFICATION (MANDATORY)
-
-After completing implementation, you MUST verify the state by:
-
-### 1. Source of Truth: File System
-```bash
-# Verify files were created
-ls -la crates/context-graph-mcp/src/transport/
-# Expected output:
-#   mod.rs
-#   sse.rs
-
-# Verify content
-wc -l crates/context-graph-mcp/src/transport/sse.rs
-# Expected: ~300+ lines
-```
-
-### 2. Execute & Inspect: Compile and Test
-```bash
-# Full workspace check
-cargo check --workspace
-
-# Run tests with output
-cargo test -p context-graph-mcp transport::sse -- --nocapture
-
-# Verify test count
-cargo test -p context-graph-mcp transport::sse 2>&1 | grep "test result"
-# Expected: "test result: ok. 10 passed"
-```
-
-### 3. Boundary & Edge Case Audit
-
-**Edge Case 1: Zero Duration**
-```rust
-// In Rust test file or script:
-let config = SseConfig { keepalive_interval: Duration::ZERO, ..Default::default() };
-assert!(config.validate().is_err());
-// Print: "Before: Duration::ZERO, After: Err(InvalidKeepalive)"
-```
-
-**Edge Case 2: Keepalive > Max Duration**
-```rust
-let config = SseConfig {
-    keepalive_interval: Duration::from_secs(3600),
-    max_connection_duration: Duration::from_secs(60),
-    buffer_size: 100,
-};
-assert!(config.validate().is_err());
-// Print: "Before: keepalive=3600s max=60s, After: Err(KeepaliveExceedsMaxDuration)"
-```
-
-**Edge Case 3: Empty Notification Params**
-```rust
-let json = r#"{"type":"Notification","method":"test"}"#;
-let event: McpSseEvent = serde_json::from_str(json).unwrap();
-// Print: "Parsed notification with null params successfully"
-```
-
-### 4. Evidence of Success Log
-
-After all tests pass, capture this output:
-
-```bash
-echo "=== TASK-32 VERIFICATION LOG ===" > /tmp/task32_evidence.log
-date >> /tmp/task32_evidence.log
-cargo test -p context-graph-mcp transport::sse 2>&1 >> /tmp/task32_evidence.log
-cargo check -p context-graph-mcp 2>&1 >> /tmp/task32_evidence.log
-ls -la crates/context-graph-mcp/src/transport/ >> /tmp/task32_evidence.log
-cat /tmp/task32_evidence.log
-```
-
----
-
-## CONSTRAINTS
-
-- `keepalive_interval` MUST default to 15 seconds
-- `max_connection_duration` MUST default to 3600 seconds (1 hour)
-- `buffer_size` MUST default to 100
-- Event types MUST match JSON-RPC 2.0 spec
-- Ping MUST include Unix timestamp (seconds)
-- `JsonRpcError` MUST be re-exported from `protocol.rs`, NOT duplicated
-- ALL config values MUST be validated (non-zero, keepalive < max_duration)
-- NO backwards compatibility hacks - fail fast on invalid config
-
----
-
-## ANTI-PATTERNS (FORBIDDEN)
-
-1. **DO NOT** duplicate `JsonRpcError` - use `pub use crate::protocol::JsonRpcError;`
-2. **DO NOT** add SSE variant to `TransportMode` enum (that's TASK-42)
-3. **DO NOT** implement the handler (that's TASK-33)
-4. **DO NOT** use mock data in tests - use real serialization/deserialization
-5. **DO NOT** add axum route handlers in this task
-6. **DO NOT** use `.unwrap()` in library code - use `.expect()` with context or return `Result`
-
----
-
-## TROUBLESHOOTING
-
-### Error: "unresolved import `crate::protocol::JsonRpcError`"
-**Cause:** `protocol.rs` not exporting `JsonRpcError` publicly.
-**Fix:** Verify `protocol.rs` has `pub struct JsonRpcError`.
-
-### Error: "failed to resolve: could not find `transport` in `context_graph_mcp`"
-**Cause:** `lib.rs` missing `pub mod transport;`.
-**Fix:** Add the module declaration.
-
-### Error: "failed to select a version for `axum`"
-**Cause:** axum not in workspace Cargo.toml.
-**Fix:** Add `axum = "0.8"` to `[workspace.dependencies]`.
-
-### Warning: "unused import: `crate::protocol::JsonRpcError`"
-**Cause:** Not using the re-export in tests.
-**Fix:** Ensure tests use `super::JsonRpcError` or the type is used in public API.
-
----
-
-## SUCCESS CRITERIA CHECKLIST
-
-- [ ] `cargo check -p context-graph-mcp` passes with no errors
-- [ ] `cargo test -p context-graph-mcp transport::sse` passes (10+ tests)
-- [ ] `SseConfig::default()` returns correct values
-- [ ] `SseConfig::validate()` catches all invalid configs
-- [ ] `McpSseEvent` serializes correctly to JSON-RPC 2.0 format
-- [ ] `JsonRpcError` is re-exported, not duplicated
-- [ ] `transport/mod.rs` and `transport/sse.rs` files exist
-- [ ] All edge cases documented above are verified
-- [ ] Evidence log captured and reviewed
-
----
-
-## NEXT TASK
-
-After TASK-32 is complete, proceed to **TASK-33: Implement SSE handler with keep-alive**.
-
-TASK-33 depends on the types created here to implement:
-- `create_sse_router()` function
-- `sse_handler()` async function
-- Axum integration with `Router<AppState>`
-
----
-
-## REFERENCES
-
-- [MCP Transports Specification](https://modelcontextprotocol.io/docs/concepts/transports)
-- [Axum SSE Documentation](https://docs.rs/axum/latest/axum/response/sse/index.html)
-- [JSON-RPC 2.0 Specification](https://www.jsonrpc.org/specification)
-- [SSE Specification (WHATWG)](https://html.spec.whatwg.org/multipage/server-sent-events.html)
-- constitution.yaml: `mcp.transport: [stdio, sse]`
-- TECH-REMEDIATION-MASTER.md Section 4.4
-
-```
-</task_spec>
-```

@@ -38,7 +38,7 @@ pub enum JsonRpcId {
 }
 
 /// JSON-RPC error object.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct JsonRpcError {
     pub code: i32,
     pub message: String,
