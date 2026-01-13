@@ -108,3 +108,9 @@ pub const GET_META_LEARNING_STATUS: &str = "get_meta_learning_status";
 pub const TRIGGER_LAMBDA_RECALIBRATION: &str = "trigger_lambda_recalibration";
 /// TASK-MCP-P0-001: Query meta-learning event log
 pub const GET_META_LEARNING_LOG: &str = "get_meta_learning_log";
+
+// ========== EPISTEMIC TOOLS (TASK-MCP-001) ==========
+
+/// TASK-MCP-001: Perform epistemic action on GWT workspace
+/// Used when Johari quadrant is Unknown (high entropy + high coherence)
+pub const EPISTEMIC_ACTION: &str = "epistemic_action";

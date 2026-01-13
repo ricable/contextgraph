@@ -38,9 +38,10 @@ mod tests {
         // 6 original + 6 GWT tools + 1 UTL delta-S/C + 3 ATC tools + 4 Dream tools
         // + 2 Neuromod tools + 1 Steering + 1 Causal + 5 Teleological + 7 Autonomous = 36 total
         // + 3 Meta-UTL tools (TASK-METAUTL-P0-005) = 39 total
+        // + 1 Epistemic tool (TASK-MCP-001) = 40 total
         // NOTE: 6 manual North Star tools REMOVED (created single 1024D embeddings
         // incompatible with 13-embedder teleological arrays)
-        assert_eq!(tools.len(), 39);
+        assert_eq!(tools.len(), 40);
 
         let tool_names: Vec<_> = tools.iter().map(|t| t.name.as_str()).collect();
 
@@ -102,6 +103,9 @@ mod tests {
         assert!(tool_names.contains(&"trigger_consolidation"));
         assert!(tool_names.contains(&"discover_sub_goals"));
         assert!(tool_names.contains(&"get_autonomous_status"));
+
+        // Epistemic tools (TASK-MCP-001)
+        assert!(tool_names.contains(&"epistemic_action"));
     }
 
     #[test]

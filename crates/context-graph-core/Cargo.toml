@@ -35,11 +35,17 @@ rayon = "1.10"
 # parking_lot provides ~100-500ns lock times vs std::sync::RwLock ~1-5μs
 parking_lot = "0.12"
 
+# Real NVML GPU monitoring (TASK-23: NvmlGpuMonitor)
+# Feature-gated to allow builds on systems without NVIDIA drivers
+nvml-wrapper = { version = "0.10", optional = true }
+
 [features]
 default = []
 # Enable test utilities (stubs, zeroed() methods) for downstream crate tests
 # WARNING: Never enable this in production builds!
 test-utils = []
+# Enable real NVML GPU monitoring (requires NVIDIA drivers)
+nvml = ["nvml-wrapper"]
 
 [dev-dependencies]
 tempfile = "3.10"
@@ -49,3 +55,8 @@ rand_chacha = "0.3"
 [[example]]
 name = "cognitive_pulse"
 path = "examples/cognitive_pulse.rs"
+
+[[example]]
+name = "nvml_verify"
+path = "examples/nvml_verify.rs"
+required-features = ["nvml"]

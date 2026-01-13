@@ -104,6 +104,9 @@ pub use triggers::{
     TriggerManager,
     gpu_thresholds,
 };
+
+#[cfg(feature = "nvml")]
+pub use triggers::NvmlGpuMonitor;
 pub use types::{
     EntropyWindow,
     ExtendedTriggerReason,

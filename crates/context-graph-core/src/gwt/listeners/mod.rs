@@ -19,7 +19,7 @@ mod identity;
 mod meta_cognitive;
 mod neuromod;
 
-pub use dream::DreamEventListener;
+pub use dream::{DreamConsolidationCallback, DreamEventListener};
 pub use identity::IdentityContinuityListener;
 pub use meta_cognitive::MetaCognitiveEventListener;
 pub use neuromod::NeuromodulationEventListener;

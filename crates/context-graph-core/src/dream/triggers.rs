@@ -705,7 +705,7 @@ impl Default for TriggerManager {
 /// let mut monitor = StubGpuMonitor::with_usage(0.50);
 /// let usage = monitor.get_utilization().expect("should get usage");
 /// assert!(usage < 0.80, "50% is below eligibility threshold");
-/// assert!(!monitor.should_abort_dream().unwrap(), "50% > 30%, should abort");
+/// assert!(monitor.should_abort_dream().unwrap(), "50% > 30%, should abort");
 /// ```
 pub trait GpuMonitor: Send + Sync + std::fmt::Debug {
     /// Get current GPU utilization as fraction [0.0, 1.0].
@@ -949,6 +949,221 @@ impl GpuMonitor for StubGpuMonitor {
 
     fn is_available(&self) -> bool {
         !self.simulate_unavailable && self.simulated_usage.is_some()
+    }
+}
+
+// ============================================================================
+// NVML GPU MONITOR - REAL NVML IMPLEMENTATION (TASK-23)
+// ============================================================================
+
+/// Real GPU monitor using NVML backend.
+///
+/// # Fail-Fast Behavior (AP-26)
+/// - Returns `Err(GpuMonitorError)` on any failure
+/// - Does NOT return 0.0 as fallback
+/// - Does NOT silently degrade
+///
+/// # Multi-GPU Support
+/// For systems with multiple GPUs, returns the MAXIMUM utilization
+/// across all GPUs. This is conservative - ensures we don't start
+/// dreams when ANY GPU is busy.
+///
+/// # Caching
+/// Caches utilization for 100ms to reduce syscall overhead.
+/// Cache is invalidated after `cache_duration` elapses.
+///
+/// # Thread Safety
+/// `Nvml` is `Send + Sync`, so `NvmlGpuMonitor` can be shared across threads.
+/// The `&mut self` on `get_utilization()` prevents concurrent cache updates.
+///
+/// # Constitution References
+/// - `dream.trigger.gpu: "<80%"` - Eligibility threshold
+/// - `dream.constraints.gpu: "<30%"` - Budget threshold
+/// - AP-26: "No silent failures"
+#[cfg(feature = "nvml")]
+#[derive(Debug)]
+pub struct NvmlGpuMonitor {
+    /// NVML library handle.
+    /// Arc-wrapped for potential future sharing.
+    nvml: std::sync::Arc<nvml_wrapper::Nvml>,
+
+    /// Number of GPU devices detected.
+    device_count: u32,
+
+    /// Cached utilization value and timestamp.
+    /// `Some((utilization, timestamp))` if cache valid.
+    /// `None` if cache invalidated or never queried.
+    cached_utilization: Option<(f32, std::time::Instant)>,
+
+    /// How long to cache utilization values.
+    /// Default: 100ms per task spec.
+    cache_duration: std::time::Duration,
+}
+
+#[cfg(feature = "nvml")]
+impl NvmlGpuMonitor {
+    /// Create a new GPU monitor with NVML backend.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - NVML library cannot be loaded (`NvmlNotAvailable`)
+    /// - NVML initialization fails (`NvmlInitFailed`)
+    /// - No GPU devices found (`NoDevices`)
+    ///
+    /// # Fail-Fast (AP-26)
+    ///
+    /// Does NOT fall back to stub mode. If NVML is unavailable,
+    /// caller must explicitly use `StubGpuMonitor` instead.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use context_graph_core::dream::NvmlGpuMonitor;
+    ///
+    /// match NvmlGpuMonitor::new() {
+    ///     Ok(monitor) => { /* use real GPU monitoring */ }
+    ///     Err(e) => {
+    ///         // Fall back to stub explicitly
+    ///         let stub = StubGpuMonitor::unavailable();
+    ///     }
+    /// }
+    /// ```
+    pub fn new() -> Result<Self, GpuMonitorError> {
+        use nvml_wrapper::Nvml;
+
+        // Initialize NVML library
+        let nvml = Nvml::init().map_err(|e| {
+            use nvml_wrapper::error::NvmlError;
+            match e {
+                NvmlError::DriverNotLoaded => GpuMonitorError::NvmlNotAvailable,
+                NvmlError::LibraryNotFound => GpuMonitorError::NvmlNotAvailable,
+                NvmlError::NoPermission => GpuMonitorError::NvmlInitFailed(
+                    "No permission to access NVML. Run with root or add user to nvidia group."
+                        .to_string(),
+                ),
+                other => GpuMonitorError::NvmlInitFailed(format!("NVML init error: {:?}", other)),
+            }
+        })?;
+
+        // Get device count
+        let device_count = nvml.device_count().map_err(|e| {
+            GpuMonitorError::NvmlInitFailed(format!("Failed to get device count: {:?}", e))
+        })?;
+
+        // Fail-fast if no devices (AP-26)
+        if device_count == 0 {
+            return Err(GpuMonitorError::NoDevices);
+        }
+
+        info!(
+            "NvmlGpuMonitor initialized: {} GPU device(s) detected",
+            device_count
+        );
+
+        Ok(Self {
+            nvml: std::sync::Arc::new(nvml),
+            device_count,
+            cached_utilization: None,
+            cache_duration: std::time::Duration::from_millis(100),
+        })
+    }
+
+    /// Create with custom cache duration.
+    ///
+    /// # Arguments
+    ///
+    /// * `cache_duration` - How long to cache utilization values
+    ///
+    /// # Use Cases
+    ///
+    /// - Testing: Use short duration (1ms) for rapid cache invalidation
+    /// - Production: Use default (100ms) for syscall reduction
+    pub fn with_cache_duration(
+        cache_duration: std::time::Duration,
+    ) -> Result<Self, GpuMonitorError> {
+        let mut monitor = Self::new()?;
+        monitor.cache_duration = cache_duration;
+        Ok(monitor)
+    }
+
+    /// Get current GPU utilization as a fraction [0.0, 1.0].
+    ///
+    /// For multi-GPU systems, returns the MAXIMUM utilization across
+    /// all devices. This is conservative - prevents starting dreams
+    /// when ANY GPU is busy.
+    ///
+    /// # Caching
+    ///
+    /// Results are cached for `cache_duration` (default 100ms).
+    /// Cache is checked first, and only if expired do we query NVML.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Cannot access a GPU device
+    /// - Utilization query fails
+    ///
+    /// Per AP-26: Does NOT return 0.0 on failure.
+    fn query_utilization(&mut self) -> Result<f32, GpuMonitorError> {
+        // Check cache first
+        if let Some((cached, timestamp)) = &self.cached_utilization {
+            if timestamp.elapsed() < self.cache_duration {
+                return Ok(*cached);
+            }
+        }
+
+        // Query all devices, take maximum utilization
+        let mut max_utilization: f32 = 0.0;
+
+        for device_idx in 0..self.device_count {
+            let device = self.nvml.device_by_index(device_idx).map_err(|e| {
+                GpuMonitorError::DeviceAccessFailed {
+                    index: device_idx,
+                    message: format!("{:?}", e),
+                }
+            })?;
+
+            let utilization = device.utilization_rates().map_err(|e| {
+                GpuMonitorError::UtilizationQueryFailed(format!("Device {}: {:?}", device_idx, e))
+            })?;
+
+            // Convert from percentage (0-100) to fraction (0.0-1.0)
+            let gpu_util = utilization.gpu as f32 / 100.0;
+            max_utilization = max_utilization.max(gpu_util);
+        }
+
+        // Update cache
+        self.cached_utilization = Some((max_utilization, std::time::Instant::now()));
+
+        tracing::trace!(
+            "GPU utilization: {:.1}% (max across {} devices)",
+            max_utilization * 100.0,
+            self.device_count
+        );
+
+        Ok(max_utilization)
+    }
+
+    /// Get device count.
+    pub fn device_count(&self) -> u32 {
+        self.device_count
+    }
+
+    /// Invalidate cache to force fresh query on next call.
+    pub fn invalidate_cache(&mut self) {
+        self.cached_utilization = None;
+    }
+}
+
+#[cfg(feature = "nvml")]
+impl GpuMonitor for NvmlGpuMonitor {
+    fn get_utilization(&mut self) -> Result<f32, GpuMonitorError> {
+        self.query_utilization()
+    }
+
+    fn is_available(&self) -> bool {
+        true // If constructed, NVML is available
     }
 }
 
@@ -1920,5 +2135,184 @@ mod tests {
         // Verify config fields survive clone (basic roundtrip)
         let cloned = config.clone();
         assert_eq!(config, cloned);
+    }
+
+    // ============ NvmlGpuMonitor Tests ============
+    // Note: These tests require the "nvml" feature and actual GPU hardware
+
+    #[cfg(feature = "nvml")]
+    mod nvml_tests {
+        use super::*;
+
+        #[test]
+        #[ignore = "Requires NVIDIA GPU and nvml feature"]
+        fn test_nvml_gpu_monitor_initialization() {
+            // This test only runs on systems with NVIDIA GPUs
+            let result = NvmlGpuMonitor::new();
+
+            match result {
+                Ok(monitor) => {
+                    println!("NvmlGpuMonitor initialized successfully");
+                    println!("Device count: {}", monitor.device_count());
+                    assert!(monitor.device_count() > 0);
+                }
+                Err(GpuMonitorError::NvmlNotAvailable) => {
+                    println!("NVML not available (expected on systems without NVIDIA GPU)");
+                }
+                Err(GpuMonitorError::NoDevices) => {
+                    println!("No GPU devices found");
+                }
+                Err(e) => {
+                    panic!("Unexpected error: {:?}", e);
+                }
+            }
+        }
+
+        #[test]
+        #[ignore = "Requires NVIDIA GPU and nvml feature"]
+        fn test_nvml_gpu_monitor_utilization_query() {
+            let mut monitor = match NvmlGpuMonitor::new() {
+                Ok(m) => m,
+                Err(_) => {
+                    println!("Skipping: NVML not available");
+                    return;
+                }
+            };
+
+            // Query utilization
+            let result = monitor.get_utilization();
+            assert!(result.is_ok(), "Utilization query should succeed");
+
+            let utilization = result.unwrap();
+            println!("Current GPU utilization: {:.1}%", utilization * 100.0);
+
+            // Verify range [0.0, 1.0]
+            assert!(utilization >= 0.0, "Utilization must be >= 0.0");
+            assert!(utilization <= 1.0, "Utilization must be <= 1.0");
+        }
+
+        #[test]
+        #[ignore = "Requires NVIDIA GPU and nvml feature"]
+        fn test_nvml_gpu_monitor_caching() {
+            let mut monitor = match NvmlGpuMonitor::with_cache_duration(
+                std::time::Duration::from_millis(50),
+            ) {
+                Ok(m) => m,
+                Err(_) => {
+                    println!("Skipping: NVML not available");
+                    return;
+                }
+            };
+
+            // First query - populates cache
+            let first = monitor.get_utilization().unwrap();
+
+            // Immediate second query - should use cache
+            let second = monitor.get_utilization().unwrap();
+
+            // Cache should return same value
+            assert_eq!(first, second, "Cached value should match");
+
+            // Wait for cache to expire
+            std::thread::sleep(std::time::Duration::from_millis(60));
+
+            // Query after cache expired - may be different
+            let _third = monitor.get_utilization().unwrap();
+            // Don't assert equality - GPU state may have changed
+        }
+
+        #[test]
+        #[ignore = "Requires NVIDIA GPU and nvml feature"]
+        fn test_nvml_gpu_monitor_eligibility_check() {
+            let mut monitor = match NvmlGpuMonitor::new() {
+                Ok(m) => m,
+                Err(_) => {
+                    println!("Skipping: NVML not available");
+                    return;
+                }
+            };
+
+            // Test eligibility check
+            let utilization = monitor.get_utilization().unwrap();
+            let eligible = monitor.is_eligible_for_dream().unwrap();
+
+            // Verify consistency with threshold
+            let expected = utilization < 0.80;
+            assert_eq!(
+                eligible, expected,
+                "Eligibility should be true when GPU < 80%: util={:.1}%",
+                utilization * 100.0
+            );
+        }
+
+        #[test]
+        #[ignore = "Requires NVIDIA GPU and nvml feature"]
+        fn test_nvml_gpu_monitor_abort_check() {
+            let mut monitor = match NvmlGpuMonitor::new() {
+                Ok(m) => m,
+                Err(_) => {
+                    println!("Skipping: NVML not available");
+                    return;
+                }
+            };
+
+            // Test abort check
+            let utilization = monitor.get_utilization().unwrap();
+            let should_abort = monitor.should_abort_dream().unwrap();
+
+            // Verify consistency with threshold
+            let expected = utilization > 0.30;
+            assert_eq!(
+                should_abort, expected,
+                "Should abort when GPU > 30%: util={:.1}%",
+                utilization * 100.0
+            );
+        }
+
+        #[test]
+        #[ignore = "Requires NVIDIA GPU and nvml feature"]
+        fn test_nvml_gpu_monitor_trait_impl() {
+            let mut monitor: Box<dyn GpuMonitor> = match NvmlGpuMonitor::new() {
+                Ok(m) => Box::new(m),
+                Err(_) => {
+                    println!("Skipping: NVML not available");
+                    return;
+                }
+            };
+
+            // Verify trait methods work through dynamic dispatch
+            assert!(monitor.is_available());
+
+            let utilization = monitor.get_utilization();
+            assert!(utilization.is_ok());
+
+            let _eligible = monitor.is_eligible_for_dream();
+            let _abort = monitor.should_abort_dream();
+        }
+
+        #[test]
+        #[ignore = "Requires NVIDIA GPU and nvml feature"]
+        fn test_nvml_gpu_monitor_cache_invalidation() {
+            let mut monitor = match NvmlGpuMonitor::new() {
+                Ok(m) => m,
+                Err(_) => {
+                    println!("Skipping: NVML not available");
+                    return;
+                }
+            };
+
+            // Populate cache
+            let _first = monitor.get_utilization().unwrap();
+
+            // Invalidate cache
+            monitor.invalidate_cache();
+
+            // Cache should be None
+            assert!(monitor.cached_utilization.is_none());
+
+            // Next query should work
+            let _second = monitor.get_utilization().unwrap();
+            assert!(monitor.cached_utilization.is_some());
+        }
     }
 }
