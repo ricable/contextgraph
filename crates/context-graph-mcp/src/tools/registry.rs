@@ -24,7 +24,7 @@ use super::types::ToolDefinition;
 /// use context_graph_mcp::tools::{ToolRegistry, register_all_tools};
 ///
 /// let registry = register_all_tools();
-/// assert_eq!(registry.len(), 58);
+/// assert_eq!(registry.len(), 59);
 ///
 /// // O(1) lookup
 /// if let Some(tool) = registry.get("inject_context") {
@@ -115,12 +115,12 @@ impl Default for ToolRegistry {
     }
 }
 
-/// Register all 55 Context Graph MCP tools.
+/// Register all 59 Context Graph MCP tools.
 ///
 /// Uses existing definitions from tools/definitions/ modules.
 /// FAIL FAST: Panics on duplicate registration or wrong tool count.
 ///
-/// # Tool Categories (55 total)
+/// # Tool Categories (59 total)
 ///
 /// | Category | Count | Source |
 /// |----------|-------|--------|
@@ -128,12 +128,12 @@ impl Default for ToolRegistry {
 /// | GWT | 9 | definitions/gwt.rs |
 /// | UTL | 1 | definitions/utl.rs |
 /// | ATC | 3 | definitions/atc.rs |
-/// | Dream | 5 | definitions/dream.rs |
+/// | Dream | 8 | definitions/dream.rs (TASK-37, TASK-S01/S02/S03) |
 /// | Neuromod | 2 | definitions/neuromod.rs |
 /// | Steering | 1 | definitions/steering.rs |
 /// | Causal | 1 | definitions/causal.rs |
 /// | Teleological | 5 | definitions/teleological.rs |
-/// | Autonomous | 12 | definitions/autonomous.rs |
+/// | Autonomous | 13 | definitions/autonomous.rs (TASK-FIX-002 added get_drift_history) |
 /// | Meta-UTL | 3 | definitions/meta_utl.rs |
 /// | Epistemic | 1 | definitions/epistemic.rs |
 /// | Merge | 1 | definitions/merge.rs |
@@ -144,7 +144,7 @@ impl Default for ToolRegistry {
 ///
 /// Panics if:
 /// - Any tool name is registered twice (duplicate detection)
-/// - Total tool count is not exactly 55 (indicates missing/extra tools)
+/// - Total tool count is not exactly 59 (indicates missing/extra tools)
 pub fn register_all_tools() -> ToolRegistry {
     use super::definitions;
 
@@ -199,12 +199,13 @@ pub fn register_all_tools() -> ToolRegistry {
         registry.register(tool);
     }
 
-    // FAIL FAST: Verify exactly 58 tools are registered
+    // FAIL FAST: Verify exactly 59 tools are registered
     // TASK-S01/S02/S03: Added 3 trigger tools (55 → 58)
+    // TASK-FIX-002/NORTH-010: Added get_drift_history (58 → 59)
     let actual_count = registry.len();
     assert_eq!(
-        actual_count, 58,
-        "TASK-41: Expected 58 tools, got {}. Check definitions modules for missing/extra tools.",
+        actual_count, 59,
+        "TASK-41: Expected 59 tools, got {}. Check definitions modules for missing/extra tools.",
         actual_count
     );
 
@@ -224,13 +225,13 @@ mod tests {
     }
 
     #[test]
-    fn test_register_all_tools_returns_58() {
+    fn test_register_all_tools_returns_59() {
         println!("\n=== FSV TEST: register_all_tools (TASK-41) ===");
 
         let registry = register_all_tools();
 
         println!("FSV-1: Tool count = {}", registry.len());
-        assert_eq!(registry.len(), 58, "Must have exactly 58 tools (55 + 3 trigger tools from TASK-S01/S02/S03)");
+        assert_eq!(registry.len(), 59, "Must have exactly 59 tools (58 + get_drift_history from TASK-FIX-002)");
 
         // Verify critical tools exist
         let critical_tools = [
@@ -273,7 +274,7 @@ mod tests {
         }
 
         println!("\n=== FSV EVIDENCE (TASK-41) ===");
-        println!(" 55 tools registered");
+        println!(" 59 tools registered");
         println!(" All critical tools present");
         println!("=== FSV TEST PASSED (TASK-41) ===\n");
     }
@@ -321,7 +322,7 @@ mod tests {
     fn test_list_returns_all_tools_sorted() {
         let registry = register_all_tools();
         let tools = registry.list();
-        assert_eq!(tools.len(), 58);
+        assert_eq!(tools.len(), 59);
 
         // Verify sorted by name
         for i in 1..tools.len() {
@@ -338,7 +339,7 @@ mod tests {
     fn test_tool_names_returns_sorted_names() {
         let registry = register_all_tools();
         let names = registry.tool_names();
-        assert_eq!(names.len(), 58);
+        assert_eq!(names.len(), 59);
 
         // Verify sorted
         for i in 1..names.len() {

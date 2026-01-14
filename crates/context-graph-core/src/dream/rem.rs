@@ -152,7 +152,7 @@ impl RemPhase {
         // Create HyperbolicWalkConfig with Constitution-mandated values
         let walk_config = HyperbolicWalkConfig {
             step_size: 0.1,
-            max_steps: 50,
+            max_steps: 100,
             temperature: constants::REM_TEMPERATURE,         // Constitution: 2.0
             min_blind_spot_distance: constants::MIN_SEMANTIC_LEAP, // Constitution: 0.7
             direction_samples: 8,
@@ -358,7 +358,7 @@ mod tests {
         let config = phase.explorer.config();
         assert_eq!(config.temperature, 2.0);
         assert_eq!(config.min_blind_spot_distance, 0.7);
-        assert_eq!(config.max_steps, 50);
+        assert_eq!(config.max_steps, 100);
         assert_eq!(config.step_size, 0.1);
     }
 

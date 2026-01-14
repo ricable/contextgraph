@@ -75,7 +75,7 @@ pub use ego_node::IC_CRISIS_THRESHOLD;
 // Re-export from listeners
 pub use listeners::{
     DreamEventListener, IdentityContinuityListener, MetaCognitiveEventListener,
-    NeuromodulationEventListener,
+    NeuromodulationEventListener, WORKSPACE_EMPTY_THRESHOLD_MS,
 };
 
 // Re-export from meta_cognitive

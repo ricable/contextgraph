@@ -84,6 +84,38 @@ pub struct GetAlignmentDriftParams {
     pub include_history: bool,
 }
 
+/// Parameters for get_drift_history tool (NORTH-010, TASK-FIX-002).
+#[derive(Debug, Deserialize)]
+pub struct GetDriftHistoryParams {
+    /// Goal UUID to retrieve history for (defaults to North Star)
+    #[serde(default)]
+    pub goal_id: Option<String>,
+
+    /// Time range filter: "1h", "6h", "24h", "7d", "30d", "all" (default: "24h")
+    #[serde(default = "default_timeframe")]
+    pub time_range: String,
+
+    /// Maximum entries to return (1-100, default 50)
+    #[serde(default = "default_history_limit")]
+    pub limit: usize,
+
+    /// Include per-embedder breakdown (default: false)
+    #[serde(default)]
+    pub include_per_embedder: bool,
+
+    /// Compute deltas between entries (default: true)
+    #[serde(default = "default_true")]
+    pub compute_deltas: bool,
+}
+
+pub(super) fn default_history_limit() -> usize {
+    50
+}
+
+pub(super) fn default_true() -> bool {
+    true
+}
+
 /// Parameters for trigger_drift_correction tool.
 #[derive(Debug, Deserialize)]
 pub struct TriggerDriftCorrectionParams {

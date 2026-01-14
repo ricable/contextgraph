@@ -31,20 +31,23 @@ use crate::error::{UtlError, UtlResult};
 pub const NUM_OSCILLATORS: usize = 13;
 
 /// Names of the 13 embedding spaces corresponding to each oscillator.
+///
+/// CANONICAL SOURCE: `Embedder::name()` in `context-graph-core/src/teleological/embedder.rs`
+/// These names MUST match exactly. See TASK-FIX-003 for rationale.
 pub const EMBEDDER_NAMES: [&str; NUM_OSCILLATORS] = [
-    "E1_Semantic",       // e5-large-v2
-    "E2_TempRecent",     // exponential decay
-    "E3_TempPeriodic",   // Fourier
-    "E4_TempPositional", // sinusoidal PE
-    "E5_Causal",         // Longformer SCM
-    "E6_SparseLex",      // SPLADE
-    "E7_Code",           // Qodo-Embed-1-1.5B
-    "E8_Graph",          // MiniLM structure
-    "E9_HDC",            // 10K-bit hyperdimensional
-    "E10_Multimodal",    // CLIP
-    "E11_Entity",        // MiniLM facts
-    "E12_LateInteract",  // ColBERT
-    "E13_SPLADE",        // SPLADE v3
+    "E1_Semantic",         // e5-large-v2
+    "E2_Temporal_Recent",  // exponential decay
+    "E3_Temporal_Periodic", // Fourier
+    "E4_Temporal_Positional", // sinusoidal PE
+    "E5_Causal",           // Longformer SCM
+    "E6_Sparse_Lexical",   // SPLADE
+    "E7_Code",             // Qodo-Embed-1-1.5B
+    "E8_Emotional",        // MiniLM structure (was E8_Graph, now canonical)
+    "E9_HDC",              // 10K-bit hyperdimensional
+    "E10_Multimodal",      // CLIP
+    "E11_Entity",          // MiniLM facts
+    "E12_Late_Interaction", // ColBERT
+    "E13_SPLADE",          // SPLADE v3
 ];
 
 /// Brain wave frequency bands for reference (from Constitution v4.0.0).

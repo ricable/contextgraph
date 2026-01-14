@@ -174,13 +174,14 @@ async fn test_ec002_weight_clamped_above_maximum() {
     println!("======================================================================\n");
 }
 
-/// EC-003: Test that 10 consecutive low accuracy cycles triggers escalation
+/// EC-003: Test that 100 consecutive low accuracy cycles triggers escalation
 ///
 /// TASK-METAUTL-P0-001: Bayesian escalation trigger test.
+/// TASK-FIX-008: PRD requires 100 operations threshold (not 10)
 #[tokio::test]
-async fn test_ec003_escalation_trigger_at_10_cycles() {
+async fn test_ec003_escalation_trigger_at_100_cycles() {
     println!("\n======================================================================");
-    println!("EC-003: 10 consecutive low accuracy cycles triggers escalation");
+    println!("EC-003: 100 consecutive low accuracy cycles triggers escalation");
     println!("======================================================================\n");
 
     let mut tracker = MetaUtlTracker::new();
@@ -192,17 +193,20 @@ async fn test_ec003_escalation_trigger_at_10_cycles() {
     assert_eq!(tracker.consecutive_low_count(), 0);
     assert!(!tracker.needs_escalation());
 
-    // ACTION: Record 10 cycles of low accuracy (below 0.7 threshold)
+    // ACTION: Record 100 cycles of low accuracy (below 0.7 threshold)
     // Each cycle records accuracy for all embedders
-    for cycle in 0..10 {
+    // TASK-FIX-008: PRD 2.4.9 requires 100 operations threshold
+    for cycle in 0..100 {
         for embedder in 0..NUM_EMBEDDERS {
             tracker.record_accuracy(embedder, 0.5); // Below 0.7 threshold
         }
-        println!(
-            "  After cycle {}: consecutive_low = {}",
-            cycle + 1,
-            tracker.consecutive_low_count()
-        );
+        if cycle % 20 == 19 {
+            println!(
+                "  After cycle {}: consecutive_low = {}",
+                cycle + 1,
+                tracker.consecutive_low_count()
+            );
+        }
     }
 
     // VERIFY: Escalation should be triggered
@@ -211,18 +215,18 @@ async fn test_ec003_escalation_trigger_at_10_cycles() {
     println!("  needs_escalation: {}", tracker.needs_escalation());
 
     assert!(
-        tracker.consecutive_low_count() >= 10,
-        "Should have 10+ consecutive low cycles, got {}",
+        tracker.consecutive_low_count() >= 100,
+        "Should have 100+ consecutive low cycles, got {}",
         tracker.consecutive_low_count()
     );
     assert!(
         tracker.needs_escalation(),
-        "Escalation should be triggered after 10 consecutive low cycles"
+        "Escalation should be triggered after 100 consecutive low cycles (PRD 2.4.9)"
     );
 
     println!("\n======================================================================");
     println!(
-        "EVIDENCE: Escalation triggered at {} consecutive low cycles",
+        "EVIDENCE: Escalation triggered at {} consecutive low cycles (per PRD 2.4.9)",
         tracker.consecutive_low_count()
     );
     println!("======================================================================\n");
@@ -428,6 +432,7 @@ async fn test_ec006_single_winner_distribution() {
 /// EC-007: Test recovery from escalation resets consecutive count
 ///
 /// TASK-METAUTL-P0-001: Recovery scenario test.
+/// TASK-FIX-008: PRD requires 100 operations threshold (not 10)
 #[tokio::test]
 async fn test_ec007_recovery_resets_consecutive_low() {
     println!("\n======================================================================");
@@ -441,18 +446,18 @@ async fn test_ec007_recovery_resets_consecutive_low() {
     println!("  consecutive_low_count: {}", tracker.consecutive_low_count());
     println!("  needs_escalation: {}", tracker.needs_escalation());
 
-    // ACTION 1: Trigger escalation (10 low cycles)
-    for _ in 0..10 {
+    // ACTION 1: Trigger escalation (100 low cycles per PRD 2.4.9)
+    for _ in 0..100 {
         for embedder in 0..NUM_EMBEDDERS {
             tracker.record_accuracy(embedder, 0.5);
         }
     }
 
-    println!("\nAFTER 10 LOW CYCLES:");
+    println!("\nAFTER 100 LOW CYCLES:");
     println!("  consecutive_low_count: {}", tracker.consecutive_low_count());
     println!("  needs_escalation: {}", tracker.needs_escalation());
 
-    assert!(tracker.needs_escalation(), "Should be escalated");
+    assert!(tracker.needs_escalation(), "Should be escalated after 100 cycles per PRD 2.4.9");
     let count_before_reset = tracker.consecutive_low_count();
 
     // ACTION 2: Reset (simulating Bayesian optimization completion)
@@ -481,49 +486,52 @@ async fn test_ec007_recovery_resets_consecutive_low() {
     println!("======================================================================\n");
 }
 
-/// EC-008: Test 9 low cycles then 1 high cycle - recovery depends on rolling average
+/// EC-008: Test 99 low cycles then 1 high cycle - recovery depends on rolling average
 ///
 /// TASK-METAUTL-P0-001: Near-threshold recovery test.
+/// TASK-FIX-008: PRD requires 100 operations threshold (not 10)
 /// NOTE: Recovery uses rolling average, not instant cycle accuracy.
-/// After 9 cycles of 0.5 + 1 cycle of 0.9, rolling avg = (9x0.5 + 1x0.9)/10 = 0.54 < 0.7
+/// After 99 cycles of 0.5 + 1 cycle of 0.9, rolling avg is still < 0.7
 /// So consecutive count will NOT reset until rolling avg exceeds threshold.
 #[tokio::test]
-async fn test_ec008_nine_low_then_recovery() {
+async fn test_ec008_ninetynine_low_then_recovery() {
     println!("\n======================================================================");
-    println!("EC-008: 9 low cycles + 1 high cycle - rolling average behavior");
+    println!("EC-008: 99 low cycles + 1 high cycle - rolling average behavior");
     println!("======================================================================\n");
 
     let mut tracker = MetaUtlTracker::new();
 
-    // ACTION 1: Record 9 low accuracy cycles
-    for cycle in 0..9 {
+    // ACTION 1: Record 99 low accuracy cycles (PRD 2.4.9 requires 100 threshold)
+    for cycle in 0..99 {
         for embedder in 0..NUM_EMBEDDERS {
             tracker.record_accuracy(embedder, 0.5);
         }
-        println!(
-            "  After cycle {}: consecutive_low = {}",
-            cycle + 1,
-            tracker.consecutive_low_count()
-        );
+        if cycle % 20 == 19 {
+            println!(
+                "  After cycle {}: consecutive_low = {}",
+                cycle + 1,
+                tracker.consecutive_low_count()
+            );
+        }
     }
 
-    println!("\nAFTER 9 LOW CYCLES:");
+    println!("\nAFTER 99 LOW CYCLES:");
     println!("  consecutive_low_count: {}", tracker.consecutive_low_count());
     println!("  needs_escalation: {}", tracker.needs_escalation());
 
-    // Should NOT be escalated yet (need 10)
+    // Should NOT be escalated yet (need 100 per PRD 2.4.9)
     assert!(
         !tracker.needs_escalation(),
-        "Should NOT be escalated after only 9 cycles"
+        "Should NOT be escalated after only 99 cycles (PRD 2.4.9 requires 100)"
     );
     assert_eq!(
         tracker.consecutive_low_count(),
-        9,
-        "Should have 9 consecutive low cycles"
+        99,
+        "Should have 99 consecutive low cycles"
     );
 
     // ACTION 2: Record 1 high accuracy cycle
-    // NOTE: Rolling average = (9x0.5 + 1x0.9)/10 = 0.54 < 0.7
+    // NOTE: Rolling average with 99 low cycles is still < 0.7
     // So consecutive_low will NOT reset (rolling avg still below threshold)
     for embedder in 0..NUM_EMBEDDERS {
         tracker.record_accuracy(embedder, 0.9);
@@ -532,19 +540,19 @@ async fn test_ec008_nine_low_then_recovery() {
     println!("\nAFTER 1 HIGH CYCLE:");
     println!("  consecutive_low_count: {}", tracker.consecutive_low_count());
     println!("  needs_escalation: {}", tracker.needs_escalation());
-    println!("  NOTE: Rolling avg still ~0.54 < 0.7, so count continues increasing");
+    println!("  NOTE: Rolling avg still below 0.7, so count continues increasing");
 
-    // With rolling average at ~0.54, consecutive low count should INCREASE to 10
+    // With rolling average still low, consecutive low count should INCREASE to 100
     // Because the rolling average is still below threshold
-    // And this 10th cycle should trigger escalation
+    // And this 100th cycle should trigger escalation per PRD 2.4.9
     assert_eq!(
         tracker.consecutive_low_count(),
-        10,
-        "Rolling average still below threshold, so consecutive count increases to 10"
+        100,
+        "Rolling average still below threshold, so consecutive count increases to 100"
     );
     assert!(
         tracker.needs_escalation(),
-        "Escalation triggered at 10 consecutive (rolling avg still low)"
+        "Escalation triggered at 100 consecutive per PRD 2.4.9 (rolling avg still low)"
     );
 
     // ACTION 3: Record MANY high accuracy cycles to actually recover

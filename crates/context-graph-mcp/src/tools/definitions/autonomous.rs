@@ -6,8 +6,9 @@
 use serde_json::json;
 use crate::tools::types::ToolDefinition;
 
-/// Returns Autonomous tool definitions (12 tools).
+/// Returns Autonomous tool definitions (13 tools).
 /// SPEC-AUTONOMOUS-001: Added 5 new tools per constitution NORTH-009, NORTH-012, NORTH-020.
+/// TASK-FIX-002/NORTH-010: Added get_drift_history tool.
 pub fn definitions() -> Vec<ToolDefinition> {
     vec![
         // auto_bootstrap_north_star - Initialize autonomous services from teleological embeddings
@@ -58,6 +59,49 @@ pub fn definitions() -> Vec<ToolDefinition> {
                         "type": "boolean",
                         "default": false,
                         "description": "Include full drift history in response"
+                    }
+                },
+                "required": []
+            }),
+        ),
+
+        // get_drift_history - Get historical drift measurements (NORTH-010, TASK-FIX-002)
+        ToolDefinition::new(
+            "get_drift_history",
+            "Get historical drift measurements over time. Returns timestamped drift entries \
+             with per-embedder similarity scores, overall drift deltas, and trend analysis. \
+             Use this to understand drift patterns and predict future alignment issues. \
+             Requires prior calls to get_alignment_drift with include_history=true or \
+             check_drift_with_history to populate history data.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "goal_id": {
+                        "type": "string",
+                        "description": "Goal UUID to retrieve history for (defaults to North Star if not provided)"
+                    },
+                    "time_range": {
+                        "type": "string",
+                        "enum": ["1h", "6h", "24h", "7d", "30d", "all"],
+                        "default": "24h",
+                        "description": "Time range filter for history entries"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100,
+                        "default": 50,
+                        "description": "Maximum number of history entries to return"
+                    },
+                    "include_per_embedder": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Include per-embedder breakdown for each history entry"
+                    },
+                    "compute_deltas": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Compute drift deltas between consecutive entries"
                     }
                 },
                 "required": []

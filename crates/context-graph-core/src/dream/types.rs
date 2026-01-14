@@ -199,7 +199,7 @@ impl Default for HyperbolicWalkConfig {
     fn default() -> Self {
         Self {
             step_size: 0.1,
-            max_steps: 50,
+            max_steps: 100,
             temperature: 2.0,              // Constitution mandated
             min_blind_spot_distance: 0.7,  // Constitution: semantic_leap >= 0.7
             direction_samples: 8,

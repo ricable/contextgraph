@@ -9,6 +9,11 @@ use tokio::sync::RwLock;
 use crate::gwt::meta_cognitive::MetaCognitiveLoop;
 use crate::gwt::workspace::{WorkspaceEvent, WorkspaceEventListener};
 
+/// Minimum duration (ms) workspace must be empty before triggering epistemic action.
+/// PRD Section 2.5.3: "workspace_empty: No memory r > 0.8 for 5s"
+/// Constitution Rule: gwt.workspace.events.empty_5s
+pub const WORKSPACE_EMPTY_THRESHOLD_MS: u64 = 5000;
+
 /// Listener that triggers epistemic action on workspace empty
 ///
 /// When the workspace is empty for an extended period, an epistemic action
@@ -53,12 +58,22 @@ impl WorkspaceEventListener for MetaCognitiveEventListener {
                 duration_ms,
                 timestamp: _,
             } => {
-                // Set epistemic action flag - atomic, no lock needed
-                self.epistemic_action_triggered.store(true, Ordering::SeqCst);
-                tracing::info!(
-                    "Workspace empty for {}ms - epistemic action triggered",
-                    duration_ms
-                );
+                if *duration_ms >= WORKSPACE_EMPTY_THRESHOLD_MS {
+                    // Threshold met - trigger epistemic action
+                    self.epistemic_action_triggered.store(true, Ordering::SeqCst);
+                    tracing::info!(
+                        "GWT: Workspace empty for {}ms >= {}ms threshold - epistemic action triggered",
+                        duration_ms,
+                        WORKSPACE_EMPTY_THRESHOLD_MS
+                    );
+                } else {
+                    // Threshold not met - log but do not trigger
+                    tracing::debug!(
+                        "GWT: Workspace empty for {}ms < {}ms threshold - waiting",
+                        duration_ms,
+                        WORKSPACE_EMPTY_THRESHOLD_MS
+                    );
+                }
             }
             // No-op for other events
             WorkspaceEvent::MemoryEnters { .. } => {}

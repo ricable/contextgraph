@@ -97,6 +97,8 @@ pub const MANAGE_TELEOLOGICAL_PROFILE: &str = "manage_teleological_profile";
 pub const AUTO_BOOTSTRAP_NORTH_STAR: &str = "auto_bootstrap_north_star";
 /// TASK-AUTONOMOUS-MCP: Get current drift state and history
 pub const GET_ALIGNMENT_DRIFT: &str = "get_alignment_drift";
+/// TASK-FIX-002/NORTH-010: Get historical drift measurements and trend data
+pub const GET_DRIFT_HISTORY: &str = "get_drift_history";
 /// TASK-AUTONOMOUS-MCP: Manually trigger drift correction
 pub const TRIGGER_DRIFT_CORRECTION: &str = "trigger_drift_correction";
 /// TASK-AUTONOMOUS-MCP: Get memories that are candidates for pruning

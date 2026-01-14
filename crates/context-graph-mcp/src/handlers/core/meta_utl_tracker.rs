@@ -435,7 +435,7 @@ impl MetaUtlTracker {
     /// Check if Bayesian escalation is needed.
     ///
     /// TASK-METAUTL-P0-001: Returns true when accuracy has been below 0.7
-    /// for 10 or more consecutive cycles.
+    /// for 100 or more consecutive cycles (PRD: minimum_observations for statistical significance).
     #[allow(dead_code)] // API reserved for TASK-METAUTL-P0-005 integration
     pub fn needs_escalation(&self) -> bool {
         self.escalation_triggered

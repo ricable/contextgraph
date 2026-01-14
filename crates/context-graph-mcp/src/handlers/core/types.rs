@@ -287,7 +287,7 @@ pub struct SelfCorrectionConfig {
     pub enabled: bool,
     /// Prediction error threshold (constitution: 0.2)
     pub error_threshold: f32,
-    /// Maximum consecutive failures before escalation (constitution: 10)
+    /// Maximum consecutive failures before escalation (PRD: 100 for statistical significance)
     pub max_consecutive_failures: usize,
     /// Accuracy threshold below which is considered "low" (constitution: 0.7)
     pub low_accuracy_threshold: f32,
@@ -324,7 +324,7 @@ impl Default for SelfCorrectionConfig {
     ///
     /// From docs2/constitution.yaml:
     /// - threshold: 0.2
-    /// - max_consecutive_failures: 10
+    /// - max_consecutive_failures: 100 (PRD minimum_observations for statistical significance)
     /// - escalation_strategy: "bayesian_optimization"
     /// - NORTH-016_WeightAdjuster: min=0.05, max_delta=0.10
     /// - base_alpha: 0.05 (SPEC-METAUTL-001)
@@ -332,7 +332,7 @@ impl Default for SelfCorrectionConfig {
         Self {
             enabled: true,
             error_threshold: 0.2,
-            max_consecutive_failures: 10,
+            max_consecutive_failures: 100, // PRD: minimum_observations for statistical significance
             low_accuracy_threshold: 0.7,
             min_weight: 0.05, // NORTH-016: min=0.05 (13×0.05=0.65 < 1.0, sum is achievable)
             max_weight: 0.9,

@@ -63,7 +63,7 @@ async fn test_all_listeners_receive_all_events() {
             timestamp: Utc::now(),
         },
         WorkspaceEvent::WorkspaceEmpty {
-            duration_ms: 500,
+            duration_ms: 5000, // Must be >= 5000ms threshold per TASK-FIX-001
             timestamp: Utc::now(),
         },
         WorkspaceEvent::WorkspaceConflict {

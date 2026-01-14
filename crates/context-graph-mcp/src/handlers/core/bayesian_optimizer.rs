@@ -2,7 +2,7 @@
 //!
 //! TASK-METAUTL-P0-003: Implements Bayesian optimization with Gaussian Process
 //! surrogate for finding optimal lambda values when gradient-based adjustment
-//! fails for 10+ consecutive cycles.
+//! fails for 100+ consecutive cycles (PRD: minimum_observations for statistical significance).
 //!
 //! # Architecture
 //!
@@ -13,14 +13,14 @@
 //!
 //! # Algorithm
 //!
-//! 1. Detect when 10+ consecutive low-accuracy cycles occur
+//! 1. Detect when 100+ consecutive low-accuracy cycles occur (PRD statistical significance)
 //! 2. Trigger Bayesian optimization with GP surrogate
 //! 3. Use Expected Improvement (EI) acquisition function
 //! 4. If BO fails 3 times, escalate to human review
 //!
 //! # Constitution Reference
 //!
-//! - REQ-METAUTL-008: Escalate to Bayesian optimization after 10 consecutive failures
+//! - REQ-METAUTL-008: Escalate to Bayesian optimization after 100 consecutive failures (PRD)
 //! - REQ-METAUTL-009: Use Gaussian Process surrogate for lambda search
 //! - REQ-METAUTL-010: Escalate to human review after 3 BO failures
 
@@ -975,8 +975,8 @@ mod tests {
         // Should not escalate initially
         assert!(!manager.should_escalate());
 
-        // Record failures up to threshold
-        for _ in 0..10 {
+        // Record failures up to threshold (PRD: 100 for statistical significance)
+        for _ in 0..100 {
             manager.record_failure_cycle();
         }
 

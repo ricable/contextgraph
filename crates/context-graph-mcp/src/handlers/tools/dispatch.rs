@@ -140,6 +140,7 @@ impl Handlers {
                 self.call_auto_bootstrap_north_star(id, arguments).await
             }
             tool_names::GET_ALIGNMENT_DRIFT => self.call_get_alignment_drift(id, arguments).await,
+            tool_names::GET_DRIFT_HISTORY => self.call_get_drift_history(id, arguments).await,
             tool_names::TRIGGER_DRIFT_CORRECTION => {
                 self.call_trigger_drift_correction(id, arguments).await
             }

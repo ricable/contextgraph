@@ -131,9 +131,9 @@ async fn test_workspace_empty_triggers_epistemic_action() {
     println!("BEFORE: epistemic_action_triggered = {}", before_flag);
     assert!(!before_flag, "Flag should start as false");
 
-    // EXECUTE - Broadcast WorkspaceEmpty event
+    // EXECUTE - Broadcast WorkspaceEmpty event (>= 5000ms per TASK-FIX-001)
     let event = WorkspaceEvent::WorkspaceEmpty {
-        duration_ms: 500,
+        duration_ms: 5000, // Must be >= 5000ms threshold per PRD 2.5.3
         timestamp: chrono::Utc::now(),
     };
     gwt.event_broadcaster.broadcast(event).await;
@@ -218,7 +218,7 @@ async fn test_full_event_flow_integration() {
     println!("\nSCENARIO 3: Workspace becomes empty");
     gwt.event_broadcaster
         .broadcast(WorkspaceEvent::WorkspaceEmpty {
-            duration_ms: 200,
+            duration_ms: 5000, // Must be >= 5000ms threshold per PRD 2.5.3
             timestamp: chrono::Utc::now(),
         })
         .await;

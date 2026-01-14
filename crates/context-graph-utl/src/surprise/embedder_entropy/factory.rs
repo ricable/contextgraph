@@ -16,8 +16,8 @@
 
 use super::{
     AsymmetricKnnEntropy, CrossModalEntropy, DefaultKnnEntropy, EmbedderEntropy,
-    GmmMahalanobisEntropy, HammingPrototypeEntropy, HybridGmmKnnEntropy, JaccardActiveEntropy,
-    MaxSimTokenEntropy, TransEEntropy,
+    GmmMahalanobisEntropy, HammingPrototypeEntropy, HammingSparseEntropy, HybridGmmKnnEntropy,
+    JaccardActiveEntropy, MaxSimTokenEntropy, TransEEntropy,
 };
 use crate::config::SurpriseConfig;
 use context_graph_core::teleological::Embedder;
@@ -41,6 +41,7 @@ impl EmbedderEntropyFactory {
     /// # Routing
     /// - E1 (Semantic) → GmmMahalanobisEntropy
     /// - E5 (Causal) → AsymmetricKnnEntropy
+    /// - E6 (Sparse) → HammingSparseEntropy (Hamming distance per constitution)
     /// - E7 (Code) → HybridGmmKnnEntropy (GMM+KNN hybrid per constitution)
     /// - E9 (Hdc) → HammingPrototypeEntropy
     /// - E10 (Multimodal) → CrossModalEntropy (Cross-modal KNN per constitution)
@@ -87,11 +88,14 @@ impl EmbedderEntropyFactory {
             // E12 (LateInteraction): MaxSim token-level entropy per constitution.yaml
             Embedder::LateInteraction => Box::new(MaxSimTokenEntropy::from_config(config)),
 
-            // E2-E4, E6, E8: Default KNN-based entropy
+            // E6 (Sparse): Hamming distance per constitution.yaml delta_methods.E6
+            // Uses symmetric difference of active dimensions for sparse vectors
+            Embedder::Sparse => Box::new(HammingSparseEntropy::new()),
+
+            // E2-E4, E8: Default KNN-based entropy
             Embedder::TemporalRecent
             | Embedder::TemporalPeriodic
             | Embedder::TemporalPositional
-            | Embedder::Sparse
             | Embedder::Emotional => {
                 Box::new(DefaultKnnEntropy::from_config(embedder, config))
             }
@@ -441,5 +445,77 @@ mod tests {
         assert!(!delta_s.is_infinite(), "delta_s should not be Infinite");
 
         println!("[PASS] test_factory_routes_late_interaction_to_maxsim");
+    }
+
+    #[test]
+    fn test_factory_routes_sparse_to_hamming() {
+        let config = SurpriseConfig::default();
+        let calculator = EmbedderEntropyFactory::create(Embedder::Sparse, &config);
+
+        assert_eq!(
+            calculator.embedder_type(),
+            Embedder::Sparse,
+            "Factory should create HammingSparseEntropy for Sparse"
+        );
+
+        // Test with sparse vectors (mostly zeros, few active dimensions)
+        let mut current = vec![0.0f32; 100];
+        current[10] = 0.8;
+        current[20] = 0.6;
+        current[30] = 0.4;
+
+        let mut history_item = vec![0.0f32; 100];
+        history_item[10] = 0.7; // Same dim as current
+        history_item[20] = 0.5; // Same dim as current
+        history_item[40] = 0.3; // Different dim
+
+        let history = vec![history_item];
+        let result = calculator.compute_delta_s(&current, &history, 1);
+
+        assert!(
+            result.is_ok(),
+            "HammingSparseEntropy should compute successfully"
+        );
+        let delta_s = result.unwrap();
+
+        // Current active: {10, 20, 30}, History active: {10, 20, 40}
+        // sym_diff = {30, 40}, union = {10, 20, 30, 40}
+        // Hamming = 2/4 = 0.5
+        assert!(
+            (delta_s - 0.5).abs() < 0.01,
+            "Sparse vectors should use Hamming distance, expected ~0.5, got {}",
+            delta_s
+        );
+        assert!(!delta_s.is_nan(), "delta_s should not be NaN");
+        assert!(!delta_s.is_infinite(), "delta_s should not be Infinite");
+
+        println!("[PASS] test_factory_routes_sparse_to_hamming");
+    }
+
+    #[test]
+    fn test_e6_uses_hamming_not_knn() {
+        let config = SurpriseConfig::default();
+        let calculator = EmbedderEntropyFactory::create(Embedder::Sparse, &config);
+
+        // Verify it's HammingSparseEntropy by testing behavior unique to Hamming
+        // Hamming distance between identical sparse vectors should be exactly 0
+        let mut sparse = vec![0.0f32; 50];
+        sparse[5] = 1.0;
+        sparse[15] = 1.0;
+
+        let history = vec![sparse.clone()]; // Identical
+
+        let result = calculator.compute_delta_s(&sparse, &history, 1);
+        assert!(result.is_ok());
+        let delta_s = result.unwrap();
+
+        // Hamming distance for identical sets = 0
+        assert_eq!(
+            delta_s, 0.0,
+            "E6 with Hamming should return 0 for identical sparse vectors, got {}",
+            delta_s
+        );
+
+        println!("[PASS] test_e6_uses_hamming_not_knn");
     }
 }

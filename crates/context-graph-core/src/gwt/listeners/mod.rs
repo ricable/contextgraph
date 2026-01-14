@@ -21,7 +21,7 @@ mod neuromod;
 
 pub use dream::{DreamConsolidationCallback, DreamEventListener};
 pub use identity::IdentityContinuityListener;
-pub use meta_cognitive::MetaCognitiveEventListener;
+pub use meta_cognitive::{MetaCognitiveEventListener, WORKSPACE_EMPTY_THRESHOLD_MS};
 pub use neuromod::NeuromodulationEventListener;
 
 #[cfg(test)]

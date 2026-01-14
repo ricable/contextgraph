@@ -273,6 +273,11 @@ pub mod error_codes {
     pub const SESSION_EXISTS: i32 = -32122;
     /// No active session - must call session_start first
     pub const NO_ACTIVE_SESSION: i32 = -32123;
+
+    // Drift history error codes (-32130 to -32139) - TASK-FIX-002/NORTH-010
+    /// No drift history available for the specified goal
+    /// FAIL FAST: Returns error rather than empty array when no history exists
+    pub const HISTORY_NOT_AVAILABLE: i32 = -32130;
 }
 
 /// MCP method names.

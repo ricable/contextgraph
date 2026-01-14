@@ -1,26 +1,30 @@
 //! Johari handler types and constants.
 //!
 //! Request/response types for all Johari MCP handlers.
+//! TASK-FIX-003: Fixed to match canonical Embedder::name() values.
 
 use serde::{Deserialize, Serialize};
 
 use context_graph_core::johari::NUM_EMBEDDERS;
 
 /// Embedder names for response formatting.
+///
+/// CANONICAL SOURCE: `Embedder::name()` in `context-graph-core/src/teleological/embedder.rs`
+/// These names MUST match exactly. See TASK-FIX-003 for rationale.
 pub const EMBEDDER_NAMES: [&str; 13] = [
-    "E1_semantic",
-    "E2_temporal_recent",
-    "E3_temporal_periodic",
-    "E4_temporal_positional",
-    "E5_causal",
-    "E6_sparse",
-    "E7_code",
-    "E8_graph",
-    "E9_hdc",
-    "E10_multimodal",
-    "E11_entity",
-    "E12_late_interaction",
-    "E13_splade",
+    "E1_Semantic",
+    "E2_Temporal_Recent",
+    "E3_Temporal_Periodic",
+    "E4_Temporal_Positional",
+    "E5_Causal",
+    "E6_Sparse_Lexical",
+    "E7_Code",
+    "E8_Emotional",
+    "E9_HDC",
+    "E10_Multimodal",
+    "E11_Entity",
+    "E12_Late_Interaction",
+    "E13_SPLADE",
 ];
 
 /// Validate embedder index is within bounds.
