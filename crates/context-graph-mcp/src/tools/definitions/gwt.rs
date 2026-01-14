@@ -1,10 +1,11 @@
 //! GWT (Global Workspace Theory) tool definitions.
 //! TASK-GWT-001: Consciousness state, Kuramoto sync, workspace, ego, broadcast, coupling.
+//! TASK-34: High-level coherence state tool.
 
 use serde_json::json;
 use crate::tools::types::ToolDefinition;
 
-/// Returns GWT tool definitions (6 tools).
+/// Returns GWT tool definitions (7 tools).
 pub fn definitions() -> Vec<ToolDefinition> {
     vec![
         // get_consciousness_state - GWT consciousness state (TASK-GWT-001)
@@ -138,6 +139,26 @@ pub fn definitions() -> Vec<ToolDefinition> {
                     }
                 },
                 "required": ["new_K"]
+            }),
+        ),
+
+        // get_coherence_state - High-level coherence summary (TASK-34)
+        ToolDefinition::new(
+            "get_coherence_state",
+            "Get high-level GWT workspace coherence state. Returns Kuramoto order parameter, \
+             coherence level classification (High/Medium/Low), workspace broadcasting status, \
+             and conflict detection status. Use get_kuramoto_sync for detailed oscillator data. \
+             Requires GWT providers to be initialized via with_gwt() constructor.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "include_phases": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Include all 13 oscillator phases in response (optional)"
+                    }
+                },
+                "required": []
             }),
         ),
     ]

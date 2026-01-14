@@ -66,6 +66,8 @@ tokio-test = "0.4"
 tempfile = "3.10"
 # Enable test-utils for stubs access in tests (AP-007 compliant)
 context-graph-core = { path = "../context-graph-core", features = ["test-utils"] }
+# TASK-33: SSE integration tests
+tower = { version = "0.5", features = ["util"] }
 
 [features]
 # GPU-first architecture: CUDA is REQUIRED (RTX 5090 / Blackwell)

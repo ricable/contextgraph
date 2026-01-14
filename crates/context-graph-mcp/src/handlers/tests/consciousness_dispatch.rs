@@ -689,3 +689,280 @@ async fn test_invalid_consciousness_method_returns_error() {
 
     println!("[FSV] Invalid consciousness method error handling verified");
 }
+
+// =============================================================================
+// GET_COHERENCE_STATE TESTS (TASK-34)
+// =============================================================================
+
+/// FSV Test: get_coherence_state via tools/call with GWT initialized.
+///
+/// TASK-34: Returns high-level coherence summary.
+/// Source of Truth: KuramotoProvider::order_parameter(), WorkspaceProvider
+/// Expected: order_parameter, coherence_level, is_broadcasting, has_conflict, thresholds
+#[tokio::test]
+async fn test_get_coherence_state_returns_real_data() {
+    // SETUP: Create handlers with real GWT providers (synchronized)
+    let handlers = create_test_handlers_with_gwt();
+
+    // EXECUTE: Call get_coherence_state via tools/call
+    let request = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        id: Some(JsonRpcId::Number(200)),
+        method: "tools/call".to_string(),
+        params: Some(json!({
+            "name": "get_coherence_state",
+            "arguments": {}
+        })),
+    };
+    let response = handlers.dispatch(request).await;
+
+    // VERIFY: Response is successful
+    assert!(
+        response.error.is_none(),
+        "Expected success, got error: {:?}",
+        response.error
+    );
+
+    let result = response.result.expect("Should have result");
+    let data = super::extract_mcp_tool_data(&result);
+
+    // FSV: Check order_parameter is in valid range [0, 1]
+    let r = data
+        .get("order_parameter")
+        .and_then(|v| v.as_f64())
+        .expect("order_parameter must exist and be f64");
+    assert!(
+        (0.0..=1.0).contains(&r),
+        "[FSV] order_parameter must be in [0,1], got {}",
+        r
+    );
+
+    // FSV: For synchronized network, r should be high (> 0.99)
+    assert!(
+        r > 0.99,
+        "[FSV] Synchronized network should have r > 0.99, got {}",
+        r
+    );
+
+    // FSV: Verify coherence_level classification
+    let coherence_level = data
+        .get("coherence_level")
+        .and_then(|v| v.as_str())
+        .expect("coherence_level must exist");
+    assert!(
+        ["High", "Medium", "Low"].contains(&coherence_level),
+        "[FSV] Invalid coherence_level: {}",
+        coherence_level
+    );
+
+    // FSV: For r > 0.8, coherence_level should be "High"
+    assert_eq!(
+        coherence_level, "High",
+        "[FSV] r={} (> 0.8) should give High, got {}",
+        r, coherence_level
+    );
+
+    // FSV: Verify is_broadcasting boolean
+    let is_broadcasting = data
+        .get("is_broadcasting")
+        .and_then(|v| v.as_bool())
+        .expect("is_broadcasting must exist and be boolean");
+    assert!(
+        !is_broadcasting || is_broadcasting,
+        "[FSV] is_broadcasting must be boolean"
+    );
+
+    // FSV: Verify has_conflict boolean
+    let has_conflict = data
+        .get("has_conflict")
+        .and_then(|v| v.as_bool())
+        .expect("has_conflict must exist and be boolean");
+    assert!(
+        !has_conflict || has_conflict,
+        "[FSV] has_conflict must be boolean"
+    );
+
+    // FSV: Verify thresholds match constitution-mandated values
+    let thresholds = data.get("thresholds").expect("thresholds must exist");
+    assert_eq!(
+        thresholds.get("high").and_then(|v| v.as_f64()),
+        Some(0.8),
+        "[FSV] thresholds.high must be 0.8"
+    );
+    assert_eq!(
+        thresholds.get("medium").and_then(|v| v.as_f64()),
+        Some(0.5),
+        "[FSV] thresholds.medium must be 0.5"
+    );
+
+    println!("[FSV] get_coherence_state verification PASSED");
+    println!(
+        "[FSV]   r={}, coherence_level={}, is_broadcasting={}, has_conflict={}",
+        r, coherence_level, is_broadcasting, has_conflict
+    );
+}
+
+/// FSV Test: get_coherence_state FAIL FAST without GWT initialization.
+///
+/// TASK-34: Must return error -32060 when Kuramoto or Workspace not initialized.
+/// Source of Truth: kuramoto_network = None, workspace_provider = None in Handlers
+#[tokio::test]
+async fn test_get_coherence_state_fails_without_gwt() {
+    // SETUP: Create handlers WITHOUT GWT (kuramoto_network = None)
+    let handlers = create_test_handlers_no_gwt();
+
+    // EXECUTE: Call get_coherence_state via tools/call
+    let request = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        id: Some(JsonRpcId::Number(201)),
+        method: "tools/call".to_string(),
+        params: Some(json!({
+            "name": "get_coherence_state",
+            "arguments": {}
+        })),
+    };
+    let response = handlers.dispatch(request).await;
+
+    // VERIFY: Must FAIL FAST with correct error code
+    assert!(
+        response.result.is_none(),
+        "[FSV] Should not have result without GWT"
+    );
+    let error = response.error.expect("Should have error");
+
+    // Error code -32060 is GWT_NOT_INITIALIZED
+    assert_eq!(
+        error.code,
+        error_codes::GWT_NOT_INITIALIZED,
+        "[FSV] Error code must be GWT_NOT_INITIALIZED (-32060), got {}",
+        error.code
+    );
+    assert!(
+        error.message.to_lowercase().contains("not initialized")
+            || error.message.to_lowercase().contains("kuramoto")
+            || error.message.to_lowercase().contains("workspace"),
+        "[FSV] Error message should mention initialization, got: {}",
+        error.message
+    );
+
+    println!("[FSV] get_coherence_state FAIL FAST verification PASSED");
+    println!("[FSV]   error.code={}, error.message={}", error.code, error.message);
+}
+
+/// Edge case: Incoherent network returns Low coherence.
+///
+/// TASK-34: When r < 0.5, coherence_level should be "Low".
+#[tokio::test]
+async fn test_get_coherence_state_incoherent_network_low() {
+    // SETUP: Create handlers with incoherent Kuramoto network (r < 0.1)
+    let handlers = create_test_handlers_incoherent();
+
+    // EXECUTE: Call get_coherence_state via tools/call
+    let request = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        id: Some(JsonRpcId::Number(202)),
+        method: "tools/call".to_string(),
+        params: Some(json!({
+            "name": "get_coherence_state",
+            "arguments": {}
+        })),
+    };
+    let response = handlers.dispatch(request).await;
+
+    // VERIFY: Response is successful
+    assert!(
+        response.error.is_none(),
+        "Expected success, got error: {:?}",
+        response.error
+    );
+
+    let result = response.result.expect("Should have result");
+    let data = super::extract_mcp_tool_data(&result);
+
+    let r = data
+        .get("order_parameter")
+        .and_then(|v| v.as_f64())
+        .expect("order_parameter must exist");
+    let coherence_level = data
+        .get("coherence_level")
+        .and_then(|v| v.as_str())
+        .expect("coherence_level must exist");
+
+    // Incoherent network should have r < 0.5
+    assert!(
+        r < 0.5,
+        "[FSV] Incoherent network should have r < 0.5, got {}",
+        r
+    );
+
+    // For r < 0.5, coherence_level should be "Low"
+    assert_eq!(
+        coherence_level, "Low",
+        "[FSV] r={} (< 0.5) should give Low, got {}",
+        r, coherence_level
+    );
+
+    println!(
+        "[FSV] Incoherent network edge case PASSED: r={}, coherence_level={}",
+        r, coherence_level
+    );
+}
+
+/// Edge case: get_coherence_state with include_phases=true returns 13 phases.
+///
+/// TASK-34: When include_phases=true, phases array with 13 oscillator phases is returned.
+#[tokio::test]
+async fn test_get_coherence_state_with_phases() {
+    // SETUP: Create handlers with real GWT providers
+    let handlers = create_test_handlers_with_gwt();
+
+    // EXECUTE: Call get_coherence_state with include_phases=true
+    let request = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        id: Some(JsonRpcId::Number(203)),
+        method: "tools/call".to_string(),
+        params: Some(json!({
+            "name": "get_coherence_state",
+            "arguments": {
+                "include_phases": true
+            }
+        })),
+    };
+    let response = handlers.dispatch(request).await;
+
+    // VERIFY: Response is successful
+    assert!(
+        response.error.is_none(),
+        "Expected success, got error: {:?}",
+        response.error
+    );
+
+    let result = response.result.expect("Should have result");
+    let data = super::extract_mcp_tool_data(&result);
+
+    // FSV: Verify phases array has 13 elements
+    let phases = data
+        .get("phases")
+        .and_then(|v| v.as_array())
+        .expect("phases must exist when include_phases=true");
+    assert_eq!(
+        phases.len(),
+        13,
+        "[FSV] Must have 13 oscillator phases, got {}",
+        phases.len()
+    );
+
+    // FSV: Verify all phases are valid floats
+    for (i, phase) in phases.iter().enumerate() {
+        let phase_val = phase.as_f64().expect("phase must be f64");
+        // Phases should be in [-π, π] or [0, 2π] depending on normalization
+        assert!(
+            phase_val.is_finite(),
+            "[FSV] Phase[{}] must be finite, got {}",
+            i,
+            phase_val
+        );
+    }
+
+    println!("[FSV] get_coherence_state with phases PASSED: phases.len={}", phases.len());
+}

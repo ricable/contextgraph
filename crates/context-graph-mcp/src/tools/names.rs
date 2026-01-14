@@ -126,3 +126,11 @@ pub const MERGE_CONCEPTS: &str = "merge_concepts";
 /// TASK-MCP-005: Get Johari quadrant classification from delta_s/delta_c
 /// Constitution: utl.johari lines 154-157
 pub const GET_JOHARI_CLASSIFICATION: &str = "get_johari_classification";
+
+// ========== COHERENCE STATE TOOL (TASK-34) ==========
+
+/// TASK-34: Get high-level coherence state from Kuramoto/GWT system
+/// Returns order_parameter, coherence_level (High/Medium/Low), is_broadcasting, has_conflict
+/// Unlike get_kuramoto_sync (raw oscillator data) or get_consciousness_state (full state),
+/// this returns a focused coherence summary for quick status checks.
+pub const GET_COHERENCE_STATE: &str = "get_coherence_state";

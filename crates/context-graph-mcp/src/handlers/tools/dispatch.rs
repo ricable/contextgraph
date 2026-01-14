@@ -159,6 +159,10 @@ impl Handlers {
             tool_names::GET_JOHARI_CLASSIFICATION => {
                 self.call_get_johari_classification(id, arguments).await
             }
+            // TASK-34: Coherence state summary
+            tool_names::GET_COHERENCE_STATE => {
+                self.call_get_coherence_state(id, arguments).await
+            }
             _ => JsonRpcResponse::error(
                 id,
                 error_codes::TOOL_NOT_FOUND,

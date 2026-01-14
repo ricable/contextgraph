@@ -1,6 +1,7 @@
 //! GWT consciousness state tool implementations.
 //!
 //! TASK-GWT-001: Consciousness queries - get_consciousness_state, get_kuramoto_sync, get_ego_state.
+//! TASK-34: High-level coherence state tool - get_coherence_state.
 
 use serde_json::json;
 use tracing::{debug, error};
@@ -382,6 +383,109 @@ impl Handlers {
                     "in_crisis": ic_in_crisis,
                     "history_len": ic_history_len,
                     "last_detection": last_detection_json
+                }
+            }),
+        )
+    }
+
+    /// get_coherence_state tool implementation.
+    ///
+    /// TASK-34: Returns high-level GWT workspace coherence state.
+    /// Unlike get_kuramoto_sync (raw data) or get_consciousness_state (full state),
+    /// this returns a focused coherence summary for quick status checks.
+    ///
+    /// FAIL FAST on missing GWT components - no stubs or fallbacks.
+    ///
+    /// Returns:
+    /// - order_parameter: Kuramoto r in [0, 1]
+    /// - coherence_level: High (r > 0.8) / Medium (0.5 <= r <= 0.8) / Low (r < 0.5)
+    /// - is_broadcasting: Whether workspace is currently broadcasting
+    /// - has_conflict: Whether there's a workspace conflict (two r > 0.8)
+    /// - phases: Optional 13 oscillator phases (if include_phases = true)
+    /// - thresholds: The threshold values used for coherence_level classification
+    pub(crate) async fn call_get_coherence_state(
+        &self,
+        id: Option<JsonRpcId>,
+        arguments: serde_json::Value,
+    ) -> JsonRpcResponse {
+        debug!("Handling get_coherence_state tool call");
+
+        // Parse include_phases argument
+        let include_phases = arguments
+            .get("include_phases")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // FAIL FAST: Check required Kuramoto provider
+        let kuramoto = match &self.kuramoto_network {
+            Some(k) => k,
+            None => {
+                error!("get_coherence_state: Kuramoto network not initialized");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::GWT_NOT_INITIALIZED,
+                    "Kuramoto network not initialized - use with_gwt() constructor",
+                );
+            }
+        };
+
+        // FAIL FAST: Check required workspace provider
+        let workspace = match &self.workspace_provider {
+            Some(w) => w,
+            None => {
+                error!("get_coherence_state: Workspace provider not initialized");
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::GWT_NOT_INITIALIZED,
+                    "Workspace provider not initialized - use with_gwt() constructor",
+                );
+            }
+        };
+
+        // Get Kuramoto order parameter (r, psi)
+        // parking_lot::RwLock::read() doesn't return Result, it blocks until lock acquired
+        let (r, _psi) = {
+            let kuramoto_guard = kuramoto.read();
+            kuramoto_guard.order_parameter()
+        };
+
+        // Classify coherence level based on r thresholds (constitution.yaml gwt.kuramoto.thresholds)
+        // coherent: r >= 0.8, fragmented: r < 0.5
+        let coherence_level = if r > 0.8 {
+            "High"
+        } else if r >= 0.5 {
+            "Medium"
+        } else {
+            "Low"
+        };
+
+        // Get workspace status (async methods per TASK-07)
+        let workspace_guard = workspace.read().await;
+        let is_broadcasting = workspace_guard.is_broadcasting().await;
+        let has_conflict = workspace_guard.has_conflict().await;
+        drop(workspace_guard);
+
+        // Optionally get phases
+        let phases_json = if include_phases {
+            let kuramoto_guard = kuramoto.read();
+            let phases = kuramoto_guard.phases();
+            Some(json!(phases.to_vec()))
+        } else {
+            None
+        };
+
+        self.tool_result_with_pulse(
+            id,
+            json!({
+                "order_parameter": r,
+                "coherence_level": coherence_level,
+                "is_broadcasting": is_broadcasting,
+                "has_conflict": has_conflict,
+                "phases": phases_json,
+                "thresholds": {
+                    "high": 0.8,
+                    "medium": 0.5,
+                    "low": 0.0
                 }
             }),
         )
