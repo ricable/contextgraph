@@ -43,6 +43,7 @@ mod memex_impl;
 mod memory_provider;
 mod node_ops;
 mod session_identity;
+mod session_identity_manager;
 
 #[cfg(test)]
 mod tests_core;
@@ -70,3 +71,6 @@ pub use core::RocksDbMemex;
 
 // Re-export memory provider (TASK-007)
 pub use memory_provider::GraphMemoryProvider;
+
+// Re-export session identity manager (TASK-SESSION-06)
+pub use session_identity_manager::StandaloneSessionIdentityManager;

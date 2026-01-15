@@ -157,8 +157,8 @@ Layer 3: Surface (Depends on Logic) - CLI Commands  │
 | 002-TASK-SESSION-02 | ✅ Completed | 2026-01-14 | 2026-01-14 | ✅ |
 | 003-TASK-SESSION-03 | ✅ Completed | 2026-01-15 | 2026-01-15 | ✅ |
 | 004-TASK-SESSION-04 | ✅ Completed | 2026-01-15 | 2026-01-15 | ✅ |
-| 005-TASK-SESSION-05 | ⏳ Pending | - | - | - |
-| 006-TASK-SESSION-06 | ⏳ Pending | - | - | - |
+| 005-TASK-SESSION-05 | ✅ Completed | 2026-01-15 | 2026-01-15 | ✅ |
+| 006-TASK-SESSION-06 | ✅ Completed | 2026-01-15 | 2026-01-15 | ✅ |
 | 007-TASK-SESSION-07 | ⏳ Pending | - | - | - |
 | 008-TASK-SESSION-08 | ⏳ Pending | - | - | - |
 | 009-TASK-SESSION-09 | ⏳ Pending | - | - | - |
@@ -171,7 +171,7 @@ Layer 3: Surface (Depends on Logic) - CLI Commands  │
 | 016-TASK-SESSION-16 | ⏳ Pending | - | - | - |
 | 017-TASK-SESSION-17 | ⏳ Pending | - | - | - |
 
-**Progress: 4/17 tasks (23.5%)**
+**Progress: 6/17 tasks (35.3%)**
 
 ---
 

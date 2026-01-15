@@ -53,6 +53,9 @@ pub use rocksdb_backend::{
 // Re-export GraphMemoryProvider for NREM dream phase (TASK-007)
 pub use rocksdb_backend::GraphMemoryProvider;
 
+// Re-export StandaloneSessionIdentityManager (TASK-SESSION-06)
+pub use rocksdb_backend::StandaloneSessionIdentityManager;
+
 // Re-export Memex trait and StorageHealth (TASK-M02-026)
 pub use memex::{Memex, StorageHealth};
 

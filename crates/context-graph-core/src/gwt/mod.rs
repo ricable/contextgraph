@@ -98,7 +98,10 @@ pub use workspace::{
 };
 
 // Re-export from session_identity
-pub use session_identity::{SessionIdentitySnapshot, IdentityCache, update_cache, clear_cache, MAX_TRAJECTORY_LEN};
+pub use session_identity::{
+    clear_cache, compute_ic, compute_kuramoto_r, update_cache, IdentityCache,
+    SessionIdentityManager, SessionIdentitySnapshot, MAX_TRAJECTORY_LEN,
+};
 // Note: KURAMOTO_N is already exported from layers module
 
 // Re-export from system - the main GwtSystem orchestrator

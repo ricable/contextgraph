@@ -15,7 +15,9 @@
 //! - AP-25: 13 oscillators
 
 mod cache;
+mod manager;
 mod types;
 
 pub use cache::{clear_cache, update_cache, IdentityCache};
+pub use manager::{compute_ic, compute_kuramoto_r, SessionIdentityManager};
 pub use types::{SessionIdentitySnapshot, KURAMOTO_N, MAX_TRAJECTORY_LEN};
