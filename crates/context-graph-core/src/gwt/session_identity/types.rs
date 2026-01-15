@@ -1,77 +1,3 @@
-# TASK-SESSION-01: Create SessionIdentitySnapshot Struct
-
-## Status: COMPLETED
-
-### Completion Evidence
-
-**Completed**: 2026-01-14
-
-**Files Created**:
-- `crates/context-graph-core/src/gwt/session_identity/mod.rs` - Module exports
-- `crates/context-graph-core/src/gwt/session_identity/types.rs` - SessionIdentitySnapshot struct (14 fields)
-
-**Files Modified**:
-- `crates/context-graph-core/src/gwt/mod.rs` - Added `pub mod session_identity;` and re-exports
-
-**All Tests Passing** (9 tests):
-1. `test_snapshot_serialization_roundtrip` - PASS
-2. `test_trajectory_fifo_eviction` - PASS
-3. `edge_case_empty_trajectory` - PASS
-4. `edge_case_max_trajectory_size` - PASS
-5. `edge_case_long_session_id` - PASS
-6. `test_struct_has_14_fields` - PASS
-7. `test_constants_match_constitution` - PASS
-8. `test_estimated_size_accuracy` - PASS
-9. `test_send_sync_compatible` - PASS
-
-**FSV Verification Results**:
-- Serialized size: 253 bytes (default) / 2,853 bytes (max trajectory) - **< 30KB**
-- Round-trip equality: **VERIFIED**
-- FIFO eviction: First 50 entries correctly evicted, remaining entries [50-99]
-- Send + Sync: **VERIFIED**
-- Documentation: `SessionIdentitySnapshot` visible in `cargo doc` with all 14 fields
-
-## Objective
-
-Create `SessionIdentitySnapshot` struct with 14 fields for fast bincode serialization under 30KB. This is the **foundation data structure** that all other session identity tasks depend on.
-
-## Critical Context
-
-**This task creates a NEW module that DOES NOT EXIST yet:**
-- Directory `crates/context-graph-core/src/gwt/session_identity/` does NOT exist
-- No CLI crate exists yet (`context-graph-cli`)
-- SessionManager in MCP handles runtime sessions, NOT persistence
-
-**Existing code to reference:**
-- `KURAMOTO_N = 13` at `crates/context-graph-core/src/layers/coherence/constants.rs:17`
-- `IdentityContinuity` at `crates/context-graph-core/src/gwt/ego_node/identity_continuity.rs`
-- `IdentityStatus` at `crates/context-graph-core/src/gwt/ego_node/types.rs`
-- `ConsciousnessState` at `crates/context-graph-core/src/gwt/state_machine/types.rs`
-- bincode is already a workspace dependency
-
-## Files to Create
-
-| File | Purpose |
-|------|---------|
-| `crates/context-graph-core/src/gwt/session_identity/mod.rs` | Module exports |
-| `crates/context-graph-core/src/gwt/session_identity/types.rs` | SessionIdentitySnapshot struct + constants |
-
-## Files to Modify
-
-| File | Change |
-|------|--------|
-| `crates/context-graph-core/src/gwt/mod.rs` | Add `pub mod session_identity;` after line 55 (after `pub mod workspace;`) |
-
-## Implementation
-
-### Step 1: Create Directory
-```bash
-mkdir -p crates/context-graph-core/src/gwt/session_identity
-```
-
-### Step 2: Create types.rs
-
-```rust
 // crates/context-graph-core/src/gwt/session_identity/types.rs
 //! SessionIdentitySnapshot - Core data structure for cross-session identity persistence.
 //!
@@ -96,9 +22,9 @@ pub const KURAMOTO_N: usize = 13;
 ///
 /// # Size Breakdown
 /// - Header (session_id + timestamp + previous + ic): ~100 bytes
-/// - Kuramoto state (13×8 + 8): 112 bytes
-/// - Purpose vector (13×4): 52 bytes
-/// - Trajectory (50×13×4): ~2,600 bytes max
+/// - Kuramoto state (13x8 + 8): 112 bytes
+/// - Purpose vector (13x4): 52 bytes
+/// - Trajectory (50x13x4): ~2,600 bytes max
 /// - IC monitor state: 8 bytes
 /// - Consciousness snapshot: 16 bytes
 /// - **Total**: ~3KB typical, <30KB with full trajectory
@@ -221,7 +147,10 @@ mod tests {
 
         // SOURCE OF TRUTH: In-memory snapshot
         let snapshot = SessionIdentitySnapshot::default();
-        println!("BEFORE: Created snapshot with session_id={}", snapshot.session_id);
+        println!(
+            "BEFORE: Created snapshot with session_id={}",
+            snapshot.session_id
+        );
         println!("  estimated_size={} bytes", snapshot.estimated_size());
 
         // EXECUTE: Serialize
@@ -229,17 +158,23 @@ mod tests {
         println!("AFTER SERIALIZE: {} bytes", bytes.len());
 
         // VERIFY: Size under 30KB
-        assert!(bytes.len() < 30_000,
-            "Serialized size {} must be < 30KB", bytes.len());
+        assert!(
+            bytes.len() < 30_000,
+            "Serialized size {} must be < 30KB",
+            bytes.len()
+        );
 
         // EXECUTE: Deserialize
-        let restored: SessionIdentitySnapshot = bincode::deserialize(&bytes)
-            .expect("Deserialization must succeed");
+        let restored: SessionIdentitySnapshot =
+            bincode::deserialize(&bytes).expect("Deserialization must succeed");
 
         // VERIFY: Round-trip equality
         assert_eq!(snapshot, restored, "Round-trip must preserve all fields");
         println!("AFTER DESERIALIZE: session_id={}", restored.session_id);
-        println!("RESULT: PASS - Round-trip successful, size={} bytes < 30KB", bytes.len());
+        println!(
+            "RESULT: PASS - Round-trip successful, size={} bytes < 30KB",
+            bytes.len()
+        );
     }
 
     // =========================================================================
@@ -260,16 +195,24 @@ mod tests {
 
         // VERIFY: Length capped at MAX_TRAJECTORY_LEN
         println!("AFTER: trajectory.len()={}", snapshot.trajectory.len());
-        assert_eq!(snapshot.trajectory.len(), MAX_TRAJECTORY_LEN,
-            "Trajectory must cap at MAX_TRAJECTORY_LEN={}", MAX_TRAJECTORY_LEN);
+        assert_eq!(
+            snapshot.trajectory.len(),
+            MAX_TRAJECTORY_LEN,
+            "Trajectory must cap at MAX_TRAJECTORY_LEN={}",
+            MAX_TRAJECTORY_LEN
+        );
 
         // VERIFY: FIFO behavior - first 50 entries evicted
         // Entry 0-49 should be gone, entry 50-99 should remain
         // First remaining entry (index 0) should have value 50.0
-        assert_eq!(snapshot.trajectory[0][0], 50.0,
-            "First entry should be 50.0 (first 50 evicted)");
-        assert_eq!(snapshot.trajectory[49][0], 99.0,
-            "Last entry should be 99.0");
+        assert_eq!(
+            snapshot.trajectory[0][0], 50.0,
+            "First entry should be 50.0 (first 50 evicted)"
+        );
+        assert_eq!(
+            snapshot.trajectory[49][0], 99.0,
+            "Last entry should be 99.0"
+        );
 
         println!("RESULT: PASS - FIFO eviction working correctly");
         println!("  First entry value: {}", snapshot.trajectory[0][0]);
@@ -288,11 +231,14 @@ mod tests {
         assert!(snapshot.trajectory.is_empty());
 
         let bytes = bincode::serialize(&snapshot).expect("Must serialize");
-        let restored: SessionIdentitySnapshot = bincode::deserialize(&bytes)
-            .expect("Must deserialize");
+        let restored: SessionIdentitySnapshot =
+            bincode::deserialize(&bytes).expect("Must deserialize");
 
-        println!("AFTER: Serialized {} bytes, restored trajectory.len()={}",
-            bytes.len(), restored.trajectory.len());
+        println!(
+            "AFTER: Serialized {} bytes, restored trajectory.len()={}",
+            bytes.len(),
+            restored.trajectory.len()
+        );
         assert!(restored.trajectory.is_empty());
         println!("RESULT: PASS - Empty trajectory handled correctly");
     }
@@ -311,8 +257,11 @@ mod tests {
             snapshot.append_to_trajectory([i as f32; KURAMOTO_N]);
         }
 
-        println!("BEFORE: trajectory.len()={}, estimated_size={}",
-            snapshot.trajectory.len(), snapshot.estimated_size());
+        println!(
+            "BEFORE: trajectory.len()={}, estimated_size={}",
+            snapshot.trajectory.len(),
+            snapshot.estimated_size()
+        );
 
         let bytes = bincode::serialize(&snapshot).expect("Must serialize");
         println!("AFTER: Actual serialized size={} bytes", bytes.len());
@@ -334,8 +283,8 @@ mod tests {
         println!("BEFORE: session_id.len()={}", snapshot.session_id.len());
 
         let bytes = bincode::serialize(&snapshot).expect("Must serialize");
-        let restored: SessionIdentitySnapshot = bincode::deserialize(&bytes)
-            .expect("Must deserialize");
+        let restored: SessionIdentitySnapshot =
+            bincode::deserialize(&bytes).expect("Must deserialize");
 
         println!("AFTER: Serialized {} bytes", bytes.len());
         assert_eq!(restored.session_id, long_id);
@@ -353,20 +302,20 @@ mod tests {
         let snapshot = SessionIdentitySnapshot::default();
 
         // Verify all 14 fields are accessible (compile-time check)
-        let _ = &snapshot.session_id;           // 1
-        let _ = &snapshot.timestamp_ms;         // 2
-        let _ = &snapshot.previous_session_id;  // 3
-        let _ = &snapshot.cross_session_ic;     // 4
-        let _ = &snapshot.kuramoto_phases;      // 5
-        let _ = &snapshot.coupling;             // 6
-        let _ = &snapshot.purpose_vector;       // 7
-        let _ = &snapshot.trajectory;           // 8
-        let _ = &snapshot.last_ic;              // 9
-        let _ = &snapshot.crisis_threshold;     // 10
-        let _ = &snapshot.consciousness;        // 11
-        let _ = &snapshot.integration;          // 12
-        let _ = &snapshot.reflection;           // 13
-        let _ = &snapshot.differentiation;      // 14
+        let _ = &snapshot.session_id; // 1
+        let _ = &snapshot.timestamp_ms; // 2
+        let _ = &snapshot.previous_session_id; // 3
+        let _ = &snapshot.cross_session_ic; // 4
+        let _ = &snapshot.kuramoto_phases; // 5
+        let _ = &snapshot.coupling; // 6
+        let _ = &snapshot.purpose_vector; // 7
+        let _ = &snapshot.trajectory; // 8
+        let _ = &snapshot.last_ic; // 9
+        let _ = &snapshot.crisis_threshold; // 10
+        let _ = &snapshot.consciousness; // 11
+        let _ = &snapshot.integration; // 12
+        let _ = &snapshot.reflection; // 13
+        let _ = &snapshot.differentiation; // 14
 
         println!("RESULT: PASS - All 14 fields accessible");
     }
@@ -412,8 +361,10 @@ mod tests {
         let ratio = estimated as f64 / actual as f64;
         println!("Ratio: {:.2}", ratio);
 
-        assert!(ratio > 0.5 && ratio < 2.0,
-            "Estimate should be within 50%-200% of actual");
+        assert!(
+            ratio > 0.5 && ratio < 2.0,
+            "Estimate should be within 50%-200% of actual"
+        );
         println!("RESULT: PASS - Estimate within acceptable range");
     }
 
@@ -431,153 +382,3 @@ mod tests {
         println!("RESULT: PASS - SessionIdentitySnapshot is Send + Sync");
     }
 }
-```
-
-### Step 3: Create mod.rs
-
-```rust
-// crates/context-graph-core/src/gwt/session_identity/mod.rs
-//! Session Identity Persistence
-//!
-//! Provides cross-session identity continuity via SessionIdentitySnapshot.
-//!
-//! # Architecture
-//! - SessionIdentitySnapshot: Core serializable struct (<30KB)
-//! - Persists to RocksDB CF_SESSION_IDENTITY (TASK-SESSION-04)
-//! - Used by CLI hooks for identity restore/persist (TASK-SESSION-12, TASK-SESSION-13)
-//!
-//! # Constitution Reference
-//! - IDENTITY-002: IC thresholds
-//! - GWT-003: Identity continuity
-//! - AP-25: 13 oscillators
-
-mod types;
-
-pub use types::{SessionIdentitySnapshot, KURAMOTO_N, MAX_TRAJECTORY_LEN};
-```
-
-### Step 4: Modify gwt/mod.rs
-
-Add after line 55 (`pub mod workspace;`):
-```rust
-pub mod session_identity;
-```
-
-Add to re-exports (after workspace re-exports):
-```rust
-// Re-export from session_identity
-pub use session_identity::{SessionIdentitySnapshot, MAX_TRAJECTORY_LEN};
-// Note: KURAMOTO_N is already exported from layers module
-```
-
-## Verification Commands
-
-```bash
-# Build the crate
-cargo build -p context-graph-core
-
-# Run specific tests
-cargo test -p context-graph-core session_identity
-
-# Run with output to see FSV logs
-cargo test -p context-graph-core session_identity -- --nocapture
-```
-
-## Full State Verification (FSV) Checklist
-
-### Source of Truth
-- **Location**: `crates/context-graph-core/src/gwt/session_identity/types.rs`
-- **Verification**: After implementation, the struct must be importable as `context_graph_core::gwt::SessionIdentitySnapshot`
-
-### Execute & Inspect Steps
-
-1. **Module Creation Verification**:
-   ```bash
-   ls -la crates/context-graph-core/src/gwt/session_identity/
-   # Expected: mod.rs, types.rs
-   ```
-
-2. **Compilation Verification**:
-   ```bash
-   cargo build -p context-graph-core 2>&1 | grep -E "(error|warning: unused)"
-   # Expected: No errors, possibly some unused warnings from other modules
-   ```
-
-3. **Test Execution Verification**:
-   ```bash
-   cargo test -p context-graph-core session_identity -- --nocapture 2>&1 | grep -E "^(test |RESULT:)"
-   # Expected: All tests pass
-   ```
-
-4. **Import Verification**:
-   ```bash
-   # Create a temporary test file
-   echo 'use context_graph_core::gwt::SessionIdentitySnapshot; fn main() { let _ = SessionIdentitySnapshot::default(); }' > /tmp/test_import.rs
-   rustc --edition 2021 -L target/debug/deps /tmp/test_import.rs 2>&1
-   # Should compile successfully
-   ```
-
-### Edge Cases to Manually Test
-
-| Edge Case | Input | Expected Output | Verification |
-|-----------|-------|-----------------|--------------|
-| Empty trajectory | new() | trajectory.len() == 0 | Test passes |
-| Max trajectory | 100 appends | trajectory.len() == 50, first value == 50.0 | Test passes |
-| Long session ID | 1000 char string | Serializes < 30KB | Test passes |
-| Round-trip | default snapshot | snapshot == restored | Test passes |
-
-### Evidence of Success Log
-
-After implementation, running `cargo test -p context-graph-core session_identity -- --nocapture` should produce:
-
-```
-=== TC-SESSION-01: Serialization Round-Trip ===
-BEFORE: Created snapshot with session_id=<uuid>
-  estimated_size=XXX bytes
-AFTER SERIALIZE: XXX bytes
-AFTER DESERIALIZE: session_id=<uuid>
-RESULT: PASS - Round-trip successful, size=XXX bytes < 30KB
-
-=== TC-SESSION-02: Trajectory FIFO Eviction ===
-BEFORE: trajectory.len()=0
-AFTER: trajectory.len()=50
-RESULT: PASS - FIFO eviction working correctly
-  First entry value: 50
-  Last entry value: 99
-```
-
-## Acceptance Criteria
-
-- [ ] `SessionIdentitySnapshot` struct compiles with all 14 fields
-- [ ] Bincode serialization round-trip succeeds (TC-SESSION-01)
-- [ ] Serialized size < 30KB with full trajectory (TC-SESSION-01)
-- [ ] Trajectory FIFO eviction at MAX_TRAJECTORY_LEN=50 (TC-SESSION-02)
-- [ ] `estimated_size()` returns reasonable estimate (within 50-200% of actual)
-- [ ] Struct is Send + Sync
-- [ ] Constants KURAMOTO_N=13 and MAX_TRAJECTORY_LEN=50 defined
-- [ ] Module exported from gwt/mod.rs
-
-## Constraints
-
-- **NO 'any' type** anywhere
-- **NO backwards compatibility shims** - fail fast if wrong
-- **UUID for session_id** (not auto-increment)
-- **All 14 fields exactly as specified**
-- **Follow constitution naming conventions** (snake_case for files, PascalCase for types)
-
-## Error Handling
-
-If any test fails, the implementation is WRONG. Do not create workarounds. Fix the root cause.
-
-Specific error scenarios:
-- Serialization > 30KB: Reduce trajectory or optimize struct
-- Round-trip inequality: Check Serialize/Deserialize derives
-- FIFO not working: Verify remove(0) in append_to_trajectory
-
-## Dependencies
-
-**None** - This is the first task.
-
-## Next Task
-
-After completion, proceed to **002-TASK-SESSION-02** (IdentityCache Singleton).

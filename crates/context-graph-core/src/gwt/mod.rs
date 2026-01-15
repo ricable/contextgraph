@@ -53,6 +53,7 @@ mod system;
 mod system_awareness;
 mod system_kuramoto;
 pub mod workspace;
+pub mod session_identity;
 
 #[cfg(test)]
 mod tests;
@@ -95,6 +96,10 @@ pub use workspace::{
     GlobalWorkspace, WorkspaceCandidate, WorkspaceEvent, WorkspaceEventBroadcaster,
     WorkspaceEventListener, DA_INHIBITION_FACTOR,
 };
+
+// Re-export from session_identity
+pub use session_identity::{SessionIdentitySnapshot, MAX_TRAJECTORY_LEN};
+// Note: KURAMOTO_N is already exported from layers module
 
 // Re-export from system - the main GwtSystem orchestrator
 pub use system::GwtSystem;
