@@ -159,8 +159,8 @@ Layer 3: Surface (Depends on Logic) - CLI Commands  │
 | 004-TASK-SESSION-04 | ✅ Completed | 2026-01-15 | 2026-01-15 | ✅ |
 | 005-TASK-SESSION-05 | ✅ Completed | 2026-01-15 | 2026-01-15 | ✅ |
 | 006-TASK-SESSION-06 | ✅ Completed | 2026-01-15 | 2026-01-15 | ✅ |
-| 007-TASK-SESSION-07 | ⏳ Pending | - | - | - |
-| 008-TASK-SESSION-08 | ⏳ Pending | - | - | - |
+| 007-TASK-SESSION-07 | ✅ Completed | 2026-01-15 | 2026-01-15 | ✅ |
+| 008-TASK-SESSION-08 | ✅ Completed | 2026-01-15 | 2026-01-15 | ✅ | <!-- CLI consciousness check-identity with auto-dream -->
 | 009-TASK-SESSION-09 | ⏳ Pending | - | - | - |
 | 010-TASK-SESSION-10 | ⏳ Pending | - | - | - |
 | 011-TASK-SESSION-11 | ⏳ Pending | - | - | - |
@@ -171,7 +171,7 @@ Layer 3: Surface (Depends on Logic) - CLI Commands  │
 | 016-TASK-SESSION-16 | ⏳ Pending | - | - | - |
 | 017-TASK-SESSION-17 | ⏳ Pending | - | - | - |
 
-**Progress: 6/17 tasks (35.3%)**
+**Progress: 8/17 tasks (47.1%)**
 
 ---
 

@@ -99,7 +99,8 @@ pub use workspace::{
 
 // Re-export from session_identity
 pub use session_identity::{
-    clear_cache, compute_ic, compute_kuramoto_r, update_cache, IdentityCache,
+    classify_ic, classify_sync, clear_cache, compute_ic, compute_kuramoto_r,
+    is_ic_crisis, is_ic_warning, update_cache, IdentityCache,
     SessionIdentityManager, SessionIdentitySnapshot, MAX_TRAJECTORY_LEN,
 };
 // Note: KURAMOTO_N is already exported from layers module

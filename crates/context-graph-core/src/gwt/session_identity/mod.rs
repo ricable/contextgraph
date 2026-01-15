@@ -19,5 +19,8 @@ mod manager;
 mod types;
 
 pub use cache::{clear_cache, update_cache, IdentityCache};
-pub use manager::{compute_ic, compute_kuramoto_r, SessionIdentityManager};
+pub use manager::{
+    classify_ic, classify_sync, compute_ic, compute_kuramoto_r,
+    is_ic_crisis, is_ic_warning, SessionIdentityManager,
+};
 pub use types::{SessionIdentitySnapshot, KURAMOTO_N, MAX_TRAJECTORY_LEN};

@@ -140,6 +140,68 @@ pub fn compute_ic(current: &SessionIdentitySnapshot, previous: &SessionIdentityS
     (cos_sim * r).clamp(0.0, 1.0)
 }
 
+// =============================================================================
+// IDENTITY-002 Classification Functions
+// =============================================================================
+
+/// Classify IC value per IDENTITY-002 constitution thresholds.
+///
+/// # Thresholds (IDENTITY-002)
+/// - Healthy: IC >= 0.9
+/// - Good: 0.7 <= IC < 0.9
+/// - Warning: 0.5 <= IC < 0.7
+/// - Degraded: IC < 0.5
+///
+/// # Returns
+/// Static string label (no allocation)
+#[inline]
+pub fn classify_ic(ic: f32) -> &'static str {
+    match ic {
+        ic if ic >= 0.9 => "Healthy",
+        ic if ic >= 0.7 => "Good",
+        ic if ic >= 0.5 => "Warning",
+        _ => "Degraded",
+    }
+}
+
+/// Returns true if IC indicates identity crisis (< 0.5).
+///
+/// Per AP-26 and AP-38: IC < 0.5 MUST trigger automatic dream consolidation.
+///
+/// # Constitution Reference
+/// - AP-26: IC<0.5 MUST trigger dream - no silent failures
+/// - AP-38: IC<0.5 MUST auto-trigger dream
+#[inline]
+pub fn is_ic_crisis(ic: f32) -> bool {
+    ic < 0.5
+}
+
+/// Returns true if IC is in warning range (0.5 <= IC < 0.7).
+///
+/// Per IDENTITY-002: This range indicates degraded identity but not crisis.
+#[inline]
+pub fn is_ic_warning(ic: f32) -> bool {
+    ic >= 0.5 && ic < 0.7
+}
+
+/// Classify Kuramoto order parameter r.
+///
+/// # Thresholds (gwt.kuramoto.thresholds in constitution)
+/// - Good synchronization: r >= 0.8
+/// - Partial synchronization: 0.5 <= r < 0.8
+/// - Fragmented: r < 0.5
+///
+/// # Returns
+/// Static string description
+#[inline]
+pub fn classify_sync(r: f64) -> &'static str {
+    match r {
+        r if r >= 0.8 => "Good synchronization",
+        r if r >= 0.5 => "Partial synchronization",
+        _ => "Fragmented",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -339,5 +401,124 @@ mod tests {
         );
 
         println!("RESULT: PASS - IC correctly varies with Kuramoto r");
+    }
+
+    // =========================================================================
+    // TC-SESSION-09: classify_ic() Threshold Boundaries
+    // =========================================================================
+    #[test]
+    fn tc_session_09_classify_ic_threshold_boundaries() {
+        println!("\n=== TC-SESSION-09: classify_ic() Threshold Boundaries ===");
+
+        // SOURCE OF TRUTH: IDENTITY-002 from constitution.yaml
+        // Healthy: IC >= 0.9
+        // Good: 0.7 <= IC < 0.9
+        // Warning: 0.5 <= IC < 0.7
+        // Degraded: IC < 0.5
+
+        let test_cases: Vec<(f32, &str)> = vec![
+            // Healthy boundary
+            (1.0, "Healthy"),
+            (0.95, "Healthy"),
+            (0.90, "Healthy"),
+            // Good boundary
+            (0.899, "Good"),
+            (0.75, "Good"),
+            (0.70, "Good"),
+            // Warning boundary
+            (0.699, "Warning"),
+            (0.55, "Warning"),
+            (0.50, "Warning"),
+            // Degraded boundary
+            (0.499, "Degraded"),
+            (0.25, "Degraded"),
+            (0.0, "Degraded"),
+            // Edge case: negative (clamped)
+            (-0.1, "Degraded"),
+        ];
+
+        for (ic, expected) in test_cases {
+            let actual = classify_ic(ic);
+            println!("classify_ic({:.3}) = '{}' (expected: '{}')", ic, actual, expected);
+            assert_eq!(
+                actual, expected,
+                "classify_ic({}) should return '{}', got '{}'",
+                ic, expected, actual
+            );
+        }
+
+        println!("RESULT: PASS - All threshold boundaries correct");
+    }
+
+    #[test]
+    fn tc_session_09_is_ic_crisis() {
+        println!("\n=== TC-SESSION-09: is_ic_crisis() ===");
+
+        // SOURCE OF TRUTH: AP-26, AP-38 - crisis is IC < 0.5
+
+        // Crisis cases (IC < 0.5)
+        assert!(is_ic_crisis(0.0), "0.0 should be crisis");
+        assert!(is_ic_crisis(0.25), "0.25 should be crisis");
+        assert!(is_ic_crisis(0.49), "0.49 should be crisis");
+        assert!(is_ic_crisis(0.499), "0.499 should be crisis");
+
+        // Non-crisis cases (IC >= 0.5)
+        assert!(!is_ic_crisis(0.5), "0.5 should NOT be crisis");
+        assert!(!is_ic_crisis(0.50), "0.50 should NOT be crisis");
+        assert!(!is_ic_crisis(0.51), "0.51 should NOT be crisis");
+        assert!(!is_ic_crisis(0.7), "0.7 should NOT be crisis");
+        assert!(!is_ic_crisis(1.0), "1.0 should NOT be crisis");
+
+        println!("RESULT: PASS - is_ic_crisis() boundary correct at 0.5");
+    }
+
+    #[test]
+    fn tc_session_09_is_ic_warning() {
+        println!("\n=== TC-SESSION-09: is_ic_warning() ===");
+
+        // SOURCE OF TRUTH: IDENTITY-002 - warning is 0.5 <= IC < 0.7
+
+        // Below warning (crisis range)
+        assert!(!is_ic_warning(0.49), "0.49 should NOT be warning (is crisis)");
+        assert!(!is_ic_warning(0.0), "0.0 should NOT be warning (is crisis)");
+
+        // Warning range
+        assert!(is_ic_warning(0.5), "0.5 should be warning");
+        assert!(is_ic_warning(0.55), "0.55 should be warning");
+        assert!(is_ic_warning(0.69), "0.69 should be warning");
+
+        // Above warning (good or healthy range)
+        assert!(!is_ic_warning(0.7), "0.7 should NOT be warning (is good)");
+        assert!(!is_ic_warning(0.71), "0.71 should NOT be warning");
+        assert!(!is_ic_warning(0.9), "0.9 should NOT be warning (is healthy)");
+        assert!(!is_ic_warning(1.0), "1.0 should NOT be warning");
+
+        println!("RESULT: PASS - is_ic_warning() boundaries correct at 0.5 and 0.7");
+    }
+
+    #[test]
+    fn tc_session_09_classify_sync() {
+        println!("\n=== TC-SESSION-09: classify_sync() ===");
+
+        // SOURCE OF TRUTH: constitution.yaml gwt.kuramoto.thresholds
+        // coherent: r >= 0.8
+        // fragmented: r < 0.5
+
+        // Good synchronization
+        assert_eq!(classify_sync(1.0), "Good synchronization");
+        assert_eq!(classify_sync(0.9), "Good synchronization");
+        assert_eq!(classify_sync(0.8), "Good synchronization");
+
+        // Partial synchronization
+        assert_eq!(classify_sync(0.79), "Partial synchronization");
+        assert_eq!(classify_sync(0.6), "Partial synchronization");
+        assert_eq!(classify_sync(0.5), "Partial synchronization");
+
+        // Fragmented
+        assert_eq!(classify_sync(0.49), "Fragmented");
+        assert_eq!(classify_sync(0.3), "Fragmented");
+        assert_eq!(classify_sync(0.0), "Fragmented");
+
+        println!("RESULT: PASS - classify_sync() thresholds correct");
     }
 }

@@ -1,0 +1,50 @@
+[package]
+name = "context-graph-cli"
+version = "0.1.0"
+edition = "2021"
+authors = ["Context Graph Team"]
+description = "CLI tools for Context Graph session identity and consciousness management"
+license = "MIT"
+repository = "https://github.com/contextgraph/contextgraph"
+keywords = ["cli", "consciousness", "identity", "context-graph"]
+
+[[bin]]
+name = "context-graph-cli"
+path = "src/main.rs"
+
+[dependencies]
+context-graph-core = { path = "../context-graph-core" }
+context-graph-mcp = { path = "../context-graph-mcp" }
+context-graph-storage = { path = "../context-graph-storage" }
+
+# CLI framework
+clap = { version = "4.5", features = ["derive", "env"] }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = "1.0"
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = "1.0"
+
+# Synchronization
+parking_lot = "0.12"
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.10"
+# Enable test-utils for real data access in tests (NO MOCKS per spec)
+context-graph-core = { path = "../context-graph-core", features = ["test-utils"] }
+
+[features]
+default = ["cuda"]
+# context-graph-core doesn't have cuda feature, only context-graph-mcp does
+cuda = ["context-graph-mcp/cuda"]
