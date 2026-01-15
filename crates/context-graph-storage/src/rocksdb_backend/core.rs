@@ -39,7 +39,7 @@
 use rocksdb::{Cache, ColumnFamily, Options, DB};
 use std::path::Path;
 
-use crate::column_families::{cf_names, get_column_family_descriptors};
+use crate::column_families::{cf_names, get_all_column_family_descriptors};
 
 use super::config::RocksDbConfig;
 use super::error::StorageError;
@@ -236,8 +236,9 @@ impl RocksDbMemex {
             db_opts.set_manual_wal_flush(true);
         }
 
-        // Get column family descriptors with optimized options
-        let cf_descriptors = get_column_family_descriptors(&cache);
+        // Get ALL column family descriptors: base (12) + teleological (11+13) + autonomous (7)
+        // This ensures CF_SESSION_IDENTITY and other advanced CFs are available
+        let cf_descriptors = get_all_column_family_descriptors(&cache);
 
         // Open database with all column families
         let db = DB::open_cf_descriptors(&db_opts, &path_str, cf_descriptors).map_err(|e| {

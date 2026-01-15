@@ -167,6 +167,14 @@ pub use teleological::{
     TELEOLOGICAL_CFS,
     TELEOLOGICAL_CF_COUNT,
     TELEOLOGICAL_VERSION,
+    // TASK-SESSION-04: Session identity column family and key helpers
+    CF_SESSION_IDENTITY,
+    SESSION_LATEST_KEY,
+    parse_session_identity_key,
+    parse_session_temporal_key,
+    session_identity_cf_options,
+    session_identity_key,
+    session_temporal_key,
 };
 
 // Re-export autonomous storage types (TASK-NORTH-007)

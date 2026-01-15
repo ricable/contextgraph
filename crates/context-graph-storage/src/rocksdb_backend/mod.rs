@@ -30,6 +30,7 @@
 //! - `embedding_ops`: Embedding storage operations (TASK-M02-024)
 //! - `index_ops`: Secondary index query operations
 //! - `helpers`: Key formatting utilities
+//! - `session_identity`: Session identity persistence (TASK-SESSION-05)
 
 mod config;
 mod core;
@@ -41,6 +42,7 @@ mod index_ops;
 mod memex_impl;
 mod memory_provider;
 mod node_ops;
+mod session_identity;
 
 #[cfg(test)]
 mod tests_core;
