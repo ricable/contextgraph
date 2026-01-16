@@ -135,8 +135,10 @@ fn test_cosine_similarity_via_loop() {
     assert_eq!(v1, v2);
 }
 
-#[test]
-fn test_self_awareness_loop_identity_coherence_getter() {
+/// CRITICAL: Uses #[tokio::test] to prevent zombie runtime threads.
+/// DO NOT use tokio::runtime::Runtime::new() in tests.
+#[tokio::test]
+async fn test_self_awareness_loop_identity_coherence_getter() {
     let mut loop_mgr = SelfAwarenessLoop::new();
 
     // Initial state
@@ -148,9 +150,7 @@ fn test_self_awareness_loop_identity_coherence_getter() {
     ego.record_purpose_snapshot("Setup").unwrap();
 
     let action = [0.8; 13];
-    tokio::runtime::Runtime::new().unwrap().block_on(async {
-        let _ = loop_mgr.cycle(&mut ego, &action, 0.95).await.unwrap();
-    });
+    let _ = loop_mgr.cycle(&mut ego, &action, 0.95).await.unwrap();
 
     // After cycle
     let final_ic = loop_mgr.identity_coherence();

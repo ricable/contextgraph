@@ -1,44 +1,29 @@
-//! Autonomous MCP tools tests (7 tools):
-//! - auto_bootstrap_north_star
+//! Autonomous MCP tools tests (12 tools after TASK-P0-001):
+//!
+//! TASK-P0-001: REMOVED auto_bootstrap_north_star per ARCH-03.
+//! Goals now emerge autonomously from topic clustering (constitution v6.0.0).
+//!
+//! Current tools:
 //! - get_alignment_drift
 //! - trigger_drift_correction
 //! - get_pruning_candidates
 //! - trigger_consolidation
 //! - discover_sub_goals
 //! - get_autonomous_status
+//! - get_learner_state
+//! - observe_outcome
+//! - execute_prune
+//! - get_health_status
+//! - trigger_healing
+//! - get_drift_history
 
 use serde_json::json;
 
 use crate::handlers::tests::create_test_handlers;
 use super::helpers::{make_tool_call, assert_success};
 
-// -------------------------------------------------------------------------
-// auto_bootstrap_north_star
-// -------------------------------------------------------------------------
-
-#[tokio::test]
-async fn test_auto_bootstrap_north_star_basic() {
-    let handlers = create_test_handlers();
-    let request = make_tool_call("auto_bootstrap_north_star", json!({}));
-
-    let response = handlers.dispatch(request).await;
-    assert_success(&response, "auto_bootstrap_north_star");
-}
-
-#[tokio::test]
-async fn test_auto_bootstrap_north_star_with_params() {
-    let handlers = create_test_handlers();
-    let request = make_tool_call(
-        "auto_bootstrap_north_star",
-        json!({
-            "confidence_threshold": 0.8,
-            "max_candidates": 5
-        }),
-    );
-
-    let response = handlers.dispatch(request).await;
-    assert_success(&response, "auto_bootstrap_north_star");
-}
+// REMOVED: auto_bootstrap_north_star tests per TASK-P0-001 (ARCH-03)
+// The tool has been removed. Goals now emerge from topic clustering.
 
 // -------------------------------------------------------------------------
 // get_alignment_drift

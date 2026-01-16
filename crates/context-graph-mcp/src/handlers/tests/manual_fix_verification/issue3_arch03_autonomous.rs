@@ -113,120 +113,17 @@ async fn test_arch03_get_autonomous_status_without_north_star() {
     println!("\n[ARCH-03 get_autonomous_status VERIFICATION COMPLETE]\n");
 }
 
-/// ARCH-03 VERIFICATION: auto_bootstrap_north_star DISCOVERS goals, doesn't require them.
-///
-/// BEFORE: Would require pre-existing North Star to bootstrap
-/// AFTER: Discovers North Star from clustering stored fingerprints
-///
-/// Note: This test verifies the error message when no fingerprints stored yet,
-/// which is the correct ARCH-03 behavior (discover from data, not require manual setting).
-#[tokio::test]
-async fn test_arch03_auto_bootstrap_discovers_from_stored_fingerprints() {
-    println!("\n{}", "=".repeat(60));
-    println!("ARCH-03 VERIFICATION: auto_bootstrap_north_star discovers goals");
-    println!("{}", "=".repeat(60));
-
-    // BEFORE STATE: Create handlers WITHOUT North Star AND empty store
-    let handlers = create_test_handlers_no_north_star();
-    println!("[BEFORE] Handlers created WITHOUT North Star");
-    println!("[BEFORE] Store is empty (no fingerprints)");
-
-    // EXECUTE: Try to bootstrap - should fail gracefully asking to store memories first
-    let request = make_request(
-        "tools/call",
-        Some(JsonRpcId::Number(1)),
-        Some(json!({
-            "name": "auto_bootstrap_north_star",
-            "arguments": {
-                "confidence_threshold": 0.6,
-                "max_candidates": 5
-            }
-        })),
-    );
-
-    println!("[EXECUTE] Calling auto_bootstrap_north_star with empty store...");
-    let response = handlers.dispatch(request).await;
-
-    // SOURCE OF TRUTH: Response should indicate need for fingerprints
-    println!("[SOURCE OF TRUTH] Checking response...");
-
-    // ARCH-03 VERIFICATION: The handler can return error in TWO ways:
-    // 1. JsonRpcResponse::error() - Sets response.error field (JSON-RPC level error)
-    // 2. tool_error_with_pulse() - Returns result with isError=true (MCP tool error)
-    //
-    // BOTH are valid ARCH-03 behavior - the key is the MESSAGE guides to store memories first.
-
-    let error_message: String;
-    let is_graceful_error: bool;
-
-    if let Some(err) = &response.error {
-        // JSON-RPC error path - extract message
-        error_message = err.message.clone();
-        is_graceful_error = true;
-        println!("[INFO] JSON-RPC error response: {}", error_message);
-    } else if let Some(result) = &response.result {
-        // MCP tool error path - extract from content
-        let is_error = result.get("isError").and_then(|v| v.as_bool()).unwrap_or(false);
-        if is_error {
-            if let Some(content) = result.get("content").and_then(|v| v.as_array()) {
-                if let Some(first) = content.first() {
-                    if let Some(text) = first.get("text").and_then(|v| v.as_str()) {
-                        error_message = text.to_string();
-                        is_graceful_error = true;
-                        println!("[INFO] MCP tool error response: {}", error_message);
-                    } else {
-                        error_message = "No text in error content".to_string();
-                        is_graceful_error = false;
-                    }
-                } else {
-                    error_message = "Empty content array".to_string();
-                    is_graceful_error = false;
-                }
-            } else {
-                error_message = "No content in isError response".to_string();
-                is_graceful_error = false;
-            }
-        } else {
-            // Success case - might have fingerprints from previous test
-            println!("[INFO] Bootstrap succeeded (store not empty from previous tests)");
-            error_message = String::new();
-            is_graceful_error = false;
-        }
-    } else {
-        panic!("[FAIL] Response has neither error nor result");
-    }
-
-    // VERIFY: If we got an error, it should guide to store memories first
-    if is_graceful_error {
-        let guides_to_store = error_message.contains("Store memories")
-            || error_message.contains("store memories")
-            || error_message.contains("teleological fingerprints")
-            || error_message.contains("No teleological fingerprints");
-        assert!(
-            guides_to_store,
-            "[FAIL] Error should guide to store memories first, got: {}",
-            error_message
-        );
-        println!("[VERIFY] Error guides to store memories first (ARCH-03 compliant) - PASS");
-
-        // VERIFY: FAIL FAST pattern
-        let has_fail_fast = error_message.contains("FAIL FAST");
-        assert!(has_fail_fast, "[FAIL] Should use FAIL FAST pattern");
-        println!("[VERIFY] Uses FAIL FAST pattern - PASS");
-    }
-
-    // PHYSICAL EVIDENCE
-    println!("\n[PHYSICAL EVIDENCE]");
-    println!("  Tool: auto_bootstrap_north_star");
-    println!("  Initial state: No North Star, empty store");
-    println!("  Expected behavior: FAIL FAST asking to store memories first");
-    println!("  Actual error received: {}", is_graceful_error);
-    if is_graceful_error {
-        println!("  Error message: {}", error_message);
-    }
-    println!("  ARCH-03 Compliance: Goals DISCOVERED from data, not manually required");
-    println!("\n[ARCH-03 auto_bootstrap VERIFICATION COMPLETE]\n");
-}
+// REMOVED: test_arch03_auto_bootstrap_discovers_from_stored_fingerprints per TASK-P0-001 (ARCH-03)
+//
+// The `auto_bootstrap_north_star` tool has been REMOVED per constitution v6.0.0.
+// Goals now emerge autonomously from topic clustering (HDBSCAN/BIRCH).
+//
+// See constitution ARCH-03: "Autonomous operation - goals emerge from topic clustering, no manual goal setting"
+// See topic_system.topic_portfolio: "Emergent topics discovered via clustering, no manual setting"
+//
+// For similar functionality, use:
+// - `get_topic_portfolio` - Get current emergent topic portfolio
+// - `get_topic_stability` - Get topic stability metrics (churn, entropy)
 
 /// ARCH-03 VERIFICATION: get_alignment_drift works without North Star.
 ///

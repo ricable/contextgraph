@@ -2,14 +2,18 @@
 //!
 //! These tests verify that the RocksDB store correctly handles stale LOCK files
 //! that can be left behind when a process crashes or is killed.
+//!
+//! CRITICAL: Uses #[tokio::test] to prevent zombie runtime threads.
+//! DO NOT use tokio::runtime::Runtime::new() in tests.
 
 use crate::teleological::RocksDbTeleologicalStore;
 use super::helpers::create_real_fingerprint;
+use context_graph_core::traits::TeleologicalMemoryStore;
 use tempfile::TempDir;
 use std::fs;
 
-#[test]
-fn test_stale_lock_detection_opens_after_stale_lock() {
+#[tokio::test]
+async fn test_stale_lock_detection_opens_after_stale_lock() {
     println!("=== STALE LOCK TEST: Database opens after stale LOCK file ===");
 
     // Create a temporary directory
@@ -31,19 +35,15 @@ fn test_stale_lock_detection_opens_after_stale_lock() {
     println!("AFTER: Database opened successfully");
 
     // Step 3: Verify the database is usable by performing a basic operation
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let count = rt.block_on(async {
-        use context_graph_core::traits::TeleologicalMemoryStore;
-        store.count().await.expect("Should be able to count")
-    });
+    let count = store.count().await.expect("Should be able to count");
     println!("VERIFY: Database count = {} (expected 0 for new DB)", count);
     assert_eq!(count, 0, "New database should have 0 entries");
 
     println!("RESULT: PASS - Stale lock detected and database opened successfully");
 }
 
-#[test]
-fn test_stale_lock_detection_fresh_database() {
+#[tokio::test]
+async fn test_stale_lock_detection_fresh_database() {
     println!("=== STALE LOCK TEST: Fresh database opens without LOCK file ===");
 
     // Create a temporary directory with no LOCK file
@@ -63,19 +63,15 @@ fn test_stale_lock_detection_fresh_database() {
     println!("AFTER: Database opened successfully");
 
     // Verify the database is usable
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let count = rt.block_on(async {
-        use context_graph_core::traits::TeleologicalMemoryStore;
-        store.count().await.expect("Should be able to count")
-    });
+    let count = store.count().await.expect("Should be able to count");
     println!("VERIFY: Database count = {} (expected 0 for new DB)", count);
     assert_eq!(count, 0, "New database should have 0 entries");
 
     println!("RESULT: PASS - Fresh database opened without issues");
 }
 
-#[test]
-fn test_stale_lock_detection_reopen_after_close() {
+#[tokio::test]
+async fn test_stale_lock_detection_reopen_after_close() {
     println!("=== STALE LOCK TEST: Database reopens after clean close ===");
 
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
@@ -88,12 +84,8 @@ fn test_stale_lock_detection_reopen_after_close() {
         let store = RocksDbTeleologicalStore::open(&db_path)
             .expect("Should open database");
 
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            use context_graph_core::traits::TeleologicalMemoryStore;
-            let fp = create_real_fingerprint();
-            store.store(fp).await.expect("Should store fingerprint");
-        });
+        let fp = create_real_fingerprint();
+        store.store(fp).await.expect("Should store fingerprint");
         println!("STEP 1: Stored 1 fingerprint, dropping database handle...");
     } // Database should be closed here, releasing the LOCK
 
@@ -107,19 +99,15 @@ fn test_stale_lock_detection_reopen_after_close() {
         .expect("Should reopen database successfully");
 
     // Step 4: Verify data persisted
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let count = rt.block_on(async {
-        use context_graph_core::traits::TeleologicalMemoryStore;
-        store.count().await.expect("Should be able to count")
-    });
+    let count = store.count().await.expect("Should be able to count");
     println!("VERIFY: Database count = {} (expected 1)", count);
     assert_eq!(count, 1, "Reopened database should have 1 entry");
 
     println!("RESULT: PASS - Database reopened and data persisted");
 }
 
-#[test]
-fn test_stale_lock_multiple_stale_lock_files() {
+#[tokio::test]
+async fn test_stale_lock_multiple_stale_lock_files() {
     println!("=== STALE LOCK TEST: Multiple operations with simulated stale locks ===");
 
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
@@ -158,11 +146,7 @@ fn test_stale_lock_multiple_stale_lock_files() {
         .expect("Iteration 3: Should open after stale lock");
 
     // Verify database is functional
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let count = rt.block_on(async {
-        use context_graph_core::traits::TeleologicalMemoryStore;
-        store.count().await.expect("Should be able to count")
-    });
+    let count = store.count().await.expect("Should be able to count");
     println!("VERIFY: Database opened {} times with stale locks, count = {}", 3, count);
 
     println!("RESULT: PASS - Multiple stale lock scenarios handled");

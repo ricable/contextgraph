@@ -60,10 +60,11 @@ impl Handlers {
                     "description": ns.description,
                     "level": format!("{:?}", ns.level)
                 }),
+                // TASK-P0-001: Updated per ARCH-03 (topics emerge from clustering)
                 None => json!({
                     "configured": false,
                     "goal_id": null,
-                    "note": "System operating autonomously. North Star can be discovered via auto_bootstrap_north_star when sufficient memories are stored."
+                    "note": "System operating autonomously. Topics emerge from HDBSCAN/BIRCH clustering of stored memories. Use get_topic_portfolio to view emergent topics."
                 }),
             }
         };
@@ -140,10 +141,11 @@ impl Handlers {
         let mut recommendations = Vec::new();
 
         if !north_star_configured {
+            // TASK-P0-001: Updated per ARCH-03 (topics emerge from clustering)
             recommendations.push(json!({
                 "priority": "critical",
                 "action": "store_memory",
-                "description": "Store memories with teleological fingerprints first, then use auto_bootstrap_north_star to discover emergent purpose patterns from the stored fingerprints."
+                "description": "Store memories with teleological fingerprints. Topics will emerge automatically from HDBSCAN/BIRCH clustering of stored fingerprints."
             }));
         } else {
             match severity {

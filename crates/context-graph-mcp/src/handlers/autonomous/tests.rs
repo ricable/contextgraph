@@ -1,15 +1,12 @@
 //! Tests for autonomous MCP handlers.
+//!
+//! TASK-P0-001: Removed test_auto_bootstrap_params_defaults per ARCH-03.
+//! Goals now emerge autonomously from topic clustering (constitution v6.0.0).
 
 use super::params::*;
 
-#[test]
-fn test_auto_bootstrap_params_defaults() {
-    let json = serde_json::json!({});
-    let params: AutoBootstrapParams = serde_json::from_value(json).unwrap();
-    assert!((params.confidence_threshold - 0.7).abs() < f32::EPSILON);
-    assert_eq!(params.max_candidates, 10);
-    println!("[VERIFIED] AutoBootstrapParams defaults work correctly");
-}
+// REMOVED: test_auto_bootstrap_params_defaults per TASK-P0-001 (ARCH-03)
+// AutoBootstrapParams struct has been removed as goals emerge from topic clustering.
 
 #[test]
 fn test_get_alignment_drift_params_defaults() {

@@ -1004,6 +1004,8 @@ mod tests {
     // TASK-33: Integration Tests (require tokio runtime)
     // -------------------------------------------------------------------------
 
+    /// CRITICAL: Uses #[tokio::test] and tracks spawned tasks to prevent zombie processes.
+    /// DO NOT use fire-and-forget tokio::spawn in tests.
     #[tokio::test]
     async fn test_sse_handler_integration() {
         use axum::{
@@ -1018,9 +1020,9 @@ mod tests {
                 .with_max_duration(Duration::from_millis(200))
         ).unwrap();
 
-        // Spawn a task to broadcast events
+        // Spawn a task to broadcast events - TRACK THE HANDLE
         let state_clone = state.clone();
-        tokio::spawn(async move {
+        let broadcast_handle = tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(25)).await;
             state_clone.broadcast(McpSseEvent::notification("test", serde_json::json!({})));
         });
@@ -1039,6 +1041,9 @@ mod tests {
         // Check content-type is text/event-stream
         let content_type = response.headers().get("content-type").unwrap();
         assert!(content_type.to_str().unwrap().contains("text/event-stream"));
+
+        // CRITICAL: Await spawned task to prevent zombie processes
+        broadcast_handle.await.expect("broadcast task should complete");
     }
 
     #[tokio::test]
@@ -1070,6 +1075,8 @@ mod tests {
         assert_eq!(state.active_connections(), 2);
     }
 
+    /// CRITICAL: Uses #[tokio::test] and tracks spawned tasks to prevent zombie processes.
+    /// DO NOT use fire-and-forget tokio::spawn in tests.
     #[tokio::test]
     async fn test_sse_broadcast_to_multiple_async_receivers() {
         let state = SseAppState::new(
@@ -1079,9 +1086,9 @@ mod tests {
         let mut rx1 = state.subscribe();
         let mut rx2 = state.subscribe();
 
-        // Broadcast from a separate task
+        // Broadcast from a separate task - TRACK THE HANDLE
         let state_clone = state.clone();
-        tokio::spawn(async move {
+        let broadcast_handle = tokio::spawn(async move {
             for i in 0..5 {
                 let event = McpSseEvent::notification(
                     "counter",
@@ -1113,5 +1120,8 @@ mod tests {
         // Both should have received events
         assert!(count1 > 0, "rx1 should receive events");
         assert!(count2 > 0, "rx2 should receive events");
+
+        // CRITICAL: Await spawned task to prevent zombie processes
+        broadcast_handle.await.expect("broadcast task should complete");
     }
 }

@@ -53,7 +53,8 @@ mod tests {
         // NOTE: 6 manual North Star tools REMOVED (created single 1024D embeddings
         // incompatible with 13-embedder teleological arrays)
         // TASK-FIX-002: Added get_drift_history tool (58 + 1 = 59)
-        assert_eq!(tools.len(), 59);
+        // TASK-P0-001: Removed auto_bootstrap_north_star per ARCH-03 (59 → 58)
+        assert_eq!(tools.len(), 58);
 
         let tool_names: Vec<_> = tools.iter().map(|t| t.name.as_str()).collect();
 
@@ -111,7 +112,7 @@ mod tests {
         assert!(tool_names.contains(&"manage_teleological_profile"));
 
         // Autonomous tools (TASK-AUTONOMOUS-MCP)
-        assert!(tool_names.contains(&"auto_bootstrap_north_star"));
+        // REMOVED: auto_bootstrap_north_star per TASK-P0-001 (ARCH-03)
         assert!(tool_names.contains(&"get_alignment_drift"));
         assert!(tool_names.contains(&"trigger_drift_correction"));
         assert!(tool_names.contains(&"get_pruning_candidates"));

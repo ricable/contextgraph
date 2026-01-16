@@ -135,10 +135,8 @@ impl Handlers {
             tool_names::MANAGE_TELEOLOGICAL_PROFILE => {
                 self.call_manage_teleological_profile(id, arguments).await
             }
-            // TASK-AUTONOMOUS-MCP: Autonomous North Star tools
-            tool_names::AUTO_BOOTSTRAP_NORTH_STAR => {
-                self.call_auto_bootstrap_north_star(id, arguments).await
-            }
+            // TASK-AUTONOMOUS-MCP: Autonomous tools
+            // REMOVED: AUTO_BOOTSTRAP_NORTH_STAR per TASK-P0-001 (ARCH-03)
             tool_names::GET_ALIGNMENT_DRIFT => self.call_get_alignment_drift(id, arguments).await,
             tool_names::GET_DRIFT_HISTORY => self.call_get_drift_history(id, arguments).await,
             tool_names::TRIGGER_DRIFT_CORRECTION => {

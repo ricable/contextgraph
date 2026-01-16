@@ -38,6 +38,7 @@ use crate::gwt::workspace::{WorkspaceEvent, WorkspaceEventBroadcaster, Workspace
 ///
 /// All internal state is wrapped in `Arc<RwLock>` for concurrent access.
 /// Event processing spawns async tasks to avoid blocking the broadcaster.
+/// Task handles are tracked and aborted on drop to prevent zombie processes.
 ///
 /// # TASK-IDENTITY-P0-006
 pub struct IdentityContinuityListener {
@@ -47,6 +48,8 @@ pub struct IdentityContinuityListener {
     protocol: Arc<CrisisProtocol>,
     /// Reference to workspace broadcaster for emitting IdentityCritical events
     broadcaster: Arc<WorkspaceEventBroadcaster>,
+    /// Tracked task handles for spawned async tasks - aborted on drop
+    task_handles: Arc<std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>>,
 }
 
 impl IdentityContinuityListener {
@@ -86,6 +89,7 @@ impl IdentityContinuityListener {
             monitor,
             protocol,
             broadcaster,
+            task_handles: Arc::new(std::sync::Mutex::new(Vec::new())),
         }
     }
 
@@ -107,6 +111,7 @@ impl IdentityContinuityListener {
             monitor: Arc::new(RwLock::new(monitor)),
             protocol,
             broadcaster,
+            task_handles: Arc::new(std::sync::Mutex::new(Vec::new())),
         }
     }
 
@@ -177,7 +182,8 @@ impl WorkspaceEventListener for IdentityContinuityListener {
         let event = event.clone();
 
         // Spawn async task to process event without blocking
-        tokio::spawn(async move {
+        // CRITICAL: Track the handle to prevent zombie tasks
+        let handle = tokio::spawn(async move {
             // Create temporary listener wrapper for process_event
             let temp_listener = IdentityContinuityListenerInner {
                 monitor,
@@ -192,6 +198,13 @@ impl WorkspaceEventListener for IdentityContinuityListener {
                 );
             }
         });
+
+        // Store handle for cleanup on drop
+        // Use expect() - if lock is poisoned, fail fast per constitution
+        self.task_handles
+            .lock()
+            .expect("task_handles mutex poisoned - cannot track spawned tasks")
+            .push(handle);
     }
 }
 
@@ -277,5 +290,29 @@ impl IdentityContinuityListenerInner {
 impl std::fmt::Debug for IdentityContinuityListener {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("IdentityContinuityListener").finish()
+    }
+}
+
+impl Drop for IdentityContinuityListener {
+    fn drop(&mut self) {
+        // CRITICAL: Abort all tracked tasks to prevent zombie processes
+        // Per constitution: fail fast - use expect() for poisoned mutex
+        let handles = self
+            .task_handles
+            .lock()
+            .expect("task_handles mutex poisoned on drop");
+
+        let task_count = handles.len();
+        for handle in handles.iter() {
+            handle.abort();
+        }
+
+        if task_count > 0 {
+            tracing::debug!(
+                task_count = task_count,
+                "IdentityContinuityListener: aborted {} pending tasks on drop",
+                task_count
+            );
+        }
     }
 }

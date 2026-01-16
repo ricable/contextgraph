@@ -1,44 +1,21 @@
-//! Autonomous North Star system tool definitions.
-//! TASK-AUTONOMOUS-MCP: Bootstrap, drift, correction, pruning, consolidation, sub-goals, status.
+//! Autonomous system tool definitions.
+//! TASK-AUTONOMOUS-MCP: Drift detection, correction, pruning, consolidation, sub-goals, status.
 //! SPEC-AUTONOMOUS-001: Added 5 missing tools (get_learner_state, observe_outcome, execute_prune,
 //!                      get_health_status, trigger_healing).
+//! TASK-P0-001: REMOVED auto_bootstrap_north_star per ARCH-03 (goals emerge from topic clustering)
 
 use serde_json::json;
 use crate::tools::types::ToolDefinition;
 
-/// Returns Autonomous tool definitions (13 tools).
+/// Returns Autonomous tool definitions (12 tools after TASK-P0-001 removal).
 /// SPEC-AUTONOMOUS-001: Added 5 new tools per constitution NORTH-009, NORTH-012, NORTH-020.
 /// TASK-FIX-002/NORTH-010: Added get_drift_history tool.
+/// TASK-P0-001: Removed auto_bootstrap_north_star - goals emerge autonomously from clustering.
 pub fn definitions() -> Vec<ToolDefinition> {
     vec![
-        // auto_bootstrap_north_star - Initialize autonomous services from teleological embeddings
-        ToolDefinition::new(
-            "auto_bootstrap_north_star",
-            "Bootstrap the autonomous North Star system from existing teleological embeddings. \
-             Analyzes stored memories' 13-embedder teleological fingerprints to discover emergent \
-             purpose patterns and initialize drift detection, pruning, consolidation, and sub-goal \
-             discovery services. Works directly with teleological arrays for apples-to-apples comparisons.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "confidence_threshold": {
-                        "type": "number",
-                        "minimum": 0,
-                        "maximum": 1,
-                        "default": 0.7,
-                        "description": "Minimum confidence threshold for bootstrapping"
-                    },
-                    "max_candidates": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 100,
-                        "default": 10,
-                        "description": "Maximum number of candidates to evaluate during bootstrap"
-                    }
-                },
-                "required": []
-            }),
-        ),
+        // REMOVED: auto_bootstrap_north_star per TASK-P0-001 (ARCH-03)
+        // Goals emerge autonomously from topic clustering, no manual bootstrap needed.
+        // Use get_topic_portfolio and get_topic_stability for topic-based goal discovery.
 
         // get_alignment_drift - Get drift state and history
         ToolDefinition::new(

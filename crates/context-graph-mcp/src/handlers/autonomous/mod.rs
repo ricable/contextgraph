@@ -1,23 +1,24 @@
 //! NORTH Autonomous System MCP Handlers
 //!
-//! TASK-AUTONOMOUS-MCP: MCP tool handlers for autonomous North Star management.
+//! TASK-AUTONOMOUS-MCP: MCP tool handlers for autonomous topic-based management.
 //! SPEC-AUTONOMOUS-001: Added 5 new tools (learner, health, execute_prune).
+//! TASK-P0-001: REMOVED auto_bootstrap_north_star per ARCH-03 (goals emerge from topic clustering).
 //! NO BACKWARDS COMPATIBILITY - FAIL FAST WITH ROBUST LOGGING.
 //!
-//! ## Tools Implemented
+//! ## Tools Implemented (12 tools after TASK-P0-001 removal)
 //!
-//! 1. `auto_bootstrap_north_star` - Bootstrap from existing North Star using BootstrapService
-//! 2. `get_alignment_drift` - Get drift state and history using DriftDetector
-//! 3. `trigger_drift_correction` - Manually trigger correction using DriftCorrector
-//! 4. `get_pruning_candidates` - Get memories for potential pruning using PruningService
-//! 5. `trigger_consolidation` - Trigger memory consolidation using ConsolidationService
-//! 6. `discover_sub_goals` - Discover potential sub-goals using SubGoalDiscovery
-//! 7. `get_autonomous_status` - Get comprehensive status from all services
-//! 8. `get_learner_state` - Get Meta-UTL learner state (NORTH-009)
-//! 9. `observe_outcome` - Record learning outcome (NORTH-009)
-//! 10. `execute_prune` - Execute pruning on candidates (NORTH-012)
-//! 11. `get_health_status` - Get system-wide health (NORTH-020)
-//! 12. `trigger_healing` - Trigger self-healing (NORTH-020)
+//! 1. `get_alignment_drift` - Get drift state and history using DriftDetector
+//! 2. `trigger_drift_correction` - Manually trigger correction using DriftCorrector
+//! 3. `get_pruning_candidates` - Get memories for potential pruning using PruningService
+//! 4. `trigger_consolidation` - Trigger memory consolidation using ConsolidationService
+//! 5. `discover_sub_goals` - Discover potential sub-goals using SubGoalDiscovery
+//! 6. `get_autonomous_status` - Get comprehensive status from all services
+//! 7. `get_learner_state` - Get Meta-UTL learner state (NORTH-009)
+//! 8. `observe_outcome` - Record learning outcome (NORTH-009)
+//! 9. `execute_prune` - Execute pruning on candidates (NORTH-012)
+//! 10. `get_health_status` - Get system-wide health (NORTH-020)
+//! 11. `trigger_healing` - Trigger self-healing (NORTH-020)
+//! 12. `get_drift_history` - Get drift history (TASK-FIX-002/NORTH-010)
 //!
 //! ## FAIL FAST Policy
 //!
@@ -55,10 +56,11 @@ pub use prediction_history::{PredictionEntry, PredictionHistory};
 mod tests;
 
 // Re-export all parameter structs for backwards compatibility
+// TASK-P0-001: Removed AutoBootstrapParams (ARCH-03)
 #[allow(unused_imports)]
 pub use params::{
-    AutoBootstrapParams, DiscoverSubGoalsParams, ExecutePruneParams, GetAlignmentDriftParams,
-    GetAutonomousStatusParams, GetHealthStatusParams, GetLearnerStateParams,
+    DiscoverSubGoalsParams, ExecutePruneParams, GetAlignmentDriftParams,
+    GetAutonomousStatusParams, GetDriftHistoryParams, GetHealthStatusParams, GetLearnerStateParams,
     GetPruningCandidatesParams, ObserveOutcomeParams, TriggerConsolidationParams,
     TriggerDriftCorrectionParams, TriggerHealingParams,
 };

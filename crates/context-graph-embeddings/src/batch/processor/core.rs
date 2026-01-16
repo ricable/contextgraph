@@ -222,7 +222,15 @@ unsafe impl Sync for BatchProcessor {}
 
 impl Drop for BatchProcessor {
     fn drop(&mut self) {
+        // Signal shutdown first
         self.is_running.store(false, Ordering::Relaxed);
         self.shutdown_notify.notify_one();
+
+        // CRITICAL: Abort worker task to prevent zombie processes
+        // We cannot await in Drop (sync context), so we must abort
+        if let Some(handle) = self.worker_handle.take() {
+            handle.abort();
+            tracing::debug!("BatchProcessor: worker task aborted on drop");
+        }
     }
 }

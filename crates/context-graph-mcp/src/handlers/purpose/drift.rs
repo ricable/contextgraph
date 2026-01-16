@@ -221,9 +221,10 @@ impl Handlers {
         }
     }
 
-    /// Build response when no North Star is configured.
+    /// Build response when no top-level goal is configured.
+    /// TASK-P0-001: Updated per ARCH-03 (topics emerge from clustering)
     fn build_no_north_star_response(&self, id: Option<JsonRpcId>) -> JsonRpcResponse {
-        debug!("purpose/drift_check: No North Star configured, returning no-drift response");
+        debug!("purpose/drift_check: No top-level goal configured, returning no-drift response");
         JsonRpcResponse::success(
             id,
             json!({
@@ -232,14 +233,14 @@ impl Handlers {
                     "similarity": 1.0,
                     "drift_score": 0.0,
                     "has_drifted": false,
-                    "message": "No North Star configured - drift measurement not applicable"
+                    "message": "No top-level goal configured - drift measurement not applicable"
                 },
                 "per_embedder_drift": [],
                 "most_drifted_embedders": [],
                 "recommendations": [{
                     "action": "store_memories",
                     "priority": "medium",
-                    "reason": "Store memories and use auto_bootstrap_north_star to discover emergent purpose patterns"
+                    "reason": "Store memories to enable topic clustering. Topics emerge automatically from HDBSCAN/BIRCH clustering."
                 }],
                 "analyzed_count": 0,
                 "timestamp": chrono::Utc::now().to_rfc3339(),

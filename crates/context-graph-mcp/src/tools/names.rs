@@ -93,8 +93,9 @@ pub const MANAGE_TELEOLOGICAL_PROFILE: &str = "manage_teleological_profile";
 
 // ========== AUTONOMOUS TOOLS (TASK-AUTONOMOUS-MCP) ==========
 
-/// TASK-AUTONOMOUS-MCP: Bootstrap autonomous system from existing North Star
-pub const AUTO_BOOTSTRAP_NORTH_STAR: &str = "auto_bootstrap_north_star";
+// REMOVED: AUTO_BOOTSTRAP_NORTH_STAR per TASK-P0-001 (ARCH-03)
+// Goals emerge autonomously from topic clustering, no manual bootstrap needed
+
 /// TASK-AUTONOMOUS-MCP: Get current drift state and history
 pub const GET_ALIGNMENT_DRIFT: &str = "get_alignment_drift";
 /// TASK-FIX-002/NORTH-010: Get historical drift measurements and trend data

@@ -1,6 +1,9 @@
 //! Parameter structs for autonomous MCP handlers.
 //!
 //! All parameter structs follow the teleological.rs pattern with serde defaults.
+//!
+//! TASK-P0-001: Removed AutoBootstrapParams - auto_bootstrap_north_star tool was removed
+//! per ARCH-03 (goals emerge autonomously from topic clustering).
 
 use serde::Deserialize;
 
@@ -8,13 +11,8 @@ use serde::Deserialize;
 // Default Value Functions
 // ============================================================================
 
-pub(super) fn default_confidence_threshold() -> f32 {
-    0.7
-}
-
-pub(super) fn default_max_candidates() -> usize {
-    10
-}
+// REMOVED: default_confidence_threshold and default_max_candidates per TASK-P0-001
+// These were only used by AutoBootstrapParams which is now removed.
 
 pub(super) fn default_timeframe() -> String {
     "24h".to_string()
@@ -60,17 +58,9 @@ pub(super) fn default_history_count() -> usize {
 // Parameter Structs
 // ============================================================================
 
-/// Parameters for auto_bootstrap_north_star tool.
-#[derive(Debug, Deserialize)]
-pub struct AutoBootstrapParams {
-    /// Optional confidence threshold for bootstrapping (default: 0.7)
-    #[serde(default = "default_confidence_threshold")]
-    pub confidence_threshold: f32,
-
-    /// Optional maximum number of candidates to evaluate (default: 10)
-    #[serde(default = "default_max_candidates")]
-    pub max_candidates: usize,
-}
+// REMOVED per TASK-P0-001 (ARCH-03): AutoBootstrapParams
+// Goals now emerge autonomously from topic clustering.
+// See constitution v6.0.0: topic_system.topic_portfolio
 
 /// Parameters for get_alignment_drift tool.
 #[derive(Debug, Deserialize)]

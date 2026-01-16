@@ -1,9 +1,13 @@
 //! EGO_NODE persistence tests.
 //!
 //! TASK-GWT-P1-001: EGO_NODE Persistence Tests
+//!
+//! CRITICAL: Uses #[tokio::test] to prevent zombie runtime threads.
+//! DO NOT use tokio::runtime::Runtime::new() in tests.
 
 use crate::teleological::{RocksDbTeleologicalStore, serialization};
 use context_graph_core::gwt::ego_node::{PurposeSnapshot as EgoPurposeSnapshot, SelfEgoNode};
+use context_graph_core::traits::TeleologicalMemoryStore;
 use chrono::Utc;
 use uuid::Uuid;
 
@@ -140,60 +144,55 @@ fn test_ego_node_version_constant() {
     println!("RESULT: PASS - EGO_NODE_VERSION is 1");
 }
 
-#[test]
-fn test_ego_node_save_load_roundtrip() {
+#[tokio::test]
+async fn test_ego_node_save_load_roundtrip() {
     println!("=== TEST: save_ego_node / load_ego_node round-trip (TASK-GWT-P1-001) ===");
 
     let temp_dir = tempfile::TempDir::new().expect("Failed to create temp dir");
     let store = RocksDbTeleologicalStore::open(temp_dir.path())
         .expect("Failed to open store");
 
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(async {
-        use context_graph_core::traits::TeleologicalMemoryStore;
+    // Initially no ego node
+    let initial = store.load_ego_node().await.expect("Should query");
+    assert!(initial.is_none(), "Initially no ego node should exist");
+    println!("BEFORE: No ego node exists");
 
-        // Initially no ego node
-        let initial = store.load_ego_node().await.expect("Should query");
-        assert!(initial.is_none(), "Initially no ego node should exist");
-        println!("BEFORE: No ego node exists");
+    // Create and save
+    let original = create_real_ego_node();
+    let original_id = original.id;
+    println!("SAVING: SelfEgoNode id={}", original_id);
+    println!("  - purpose_vector[0..3]: {:?}", &original.purpose_vector[..3]);
+    println!("  - coherence: {:.4}", original.coherence_with_actions);
 
-        // Create and save
-        let original = create_real_ego_node();
-        let original_id = original.id;
-        println!("SAVING: SelfEgoNode id={}", original_id);
-        println!("  - purpose_vector[0..3]: {:?}", &original.purpose_vector[..3]);
-        println!("  - coherence: {:.4}", original.coherence_with_actions);
+    store.save_ego_node(&original).await.expect("Should save ego node");
 
-        store.save_ego_node(&original).await.expect("Should save ego node");
+    // Load and verify
+    let loaded = store.load_ego_node().await
+        .expect("Should load")
+        .expect("Ego node should exist");
 
-        // Load and verify
-        let loaded = store.load_ego_node().await
-            .expect("Should load")
-            .expect("Ego node should exist");
+    println!("AFTER: Loaded SelfEgoNode id={}", loaded.id);
+    println!("  - purpose_vector[0..3]: {:?}", &loaded.purpose_vector[..3]);
+    println!("  - coherence: {:.4}", loaded.coherence_with_actions);
 
-        println!("AFTER: Loaded SelfEgoNode id={}", loaded.id);
-        println!("  - purpose_vector[0..3]: {:?}", &loaded.purpose_vector[..3]);
-        println!("  - coherence: {:.4}", loaded.coherence_with_actions);
-
-        assert_eq!(original_id, loaded.id, "ID mismatch");
-        for i in 0..13 {
-            assert!(
-                (original.purpose_vector[i] - loaded.purpose_vector[i]).abs() < 1e-6,
-                "purpose_vector[{}] mismatch", i
-            );
-        }
-        assert_eq!(
-            original.identity_trajectory.len(),
-            loaded.identity_trajectory.len(),
-            "Trajectory length mismatch"
+    assert_eq!(original_id, loaded.id, "ID mismatch");
+    for i in 0..13 {
+        assert!(
+            (original.purpose_vector[i] - loaded.purpose_vector[i]).abs() < 1e-6,
+            "purpose_vector[{}] mismatch", i
         );
+    }
+    assert_eq!(
+        original.identity_trajectory.len(),
+        loaded.identity_trajectory.len(),
+        "Trajectory length mismatch"
+    );
 
-        println!("RESULT: PASS - save/load ego node round-trip successful");
-    });
+    println!("RESULT: PASS - save/load ego node round-trip successful");
 }
 
-#[test]
-fn test_ego_node_persistence_across_reopen() {
+#[tokio::test]
+async fn test_ego_node_persistence_across_reopen() {
     println!("=== TEST: Ego node persists across store close/reopen (TASK-GWT-P1-001) ===");
 
     let temp_dir = tempfile::TempDir::new().expect("Failed to create temp dir");
@@ -210,16 +209,10 @@ fn test_ego_node_persistence_across_reopen() {
         let store = RocksDbTeleologicalStore::open(&db_path)
             .expect("Failed to open store (first open)");
 
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let ego_to_save = ego;
-        rt.block_on(async {
-            use context_graph_core::traits::TeleologicalMemoryStore;
+        println!("STEP 1: Saving ego node id={} with {} snapshots", original_id, original_trajectory_len);
 
-            println!("STEP 1: Saving ego node id={} with {} snapshots", original_id, original_trajectory_len);
-
-            store.save_ego_node(&ego_to_save).await.expect("Should save ego node");
-            store.flush().await.expect("Should flush");
-        });
+        store.save_ego_node(&ego).await.expect("Should save ego node");
+        store.flush().await.expect("Should flush");
 
         println!("STEP 1: Closing store...");
     } // Store dropped here
@@ -230,97 +223,82 @@ fn test_ego_node_persistence_across_reopen() {
         let store = RocksDbTeleologicalStore::open(&db_path)
             .expect("Failed to open store (second open)");
 
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            use context_graph_core::traits::TeleologicalMemoryStore;
+        let loaded = store.load_ego_node().await
+            .expect("Should load")
+            .expect("Ego node should persist");
 
-            let loaded = store.load_ego_node().await
-                .expect("Should load")
-                .expect("Ego node should persist");
+        println!("STEP 2: Loaded ego node id={} with {} snapshots", loaded.id, loaded.identity_trajectory.len());
 
-            println!("STEP 2: Loaded ego node id={} with {} snapshots", loaded.id, loaded.identity_trajectory.len());
-
-            assert_eq!(original_id, loaded.id, "ID should persist");
-            assert!(
-                (original_coherence - loaded.coherence_with_actions).abs() < 1e-6,
-                "Coherence should persist"
-            );
-            assert_eq!(
-                original_trajectory_len,
-                loaded.identity_trajectory.len(),
-                "Trajectory length should persist"
-            );
-        });
+        assert_eq!(original_id, loaded.id, "ID should persist");
+        assert!(
+            (original_coherence - loaded.coherence_with_actions).abs() < 1e-6,
+            "Coherence should persist"
+        );
+        assert_eq!(
+            original_trajectory_len,
+            loaded.identity_trajectory.len(),
+            "Trajectory length should persist"
+        );
     }
 
     println!("RESULT: PASS - Ego node persists across store close/reopen");
 }
 
-#[test]
-fn test_ego_node_overwrite() {
+#[tokio::test]
+async fn test_ego_node_overwrite() {
     println!("=== TEST: save_ego_node overwrites previous value ===");
 
     let temp_dir = tempfile::TempDir::new().expect("Failed to create temp dir");
     let store = RocksDbTeleologicalStore::open(temp_dir.path())
         .expect("Failed to open store");
 
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(async {
-        use context_graph_core::traits::TeleologicalMemoryStore;
+    // Save first ego node
+    let ego1 = create_real_ego_node();
+    let id1 = ego1.id;
+    store.save_ego_node(&ego1).await.expect("Should save ego1");
+    println!("STEP 1: Saved first ego node id={}", id1);
 
-        // Save first ego node
-        let ego1 = create_real_ego_node();
-        let id1 = ego1.id;
-        store.save_ego_node(&ego1).await.expect("Should save ego1");
-        println!("STEP 1: Saved first ego node id={}", id1);
+    // Save second ego node (should overwrite)
+    let ego2 = create_ego_node_with_trajectory(10);
+    let id2 = ego2.id;
+    assert_ne!(id1, id2, "IDs should be different");
+    store.save_ego_node(&ego2).await.expect("Should save ego2");
+    println!("STEP 2: Saved second ego node id={}", id2);
 
-        // Save second ego node (should overwrite)
-        let ego2 = create_ego_node_with_trajectory(10);
-        let id2 = ego2.id;
-        assert_ne!(id1, id2, "IDs should be different");
-        store.save_ego_node(&ego2).await.expect("Should save ego2");
-        println!("STEP 2: Saved second ego node id={}", id2);
+    // Load - should get ego2
+    let loaded = store.load_ego_node().await
+        .expect("Should load")
+        .expect("Ego node should exist");
 
-        // Load - should get ego2
-        let loaded = store.load_ego_node().await
-            .expect("Should load")
-            .expect("Ego node should exist");
+    assert_eq!(loaded.id, id2, "Should load the second (latest) ego node");
+    assert_eq!(loaded.identity_trajectory.len(), 10, "Should have 10 snapshots from ego2");
 
-        assert_eq!(loaded.id, id2, "Should load the second (latest) ego node");
-        assert_eq!(loaded.identity_trajectory.len(), 10, "Should have 10 snapshots from ego2");
-
-        println!("RESULT: PASS - save_ego_node overwrites correctly");
-    });
+    println!("RESULT: PASS - save_ego_node overwrites correctly");
 }
 
-#[test]
-fn test_in_memory_store_ego_node_roundtrip() {
+#[tokio::test]
+async fn test_in_memory_store_ego_node_roundtrip() {
     println!("=== TEST: InMemoryTeleologicalStore ego node round-trip ===");
 
     use context_graph_core::stubs::InMemoryTeleologicalStore;
 
     let store = InMemoryTeleologicalStore::new();
 
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(async {
-        use context_graph_core::traits::TeleologicalMemoryStore;
+    // Initially empty
+    let initial = store.load_ego_node().await.expect("Should query");
+    assert!(initial.is_none(), "Initially no ego node");
 
-        // Initially empty
-        let initial = store.load_ego_node().await.expect("Should query");
-        assert!(initial.is_none(), "Initially no ego node");
+    // Save and load
+    let original = create_real_ego_node();
+    let original_id = original.id;
 
-        // Save and load
-        let original = create_real_ego_node();
-        let original_id = original.id;
+    store.save_ego_node(&original).await.expect("Should save");
 
-        store.save_ego_node(&original).await.expect("Should save");
+    let loaded = store.load_ego_node().await
+        .expect("Should load")
+        .expect("Should exist");
 
-        let loaded = store.load_ego_node().await
-            .expect("Should load")
-            .expect("Should exist");
+    assert_eq!(original_id, loaded.id, "ID should match");
 
-        assert_eq!(original_id, loaded.id, "ID should match");
-
-        println!("RESULT: PASS - InMemoryTeleologicalStore ego node round-trip successful");
-    });
+    println!("RESULT: PASS - InMemoryTeleologicalStore ego node round-trip successful");
 }
