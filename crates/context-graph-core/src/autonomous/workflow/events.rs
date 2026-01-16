@@ -1,4 +1,6 @@
 //! Optimization event types.
+//!
+//! TASK-P0-005: Removed NorthStarUpdated variant per ARCH-03 (autonomous operation).
 
 use serde::{Deserialize, Serialize};
 
@@ -14,8 +16,7 @@ pub enum OptimizationEvent {
     MemoryStored { memory_id: MemoryId },
     /// A memory was retrieved
     MemoryRetrieved { memory_id: MemoryId, query: String },
-    /// The North Star was updated
-    NorthStarUpdated,
+    // REMOVED: NorthStarUpdated per TASK-P0-005 (ARCH-03)
     /// A new goal was added
     GoalAdded { goal_id: GoalId },
     /// Consciousness level dropped below threshold
@@ -30,7 +31,7 @@ impl OptimizationEvent {
         match self {
             Self::MemoryStored { .. } => "memory_stored",
             Self::MemoryRetrieved { .. } => "memory_retrieved",
-            Self::NorthStarUpdated => "north_star_updated",
+            // REMOVED: NorthStarUpdated per TASK-P0-005 (ARCH-03)
             Self::GoalAdded { .. } => "goal_added",
             Self::ConsciousnessDropped { .. } => "consciousness_dropped",
             Self::ScheduledCheck { .. } => "scheduled_check",
@@ -39,9 +40,7 @@ impl OptimizationEvent {
 
     /// Check if this event requires immediate processing
     pub fn is_urgent(&self) -> bool {
-        matches!(
-            self,
-            Self::ConsciousnessDropped { .. } | Self::NorthStarUpdated
-        )
+        // TASK-P0-005: Removed NorthStarUpdated from urgent events
+        matches!(self, Self::ConsciousnessDropped { .. })
     }
 }

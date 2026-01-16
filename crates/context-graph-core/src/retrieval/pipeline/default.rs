@@ -348,14 +348,15 @@ where
 
     async fn health_check(&self) -> CoreResult<PipelineHealth> {
         let spaces = self.executor.available_spaces();
-        let has_north_star = self.goal_hierarchy.has_top_level_goals();
+        // TASK-P0-005: Renamed from has_north_star per ARCH-03
+        let has_strategic_goal = self.goal_hierarchy.has_top_level_goals();
         let last_time = self.last_query_time.read().ok().and_then(|g| *g);
         let index_size = self.index_size.load(std::sync::atomic::Ordering::Relaxed);
 
         Ok(PipelineHealth {
-            is_healthy: spaces.len() == 13 && has_north_star,
+            is_healthy: spaces.len() == 13 && has_strategic_goal,
             spaces_available: spaces.len(),
-            has_goal_hierarchy: has_north_star,
+            has_goal_hierarchy: has_strategic_goal,
             index_size,
             last_query_time: last_time,
         })

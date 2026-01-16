@@ -33,16 +33,17 @@
 //! };
 //! use context_graph_core::types::fingerprint::SemanticFingerprint;
 //!
-//! // Create goal hierarchy with North Star (discovered autonomously)
+//! // Create goal hierarchy with Strategic goal (discovered autonomously)
+//! // TASK-P0-005: Renamed from north_star per ARCH-03
 //! let mut hierarchy = GoalHierarchy::new();
 //! let discovery = GoalDiscoveryMetadata::bootstrap();
-//! let north_star = GoalNode::autonomous_goal(
+//! let strategic_goal = GoalNode::autonomous_goal(
 //!     "Emergent ML mastery goal".into(),
 //!     GoalLevel::Strategic,
 //!     SemanticFingerprint::zeroed(),
 //!     discovery,
 //! ).unwrap();
-//! hierarchy.add_goal(north_star).unwrap();
+//! hierarchy.add_goal(strategic_goal).unwrap();
 //!
 //! // Compute purpose vector
 //! let computer = DefaultPurposeComputer::new();

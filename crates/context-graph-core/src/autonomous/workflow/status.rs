@@ -1,4 +1,6 @@
 //! Autonomous system status types.
+//!
+//! TASK-P0-005: Renamed north_star_configured to strategic_goal_configured per ARCH-03.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -15,8 +17,8 @@ pub struct AutonomousStatus {
     pub enabled: bool,
     /// Whether bootstrap has completed
     pub bootstrap_complete: bool,
-    /// Whether a North Star is configured
-    pub north_star_configured: bool,
+    /// Whether a Strategic goal is configured
+    pub strategic_goal_configured: bool,
     /// Current drift detection state
     pub drift_state: DriftState,
     /// Current adaptive threshold state
@@ -38,7 +40,7 @@ impl Default for AutonomousStatus {
         Self {
             enabled: false,
             bootstrap_complete: false,
-            north_star_configured: false,
+            strategic_goal_configured: false,
             drift_state: DriftState::default(),
             threshold_state: AdaptiveThresholdState::default(),
             pending_prune_count: 0,
@@ -52,11 +54,11 @@ impl Default for AutonomousStatus {
 
 impl AutonomousStatus {
     /// Create a status for a fully initialized system
-    pub fn initialized(north_star_configured: bool) -> Self {
+    pub fn initialized(strategic_goal_configured: bool) -> Self {
         Self {
             enabled: true,
             bootstrap_complete: true,
-            north_star_configured,
+            strategic_goal_configured,
             drift_state: DriftState::default(),
             threshold_state: AdaptiveThresholdState::default(),
             pending_prune_count: 0,

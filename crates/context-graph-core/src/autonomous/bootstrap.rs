@@ -1,6 +1,7 @@
-//! Bootstrap configuration types for autonomous North Star initialization.
+//! Bootstrap configuration types for autonomous Strategic goal initialization.
 //!
-//! This module defines the types needed to bootstrap a North Star goal from
+//! TASK-P0-005: Renamed north_star_id to strategic_goal_id per ARCH-03.
+//! This module defines the types needed to bootstrap a Strategic goal from
 //! project documents when no explicit configuration exists.
 
 use serde::{Deserialize, Serialize};
@@ -87,7 +88,8 @@ impl Default for BootstrapConfig {
 #[derive(Clone, Debug)]
 pub struct BootstrapResult {
     pub success: bool,
-    pub north_star_id: Option<GoalId>,
+    /// TASK-P0-005: Renamed from strategic_goal_id per ARCH-03
+    pub strategic_goal_id: Option<GoalId>,
     pub description: String,
     pub source_documents: Vec<String>,
     pub chunk_count: usize,
@@ -174,14 +176,14 @@ mod tests {
     fn test_bootstrap_result_creation() {
         let result = BootstrapResult {
             success: true,
-            north_star_id: Some(GoalId::new()),
+            strategic_goal_id: Some(GoalId::new()),
             description: "Test bootstrap".into(),
             source_documents: vec!["README.md".into(), "CONSTITUTION.yaml".into()],
             chunk_count: 42,
             lineage_event_id: "evt_001".into(),
         };
         assert!(result.success);
-        assert!(result.north_star_id.is_some());
+        assert!(result.strategic_goal_id.is_some());
         assert_eq!(result.description, "Test bootstrap");
         assert_eq!(result.source_documents.len(), 2);
         assert_eq!(result.chunk_count, 42);
@@ -191,14 +193,14 @@ mod tests {
     fn test_bootstrap_result_failure() {
         let result = BootstrapResult {
             success: false,
-            north_star_id: None,
+            strategic_goal_id: None,
             description: "No documents found".into(),
             source_documents: vec![],
             chunk_count: 0,
             lineage_event_id: "evt_fail_001".into(),
         };
         assert!(!result.success);
-        assert!(result.north_star_id.is_none());
+        assert!(result.strategic_goal_id.is_none());
         assert!(result.source_documents.is_empty());
         assert_eq!(result.chunk_count, 0);
     }

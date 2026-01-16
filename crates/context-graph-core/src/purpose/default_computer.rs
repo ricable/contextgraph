@@ -54,13 +54,14 @@ use super::splade::SpladeAlignment;
 ///
 /// // Goals are discovered autonomously with TeleologicalArray
 /// let discovery = GoalDiscoveryMetadata::bootstrap();
-/// let north_star = GoalNode::autonomous_goal(
+/// // TASK-P0-005: Renamed from north_star per ARCH-03
+/// let strategic_goal = GoalNode::autonomous_goal(
 ///     "Emergent ML mastery goal".into(),
 ///     GoalLevel::Strategic,
 ///     SemanticFingerprint::zeroed(),
 ///     discovery,
 /// ).unwrap();
-/// hierarchy.add_goal(north_star).unwrap();
+/// hierarchy.add_goal(strategic_goal).unwrap();
 ///
 /// let config = PurposeComputeConfig::with_hierarchy(hierarchy);
 ///
@@ -533,31 +534,33 @@ mod tests {
         println!("[VERIFIED] with_verbose_logging sets flag correctly");
     }
 
+    // TASK-P0-005: Renamed from test_compute_purpose_no_north_star per ARCH-03
     #[tokio::test]
-    async fn test_compute_purpose_no_north_star() {
+    async fn test_compute_purpose_no_strategic_goal() {
         let computer = DefaultPurposeComputer::new();
         let fingerprint = SemanticFingerprint::zeroed();
         let config = PurposeComputeConfig::default(); // Empty hierarchy
 
         let result = computer.compute_purpose(&fingerprint, &config).await;
         assert!(matches!(result, Err(PurposeComputeError::NoTopLevelGoals)));
-        println!("[VERIFIED] compute_purpose fails without North Star");
+        println!("[VERIFIED] compute_purpose fails without Strategic goal");
     }
 
+    // TASK-P0-005: Renamed from test_compute_purpose_with_north_star per ARCH-03
     #[tokio::test]
-    async fn test_compute_purpose_with_north_star() {
+    async fn test_compute_purpose_with_strategic_goal() {
         let computer = DefaultPurposeComputer::new();
         let fingerprint = SemanticFingerprint::zeroed();
 
         let mut hierarchy = GoalHierarchy::new();
-        let north_star = GoalNode::autonomous_goal(
+        let strategic_goal = GoalNode::autonomous_goal(
             "Master ML".into(),
             GoalLevel::Strategic,
             test_fingerprint(),
             test_discovery(),
         )
         .unwrap();
-        hierarchy.add_goal(north_star).unwrap();
+        hierarchy.add_goal(strategic_goal).unwrap();
 
         let config = PurposeComputeConfig::with_hierarchy(hierarchy);
         let result = computer.compute_purpose(&fingerprint, &config).await;
@@ -567,21 +570,21 @@ mod tests {
         // Zeroed fingerprint against zeroed goal should produce similarity based on zero vectors
         // With zeroed vectors, cosine similarity is undefined (0/0), returns 0.0
         assert!(purpose.aggregate_alignment().abs() < 0.01);
-        println!("[VERIFIED] compute_purpose succeeds with North Star");
+        println!("[VERIFIED] compute_purpose succeeds with Strategic goal");
     }
 
     #[tokio::test]
     async fn test_compute_purpose_batch_empty() {
         let computer = DefaultPurposeComputer::new();
         let mut hierarchy = GoalHierarchy::new();
-        let north_star = GoalNode::autonomous_goal(
+        let strategic_goal = GoalNode::autonomous_goal(
             "Goal".into(),
             GoalLevel::Strategic,
             test_fingerprint(),
             test_discovery(),
         )
         .unwrap();
-        hierarchy.add_goal(north_star).unwrap();
+        hierarchy.add_goal(strategic_goal).unwrap();
         let config = PurposeComputeConfig::with_hierarchy(hierarchy);
 
         let result = computer.compute_purpose_batch(&[], &config).await;
@@ -600,14 +603,14 @@ mod tests {
         ];
 
         let mut hierarchy = GoalHierarchy::new();
-        let north_star = GoalNode::autonomous_goal(
+        let strategic_goal = GoalNode::autonomous_goal(
             "Goal".into(),
             GoalLevel::Strategic,
             test_fingerprint(),
             test_discovery(),
         )
         .unwrap();
-        hierarchy.add_goal(north_star).unwrap();
+        hierarchy.add_goal(strategic_goal).unwrap();
         let config = PurposeComputeConfig::with_hierarchy(hierarchy);
 
         let result = computer.compute_purpose_batch(&fingerprints, &config).await;
@@ -622,24 +625,24 @@ mod tests {
         let fingerprint = SemanticFingerprint::zeroed();
 
         let mut old_hierarchy = GoalHierarchy::new();
-        let old_ns = GoalNode::autonomous_goal(
+        let old_strategic = GoalNode::autonomous_goal(
             "Old Goal".into(),
             GoalLevel::Strategic,
             test_fingerprint(),
             test_discovery(),
         )
         .unwrap();
-        old_hierarchy.add_goal(old_ns).unwrap();
+        old_hierarchy.add_goal(old_strategic).unwrap();
 
         let mut new_hierarchy = GoalHierarchy::new();
-        let new_ns = GoalNode::autonomous_goal(
+        let new_strategic = GoalNode::autonomous_goal(
             "New Goal".into(),
             GoalLevel::Strategic,
             test_fingerprint(),
             test_discovery(),
         )
         .unwrap();
-        new_hierarchy.add_goal(new_ns).unwrap();
+        new_hierarchy.add_goal(new_strategic).unwrap();
 
         let result = computer
             .recompute_for_goal_change(&fingerprint, &old_hierarchy, &new_hierarchy)
@@ -655,14 +658,14 @@ mod tests {
         let fingerprint = SemanticFingerprint::zeroed();
 
         let mut hierarchy = GoalHierarchy::new();
-        let north_star = GoalNode::autonomous_goal(
+        let strategic_goal = GoalNode::autonomous_goal(
             "Goal".into(),
             GoalLevel::Strategic,
             test_fingerprint(),
             test_discovery(),
         )
         .unwrap();
-        hierarchy.add_goal(north_star).unwrap();
+        hierarchy.add_goal(strategic_goal).unwrap();
 
         let config = PurposeComputeConfig::with_hierarchy(hierarchy).with_propagation(false);
         let result = computer.compute_purpose(&fingerprint, &config).await;

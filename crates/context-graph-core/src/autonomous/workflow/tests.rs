@@ -340,13 +340,7 @@ mod tests {
         assert!(!event.is_urgent());
     }
 
-    #[test]
-    fn test_optimization_event_north_star_updated() {
-        let event = OptimizationEvent::NorthStarUpdated;
-
-        assert_eq!(event.event_type_name(), "north_star_updated");
-        assert!(event.is_urgent());
-    }
+    // REMOVED: test_optimization_event_north_star_updated per TASK-P0-005 (ARCH-03)
 
     #[test]
     fn test_optimization_event_goal_added() {
@@ -379,6 +373,7 @@ mod tests {
 
     #[test]
     fn test_optimization_event_serialization() {
+        // TASK-P0-005: Removed NorthStarUpdated from events array per ARCH-03
         let events = [
             OptimizationEvent::MemoryStored {
                 memory_id: MemoryId::new(),
@@ -387,7 +382,6 @@ mod tests {
                 memory_id: MemoryId::new(),
                 query: "test".into(),
             },
-            OptimizationEvent::NorthStarUpdated,
             OptimizationEvent::GoalAdded {
                 goal_id: GoalId::new(),
             },
@@ -496,7 +490,7 @@ mod tests {
         let status = AutonomousStatus::default();
         assert!(!status.enabled);
         assert!(!status.bootstrap_complete);
-        assert!(!status.north_star_configured);
+        assert!(!status.strategic_goal_configured);
         assert_eq!(status.pending_prune_count, 0);
         assert_eq!(status.consolidation_queue_size, 0);
         assert!(status.next_scheduled.is_none());
@@ -508,16 +502,17 @@ mod tests {
         let status = AutonomousStatus::initialized(true);
         assert!(status.enabled);
         assert!(status.bootstrap_complete);
-        assert!(status.north_star_configured);
+        assert!(status.strategic_goal_configured);
         assert!(status.health.is_healthy());
     }
 
     #[test]
-    fn test_autonomous_status_initialized_without_north_star() {
+    // TASK-P0-005: Renamed from test_autonomous_status_initialized_without_north_star
+    fn test_autonomous_status_initialized_without_strategic_goal() {
         let status = AutonomousStatus::initialized(false);
         assert!(status.enabled);
         assert!(status.bootstrap_complete);
-        assert!(!status.north_star_configured);
+        assert!(!status.strategic_goal_configured);
     }
 
     #[test]
@@ -630,8 +625,8 @@ mod tests {
         assert_eq!(deserialized.enabled, status.enabled);
         assert_eq!(deserialized.bootstrap_complete, status.bootstrap_complete);
         assert_eq!(
-            deserialized.north_star_configured,
-            status.north_star_configured
+            deserialized.strategic_goal_configured,
+            status.strategic_goal_configured
         );
         assert_eq!(deserialized.pending_prune_count, status.pending_prune_count);
         assert_eq!(
@@ -649,7 +644,7 @@ mod tests {
         let status = AutonomousStatus {
             enabled: true,
             bootstrap_complete: true,
-            north_star_configured: true,
+            strategic_goal_configured: true,
             drift_state: DriftState::with_baseline(0.80),
             threshold_state: AdaptiveThresholdState::default(),
             pending_prune_count: 15,
@@ -662,7 +657,7 @@ mod tests {
         // Verify all fields
         assert!(status.enabled);
         assert!(status.bootstrap_complete);
-        assert!(status.north_star_configured);
+        assert!(status.strategic_goal_configured);
         assert!((status.drift_state.baseline - 0.80).abs() < f32::EPSILON);
         assert_eq!(status.pending_prune_count, 15);
         assert_eq!(status.consolidation_queue_size, 25);

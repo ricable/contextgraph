@@ -74,8 +74,9 @@ fn create_test_discovery(method: DiscoveryMethod, confidence: f32) -> GoalDiscov
     GoalDiscoveryMetadata::new(method, confidence, 10, 0.75).unwrap()
 }
 
-/// Create a North Star goal for testing.
-fn create_north_star_goal(description: &str, base: f32) -> GoalNode {
+/// Create a Strategic goal for testing.
+/// TASK-P0-005: Renamed from create_strategic_goal per ARCH-03.
+fn create_strategic_goal(description: &str, base: f32) -> GoalNode {
     let fp = create_test_fingerprint(base);
     let discovery = create_test_discovery(DiscoveryMethod::Bootstrap, 0.8);
     GoalNode::autonomous_goal(description.to_string(), GoalLevel::Strategic, fp, discovery).unwrap()
@@ -98,12 +99,12 @@ fn test_full_hierarchy_construction() {
     let mut hierarchy = GoalHierarchy::new();
 
     // Add Strategic goal 1 (top-level)
-    let strategic1 = create_north_star_goal("Master machine learning fundamentals", 0.5);
+    let strategic1 = create_strategic_goal("Master machine learning fundamentals", 0.5);
     let strat1_id = strategic1.id;
     hierarchy.add_goal(strategic1).unwrap();
 
     // Add Strategic goal 2 (top-level)
-    let strategic2 = create_north_star_goal("Master computer vision", 0.55);
+    let strategic2 = create_strategic_goal("Master computer vision", 0.55);
     hierarchy.add_goal(strategic2).unwrap();
 
     // Add Tactical goal under Strategic 1
@@ -141,8 +142,8 @@ fn test_full_hierarchy_construction() {
 fn test_hierarchy_validation_multiple_strategic_goals_allowed() {
     let mut hierarchy = GoalHierarchy::new();
 
-    let s1 = create_north_star_goal("Strategic 1", 0.5);
-    let s2 = create_north_star_goal("Strategic 2", 0.5);
+    let s1 = create_strategic_goal("Strategic 1", 0.5);
+    let s2 = create_strategic_goal("Strategic 2", 0.5);
 
     hierarchy.add_goal(s1).unwrap();
     let result = hierarchy.add_goal(s2);
@@ -158,7 +159,7 @@ fn test_hierarchy_validation_multiple_strategic_goals_allowed() {
 fn test_hierarchy_validation_orphaned_goal() {
     let mut hierarchy = GoalHierarchy::new();
 
-    let strategic = create_north_star_goal("Strategic Goal", 0.5);
+    let strategic = create_strategic_goal("Strategic Goal", 0.5);
     hierarchy.add_goal(strategic).unwrap();
 
     // Create orphan with non-existent parent
@@ -185,7 +186,7 @@ fn test_hierarchy_validation_orphaned_goal() {
 fn test_hierarchy_duplicate_id() {
     let mut hierarchy = GoalHierarchy::new();
 
-    let strategic = create_north_star_goal("Strategic Goal", 0.5);
+    let strategic = create_strategic_goal("Strategic Goal", 0.5);
     let strategic_id = strategic.id;
     hierarchy.add_goal(strategic).unwrap();
 
@@ -390,7 +391,7 @@ fn test_splade_alignment_comprehensive() {
 #[test]
 fn test_config_builder_chain() {
     let mut hierarchy = GoalHierarchy::new();
-    let ns = create_north_star_goal("Goal", 0.5);
+    let ns = create_strategic_goal("Goal", 0.5);
     hierarchy.add_goal(ns).unwrap();
 
     let config = PurposeComputeConfig::with_hierarchy(hierarchy)
@@ -430,10 +431,10 @@ async fn test_purpose_computation_full_pipeline() {
     // Create real fingerprint with some data
     let fingerprint = create_test_fingerprint(0.5);
 
-    // Create goal hierarchy with North Star
+    // Create goal hierarchy with Strategic goal
     let mut hierarchy = GoalHierarchy::new();
-    let north_star = create_north_star_goal("Master machine learning", 0.5);
-    hierarchy.add_goal(north_star).unwrap();
+    let strategic = create_strategic_goal("Master machine learning", 0.5);
+    hierarchy.add_goal(strategic).unwrap();
 
     let config = PurposeComputeConfig::with_hierarchy(hierarchy);
     let result = computer.compute_purpose(&fingerprint, &config).await;
@@ -458,7 +459,7 @@ async fn test_purpose_computation_with_hierarchy_propagation() {
     // Create hierarchy with Strategic and Tactical goals
     let mut hierarchy = GoalHierarchy::new();
 
-    let strategic = create_north_star_goal("Strategic Goal", 0.5);
+    let strategic = create_strategic_goal("Strategic Goal", 0.5);
     let strategic_id = strategic.id;
     hierarchy.add_goal(strategic).unwrap();
 
@@ -496,7 +497,7 @@ async fn test_batch_computation_consistency() {
     ];
 
     let mut hierarchy = GoalHierarchy::new();
-    let ns = create_north_star_goal("Goal", 0.5);
+    let ns = create_strategic_goal("Goal", 0.5);
     hierarchy.add_goal(ns).unwrap();
     let config = PurposeComputeConfig::with_hierarchy(hierarchy);
 
@@ -536,12 +537,12 @@ async fn test_goal_change_recomputation() {
 
     // Old hierarchy
     let mut old_hierarchy = GoalHierarchy::new();
-    let old_ns = create_north_star_goal("Old Goal", 0.1);
+    let old_ns = create_strategic_goal("Old Goal", 0.1);
     old_hierarchy.add_goal(old_ns).unwrap();
 
     // New hierarchy with different embedding
     let mut new_hierarchy = GoalHierarchy::new();
-    let new_ns = create_north_star_goal("New Goal", 0.9);
+    let new_ns = create_strategic_goal("New Goal", 0.9);
     new_hierarchy.add_goal(new_ns).unwrap();
 
     let result = computer
@@ -682,7 +683,7 @@ async fn test_zeroed_fingerprint_alignment() {
     let fingerprint = SemanticFingerprint::zeroed();
 
     let mut hierarchy = GoalHierarchy::new();
-    let ns = create_north_star_goal("Goal", 0.5);
+    let ns = create_strategic_goal("Goal", 0.5);
     hierarchy.add_goal(ns).unwrap();
     let config = PurposeComputeConfig::with_hierarchy(hierarchy);
 
@@ -744,7 +745,7 @@ fn test_goal_level_serialization() {
 
 #[test]
 fn test_goal_node_serialization() {
-    let ns = create_north_star_goal("Test Goal", 0.5);
+    let ns = create_strategic_goal("Test Goal", 0.5);
 
     let json = serde_json::to_string(&ns).unwrap();
     let restored: GoalNode = serde_json::from_str(&json).unwrap();
