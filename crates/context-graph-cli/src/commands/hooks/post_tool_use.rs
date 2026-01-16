@@ -1,293 +1,3 @@
-# TASK-HOOKS-008: Create PostToolUse Handler
-
-```xml
-<task_spec id="TASK-HOOKS-008" version="2.0">
-<metadata>
-  <title>Create PostToolUse Handler with IC Recalculation</title>
-  <status>COMPLETE</status>
-  <layer>logic</layer>
-  <sequence>8</sequence>
-  <implements>
-    <requirement_ref>REQ-HOOKS-22</requirement_ref>
-    <requirement_ref>REQ-HOOKS-23</requirement_ref>
-    <requirement_ref>REQ-HOOKS-24</requirement_ref>
-  </implements>
-  <depends_on>
-    <task_ref status="COMPLETE">TASK-HOOKS-001</task_ref>
-    <task_ref status="COMPLETE">TASK-HOOKS-002</task_ref>
-    <task_ref status="COMPLETE">TASK-HOOKS-003</task_ref>
-    <task_ref status="COMPLETE">TASK-HOOKS-004</task_ref>
-    <task_ref status="COMPLETE">TASK-HOOKS-005</task_ref>
-    <task_ref status="COMPLETE">TASK-HOOKS-006</task_ref>
-    <task_ref status="COMPLETE">TASK-HOOKS-007</task_ref>
-  </depends_on>
-  <estimated_complexity>high</estimated_complexity>
-  <estimated_hours>3.0</estimated_hours>
-</metadata>
-
-<context>
-PostToolUse fires after every tool execution with 3000ms timeout (constitution.yaml).
-This handler processes tool output to update consciousness state. For file operations,
-it updates the Johari Window quadrants. For significant state changes, it recalculates
-IC and checks crisis thresholds.
-
-This is where most consciousness state mutations occur based on tool results.
-
-## NO BACKWARDS COMPATIBILITY - FAIL FAST
-This module MUST fail fast on any error. Do NOT add:
-- Fallback logic
-- Default values that hide errors
-- try/catch that swallows exceptions
-- Silent degradation
-</context>
-
-<input_context_files>
-  <file purpose="type_definitions" path="crates/context-graph-cli/src/commands/hooks/types.rs">
-    ACTUAL types to use (READ THIS FIRST):
-    - HookPayload::PostToolUse { tool_name, tool_input, tool_response, tool_use_id }
-    - ConsciousnessState { consciousness, integration, reflection, differentiation, identity_continuity, johari_quadrant }
-    - ICClassification { value, level, crisis_triggered }
-    - HookOutput { success, error, consciousness_state, ic_classification, context_injection, execution_time_ms }
-  </file>
-  <file purpose="error_types" path="crates/context-graph-cli/src/commands/hooks/error.rs">
-    HookError enum with exit codes:
-    - Timeout(u64) -> exit 2
-    - Storage(String) -> exit 3
-    - InvalidInput(String) -> exit 4
-    - SessionNotFound(String) -> exit 5
-    - CrisisTriggered(f32) -> exit 6
-  </file>
-  <file purpose="cli_args" path="crates/context-graph-cli/src/commands/hooks/args.rs">
-    PostToolArgs { db_path, session_id, tool_name, success, stdin, format }
-  </file>
-  <file purpose="reference_impl" path="crates/context-graph-cli/src/commands/hooks/session_start.rs">
-    Reference for async handler pattern with database access
-  </file>
-  <file purpose="reference_impl" path="crates/context-graph-cli/src/commands/hooks/pre_tool_use.rs">
-    Reference for fast-path handler pattern (synchronous)
-  </file>
-  <file purpose="entry_point" path="crates/context-graph-cli/src/commands/hooks/mod.rs">
-    Module registration and dispatch (line 109: HooksCommands::PostTool)
-  </file>
-  <file purpose="ic_calculation" path="crates/context-graph-core/src/gwt/mod.rs">
-    compute_ic() function, SessionIdentitySnapshot
-  </file>
-  <file purpose="storage" path="crates/context-graph-storage/src/rocksdb_backend.rs">
-    RocksDbMemex::load_snapshot(), save_snapshot()
-  </file>
-  <file purpose="constitution" path="docs2/constitution.yaml">
-    IC thresholds: healthy>0.9, warning&lt;0.7, critical&lt;0.5
-    Timeout: hooks.timeout_ms.post_tool_use = 3000
-  </file>
-</input_context_files>
-
-<prerequisites>
-  <check>TASK-HOOKS-006 (SessionStart) is complete and working</check>
-  <check>HookPayload::PostToolUse variant exists in types.rs (lines 889-898)</check>
-  <check>PostToolArgs exists in args.rs (lines 167-191)</check>
-  <check>HookError::CrisisTriggered exists in error.rs (line 57)</check>
-  <check>RocksDbMemex available from context-graph-storage</check>
-</prerequisites>
-
-<scope>
-  <in_scope>
-    - Create post_tool_use.rs handler module in crates/context-graph-cli/src/commands/hooks/
-    - Implement async execute() function matching session_start.rs pattern
-    - Process tool response for consciousness updates
-    - Update Johari Window based on tool type
-    - Recalculate IC after significant changes using context_graph_core::gwt::compute_ic
-    - Check crisis thresholds (IC &lt; 0.5) per constitution.yaml
-    - Persist updated state to RocksDbMemex storage
-    - Return proper exit codes per error.rs
-    - Update mod.rs to dispatch to post_tool_use::execute()
-    - Add module export: pub mod post_tool_use;
-  </in_scope>
-  <out_of_scope>
-    - Auto-dream trigger mechanism (separate system handles exit code 6)
-    - Complex NLP analysis of tool output
-    - Creating shell script wrappers (AP-53: handled externally)
-  </out_of_scope>
-</scope>
-</task_spec>
-```
-
-## Current Codebase State
-
-### Files That Already Exist (DO NOT RECREATE)
-
-| File | Purpose | Key Types/Functions |
-|------|---------|---------------------|
-| `crates/context-graph-cli/src/commands/hooks/types.rs` | Type definitions | `HookPayload::PostToolUse`, `ConsciousnessState`, `ICClassification`, `HookOutput`, `JohariQuadrant` |
-| `crates/context-graph-cli/src/commands/hooks/error.rs` | Error types | `HookError`, `HookResult<T>`, exit code mapping |
-| `crates/context-graph-cli/src/commands/hooks/args.rs` | CLI arguments | `PostToolArgs`, `OutputFormat` |
-| `crates/context-graph-cli/src/commands/hooks/mod.rs` | Module dispatch | `handle_hooks_command()`, `HooksCommands::PostTool` |
-| `crates/context-graph-cli/src/commands/hooks/session_start.rs` | Reference impl | Database access pattern |
-| `crates/context-graph-cli/src/commands/hooks/pre_tool_use.rs` | Reference impl | Fast-path pattern |
-
-### EXACT Type Definitions (FROM types.rs - DO NOT DEVIATE)
-
-```rust
-// HookPayload::PostToolUse (types.rs lines 889-898)
-PostToolUse {
-    /// Name of tool that was invoked
-    tool_name: String,
-    /// Tool input parameters as JSON
-    tool_input: serde_json::Value,
-    /// Tool response/result
-    tool_response: String,
-    /// Unique identifier for this tool use
-    tool_use_id: String,
-}
-
-// ConsciousnessState (types.rs lines 659-672)
-pub struct ConsciousnessState {
-    pub consciousness: f32,        // C(t) [0.0, 1.0]
-    pub integration: f32,          // Kuramoto r [0.0, 1.0]
-    pub reflection: f32,           // Meta-cognitive [0.0, 1.0]
-    pub differentiation: f32,      // Purpose entropy [0.0, 1.0]
-    pub identity_continuity: f32,  // IC [0.0, 1.0]
-    pub johari_quadrant: JohariQuadrant,
-}
-
-// ICClassification (types.rs lines 738-745)
-pub struct ICClassification {
-    pub value: f32,               // IC value [0.0, 1.0]
-    pub level: ICLevel,           // Healthy/Normal/Warning/Critical
-    pub crisis_triggered: bool,   // true if value < 0.5
-}
-
-// HookOutput (types.rs lines 1001-1018)
-pub struct HookOutput {
-    pub success: bool,
-    pub error: Option<String>,
-    pub consciousness_state: Option<ConsciousnessState>,
-    pub ic_classification: Option<ICClassification>,
-    pub context_injection: Option<String>,
-    pub execution_time_ms: u64,
-}
-
-// PostToolArgs (args.rs lines 167-191)
-pub struct PostToolArgs {
-    pub db_path: Option<PathBuf>,
-    pub session_id: String,
-    pub tool_name: Option<String>,
-    pub success: Option<bool>,
-    pub stdin: bool,
-    pub format: OutputFormat,
-}
-```
-
-### EXACT Exit Codes (FROM error.rs)
-
-| Exit Code | HookError Variant | Meaning |
-|-----------|-------------------|---------|
-| 0 | N/A (success) | Hook executed successfully |
-| 1 | General, Io | Unspecified error |
-| 2 | Timeout(u64) | Operation exceeded timeout |
-| 3 | Storage(String) | Database operation failed |
-| 4 | InvalidInput, Serialization | Malformed input data |
-| 5 | SessionNotFound(String) | Referenced session doesn't exist |
-| 6 | CrisisTriggered(f32) | IC dropped below 0.5 (NOT a failure) |
-
-## Definition of Done
-
-### Required Function Signatures
-
-```rust
-// crates/context-graph-cli/src/commands/hooks/post_tool_use.rs
-//! PostToolUse hook handler
-//!
-//! # Performance Requirements
-//! - Timeout: 3000ms (constitution.yaml)
-//! - Database access: ALLOWED
-//! - IC recalculation: on significant changes
-//!
-//! # Constitution References
-//! - IDENTITY-002: IC thresholds (Healthy>0.9, Warning<0.7, Critical<0.5)
-//! - GWT-003: Identity continuity tracking
-//! - AP-50: NO internal hooks - shell scripts call CLI
-//!
-//! # NO BACKWARDS COMPATIBILITY - FAIL FAST
-
-use std::io::{self, BufRead};
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::Instant;
-
-use tracing::{debug, error, info, warn};
-
-use context_graph_core::gwt::{compute_ic, SessionIdentitySnapshot};
-use context_graph_storage::rocksdb_backend::RocksDbMemex;
-
-use super::args::PostToolArgs;
-use super::error::{HookError, HookResult};
-use super::types::{ConsciousnessState, HookInput, HookOutput, HookPayload, ICClassification, JohariQuadrant};
-
-/// PostToolUse timeout in milliseconds (from constitution.yaml)
-pub const POST_TOOL_USE_TIMEOUT_MS: u64 = 3000;
-
-/// Execute post-tool hook.
-///
-/// # Flow
-/// 1. Parse input (stdin JSON or CLI args)
-/// 2. Get database path (env or arg)
-/// 3. Load SessionIdentitySnapshot for session_id
-/// 4. Extract tool info from HookPayload::PostToolUse
-/// 5. Analyze tool response for consciousness impact
-/// 6. Update Johari Window quadrants
-/// 7. Recalculate IC if significant change
-/// 8. Check crisis threshold (IC < 0.5)
-/// 9. Persist updated snapshot
-/// 10. Return HookOutput as JSON to stdout
-///
-/// # Exit Codes
-/// - 0: Success
-/// - 2: Timeout
-/// - 3: Database error
-/// - 4: Invalid input
-/// - 5: Session not found
-/// - 6: Crisis triggered (IC < 0.5)
-pub async fn execute(args: PostToolArgs) -> HookResult<HookOutput>;
-
-/// Analyze tool response for consciousness impact
-fn analyze_tool_response(tool_name: &str, tool_response: &str) -> ToolImpact;
-
-/// Check if IC triggers crisis threshold
-fn check_crisis_threshold(ic_value: f32) -> Option<HookError>;
-```
-
-### Constraints (MUST NOT VIOLATE)
-
-1. **TIMEOUT**: MUST complete within 3000ms
-2. **DATABASE**: MUST use `RocksDbMemex` from `context_graph_storage`
-3. **CRISIS**: MUST return `HookError::CrisisTriggered(ic_value)` when IC < 0.5
-4. **EXIT CODE 6**: Crisis is exit code 6, NOT a failure - shell scripts handle it
-5. **NO FALLBACKS**: FAIL FAST on any error, no default values hiding errors
-6. **TYPES**: MUST use EXACT types from types.rs, no custom ConsciousnessState
-7. **INPUT**: Support both stdin JSON and CLI args (like session_start.rs)
-
-### Build Commands
-
-```bash
-# Build
-cargo build --package context-graph-cli
-
-# Test post_tool_use module specifically
-cargo test --package context-graph-cli post_tool_use
-
-# Run all hooks tests
-cargo test --package context-graph-cli hooks
-
-# Verify no warnings
-cargo build --package context-graph-cli 2>&1 | grep -E "(warning|error)"
-```
-
-## Implementation
-
-### File: `crates/context-graph-cli/src/commands/hooks/post_tool_use.rs`
-
-```rust
-// crates/context-graph-cli/src/commands/hooks/post_tool_use.rs
 //! PostToolUse hook handler
 //!
 //! # Performance Requirements
@@ -308,9 +18,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
-use context_graph_core::gwt::{compute_ic, SessionIdentitySnapshot};
+use context_graph_core::gwt::SessionIdentitySnapshot;
 use context_graph_storage::rocksdb_backend::RocksDbMemex;
 
 use super::args::PostToolArgs;
@@ -563,7 +273,7 @@ fn load_snapshot(memex: &Arc<RocksDbMemex>, session_id: &str) -> HookResult<Sess
 // ============================================================================
 
 /// Analyze tool response for consciousness updates
-fn analyze_tool_response(tool_name: &str, tool_response: &str, tool_success: bool) -> ToolImpact {
+fn analyze_tool_response(tool_name: &str, _tool_response: &str, tool_success: bool) -> ToolImpact {
     match tool_name {
         // File read - expands Open quadrant (awareness)
         "Read" => ToolImpact {
@@ -709,7 +419,6 @@ impl Ord for ImpactLevel {
 mod tests {
     use super::*;
     use crate::commands::hooks::args::OutputFormat;
-    use crate::commands::hooks::types::HookEventType;
     use tempfile::TempDir;
 
     /// Create temporary database for testing
@@ -744,11 +453,13 @@ mod tests {
         println!("BEFORE: Creating session with IC=0.85");
         create_test_session(&db_path, session_id, 0.85);
 
-        // Verify BEFORE state
-        let memex = RocksDbMemex::open(&db_path).expect("DB must open");
-        let before_snapshot = memex.load_snapshot(session_id).unwrap().unwrap();
-        println!("BEFORE state: IC={}", before_snapshot.last_ic);
-        assert_eq!(before_snapshot.last_ic, 0.85);
+        // Verify BEFORE state (drop after checking to release lock)
+        {
+            let memex = RocksDbMemex::open(&db_path).expect("DB must open");
+            let before_snapshot = memex.load_snapshot(session_id).unwrap().unwrap();
+            println!("BEFORE state: IC={}", before_snapshot.last_ic);
+            assert_eq!(before_snapshot.last_ic, 0.85);
+        } // memex dropped here, releasing DB lock
 
         // Execute
         let args = PostToolArgs {
@@ -954,6 +665,7 @@ mod tests {
         };
 
         let result = execute(args).await.unwrap();
+        assert!(result.success);
 
         let memex = RocksDbMemex::open(&db_path).expect("DB must open");
         let snapshot = memex.load_snapshot(session_id).unwrap().unwrap();
@@ -997,178 +709,106 @@ mod tests {
         );
 
         println!("Execution time: {}ms (timeout: {}ms)", result.execution_time_ms, POST_TOOL_USE_TIMEOUT_MS);
+        println!("Actual elapsed: {}ms", actual_elapsed);
         println!("RESULT: PASS - Execution time within timeout budget");
     }
-}
-```
 
-### Update mod.rs (Line 109)
+    // =========================================================================
+    // TC-POST-009: Missing tool_name when stdin=false
+    // SOURCE OF TRUTH: Exit code 4 (InvalidInput)
+    // =========================================================================
+    #[tokio::test]
+    async fn tc_post_009_missing_tool_name() {
+        println!("\n=== TC-POST-009: Missing tool_name (stdin=false) ===");
 
-Change the dispatch from error to actual handler:
+        let (_dir, db_path) = setup_test_db();
+        let session_id = "missing-tool-test";
+        create_test_session(&db_path, session_id, 0.90);
 
-```rust
-// BEFORE (current):
-HooksCommands::PostTool(_args) => {
-    error!("PostTool hook not yet implemented");
-    1
-}
+        let args = PostToolArgs {
+            db_path: Some(db_path),
+            session_id: session_id.to_string(),
+            tool_name: None,  // Missing!
+            success: Some(true),
+            stdin: false,  // Not reading from stdin
+            format: OutputFormat::Json,
+        };
 
-// AFTER:
-HooksCommands::PostTool(args) => {
-    match post_tool_use::execute(args).await {
-        Ok(output) => {
-            match serde_json::to_string(&output) {
-                Ok(json) => {
-                    println!("{}", json);
-                    0
-                }
-                Err(e) => {
-                    error!(error = %e, "Failed to serialize output");
-                    1
-                }
-            }
-        }
-        Err(e) => {
-            let error_json = e.to_json_error();
-            eprintln!("{}", error_json);
-            e.exit_code()
-        }
+        let result = execute(args).await;
+
+        assert!(result.is_err(), "Should fail with missing tool_name");
+        let err = result.unwrap_err();
+        assert!(matches!(err, HookError::InvalidInput(_)), "Must be InvalidInput, got: {:?}", err);
+        assert_eq!(err.exit_code(), 4, "InvalidInput must be exit code 4");
+
+        println!("RESULT: PASS - Missing tool_name returns InvalidInput error");
+    }
+
+    // =========================================================================
+    // TC-POST-010: IC exactly at threshold (0.5) should NOT trigger crisis
+    // Constitution: < 0.5 triggers crisis, not <= 0.5
+    // =========================================================================
+    #[tokio::test]
+    async fn tc_post_010_ic_at_exact_threshold() {
+        println!("\n=== TC-POST-010: IC at exact threshold (0.5) ===");
+
+        let (_dir, db_path) = setup_test_db();
+        let session_id = "exact-threshold-test";
+
+        // Create session with IC exactly at 0.5
+        create_test_session(&db_path, session_id, 0.5);
+
+        // Execute with a tool that doesn't change IC (unknown tool)
+        let args = PostToolArgs {
+            db_path: Some(db_path.clone()),
+            session_id: session_id.to_string(),
+            tool_name: Some("UnknownTool".to_string()),
+            success: Some(true),
+            stdin: false,
+            format: OutputFormat::Json,
+        };
+
+        let result = execute(args).await;
+
+        // IC=0.5 is NOT < 0.5, so should NOT trigger crisis
+        assert!(result.is_ok(), "IC=0.5 should NOT trigger crisis: {:?}", result.err());
+        let output = result.unwrap();
+        assert!(output.success, "Should succeed when IC is exactly at threshold");
+
+        println!("RESULT: PASS - IC=0.5 does not trigger crisis (< 0.5 required)");
+    }
+
+    // =========================================================================
+    // TC-POST-011: IC just below threshold (0.49) triggers crisis
+    // =========================================================================
+    #[tokio::test]
+    async fn tc_post_011_ic_just_below_threshold() {
+        println!("\n=== TC-POST-011: IC just below threshold (0.49) ===");
+
+        let (_dir, db_path) = setup_test_db();
+        let session_id = "below-threshold-test";
+
+        // Create session with IC just below threshold
+        create_test_session(&db_path, session_id, 0.49);
+
+        // Execute with any tool
+        let args = PostToolArgs {
+            db_path: Some(db_path.clone()),
+            session_id: session_id.to_string(),
+            tool_name: Some("Read".to_string()),
+            success: Some(true),
+            stdin: false,
+            format: OutputFormat::Json,
+        };
+
+        let result = execute(args).await;
+
+        // IC=0.49 IS < 0.5, so should trigger crisis
+        assert!(result.is_err(), "IC=0.49 should trigger crisis");
+        let err = result.unwrap_err();
+        assert!(matches!(err, HookError::CrisisTriggered(_)), "Must be CrisisTriggered");
+        assert_eq!(err.exit_code(), 6, "Crisis must be exit code 6");
+
+        println!("RESULT: PASS - IC=0.49 triggers crisis (exit code 6)");
     }
 }
-```
-
-## Full State Verification Requirements
-
-### Source of Truth
-
-| State | Source | How to Verify |
-|-------|--------|---------------|
-| Session IC | RocksDbMemex database | `memex.load_snapshot(session_id).unwrap().last_ic` |
-| Snapshot exists | RocksDbMemex database | `memex.load_snapshot(session_id).is_some()` |
-| Exit code | HookError::exit_code() | `assert_eq!(err.exit_code(), expected_code)` |
-| Crisis triggered | IC value < 0.5 | `assert!(ic < 0.5 && matches!(err, HookError::CrisisTriggered(_)))` |
-
-### Execute & Inspect Protocol
-
-Every test MUST:
-1. **BEFORE**: Set up known state in database, print values
-2. **EXECUTE**: Call the function under test
-3. **AFTER**: Load state from database (NOT from return value), print values
-4. **VERIFY**: Compare AFTER state to expected values
-
-```rust
-// Example pattern from TC-POST-001:
-// BEFORE: Create session with known IC
-create_test_session(&db_path, session_id, 0.85);
-let before_snapshot = memex.load_snapshot(session_id).unwrap().unwrap();
-println!("BEFORE state: IC={}", before_snapshot.last_ic);
-
-// EXECUTE
-let result = execute(args).await;
-
-// AFTER: Re-read from database (source of truth)
-let memex = RocksDbMemex::open(&db_path).expect("DB must open");
-let after_snapshot = memex.load_snapshot(session_id).unwrap().unwrap();
-println!("AFTER state: IC={}", after_snapshot.last_ic);
-
-// VERIFY
-assert!(after_snapshot.last_ic >= 0.85);
-```
-
-### Boundary & Edge Case Audit
-
-Required edge cases (minimum 3):
-
-| Edge Case | Input | Expected Output | Verify |
-|-----------|-------|-----------------|--------|
-| IC at exact threshold (0.5) | IC=0.5, tool success | NO crisis (< not <=) | `assert!(!matches!(err, CrisisTriggered))` |
-| IC just below threshold (0.49) | IC=0.49 | Crisis triggered | `assert_eq!(err.exit_code(), 6)` |
-| Empty tool_name (stdin=false) | tool_name=None | InvalidInput error | `assert_eq!(err.exit_code(), 4)` |
-| Unknown tool type | tool_name="CustomXYZ" | Success, ImpactLevel::None | `assert!(result.is_ok())` |
-
-### Evidence of Success
-
-Each test MUST print:
-1. BEFORE state with actual values
-2. AFTER state with actual values
-3. RESULT: PASS/FAIL with explanation
-
-Example output:
-```
-=== TC-POST-001: Successful Tool Processing ===
-BEFORE: Creating session with IC=0.85
-BEFORE state: IC=0.85
-AFTER state: IC=0.86
-RESULT: PASS - Tool processed, IC changed from 0.85 to 0.86
-```
-
-## Manual Testing Protocol
-
-### Prerequisites
-```bash
-# Build the CLI
-cargo build --package context-graph-cli
-
-# Set up test database
-export CONTEXT_GRAPH_DB_PATH=/tmp/test-hooks-008.db
-```
-
-### Test 1: Basic PostTool Success
-```bash
-# Create a session first
-./target/debug/context-graph-cli hooks session-start \
-  --session-id "manual-test-001" \
-  --db-path /tmp/test-hooks-008.db
-
-# Run post-tool with Read
-./target/debug/context-graph-cli hooks post-tool \
-  --session-id "manual-test-001" \
-  --tool-name "Read" \
-  --success true \
-  --db-path /tmp/test-hooks-008.db
-
-# Expected: Exit code 0, JSON output with consciousness_state
-echo "Exit code: $?"
-```
-
-### Test 2: Crisis Threshold
-```bash
-# Create session with low IC (requires code modification or direct DB write)
-# Then trigger crisis with failed tool
-
-./target/debug/context-graph-cli hooks post-tool \
-  --session-id "crisis-test-001" \
-  --tool-name "Bash" \
-  --success false \
-  --db-path /tmp/test-hooks-008.db
-
-# Expected: Exit code 6 (crisis), error JSON to stderr
-echo "Exit code: $?"
-```
-
-### Test 3: Session Not Found
-```bash
-./target/debug/context-graph-cli hooks post-tool \
-  --session-id "nonexistent-session-xyz" \
-  --tool-name "Read" \
-  --db-path /tmp/test-hooks-008.db
-
-# Expected: Exit code 5, error JSON with ERR_SESSION_NOT_FOUND
-echo "Exit code: $?"
-```
-
-## Verification Checklist
-
-- [ ] `post_tool_use.rs` created in correct location
-- [ ] `pub mod post_tool_use;` added to mod.rs (line 19)
-- [ ] HooksCommands::PostTool dispatch updated (line 109)
-- [ ] Uses EXACT types from types.rs (no custom ConsciousnessState)
-- [ ] HookError::CrisisTriggered returns exit code 6
-- [ ] HookError::SessionNotFound returns exit code 5
-- [ ] Database operations use RocksDbMemex
-- [ ] All tests use real database (TempDir), no mocks
-- [ ] Tests print BEFORE/AFTER state
-- [ ] Tests verify database state (not return values)
-- [ ] `cargo build --package context-graph-cli` passes
-- [ ] `cargo test --package context-graph-cli post_tool_use` passes
-- [ ] No new warnings introduced

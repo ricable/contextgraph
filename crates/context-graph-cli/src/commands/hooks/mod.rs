@@ -16,6 +16,7 @@
 
 mod args;
 mod error;
+pub mod post_tool_use;
 pub mod pre_tool_use;
 pub mod session_start;
 mod types;
@@ -106,9 +107,26 @@ pub async fn handle_hooks_command(cmd: HooksCommands) -> i32 {
                 }
             }
         }
-        HooksCommands::PostTool(_args) => {
-            error!("PostTool hook not yet implemented");
-            1
+        HooksCommands::PostTool(args) => {
+            match post_tool_use::execute(args).await {
+                Ok(output) => {
+                    match serde_json::to_string(&output) {
+                        Ok(json) => {
+                            println!("{}", json);
+                            0
+                        }
+                        Err(e) => {
+                            error!(error = %e, "Failed to serialize output");
+                            1
+                        }
+                    }
+                }
+                Err(e) => {
+                    let error_json = e.to_json_error();
+                    eprintln!("{}", error_json);
+                    e.exit_code()
+                }
+            }
         }
         HooksCommands::PromptSubmit(_args) => {
             error!("PromptSubmit hook not yet implemented");
