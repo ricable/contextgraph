@@ -16,13 +16,16 @@
 //! - `serialization`: Bincode serialization utilities
 //! - `indexes`: Secondary index operations (tags, temporal, sources)
 //!
-//! # Column Families (39 total)
+//! # Column Families (41 total)
 //!
 //! Base (12): nodes, edges, embeddings, metadata, johari_*, temporal, tags, sources, system
-//! Teleological (20): fingerprints, purpose_vectors, e13_splade_inverted, e1_matryoshka_128,
-//!                    synergy_matrix, teleological_profiles, teleological_vectors, emb_0..emb_12
-//! Autonomous (7): autonomous_config, adaptive_threshold_state, drift_history, goal_activity_metrics,
-//!                 autonomous_lineage, consolidation_history, memory_curation
+//! Teleological (11): fingerprints, purpose_vectors, e13_splade_inverted, e1_matryoshka_128,
+//!                    synergy_matrix, teleological_profiles, teleological_vectors, ego_node
+//! Quantized Embedder (13): emb_0..emb_12
+//! Autonomous (5): autonomous_config, adaptive_threshold_state, autonomous_lineage,
+//!                 consolidation_history, memory_curation
+//!
+//! TASK-P0-004: Removed drift_history and goal_activity_metrics (ARCH-10, ARCH-03)
 //!
 //! # Constitution Reference
 //! - db.dev: sqlite (ghost phase), db.prod: postgres16+
@@ -181,42 +184,35 @@ pub use teleological::{
 };
 
 // Re-export autonomous storage types (TASK-NORTH-007)
+// TASK-P0-004: Removed drift_history and goal_activity_metrics exports after North Star removal
 pub use autonomous::{
+    // CF option builders (5 after TASK-P0-004)
     adaptive_threshold_state_cf_options,
-    // CF option builders
     autonomous_config_cf_options,
     autonomous_lineage_cf_options,
-    autonomous_lineage_key,
-    autonomous_lineage_timestamp_prefix,
     consolidation_history_cf_options,
-    consolidation_history_key,
-    consolidation_history_timestamp_prefix,
-    drift_history_cf_options,
-    // Key format functions
-    drift_history_key,
-    drift_history_timestamp_prefix,
+    memory_curation_cf_options,
     // Descriptor getter
     get_autonomous_cf_descriptors,
-    goal_activity_metrics_cf_options,
-    goal_activity_metrics_key,
-    memory_curation_cf_options,
+    // Key format functions (remaining after TASK-P0-004)
+    autonomous_lineage_key,
+    autonomous_lineage_timestamp_prefix,
+    consolidation_history_key,
+    consolidation_history_timestamp_prefix,
     memory_curation_key,
     parse_autonomous_lineage_key,
     parse_consolidation_history_key,
-    parse_drift_history_key,
-    parse_goal_activity_metrics_key,
     parse_memory_curation_key,
+    // Singleton key constants
     ADAPTIVE_THRESHOLD_STATE_KEY,
+    AUTONOMOUS_CONFIG_KEY,
+    // CF arrays and counts
     AUTONOMOUS_CFS,
     AUTONOMOUS_CF_COUNT,
-    // Singleton key constants
-    AUTONOMOUS_CONFIG_KEY,
+    // Column family names (5 after TASK-P0-004)
     CF_ADAPTIVE_THRESHOLD_STATE,
-    // Column family names
     CF_AUTONOMOUS_CONFIG,
     CF_AUTONOMOUS_LINEAGE,
     CF_CONSOLIDATION_HISTORY,
-    CF_DRIFT_HISTORY,
-    CF_GOAL_ACTIVITY_METRICS,
     CF_MEMORY_CURATION,
 };

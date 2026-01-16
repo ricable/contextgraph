@@ -283,12 +283,13 @@ pub fn get_all_column_family_descriptors(block_cache: &Cache) -> Vec<ColumnFamil
 }
 
 /// Total number of column families in a fully configured Context Graph database.
-/// Base (12) + Teleological (11) + Quantized Embedder (13) + Autonomous (7) = 43
+/// Base (12) + Teleological (11) + Quantized Embedder (13) + Autonomous (5) = 41
 /// TASK-CONTENT-001: +1 for CF_CONTENT
 /// TASK-GWT-P1-001: +1 for CF_EGO_NODE
 /// TASK-STORAGE-P2-001: +1 for CF_E12_LATE_INTERACTION
 /// TASK-SESSION-04: +1 for CF_SESSION_IDENTITY
-pub const TOTAL_COLUMN_FAMILIES: usize = 43;
+/// TASK-P0-004: -2 (removed drift_history and goal_activity_metrics after North Star removal)
+pub const TOTAL_COLUMN_FAMILIES: usize = 41;
 
 #[cfg(test)]
 mod tests {
@@ -597,19 +598,20 @@ mod tests {
     #[test]
     fn test_total_column_families_constant() {
         // Verify the constant is correct:
-        // 12 base + 11 teleological + 13 quantized + 7 autonomous = 43
+        // 12 base + 11 teleological + 13 quantized + 5 autonomous = 41
         // TASK-CONTENT-001: +1 for CF_CONTENT
         // TASK-GWT-P1-001: +1 for CF_EGO_NODE
         // TASK-STORAGE-P2-001: +1 for CF_E12_LATE_INTERACTION
         // TASK-SESSION-04: +1 for CF_SESSION_IDENTITY
+        // TASK-P0-004: -2 (removed drift_history and goal_activity_metrics after North Star removal)
         assert_eq!(
-            TOTAL_COLUMN_FAMILIES, 43,
-            "Total column families should be 43 (12 base + 11 teleological + 13 quantized + 7 autonomous)"
+            TOTAL_COLUMN_FAMILIES, 41,
+            "Total column families should be 41 (12 base + 11 teleological + 13 quantized + 5 autonomous)"
         );
     }
 
     #[test]
-    fn test_get_all_column_family_descriptors_returns_43() {
+    fn test_get_all_column_family_descriptors_returns_41() {
         let cache = Cache::new_lru_cache(256 * 1024 * 1024);
         let descriptors = get_all_column_family_descriptors(&cache);
 
@@ -690,13 +692,15 @@ mod tests {
         );
     }
 
+    // TASK-P0-004: Updated test to verify 5 autonomous CFs after North Star removal.
+    // Removed drift_history and goal_activity_metrics (ARCH-10, ARCH-03).
     #[test]
     fn test_all_cf_descriptors_includes_autonomous_cfs() {
         let cache = Cache::new_lru_cache(256 * 1024 * 1024);
         let descriptors = get_all_column_family_descriptors(&cache);
         let names: Vec<_> = descriptors.iter().map(|d| d.name()).collect();
 
-        // Verify all 7 autonomous CFs are present
+        // Verify all 5 autonomous CFs are present (TASK-P0-004: reduced from 7)
         assert!(
             names.contains(&"autonomous_config"),
             "Missing CF: autonomous_config"
@@ -705,14 +709,8 @@ mod tests {
             names.contains(&"adaptive_threshold_state"),
             "Missing CF: adaptive_threshold_state"
         );
-        assert!(
-            names.contains(&"drift_history"),
-            "Missing CF: drift_history"
-        );
-        assert!(
-            names.contains(&"goal_activity_metrics"),
-            "Missing CF: goal_activity_metrics"
-        );
+        // TASK-P0-004: drift_history removed - old drift detection replaced by topic_stability.churn_rate (ARCH-10)
+        // TASK-P0-004: goal_activity_metrics removed - manual goals forbidden by ARCH-03
         assert!(
             names.contains(&"autonomous_lineage"),
             "Missing CF: autonomous_lineage"

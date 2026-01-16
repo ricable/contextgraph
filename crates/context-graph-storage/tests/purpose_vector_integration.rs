@@ -4,11 +4,14 @@
 //! storage → retrieval with verification that purpose vectors are correctly computed,
 //! stored, indexed, and retrieved.
 //!
-//! From constitution.yaml:
+//! From constitution.yaml v6.0.0:
 //! - Purpose Vector: PV = [A(E1,V), A(E2,V), ..., A(E13,V)]
-//! - Each element is cosine alignment between embedder and North Star goal
+//! - Each element is cosine alignment between embedder and strategic goal
 //! - Stored atomically with fingerprint in RocksDB
 //! - Indexed for O(log n) purpose-based search
+//!
+//! TASK-P0-004: Updated terminology from "North Star" to "Strategic" after v6.0.0 migration.
+//! GoalLevel::Strategic is now the top-level goal (replaces removed NorthStar level).
 
 use context_graph_core::purpose::{
     DefaultPurposeComputer, GoalDiscoveryMetadata, GoalHierarchy, GoalLevel, GoalNode,
@@ -49,22 +52,25 @@ async fn test_purpose_vector_structure() {
 }
 
 /// Test that purpose vectors are computed correctly from semantic fingerprints.
+/// TASK-P0-004: Updated test to use "strategic_goal" naming (replaces "north_star").
 #[tokio::test]
 async fn test_purpose_computation_with_real_goal_hierarchy() {
-    // Create a real goal hierarchy with North Star
+    // Create a real goal hierarchy with strategic goal (top-level)
     let mut hierarchy = GoalHierarchy::new();
     let discovery = GoalDiscoveryMetadata::bootstrap();
 
-    let north_star = GoalNode::autonomous_goal(
+    // TASK-P0-004: Renamed from north_star to strategic_goal after v6.0.0 migration.
+    // GoalLevel::Strategic is now the top-level goal type.
+    let strategic_goal = GoalNode::autonomous_goal(
         "Master semantic understanding".into(),
         GoalLevel::Strategic,
         SemanticFingerprint::zeroed(),
         discovery,
     )
-    .expect("Failed to create North Star");
+    .expect("Failed to create strategic goal");
     hierarchy
-        .add_goal(north_star)
-        .expect("Failed to add North Star");
+        .add_goal(strategic_goal)
+        .expect("Failed to add strategic goal");
 
     let config = PurposeComputeConfig::with_hierarchy(hierarchy);
     let computer = DefaultPurposeComputer::new();
@@ -175,24 +181,25 @@ fn test_multiple_purpose_vectors() {
     }
 }
 
-/// Test that purpose vectors fail fast if North Star goal is missing.
+/// Test that purpose vectors fail fast if strategic goal is missing.
+/// TASK-P0-004: Renamed test from "north_star" to "strategic_goal" after v6.0.0 migration.
 #[tokio::test]
-async fn test_purpose_computation_fails_without_north_star() {
-    let empty_hierarchy = GoalHierarchy::new(); // No North Star
+async fn test_purpose_computation_fails_without_strategic_goal() {
+    let empty_hierarchy = GoalHierarchy::new(); // No strategic goal
     let config = PurposeComputeConfig::with_hierarchy(empty_hierarchy);
     let computer = DefaultPurposeComputer::new();
 
     let semantic = SemanticFingerprint::zeroed();
 
-    // Should fail because no North Star goal
+    // Should fail because no strategic goal (top-level) is defined
     let result = computer.compute_purpose(&semantic, &config).await;
 
     assert!(
         result.is_err(),
-        "Expected error when North Star goal is missing, but got Ok"
+        "Expected error when strategic goal is missing, but got Ok"
     );
 
-    println!("[PASS] Purpose computation correctly fails without North Star goal");
+    println!("[PASS] Purpose computation correctly fails without strategic goal");
 }
 
 /// Test alignment value ranges are within cosine similarity bounds.
@@ -234,18 +241,19 @@ fn test_purpose_vector_alignment_ranges() {
 }
 
 /// Test that different fingerprints produce different purpose vectors.
+/// TASK-P0-004: Updated to use "strategic_goal" naming after v6.0.0 migration.
 #[tokio::test]
 async fn test_purpose_vectors_differentiate_semantics() {
     let mut hierarchy = GoalHierarchy::new();
     let discovery = GoalDiscoveryMetadata::bootstrap();
-    let north_star = GoalNode::autonomous_goal(
+    let strategic_goal = GoalNode::autonomous_goal(
         "Test goal".into(),
         GoalLevel::Strategic,
         SemanticFingerprint::zeroed(),
         discovery,
     )
     .expect("Failed to create goal");
-    hierarchy.add_goal(north_star).expect("Failed to add goal");
+    hierarchy.add_goal(strategic_goal).expect("Failed to add goal");
 
     let config = PurposeComputeConfig::with_hierarchy(hierarchy);
     let computer = DefaultPurposeComputer::new();

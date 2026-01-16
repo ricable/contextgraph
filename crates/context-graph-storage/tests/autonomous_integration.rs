@@ -4,20 +4,22 @@
 //!
 //! All tests use REAL RocksDB instances and REAL data structures.
 //! Tests verify:
-//! 1. 7 autonomous column families can be opened together
+//! 1. 5 autonomous column families can be opened together
 //! 2. All singleton config/state can be stored and retrieved
-//! 3. Time-series data (drift, lineage, consolidation) persists correctly
-//! 4. Per-goal and per-memory data operates correctly
+//! 3. Time-series data (lineage, consolidation) persists correctly
+//! 4. Per-memory data operates correctly
 //! 5. Data survives close/reopen cycles (persistence verification)
+//!
+//! TASK-P0-004: Removed drift_history and goal_activity_metrics tests after North Star removal.
+//! - drift_history removed - old drift detection replaced by topic_stability.churn_rate (ARCH-10)
+//! - goal_activity_metrics removed - manual goals forbidden by ARCH-03
 
 use chrono::Utc;
 use context_graph_core::autonomous::{
-    AdaptiveThresholdState, AutonomousConfig, DriftDataPoint, GoalActivityMetrics, GoalId,
-    MemoryCurationState,
+    AdaptiveThresholdState, AutonomousConfig, GoalId, MemoryCurationState,
 };
-use context_graph_storage::autonomous::{
-    ConsolidationRecord, LineageEvent, RocksDbAutonomousStore,
-};
+// TASK-P0-004: Removed DriftDataPoint, GoalActivityMetrics imports (used by removed CFs)
+use context_graph_storage::autonomous::{ConsolidationRecord, LineageEvent, RocksDbAutonomousStore};
 use tempfile::TempDir;
 use uuid::Uuid;
 
@@ -81,72 +83,8 @@ fn test_threshold_state_crud_real_db() {
     println!("[PASS] AdaptiveThresholdState CRUD with real RocksDB");
 }
 
-#[test]
-fn test_drift_history_crud_real_db() {
-    let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let store = RocksDbAutonomousStore::open(temp_dir.path()).expect("Failed to open store");
-
-    // Write multiple drift points
-    let alignment_values = [0.7, 0.72, 0.75, 0.73, 0.78];
-    for (i, alignment_mean) in alignment_values.iter().enumerate() {
-        let drift_point = DriftDataPoint {
-            alignment_mean: *alignment_mean,
-            new_memories_count: (i as u32 + 1) * 10,
-            timestamp: Utc::now(),
-        };
-        store.store_drift_point(&drift_point).expect("store failed");
-    }
-
-    // Retrieve all drift history
-    let history = store.get_drift_history(None).expect("get failed");
-    assert_eq!(history.len(), 5, "Should have 5 drift points");
-
-    println!("[PASS] DriftDataPoint history with real RocksDB");
-}
-
-#[test]
-fn test_goal_activity_metrics_crud_real_db() {
-    let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let store = RocksDbAutonomousStore::open(temp_dir.path()).expect("Failed to open store");
-
-    // Create real GoalId and its UUID
-    let goal_id = GoalId::new();
-    let goal_uuid = goal_id.0;
-
-    // Initially empty
-    let initial = store.get_goal_metrics(goal_uuid).expect("get failed");
-    assert!(initial.is_none(), "Metrics should not exist initially");
-
-    // Write metrics
-    let metrics = GoalActivityMetrics {
-        goal_id: goal_id.clone(),
-        new_aligned_memories_30d: 42,
-        retrievals_14d: 10,
-        avg_child_alignment: 0.85,
-        weight_trend: 0.02,
-        last_activity: Utc::now(),
-    };
-    store
-        .store_goal_metrics(goal_uuid, &metrics)
-        .expect("store failed");
-
-    // Verify written
-    let retrieved = store
-        .get_goal_metrics(goal_uuid)
-        .expect("get failed")
-        .expect("Metrics should exist after store");
-
-    assert_eq!(
-        retrieved.new_aligned_memories_30d, 42,
-        "Memories count mismatch"
-    );
-    assert!(
-        (retrieved.avg_child_alignment - 0.85).abs() < 0.001,
-        "Alignment mismatch"
-    );
-
-    println!("[PASS] GoalActivityMetrics CRUD with real RocksDB");
-}
+// TASK-P0-004: Removed test_drift_history_crud_real_db - old drift detection replaced by topic_stability.churn_rate (ARCH-10)
+// TASK-P0-004: Removed test_goal_activity_metrics_crud_real_db - manual goals forbidden by ARCH-03
 
 #[test]
 fn test_memory_curation_state_crud_real_db() {
@@ -194,16 +132,15 @@ fn test_memory_curation_state_crud_real_db() {
 // PHASE 2: Persistence Verification (Source of Truth)
 // =========================================================================
 
+// TASK-P0-004: Updated test to remove drift_history and goal_activity_metrics after North Star removal.
+// Only tests remaining 5 CFs: autonomous_config, adaptive_threshold_state, autonomous_lineage,
+// consolidation_history, and memory_curation.
 #[test]
 fn test_persistence_across_close_reopen() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let db_path = temp_dir.path().to_path_buf();
 
-    let goal_id = GoalId::new();
-    let goal_uuid = goal_id.0;
     let memory_uuid = Uuid::new_v4();
-    let expected_alignment = 0.75f32;
-    let expected_memories = 100u32;
 
     // Phase 1: Write data and close
     {
@@ -219,28 +156,20 @@ fn test_persistence_across_close_reopen() {
             .store_threshold_state(&AdaptiveThresholdState::default())
             .expect("store threshold failed");
 
-        // Write drift point
-        let drift_point = DriftDataPoint {
-            alignment_mean: expected_alignment,
-            new_memories_count: 25,
-            timestamp: Utc::now(),
-        };
-        store
-            .store_drift_point(&drift_point)
-            .expect("store drift failed");
+        // Write lineage event (replaces drift_history for time-series testing)
+        let event = LineageEvent::new("bootstrap", "Test persistence event");
+        store.store_lineage_event(&event).expect("store lineage failed");
 
-        // Write goal metrics
-        let metrics = GoalActivityMetrics {
-            goal_id: goal_id.clone(),
-            new_aligned_memories_30d: expected_memories,
-            retrievals_14d: 25,
-            avg_child_alignment: 0.9,
-            weight_trend: 0.01,
-            last_activity: Utc::now(),
-        };
+        // Write consolidation record
+        let record = ConsolidationRecord::success(
+            vec![],
+            context_graph_core::autonomous::MemoryId::new(),
+            0.95,
+            0.03,
+        );
         store
-            .store_goal_metrics(goal_uuid, &metrics)
-            .expect("store metrics failed");
+            .store_consolidation_record(&record)
+            .expect("store consolidation failed");
 
         // Write memory curation
         let curation = MemoryCurationState::Active;
@@ -272,27 +201,15 @@ fn test_persistence_across_close_reopen() {
             .expect("Threshold state must persist");
         assert!(threshold.optimal > 0.0, "Threshold optimal invalid");
 
-        // Verify drift point
-        let drift_history = store.get_drift_history(None).expect("get drift failed");
-        assert!(!drift_history.is_empty(), "Drift history must persist");
-        let drift = &drift_history[0];
-        assert!(
-            (drift.alignment_mean - expected_alignment).abs() < 0.001,
-            "Alignment mean mismatch: expected {}, got {}",
-            expected_alignment,
-            drift.alignment_mean
-        );
+        // Verify lineage event
+        let lineage = store.get_lineage_history(None).expect("get lineage failed");
+        assert!(!lineage.is_empty(), "Lineage history must persist");
+        assert_eq!(lineage[0].event_type, "bootstrap", "Lineage event type mismatch");
 
-        // Verify goal metrics
-        let metrics = store
-            .get_goal_metrics(goal_uuid)
-            .expect("get metrics failed")
-            .expect("Goal metrics must persist");
-        assert_eq!(
-            metrics.new_aligned_memories_30d, expected_memories,
-            "Memories count mismatch: expected {}, got {}",
-            expected_memories, metrics.new_aligned_memories_30d
-        );
+        // Verify consolidation record
+        let consolidation = store.get_consolidation_history(None).expect("get consolidation failed");
+        assert!(!consolidation.is_empty(), "Consolidation history must persist");
+        assert!(consolidation[0].success, "Consolidation record success flag invalid");
 
         // Verify memory curation
         let curation = store
@@ -382,19 +299,19 @@ fn test_health_check_reports_correct_status() {
     println!("[PASS] Health check reports correct status");
 }
 
+// TASK-P0-004: Updated test to use lineage events instead of drift_history after North Star removal.
 #[test]
 fn test_flush_and_compact_operations() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let store = RocksDbAutonomousStore::open(temp_dir.path()).expect("Failed to open store");
 
-    // Write data
+    // Write data (using lineage events instead of drift_history)
     for i in 0..10 {
-        let drift_point = DriftDataPoint {
-            alignment_mean: 0.7 + (i as f32 * 0.02),
-            new_memories_count: i as u32 + 5,
-            timestamp: Utc::now(),
-        };
-        store.store_drift_point(&drift_point).expect("store failed");
+        let event = LineageEvent::new(
+            format!("test_event_{}", i),
+            format!("Test event {} for flush/compact", i),
+        );
+        store.store_lineage_event(&event).expect("store failed");
     }
 
     // Flush should succeed
@@ -404,7 +321,7 @@ fn test_flush_and_compact_operations() {
     store.compact().expect("compact failed");
 
     // Verify data still accessible
-    let history = store.get_drift_history(None).expect("get failed");
+    let history = store.get_lineage_history(None).expect("get failed");
     assert_eq!(history.len(), 10, "Data should survive flush and compact");
 
     println!("[PASS] Flush and compact operations work correctly");
@@ -414,91 +331,48 @@ fn test_flush_and_compact_operations() {
 // PHASE 5: Update Operations
 // =========================================================================
 
+// TASK-P0-004: Updated test to use memory curation instead of goal_activity_metrics after North Star removal.
+// Goal activity metrics removed - manual goals forbidden by ARCH-03.
 #[test]
 fn test_update_overwrites_previous_value() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let store = RocksDbAutonomousStore::open(temp_dir.path()).expect("Failed to open store");
 
-    let goal_id = GoalId::new();
-    let goal_uuid = goal_id.0;
+    let memory_uuid = Uuid::new_v4();
 
-    // Initial write
-    let initial_metrics = GoalActivityMetrics {
-        goal_id: goal_id.clone(),
-        new_aligned_memories_30d: 10,
-        retrievals_14d: 5,
-        avg_child_alignment: 0.5,
-        weight_trend: 0.01,
-        last_activity: Utc::now(),
-    };
+    // Initial write - Active state
+    let initial_state = MemoryCurationState::Active;
     store
-        .store_goal_metrics(goal_uuid, &initial_metrics)
+        .store_curation_state(memory_uuid, &initial_state)
         .expect("store failed");
 
     // Verify initial
     let retrieved = store
-        .get_goal_metrics(goal_uuid)
+        .get_curation_state(memory_uuid)
         .expect("get failed")
-        .unwrap();
-    assert_eq!(
-        retrieved.new_aligned_memories_30d, 10,
-        "Initial memories count wrong"
-    );
+        .expect("State should exist");
+    assert_eq!(retrieved, MemoryCurationState::Active, "Initial state wrong");
 
-    // Update
-    let updated_metrics = GoalActivityMetrics {
-        goal_id: goal_id.clone(),
-        new_aligned_memories_30d: 50,
-        retrievals_14d: 25,
-        avg_child_alignment: 0.8,
-        weight_trend: 0.05,
-        last_activity: Utc::now(),
-    };
+    // Update to Dormant
+    let updated_state = MemoryCurationState::Dormant { since: Utc::now() };
     store
-        .store_goal_metrics(goal_uuid, &updated_metrics)
+        .store_curation_state(memory_uuid, &updated_state)
         .expect("store failed");
 
     // Verify update
     let retrieved = store
-        .get_goal_metrics(goal_uuid)
+        .get_curation_state(memory_uuid)
         .expect("get failed")
-        .unwrap();
-    assert_eq!(
-        retrieved.new_aligned_memories_30d, 50,
-        "Updated memories count should be 50, got {}",
-        retrieved.new_aligned_memories_30d
-    );
+        .expect("State should exist after update");
+    match retrieved {
+        MemoryCurationState::Dormant { .. } => {}
+        _ => panic!("Expected Dormant state, got {:?}", retrieved),
+    }
 
     println!("[PASS] Update overwrites previous value correctly");
 }
 
-#[test]
-fn test_list_all_goal_metrics() {
-    let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let store = RocksDbAutonomousStore::open(temp_dir.path()).expect("Failed to open store");
-
-    // Write multiple goal metrics
-    for i in 0..5 {
-        let goal_id = GoalId::new();
-        let metrics = GoalActivityMetrics {
-            goal_id: goal_id.clone(),
-            new_aligned_memories_30d: i * 10,
-            retrievals_14d: i * 5,
-            avg_child_alignment: 0.5 + (i as f32 * 0.1),
-            weight_trend: 0.01,
-            last_activity: Utc::now(),
-        };
-        store
-            .store_goal_metrics(goal_id.0, &metrics)
-            .expect("store failed");
-    }
-
-    // List all metrics
-    let all_metrics = store.list_all_goal_metrics().expect("list failed");
-    assert_eq!(all_metrics.len(), 5, "Should have 5 goal metrics");
-
-    println!("[PASS] list_all_goal_metrics works correctly");
-}
+// TASK-P0-004: Removed test_list_all_goal_metrics - manual goals forbidden by ARCH-03
 
 #[test]
 fn test_list_all_curation_states() {

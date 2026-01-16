@@ -1,15 +1,15 @@
-//! RocksDB column family definitions for autonomous North Star storage.
+//! RocksDB column family definitions for autonomous topic-based storage.
 //!
-//! These 7 CFs extend the storage layer for the autonomous system.
-//! All types are defined in context-graph-core/src/autonomous/.
+//! TASK-P0-004: Reduced from 7 to 5 CFs after North Star removal (TASK-P0-001).
+//! Removed CFs:
+//! - drift_history: Old drift detection replaced by topic_stability.churn_rate (ARCH-10)
+//! - goal_activity_metrics: Manual goals forbidden by ARCH-03 (topics emerge from clustering)
 //!
-//! # Column Families (7 total)
+//! # Column Families (5 total)
 //! | Name | Purpose | Key Format | Value |
 //! |------|---------|------------|-------|
 //! | autonomous_config | Singleton AutonomousConfig | "config" (6 bytes) | AutonomousConfig |
 //! | adaptive_threshold_state | Singleton threshold state | "state" (5 bytes) | AdaptiveThresholdState |
-//! | drift_history | Historical drift data | timestamp_ms:uuid (24 bytes) | DriftDataPoint |
-//! | goal_activity_metrics | Per-goal activity | uuid (16 bytes) | GoalActivityMetrics |
 //! | autonomous_lineage | Lineage events | timestamp_ms:uuid (24 bytes) | LineageEvent |
 //! | consolidation_history | Consolidation records | timestamp_ms:uuid (24 bytes) | ConsolidationRecord |
 //! | memory_curation | Memory curation state | uuid (16 bytes) | MemoryCurationState |
@@ -35,15 +35,8 @@ pub const CF_AUTONOMOUS_CONFIG: &str = "autonomous_config";
 /// Value: AdaptiveThresholdState serialized via bincode
 pub const CF_ADAPTIVE_THRESHOLD_STATE: &str = "adaptive_threshold_state";
 
-/// Time-series storage for DriftDataPoint history.
-/// Key: timestamp_ms (8 bytes) + uuid (16 bytes) = 24 bytes
-/// Value: DriftDataPoint serialized via bincode
-pub const CF_DRIFT_HISTORY: &str = "drift_history";
-
-/// Per-goal activity metrics storage.
-/// Key: GoalId uuid (16 bytes)
-/// Value: GoalActivityMetrics serialized via bincode
-pub const CF_GOAL_ACTIVITY_METRICS: &str = "goal_activity_metrics";
+// TASK-P0-004: CF_DRIFT_HISTORY removed - old drift detection replaced by topic_stability.churn_rate
+// TASK-P0-004: CF_GOAL_ACTIVITY_METRICS removed - manual goals forbidden by ARCH-03
 
 /// Lineage event storage for traceability.
 /// Key: timestamp_ms (8 bytes) + event_uuid (16 bytes) = 24 bytes
@@ -60,19 +53,19 @@ pub const CF_CONSOLIDATION_HISTORY: &str = "consolidation_history";
 /// Value: MemoryCurationState serialized via bincode
 pub const CF_MEMORY_CURATION: &str = "memory_curation";
 
-/// All autonomous column family names (7 total).
+/// All autonomous column family names (5 total after TASK-P0-004).
+/// TASK-P0-004: Removed CF_DRIFT_HISTORY and CF_GOAL_ACTIVITY_METRICS.
 pub const AUTONOMOUS_CFS: &[&str] = &[
     CF_AUTONOMOUS_CONFIG,
     CF_ADAPTIVE_THRESHOLD_STATE,
-    CF_DRIFT_HISTORY,
-    CF_GOAL_ACTIVITY_METRICS,
     CF_AUTONOMOUS_LINEAGE,
     CF_CONSOLIDATION_HISTORY,
     CF_MEMORY_CURATION,
 ];
 
-/// Total count of autonomous CFs (should be 7).
-pub const AUTONOMOUS_CF_COUNT: usize = 7;
+/// Total count of autonomous CFs (5 after TASK-P0-004).
+/// TASK-P0-004: Reduced from 7 to 5 (removed drift_history, goal_activity_metrics).
+pub const AUTONOMOUS_CF_COUNT: usize = 5;
 
 // =============================================================================
 // CF OPTION BUILDERS
@@ -121,49 +114,8 @@ pub fn adaptive_threshold_state_cf_options(cache: &Cache) -> Options {
     opts
 }
 
-/// Options for drift history (time-series data, many entries).
-///
-/// # Configuration
-/// - LZ4 compression (good for time-series data)
-/// - 8-byte prefix extractor for timestamp_ms prefix scans
-/// - Cache index and filter blocks
-///
-/// # Key Format
-/// timestamp_ms (8 bytes BE) + uuid (16 bytes) = 24 bytes total
-/// The 8-byte prefix enables efficient time-range scans.
-pub fn drift_history_cf_options(cache: &Cache) -> Options {
-    let mut block_opts = BlockBasedOptions::default();
-    block_opts.set_block_cache(cache);
-    block_opts.set_bloom_filter(10.0, false);
-    block_opts.set_cache_index_and_filter_blocks(true);
-
-    let mut opts = Options::default();
-    opts.set_block_based_table_factory(&block_opts);
-    opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
-    opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(8)); // timestamp_ms prefix
-    opts.create_if_missing(true);
-    opts
-}
-
-/// Options for goal activity metrics (per-goal, UUID keys).
-///
-/// # Configuration
-/// - LZ4 compression (moderate size values)
-/// - 16-byte prefix extractor for UUID keys
-/// - Bloom filter for point lookups
-pub fn goal_activity_metrics_cf_options(cache: &Cache) -> Options {
-    let mut block_opts = BlockBasedOptions::default();
-    block_opts.set_block_cache(cache);
-    block_opts.set_bloom_filter(10.0, false);
-    block_opts.set_cache_index_and_filter_blocks(true);
-
-    let mut opts = Options::default();
-    opts.set_block_based_table_factory(&block_opts);
-    opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
-    opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(16)); // UUID prefix
-    opts.create_if_missing(true);
-    opts
-}
+// TASK-P0-004: drift_history_cf_options removed - old drift detection replaced by topic_stability.churn_rate
+// TASK-P0-004: goal_activity_metrics_cf_options removed - manual goals forbidden by ARCH-03
 
 /// Options for autonomous lineage (time-series events).
 ///
@@ -230,13 +182,14 @@ pub fn memory_curation_cf_options(cache: &Cache) -> Options {
 // DESCRIPTOR GETTERS
 // =============================================================================
 
-/// Get all 7 autonomous column family descriptors.
+/// Get all 5 autonomous column family descriptors (TASK-P0-004: reduced from 7).
 ///
 /// # Arguments
 /// * `cache` - Shared block cache (recommended: 256MB via `Cache::new_lru_cache`)
 ///
 /// # Returns
-/// Vector of 7 `ColumnFamilyDescriptor`s for autonomous storage.
+/// Vector of 5 `ColumnFamilyDescriptor`s for autonomous storage.
+/// TASK-P0-004: Removed drift_history and goal_activity_metrics CFs.
 ///
 /// # Example
 /// ```ignore
@@ -245,7 +198,7 @@ pub fn memory_curation_cf_options(cache: &Cache) -> Options {
 ///
 /// let cache = Cache::new_lru_cache(256 * 1024 * 1024); // 256MB
 /// let descriptors = get_autonomous_cf_descriptors(&cache);
-/// assert_eq!(descriptors.len(), 7);
+/// assert_eq!(descriptors.len(), 5);
 /// ```
 pub fn get_autonomous_cf_descriptors(cache: &Cache) -> Vec<ColumnFamilyDescriptor> {
     vec![
@@ -254,11 +207,7 @@ pub fn get_autonomous_cf_descriptors(cache: &Cache) -> Vec<ColumnFamilyDescripto
             CF_ADAPTIVE_THRESHOLD_STATE,
             adaptive_threshold_state_cf_options(cache),
         ),
-        ColumnFamilyDescriptor::new(CF_DRIFT_HISTORY, drift_history_cf_options(cache)),
-        ColumnFamilyDescriptor::new(
-            CF_GOAL_ACTIVITY_METRICS,
-            goal_activity_metrics_cf_options(cache),
-        ),
+        // TASK-P0-004: CF_DRIFT_HISTORY and CF_GOAL_ACTIVITY_METRICS removed
         ColumnFamilyDescriptor::new(CF_AUTONOMOUS_LINEAGE, autonomous_lineage_cf_options(cache)),
         ColumnFamilyDescriptor::new(
             CF_CONSOLIDATION_HISTORY,
@@ -283,7 +232,8 @@ mod tests {
             AUTONOMOUS_CF_COUNT,
             "AUTONOMOUS_CFS length must match AUTONOMOUS_CF_COUNT"
         );
-        assert_eq!(AUTONOMOUS_CF_COUNT, 7, "Must have exactly 7 CFs");
+        // TASK-P0-004: Reduced from 7 to 5 CFs
+        assert_eq!(AUTONOMOUS_CF_COUNT, 5, "Must have exactly 5 CFs after TASK-P0-004");
     }
 
     #[test]
@@ -319,8 +269,7 @@ mod tests {
     fn test_cf_names_correct_values() {
         assert_eq!(CF_AUTONOMOUS_CONFIG, "autonomous_config");
         assert_eq!(CF_ADAPTIVE_THRESHOLD_STATE, "adaptive_threshold_state");
-        assert_eq!(CF_DRIFT_HISTORY, "drift_history");
-        assert_eq!(CF_GOAL_ACTIVITY_METRICS, "goal_activity_metrics");
+        // TASK-P0-004: CF_DRIFT_HISTORY and CF_GOAL_ACTIVITY_METRICS removed
         assert_eq!(CF_AUTONOMOUS_LINEAGE, "autonomous_lineage");
         assert_eq!(CF_CONSOLIDATION_HISTORY, "consolidation_history");
         assert_eq!(CF_MEMORY_CURATION, "memory_curation");
@@ -330,8 +279,7 @@ mod tests {
     fn test_all_cfs_in_array() {
         assert!(AUTONOMOUS_CFS.contains(&CF_AUTONOMOUS_CONFIG));
         assert!(AUTONOMOUS_CFS.contains(&CF_ADAPTIVE_THRESHOLD_STATE));
-        assert!(AUTONOMOUS_CFS.contains(&CF_DRIFT_HISTORY));
-        assert!(AUTONOMOUS_CFS.contains(&CF_GOAL_ACTIVITY_METRICS));
+        // TASK-P0-004: CF_DRIFT_HISTORY and CF_GOAL_ACTIVITY_METRICS removed
         assert!(AUTONOMOUS_CFS.contains(&CF_AUTONOMOUS_LINEAGE));
         assert!(AUTONOMOUS_CFS.contains(&CF_CONSOLIDATION_HISTORY));
         assert!(AUTONOMOUS_CFS.contains(&CF_MEMORY_CURATION));
@@ -355,19 +303,8 @@ mod tests {
         drop(opts);
     }
 
-    #[test]
-    fn test_drift_history_cf_options_creates_valid_options() {
-        let cache = Cache::new_lru_cache(256 * 1024 * 1024);
-        let opts = drift_history_cf_options(&cache);
-        drop(opts);
-    }
-
-    #[test]
-    fn test_goal_activity_metrics_cf_options_creates_valid_options() {
-        let cache = Cache::new_lru_cache(256 * 1024 * 1024);
-        let opts = goal_activity_metrics_cf_options(&cache);
-        drop(opts);
-    }
+    // TASK-P0-004: test_drift_history_cf_options_creates_valid_options removed
+    // TASK-P0-004: test_goal_activity_metrics_cf_options_creates_valid_options removed
 
     #[test]
     fn test_autonomous_lineage_cf_options_creates_valid_options() {
@@ -395,13 +332,13 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_get_descriptors_returns_7() {
+    fn test_get_descriptors_returns_5() {
         let cache = Cache::new_lru_cache(256 * 1024 * 1024);
         let descriptors = get_autonomous_cf_descriptors(&cache);
         assert_eq!(
             descriptors.len(),
             AUTONOMOUS_CF_COUNT,
-            "Must return exactly 7 descriptors"
+            "Must return exactly 5 descriptors after TASK-P0-004"
         );
     }
 
@@ -457,20 +394,17 @@ mod tests {
         println!("BEFORE: Creating options with shared cache reference");
         let opts1 = autonomous_config_cf_options(&cache);
         let opts2 = adaptive_threshold_state_cf_options(&cache);
-        let opts3 = drift_history_cf_options(&cache);
-        let opts4 = goal_activity_metrics_cf_options(&cache);
-        let opts5 = autonomous_lineage_cf_options(&cache);
-        let opts6 = consolidation_history_cf_options(&cache);
-        let opts7 = memory_curation_cf_options(&cache);
+        // TASK-P0-004: drift_history_cf_options and goal_activity_metrics_cf_options removed
+        let opts3 = autonomous_lineage_cf_options(&cache);
+        let opts4 = consolidation_history_cf_options(&cache);
+        let opts5 = memory_curation_cf_options(&cache);
 
-        println!("AFTER: All 7 option builders created successfully");
+        println!("AFTER: All 5 option builders created successfully (TASK-P0-004)");
         drop(opts1);
         drop(opts2);
         drop(opts3);
         drop(opts4);
         drop(opts5);
-        drop(opts6);
-        drop(opts7);
         println!("RESULT: PASS - Shared cache works across all Options");
     }
 

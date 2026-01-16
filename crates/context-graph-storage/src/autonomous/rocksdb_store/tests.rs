@@ -1,4 +1,6 @@
 //! Tests for RocksDbAutonomousStore.
+//!
+//! TASK-P0-004: Removed drift_history and goal_activity_metrics tests after North Star removal.
 
 #[cfg(test)]
 mod tests {
@@ -6,9 +8,10 @@ mod tests {
     use tempfile::TempDir;
 
     use context_graph_core::autonomous::{
-        AdaptiveThresholdState, AutonomousConfig, DriftDataPoint, GoalActivityMetrics, GoalId,
+        AdaptiveThresholdState, AutonomousConfig, GoalId,
         MemoryCurationState, MemoryId,
     };
+    // TASK-P0-004: Removed DriftDataPoint, GoalActivityMetrics imports (used by removed CF)
 
     use super::super::{ConsolidationRecord, LineageEvent, RocksDbAutonomousStore};
 
@@ -62,52 +65,8 @@ mod tests {
         assert!((retrieved.optimal - state.optimal).abs() < f32::EPSILON);
     }
 
-    #[test]
-    fn test_drift_history() {
-        let (_tmp, store) = create_test_store();
-
-        // Store some drift points
-        for i in 0..5 {
-            let point = DriftDataPoint {
-                alignment_mean: 0.7 + (i as f32 * 0.01),
-                new_memories_count: i as u32,
-                timestamp: Utc::now(),
-            };
-            store.store_drift_point(&point).unwrap();
-        }
-
-        // Retrieve all
-        let history = store.get_drift_history(None).unwrap();
-        assert_eq!(history.len(), 5);
-    }
-
-    #[test]
-    fn test_goal_metrics_crud() {
-        let (_tmp, store) = create_test_store();
-
-        let goal_id = GoalId::new();
-        let metrics = GoalActivityMetrics {
-            goal_id: goal_id.clone(),
-            new_aligned_memories_30d: 10,
-            retrievals_14d: 5,
-            avg_child_alignment: 0.75,
-            weight_trend: 0.02,
-            last_activity: Utc::now(),
-        };
-
-        // Store metrics
-        store.store_goal_metrics(goal_id.0, &metrics).unwrap();
-
-        // Retrieve metrics
-        let retrieved = store.get_goal_metrics(goal_id.0).unwrap();
-        assert!(retrieved.is_some());
-        let retrieved = retrieved.unwrap();
-        assert_eq!(retrieved.new_aligned_memories_30d, 10);
-
-        // List all
-        let all_metrics = store.list_all_goal_metrics().unwrap();
-        assert_eq!(all_metrics.len(), 1);
-    }
+    // TASK-P0-004: Removed test_drift_history - old drift detection replaced by topic_stability.churn_rate (ARCH-10)
+    // TASK-P0-004: Removed test_goal_metrics_crud - manual goals forbidden by ARCH-03
 
     #[test]
     fn test_lineage_events() {
