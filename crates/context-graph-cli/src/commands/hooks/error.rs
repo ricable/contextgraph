@@ -50,6 +50,11 @@ pub enum HookError {
     #[error("Session not found: {0}")]
     SessionNotFound(String),
 
+    /// Database corruption detected (AP-26)
+    /// Exit code: 2
+    #[error("Corruption detected: {0}")]
+    Corruption(String),
+
     /// Identity continuity crisis triggered (IC below threshold)
     /// Exit code: 6 (special state, not failure)
     /// Constitution: IDENTITY-002 defines IC < 0.5 as crisis
@@ -85,7 +90,8 @@ impl HookError {
     #[inline]
     pub fn exit_code(&self) -> i32 {
         match self {
-            Self::Timeout(_) => 2,
+            Self::Corruption(_) => 2,  // AP-26: corruption = exit code 2
+            Self::Timeout(_) => 2,     // Legacy: also mapped to 2
             Self::Storage(_) => 3,
             Self::InvalidInput(_) | Self::Serialization(_) => 4,
             Self::SessionNotFound(_) => 5,
@@ -112,6 +118,8 @@ impl HookError {
             Self::Io(_) => true,
             // Crisis triggered is a state, not a failure
             Self::CrisisTriggered(_) => true,
+            // Corruption is NOT recoverable - requires database repair
+            Self::Corruption(_) => false,
             // These require fixing the input/code
             Self::InvalidInput(_)
             | Self::Serialization(_)
@@ -149,6 +157,7 @@ impl HookError {
             Self::Serialization(_) => "ERR_SERIALIZATION",
             Self::SessionNotFound(_) => "ERR_SESSION_NOT_FOUND",
             Self::CrisisTriggered(_) => "ERR_CRISIS",
+            Self::Corruption(_) => "ERR_CORRUPTION",
             Self::Io(_) => "ERR_IO",
             Self::General(_) => "ERR_GENERAL",
         }
@@ -211,6 +220,12 @@ impl HookError {
     #[inline]
     pub fn general(message: impl Into<String>) -> Self {
         Self::General(message.into())
+    }
+
+    /// Create corruption error (AP-26: exit code 2)
+    #[inline]
+    pub fn corruption(message: impl Into<String>) -> Self {
+        Self::Corruption(message.into())
     }
 }
 
