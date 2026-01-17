@@ -12,14 +12,19 @@
 
 pub mod budget;
 pub mod candidate;
+pub mod priority;
 pub mod result;
 pub mod temporal_enrichment;
 
-pub use budget::{TokenBudget, DEFAULT_TOKEN_BUDGET, BRIEF_BUDGET};
+pub use budget::{
+    TokenBudget, TokenBudgetManager, SelectionStats,
+    DEFAULT_TOKEN_BUDGET, BRIEF_BUDGET, estimate_tokens,
+};
 pub use candidate::{
     InjectionCandidate, InjectionCategory, MAX_DIVERSITY_BONUS, MAX_RECENCY_FACTOR,
     MAX_WEIGHTED_AGREEMENT, MIN_DIVERSITY_BONUS, MIN_RECENCY_FACTOR, TOKEN_MULTIPLIER,
 };
+pub use priority::{DiversityBonus, PriorityRanker, RecencyFactor};
 pub use result::InjectionResult;
 pub use temporal_enrichment::{
     TemporalBadge, TemporalBadgeType, TemporalEnrichmentProvider,
