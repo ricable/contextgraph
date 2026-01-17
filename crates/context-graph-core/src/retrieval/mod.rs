@@ -80,6 +80,7 @@
 
 mod aggregation;
 pub mod config;
+pub mod distance;
 pub mod divergence;
 mod executor;
 mod pipeline;
@@ -128,4 +129,11 @@ pub use config::{
     high_thresholds, low_thresholds, default_weights,
     PerSpaceThresholds, SimilarityThresholds, SpaceWeights,
     RECENT_LOOKBACK_SECS, MAX_RECENT_MEMORIES, SPACE_WEIGHTS, TOTAL_WEIGHT,
+};
+
+// Distance and similarity computation functions
+pub use distance::{
+    cosine_similarity, jaccard_similarity, hamming_similarity,
+    max_sim, transe_similarity, compute_similarity_for_space,
+    compute_all_similarities,
 };

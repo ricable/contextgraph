@@ -4,7 +4,7 @@
 <task_spec id="TASK-P3-003" version="2.0">
 <metadata>
   <title>Threshold Configuration Implementation</title>
-  <status>ready</status>
+  <status>COMPLETE</status>
   <layer>foundation</layer>
   <sequence>22</sequence>
   <phase>3</phase>

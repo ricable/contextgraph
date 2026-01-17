@@ -182,9 +182,7 @@ impl PerSpaceThresholds {
             keyword_splade: arr[12],
         }
     }
-}
 
-impl PerSpaceThresholds {
     /// Iterate over all thresholds with their embedder.
     pub fn iter(&self) -> impl Iterator<Item = (Embedder, f32)> + '_ {
         Embedder::all().map(move |e| (e, self.get_threshold(e)))
