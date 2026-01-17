@@ -25,11 +25,16 @@
 //! - [`BIRCHTree`]: CF-tree for O(log n) incremental clustering
 //! - [`BIRCHNode`]: Internal/leaf node in the CF-tree
 //! - [`BIRCHEntry`]: Entry containing CF and optional child pointer
+//! - [`MultiSpaceClusterManager`]: Orchestrates clustering across all 13 spaces
+//! - [`ManagerParams`]: Configuration for the cluster manager
+//! - [`InsertResult`]: Result of inserting a memory into the manager
+//! - [`ReclusterResult`]: Result of HDBSCAN batch reclustering
 
 pub mod birch;
 pub mod cluster;
 pub mod error;
 pub mod hdbscan;
+pub mod manager;
 pub mod membership;
 pub mod topic;
 
@@ -37,5 +42,9 @@ pub use birch::{birch_defaults, BIRCHEntry, BIRCHNode, BIRCHParams, BIRCHTree, C
 pub use cluster::Cluster;
 pub use error::ClusterError;
 pub use hdbscan::{hdbscan_defaults, ClusterSelectionMethod, HDBSCANClusterer, HDBSCANParams};
+pub use manager::{
+    manager_defaults, InsertResult, ManagerParams, MultiSpaceClusterManager, ReclusterResult,
+    UpdateStatus, DEFAULT_RECLUSTER_THRESHOLD, MAX_WEIGHTED_AGREEMENT, TOPIC_THRESHOLD,
+};
 pub use membership::ClusterMembership;
 pub use topic::{Topic, TopicPhase, TopicProfile, TopicStability};
