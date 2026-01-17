@@ -102,5 +102,8 @@ pub use clustering::{
     TopicStability, hdbscan_defaults,
 };
 
-// Injection pipeline types (Phase 5) - TASK-P5-001
-pub use injection::{InjectionCandidate, InjectionCategory};
+// Injection pipeline types (Phase 5) - TASK-P5-001, TASK-P5-002
+pub use injection::{
+    InjectionCandidate, InjectionCategory, TokenBudget,
+    DEFAULT_TOKEN_BUDGET, BRIEF_BUDGET,
+};
