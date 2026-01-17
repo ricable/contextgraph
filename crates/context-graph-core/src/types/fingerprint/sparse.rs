@@ -242,6 +242,67 @@ impl SparseVector {
             dot / (norm_self * norm_other)
         }
     }
+
+    /// Jaccard similarity based on index overlap.
+    ///
+    /// Computes |A ∩ B| / |A ∪ B| where A and B are the sets of
+    /// non-zero indices in each vector.
+    ///
+    /// Returns 0.0 if both vectors are empty.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use context_graph_core::types::fingerprint::SparseVector;
+    ///
+    /// let a = SparseVector::new(vec![0, 1, 2], vec![1.0, 1.0, 1.0]).unwrap();
+    /// let b = SparseVector::new(vec![1, 2, 3], vec![1.0, 1.0, 1.0]).unwrap();
+    /// // Intersection: {1, 2}, Union: {0, 1, 2, 3}
+    /// // Jaccard = 2/4 = 0.5
+    /// assert!((a.jaccard_similarity(&b) - 0.5).abs() < 1e-6);
+    /// ```
+    pub fn jaccard_similarity(&self, other: &Self) -> f32 {
+        if self.is_empty() && other.is_empty() {
+            return 0.0;
+        }
+
+        let mut intersection = 0usize;
+        let mut i = 0;
+        let mut j = 0;
+
+        // Two-pointer merge to count intersection (sorted indices)
+        while i < self.indices.len() && j < other.indices.len() {
+            match self.indices[i].cmp(&other.indices[j]) {
+                std::cmp::Ordering::Less => i += 1,
+                std::cmp::Ordering::Greater => j += 1,
+                std::cmp::Ordering::Equal => {
+                    intersection += 1;
+                    i += 1;
+                    j += 1;
+                }
+            }
+        }
+
+        let union = self.indices.len() + other.indices.len() - intersection;
+        if union == 0 {
+            return 0.0;
+        }
+
+        intersection as f32 / union as f32
+    }
+
+    /// Sparsity ratio: proportion of zero entries.
+    ///
+    /// Computed as 1.0 - (nnz / vocab_size).
+    /// Returns 1.0 for empty vectors (all zeros).
+    ///
+    /// Typical SPLADE vectors have ~95% sparsity (5% active).
+    pub fn sparsity(&self) -> f32 {
+        if SPARSE_VOCAB_SIZE == 0 {
+            return 1.0;
+        }
+        1.0 - (self.nnz() as f32 / SPARSE_VOCAB_SIZE as f32)
+    }
 }
 
 impl Default for SparseVector {
@@ -513,5 +574,98 @@ mod tests {
         assert_eq!(sv.nnz(), 1500);
         // Memory: 1500 * 2 + 1500 * 4 = 3000 + 6000 = 9000 bytes
         assert_eq!(sv.memory_size(), 9000);
+    }
+
+    // =========================================================================
+    // Jaccard Similarity Tests
+    // =========================================================================
+
+    #[test]
+    fn test_sparse_vector_jaccard_identical() {
+        let a = SparseVector::new(vec![1, 2, 3], vec![1.0, 1.0, 1.0]).unwrap();
+        let sim = a.jaccard_similarity(&a);
+        assert!((sim - 1.0).abs() < 1e-6, "Expected 1.0, got {}", sim);
+    }
+
+    #[test]
+    fn test_sparse_vector_jaccard_disjoint() {
+        let a = SparseVector::new(vec![0, 1, 2], vec![1.0, 1.0, 1.0]).unwrap();
+        let b = SparseVector::new(vec![3, 4, 5], vec![1.0, 1.0, 1.0]).unwrap();
+        assert_eq!(a.jaccard_similarity(&b), 0.0);
+    }
+
+    #[test]
+    fn test_sparse_vector_jaccard_partial() {
+        let a = SparseVector::new(vec![0, 1, 2], vec![1.0, 1.0, 1.0]).unwrap();
+        let b = SparseVector::new(vec![1, 2, 3], vec![1.0, 1.0, 1.0]).unwrap();
+        // Intersection: {1, 2} = 2, Union: {0, 1, 2, 3} = 4
+        let sim = a.jaccard_similarity(&b);
+        assert!((sim - 0.5).abs() < 1e-6, "Expected 0.5, got {}", sim);
+    }
+
+    #[test]
+    fn test_sparse_vector_jaccard_empty() {
+        let empty = SparseVector::empty();
+        let non_empty = SparseVector::new(vec![1, 2, 3], vec![1.0, 1.0, 1.0]).unwrap();
+        assert_eq!(empty.jaccard_similarity(&empty), 0.0);
+        assert_eq!(empty.jaccard_similarity(&non_empty), 0.0);
+    }
+
+    #[test]
+    fn test_sparse_vector_jaccard_one_empty() {
+        let empty = SparseVector::empty();
+        let non_empty = SparseVector::new(vec![1, 2, 3], vec![1.0, 1.0, 1.0]).unwrap();
+        // Empty vs non-empty: intersection=0, union=3
+        assert_eq!(non_empty.jaccard_similarity(&empty), 0.0);
+    }
+
+    #[test]
+    fn test_sparse_vector_jaccard_subset() {
+        let a = SparseVector::new(vec![1, 2], vec![1.0, 1.0]).unwrap();
+        let b = SparseVector::new(vec![1, 2, 3, 4], vec![1.0, 1.0, 1.0, 1.0]).unwrap();
+        // Intersection: {1, 2} = 2, Union: {1, 2, 3, 4} = 4
+        let sim = a.jaccard_similarity(&b);
+        assert!((sim - 0.5).abs() < 1e-6, "Expected 0.5, got {}", sim);
+    }
+
+    // =========================================================================
+    // Sparsity Tests
+    // =========================================================================
+
+    #[test]
+    fn test_sparse_vector_sparsity_empty() {
+        // Empty vector = 100% sparse
+        assert_eq!(SparseVector::empty().sparsity(), 1.0);
+    }
+
+    #[test]
+    fn test_sparse_vector_sparsity_typical() {
+        // 3 active out of 30522 = ~99.99% sparse
+        let sv = SparseVector::new(vec![1, 2, 3], vec![1.0, 1.0, 1.0]).unwrap();
+        let expected = 1.0 - (3.0 / 30522.0);
+        assert!((sv.sparsity() - expected).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_sparse_vector_sparsity_typical_5_percent() {
+        // Create a vector with typical 5% active (~1526 entries)
+        let indices: Vec<u16> = (0..1526_u16).map(|i| i * 20).collect();
+        let values: Vec<f32> = vec![0.1; 1526];
+        let sv = SparseVector::new(indices, values).unwrap();
+
+        // Should be approximately 95% sparse
+        let sparsity = sv.sparsity();
+        let expected = 1.0 - (1526.0 / 30522.0);
+        assert!(
+            (sparsity - expected).abs() < 1e-6,
+            "Expected ~{}, got {}",
+            expected,
+            sparsity
+        );
+        assert!(
+            sparsity > 0.94 && sparsity < 0.96,
+            "Sparsity should be ~95%, got {}",
+            sparsity
+        );
     }
 }
