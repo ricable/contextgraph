@@ -94,5 +94,5 @@ pub use memory::{
     MAX_CONTENT_LENGTH,
 };
 
-// Clustering types (Phase 4) - TASK-P4-001
-pub use clustering::{Cluster, ClusterError, ClusterMembership};
+// Clustering types (Phase 4) - TASK-P4-001, TASK-P4-002
+pub use clustering::{Cluster, ClusterError, ClusterMembership, Topic, TopicPhase, TopicProfile, TopicStability};
