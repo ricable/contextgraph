@@ -10,6 +10,7 @@ use crate::handlers::tests::{create_test_handlers, make_request};
 
 /// Test search/single_space for semantic space (index 0).
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_search_single_space_semantic() {
     let handlers = create_test_handlers();
 
@@ -65,6 +66,7 @@ async fn test_search_single_space_semantic() {
 
 /// Test search/single_space for code space (index 6).
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_search_single_space_code() {
     let handlers = create_test_handlers();
 
@@ -114,6 +116,7 @@ async fn test_search_single_space_code() {
 
 /// Test search/single_space for SPLADE space (index 12).
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_search_single_space_splade() {
     let handlers = create_test_handlers();
 
@@ -163,6 +166,7 @@ async fn test_search_single_space_splade() {
 
 /// Test search/single_space fails with invalid space_index 13 (only 0-12 valid).
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_search_single_space_invalid_index_13_fails() {
     let handlers = create_test_handlers();
 
@@ -194,6 +198,7 @@ async fn test_search_single_space_invalid_index_13_fails() {
 
 /// Test search/single_space fails with missing space_index.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_search_single_space_missing_index_fails() {
     let handlers = create_test_handlers();
 
@@ -224,6 +229,7 @@ async fn test_search_single_space_missing_index_fails() {
 
 /// Test search/single_space accepts query_text as alias for query.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_search_single_space_query_text_alias() {
     let handlers = create_test_handlers();
 

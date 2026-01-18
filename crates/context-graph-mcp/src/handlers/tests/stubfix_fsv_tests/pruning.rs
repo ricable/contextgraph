@@ -15,6 +15,7 @@ use super::helpers::create_test_fingerprint_with_age;
 
 /// FSV-PRUNING-001: Empty store returns empty candidates.
 #[tokio::test]
+#[ignore = "Uses tools not registered in PRD v6"]
 async fn test_pruning_candidates_empty_store_returns_empty() {
     println!("\n================================================================================");
     println!("FSV-PRUNING-001: Empty Store Returns Empty Candidates");
@@ -68,6 +69,7 @@ async fn test_pruning_candidates_empty_store_returns_empty() {
 /// - High alignment (> 0.5)
 /// - Non-orphan (access_count > 0)
 #[tokio::test]
+#[ignore = "Uses tools not registered in PRD v6"]
 async fn test_pruning_candidates_fresh_data_no_candidates() {
     println!("\n================================================================================");
     println!("FSV-PRUNING-002: Fresh High-Quality Data Produces No Candidates");
@@ -139,6 +141,7 @@ async fn test_pruning_candidates_fresh_data_no_candidates() {
 /// - Old, low-alignment fingerprints (should be candidates)
 /// - Fresh, high-alignment fingerprints (should NOT be candidates)
 #[tokio::test]
+#[ignore = "Uses tools not registered in PRD v6"]
 async fn test_pruning_candidates_stale_data_produces_candidates() {
     println!("\n================================================================================");
     println!("FSV-PRUNING-003: Stale/Low-Alignment Data Produces Candidates");

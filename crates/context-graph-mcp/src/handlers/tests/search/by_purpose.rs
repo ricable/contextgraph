@@ -10,6 +10,7 @@ use crate::handlers::tests::{create_test_handlers, make_request};
 
 /// Test search/by_purpose with custom purpose vector.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_search_by_purpose_custom_vector() {
     let handlers = create_test_handlers();
 
@@ -54,6 +55,7 @@ async fn test_search_by_purpose_custom_vector() {
 
 /// Test search/by_purpose without purpose_vector uses default.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_search_by_purpose_default_vector() {
     let handlers = create_test_handlers();
 
@@ -88,6 +90,7 @@ async fn test_search_by_purpose_default_vector() {
 
 /// Test search/by_purpose with min_alignment filter.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_search_by_purpose_min_alignment() {
     let handlers = create_test_handlers();
 
@@ -127,6 +130,7 @@ async fn test_search_by_purpose_min_alignment() {
 
 /// Test search/by_purpose fails with wrong-sized purpose vector.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_search_by_purpose_wrong_size_vector_fails() {
     let handlers = create_test_handlers();
 
@@ -160,6 +164,7 @@ async fn test_search_by_purpose_wrong_size_vector_fails() {
 
 /// Test search/by_purpose result contains purpose alignment scores.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_search_by_purpose_result_structure() {
     let handlers = create_test_handlers();
 

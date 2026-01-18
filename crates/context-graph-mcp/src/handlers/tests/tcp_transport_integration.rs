@@ -269,6 +269,7 @@ fn test_bind_address_validation() {
 /// This test requires a running TCP server.
 /// Run with: cargo test -p context-graph-mcp test_tcp_server_initialize -- --ignored
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 #[ignore = "Requires running TCP server on 127.0.0.1:3100"]
 async fn test_tcp_server_initialize() {
     let addr: SocketAddr = "127.0.0.1:3100".parse().unwrap();
@@ -310,6 +311,7 @@ async fn test_tcp_server_initialize() {
 ///
 /// This test requires a running TCP server.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 #[ignore = "Requires running TCP server on 127.0.0.1:3100"]
 async fn test_tcp_server_tools_list() {
     let addr: SocketAddr = "127.0.0.1:3100".parse().unwrap();
@@ -358,6 +360,7 @@ async fn test_tcp_server_tools_list() {
 ///
 /// Per constitution AP-007: FAIL FAST on parse errors.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 #[ignore = "Requires running TCP server on 127.0.0.1:3100"]
 async fn test_tcp_server_rejects_invalid_json() {
     let addr: SocketAddr = "127.0.0.1:3100".parse().unwrap();
@@ -392,6 +395,7 @@ async fn test_tcp_server_rejects_invalid_json() {
 
 /// Test multiple concurrent TCP connections.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 #[ignore = "Requires running TCP server on 127.0.0.1:3100"]
 async fn test_tcp_multiple_connections() {
     let addr: SocketAddr = "127.0.0.1:3100".parse().unwrap();

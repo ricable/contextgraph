@@ -11,6 +11,7 @@ use crate::handlers::tests::{create_test_handlers, make_request};
 
 /// Test search/multi with semantic_search preset.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_search_multi_semantic_preset() {
     let handlers = create_test_handlers();
 
@@ -74,6 +75,7 @@ async fn test_search_multi_semantic_preset() {
 
 /// Test search/multi with custom 13-element weight array.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_search_multi_custom_weights_13_spaces() {
     let handlers = create_test_handlers();
 
@@ -143,6 +145,7 @@ async fn test_search_multi_custom_weights_13_spaces() {
 
 /// Test search/multi fails with 12-element weight array (must be 13).
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_search_multi_invalid_weights_12_spaces_fails() {
     let handlers = create_test_handlers();
 
@@ -180,6 +183,7 @@ async fn test_search_multi_invalid_weights_12_spaces_fails() {
 
 /// Test search/multi fails with missing query parameter.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_search_multi_missing_query_fails() {
     let handlers = create_test_handlers();
 
@@ -211,6 +215,7 @@ async fn test_search_multi_missing_query_fails() {
 
 /// Test search/multi fails with unknown query_type.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_search_multi_unknown_query_type_fails() {
     let handlers = create_test_handlers();
 
@@ -242,6 +247,7 @@ async fn test_search_multi_unknown_query_type_fails() {
 
 /// Test search/multi with active_spaces array.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_search_multi_active_spaces_array() {
     let handlers = create_test_handlers();
 
@@ -288,6 +294,7 @@ async fn test_search_multi_active_spaces_array() {
 
 /// Test search/multi with invalid aggregation strategy fails.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_search_multi_invalid_aggregation_fails() {
     let handlers = create_test_handlers();
 
@@ -318,6 +325,7 @@ async fn test_search_multi_invalid_aggregation_fails() {
 /// TASK-EMB-024: Pipeline breakdown metrics are NOT YET IMPLEMENTED.
 /// NO hardcoded fallback values - must fail fast until real metrics available.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_search_multi_pipeline_breakdown() {
     let handlers = create_test_handlers();
 

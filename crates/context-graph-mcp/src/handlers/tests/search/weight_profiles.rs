@@ -10,6 +10,7 @@ use crate::handlers::tests::{create_test_handlers, make_request};
 
 /// Test search/weight_profiles returns all profiles.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_weight_profiles_returns_all() {
     let handlers = create_test_handlers();
 
@@ -62,6 +63,7 @@ async fn test_weight_profiles_returns_all() {
 
 /// Test search/weight_profiles returns correct embedding spaces.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_weight_profiles_embedding_spaces() {
     let handlers = create_test_handlers();
 
@@ -101,6 +103,7 @@ async fn test_weight_profiles_embedding_spaces() {
 
 /// Test search/weight_profiles includes expected profile names.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_weight_profiles_expected_names() {
     let handlers = create_test_handlers();
 

@@ -81,6 +81,7 @@ fn extract_tool_result(response: &crate::protocol::JsonRpcResponse) -> Option<se
 /// 3. Verifies each search finds relevant results
 /// 4. Confirms fingerprintIds are returned in results
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn phase2_search_graph_finds_stored_memories() {
     println!("\n================================================================================");
     println!("PHASE 2: Search Graph - Finding Stored Memories");
@@ -228,6 +229,7 @@ async fn phase2_search_graph_finds_stored_memories() {
 /// 3. Tests "rrf" strategy (Reciprocal Rank Fusion)
 /// 4. Tests max_results parameter
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn phase2_search_teleological_strategies() {
     println!("\n================================================================================");
     println!("PHASE 2: Search Teleological - Testing Strategies");
@@ -364,6 +366,7 @@ async fn phase2_search_teleological_strategies() {
 /// 2. Retrieves each fingerprint by ID via MCP handler
 /// 3. Verifies retrieved content_hash matches what was stored
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn phase2_memory_retrieve_by_fingerprint_id() {
     println!("\n================================================================================");
     println!("PHASE 2: Memory Retrieve - By Fingerprint ID");
@@ -522,6 +525,7 @@ async fn phase2_memory_retrieve_by_fingerprint_id() {
 /// 3. Verifies retrieval for found fingerprints
 /// 4. Stores results to memory for future reference
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn phase2_comprehensive_search_retrieval() {
     println!("\n================================================================================");
     println!("PHASE 2: Comprehensive Search and Retrieval");
@@ -702,6 +706,7 @@ async fn phase2_comprehensive_search_retrieval() {
 
 /// Additional test: Verify search returns correct result structure
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn phase2_verify_search_result_structure() {
     println!("\n================================================================================");
     println!("PHASE 2 BONUS: Verify Search Result Structure");

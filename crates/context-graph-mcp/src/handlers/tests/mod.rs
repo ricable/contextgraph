@@ -59,9 +59,10 @@ mod tools_list;
 
 use std::sync::Arc;
 
+use parking_lot::RwLock;
 use tempfile::TempDir;
 
-use context_graph_core::alignment::{DefaultAlignmentCalculator, GoalAlignmentCalculator};
+use context_graph_core::monitoring::{LayerStatusProvider, StubLayerStatusProvider};
 use context_graph_core::purpose::{GoalDiscoveryMetadata, GoalHierarchy, GoalLevel, GoalNode};
 use context_graph_core::stubs::{
     InMemoryTeleologicalStore, StubMultiArrayProvider, StubUtlProcessor,
@@ -207,7 +208,7 @@ pub(crate) fn extract_mcp_tool_data(result: &serde_json::Value) -> serde_json::V
 /// Create test handlers with real stub implementations (no mocks).
 ///
 /// TASK-S001: Uses TeleologicalMemoryStore and MultiArrayEmbeddingProvider.
-/// TASK-S003: Uses DefaultAlignmentCalculator and test GoalHierarchy.
+/// TASK-GAP-001: Updated to use Handlers::with_all() after PRD v6 refactor.
 /// NO legacy MemoryStore support.
 pub(crate) fn create_test_handlers() -> Handlers {
     let teleological_store: Arc<dyn TeleologicalMemoryStore> =
@@ -215,15 +216,14 @@ pub(crate) fn create_test_handlers() -> Handlers {
     let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
     let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
         Arc::new(StubMultiArrayProvider::new());
-    let alignment_calculator: Arc<dyn GoalAlignmentCalculator> =
-        Arc::new(DefaultAlignmentCalculator::new());
     let goal_hierarchy = create_test_hierarchy();
-    Handlers::new(
+    let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
+    Handlers::with_all(
         teleological_store,
         utl_processor,
         multi_array_provider,
-        alignment_calculator,
-        goal_hierarchy,
+        Arc::new(RwLock::new(goal_hierarchy)),
+        layer_status_provider,
     )
 }
 
@@ -234,15 +234,14 @@ pub(crate) fn create_test_handlers_no_goals() -> Handlers {
     let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
     let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
         Arc::new(StubMultiArrayProvider::new());
-    let alignment_calculator: Arc<dyn GoalAlignmentCalculator> =
-        Arc::new(DefaultAlignmentCalculator::new());
     let goal_hierarchy = GoalHierarchy::new(); // Empty hierarchy
-    Handlers::new(
+    let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
+    Handlers::with_all(
         teleological_store,
         utl_processor,
         multi_array_provider,
-        alignment_calculator,
-        goal_hierarchy,
+        Arc::new(RwLock::new(goal_hierarchy)),
+        layer_status_provider,
     )
 }
 
@@ -311,16 +310,15 @@ pub(crate) async fn create_test_handlers_with_rocksdb() -> (Handlers, TempDir) {
     let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
         Arc::new(StubMultiArrayProvider::new());
 
-    let alignment_calculator: Arc<dyn GoalAlignmentCalculator> =
-        Arc::new(DefaultAlignmentCalculator::new());
     let goal_hierarchy = create_test_hierarchy();
+    let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    let handlers = Handlers::new(
+    let handlers = Handlers::with_all(
         teleological_store,
         utl_processor,
         multi_array_provider,
-        alignment_calculator,
-        goal_hierarchy,
+        Arc::new(RwLock::new(goal_hierarchy)),
+        layer_status_provider,
     );
 
     (handlers, tempdir)
@@ -363,16 +361,15 @@ pub(crate) async fn create_test_handlers_with_rocksdb_no_goals() -> (Handlers, T
     let utl_processor: Arc<dyn UtlProcessor> = Arc::new(UtlProcessorAdapter::with_defaults());
     let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
         Arc::new(StubMultiArrayProvider::new());
-    let alignment_calculator: Arc<dyn GoalAlignmentCalculator> =
-        Arc::new(DefaultAlignmentCalculator::new());
     let goal_hierarchy = GoalHierarchy::new(); // Empty hierarchy - no Strategic goals
+    let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    let handlers = Handlers::new(
+    let handlers = Handlers::with_all(
         teleological_store,
         utl_processor,
         multi_array_provider,
-        alignment_calculator,
-        goal_hierarchy,
+        Arc::new(RwLock::new(goal_hierarchy)),
+        layer_status_provider,
     );
 
     (handlers, tempdir)
@@ -495,16 +492,15 @@ pub(crate) async fn create_test_handlers_with_rocksdb_store_access(
     let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
         Arc::new(StubMultiArrayProvider::new());
 
-    let alignment_calculator: Arc<dyn GoalAlignmentCalculator> =
-        Arc::new(DefaultAlignmentCalculator::new());
     let goal_hierarchy = create_test_hierarchy();
+    let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    let handlers = Handlers::new(
+    let handlers = Handlers::with_all(
         Arc::clone(&teleological_store),
         utl_processor,
         multi_array_provider,
-        alignment_calculator,
-        goal_hierarchy,
+        Arc::new(RwLock::new(goal_hierarchy)),
+        layer_status_provider,
     );
 
     (handlers, teleological_store, tempdir)
@@ -581,16 +577,15 @@ pub(crate) async fn create_test_handlers_with_real_embeddings() -> (Handlers, Te
     // This prevents CUDA OOM when tests run in parallel
     let multi_array_provider = get_warm_loaded_provider().await;
 
-    let alignment_calculator: Arc<dyn GoalAlignmentCalculator> =
-        Arc::new(DefaultAlignmentCalculator::new());
     let goal_hierarchy = create_test_hierarchy();
+    let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    let handlers = Handlers::new(
+    let handlers = Handlers::with_all(
         teleological_store,
         utl_processor,
         multi_array_provider,
-        alignment_calculator,
-        goal_hierarchy,
+        Arc::new(RwLock::new(goal_hierarchy)),
+        layer_status_provider,
     );
 
     (handlers, tempdir)
@@ -631,16 +626,15 @@ pub(crate) async fn create_test_handlers_with_real_embeddings_store_access(
     // RTX 5090 32GB - models loaded ONCE, shared across all tests
     let multi_array_provider = get_warm_loaded_provider().await;
 
-    let alignment_calculator: Arc<dyn GoalAlignmentCalculator> =
-        Arc::new(DefaultAlignmentCalculator::new());
     let goal_hierarchy = create_test_hierarchy();
+    let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    let handlers = Handlers::new(
+    let handlers = Handlers::with_all(
         Arc::clone(&teleological_store),
         utl_processor,
         multi_array_provider,
-        alignment_calculator,
-        goal_hierarchy,
+        Arc::new(RwLock::new(goal_hierarchy)),
+        layer_status_provider,
     );
 
     (handlers, teleological_store, tempdir)
@@ -688,206 +682,18 @@ pub(crate) fn make_request(
 }
 
 // ============================================================================
-// TASK-GWT-WARM: Warm-Started GWT Test Helpers (Non-Zero Values)
+// TASK-GAP-001: Removed dead GWT/MetaUtl code (deleted in commit fab0622)
 // ============================================================================
-
-use parking_lot::RwLock as ParkingRwLock;
-use tokio::sync::RwLock as TokioRwLock;
-
-use context_graph_core::monitoring::{StubLayerStatusProvider, StubSystemMonitor};
-use context_graph_core::{LayerStatusProvider, SystemMonitor};
-
-use crate::handlers::core::MetaUtlTracker;
-use crate::handlers::gwt_providers::{
-    GwtSystemProviderImpl, MetaCognitiveProviderImpl, WorkspaceProviderImpl,
-};
-use crate::handlers::gwt_traits::{GwtSystemProvider, MetaCognitiveProvider, WorkspaceProvider};
-
-/// Create test handlers with WARM GWT state (non-zero purpose vector).
-///
-/// This helper creates handlers with GWT components in a "warm" state:
-/// - Purpose vector with non-zero values (aligned to strategic goal)
-/// - All other GWT components at default/initial state
-///
-/// # Use Case
-///
-/// Use this helper when testing GWT tools that should return meaningful non-zero values.
-///
-/// # Returns
-///
-/// `Handlers` - Handlers instance with warm GWT state
-///
-/// # Example
-///
-/// ```ignore
-/// #[tokio::test]
-/// async fn test_gwt_returns_non_zero_values() {
-///     let handlers = create_test_handlers_with_warm_gwt();
-///     // GWT tools should return meaningful values
-/// }
-/// ```
-pub(crate) fn create_test_handlers_with_warm_gwt() -> Handlers {
-    let teleological_store: Arc<dyn TeleologicalMemoryStore> =
-        Arc::new(InMemoryTeleologicalStore::new());
-    let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
-    let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
-        Arc::new(StubMultiArrayProvider::new());
-    let alignment_calculator: Arc<dyn GoalAlignmentCalculator> =
-        Arc::new(DefaultAlignmentCalculator::new());
-    let goal_hierarchy = Arc::new(ParkingRwLock::new(create_test_hierarchy()));
-    let meta_utl_tracker = Arc::new(ParkingRwLock::new(MetaUtlTracker::new()));
-    let system_monitor: Arc<dyn SystemMonitor> = Arc::new(StubSystemMonitor);
-    let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
-
-    let gwt_system: Arc<dyn GwtSystemProvider> = Arc::new(GwtSystemProviderImpl::new());
-    let workspace_provider: Arc<TokioRwLock<dyn WorkspaceProvider>> =
-        Arc::new(TokioRwLock::new(WorkspaceProviderImpl::new()));
-    let meta_cognitive: Arc<TokioRwLock<dyn MetaCognitiveProvider>> =
-        Arc::new(TokioRwLock::new(MetaCognitiveProviderImpl::new()));
-
-    Handlers::with_gwt(
-        teleological_store,
-        utl_processor,
-        multi_array_provider,
-        alignment_calculator,
-        goal_hierarchy,
-        meta_utl_tracker,
-        system_monitor,
-        layer_status_provider,
-        gwt_system,
-        workspace_provider,
-        meta_cognitive,
-    )
-}
-
-/// Create test handlers with WARM GWT state and RocksDB storage.
-///
-/// Same as `create_test_handlers_with_warm_gwt()` but uses real RocksDB storage
-/// for integration testing with persistent data.
-///
-/// # Returns
-///
-/// `(Handlers, TempDir)` - Handlers with warm GWT and TempDir owning the database
-pub(crate) async fn create_test_handlers_with_warm_gwt_rocksdb() -> (Handlers, TempDir) {
-    let tempdir = TempDir::new().expect("Failed to create temp directory");
-    let db_path = tempdir.path().join("test_warm_gwt_rocksdb");
-
-    let rocksdb_store =
-        RocksDbTeleologicalStore::open(&db_path).expect("Failed to open RocksDbTeleologicalStore");
-    // Note: EmbedderIndexRegistry is initialized in constructor
-
-    let teleological_store: Arc<dyn TeleologicalMemoryStore> = Arc::new(rocksdb_store);
-    let utl_processor: Arc<dyn UtlProcessor> = Arc::new(UtlProcessorAdapter::with_defaults());
-    let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
-        Arc::new(StubMultiArrayProvider::new());
-    let alignment_calculator: Arc<dyn GoalAlignmentCalculator> =
-        Arc::new(DefaultAlignmentCalculator::new());
-    let goal_hierarchy = Arc::new(ParkingRwLock::new(create_test_hierarchy()));
-    let meta_utl_tracker = Arc::new(ParkingRwLock::new(MetaUtlTracker::new()));
-    let system_monitor: Arc<dyn SystemMonitor> = Arc::new(StubSystemMonitor);
-    let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
-
-    let gwt_system: Arc<dyn GwtSystemProvider> = Arc::new(GwtSystemProviderImpl::new());
-    let workspace_provider: Arc<TokioRwLock<dyn WorkspaceProvider>> =
-        Arc::new(TokioRwLock::new(WorkspaceProviderImpl::new()));
-    let meta_cognitive: Arc<TokioRwLock<dyn MetaCognitiveProvider>> =
-        Arc::new(TokioRwLock::new(MetaCognitiveProviderImpl::new()));
-
-    let handlers = Handlers::with_gwt(
-        teleological_store,
-        utl_processor,
-        multi_array_provider,
-        alignment_calculator,
-        goal_hierarchy,
-        meta_utl_tracker,
-        system_monitor,
-        layer_status_provider,
-        gwt_system,
-        workspace_provider,
-        meta_cognitive,
-    );
-
-    (handlers, tempdir)
-}
-
-/// Create test handlers with ALL components initialized for exhaustive MCP tool testing.
-///
-/// TASK-EXHAUSTIVE-MCP: This function initializes:
-/// - GWT providers (Workspace, MetaCognitive) with WARM state
-/// - ATC (Adaptive Threshold Calibration) - enables get_threshold_status, get_calibration_metrics, trigger_recalibration
-/// - Dream system (DreamController, DreamScheduler, AmortizedLearner) - enables trigger_dream, get_dream_status, abort_dream, get_amortized_shortcuts
-/// - Neuromodulation (NeuromodulationManager) - enables get_neuromodulation_state, adjust_neuromodulator
-///
-/// This is the ONLY test handler that enables ALL 35 MCP tools to function properly.
-///
-/// # Returns
-///
-/// `Handlers` - Fully configured handlers with all components
-pub(crate) fn create_test_handlers_with_all_components() -> Handlers {
-    use super::gwt_providers::{GwtSystemProviderImpl, MetaCognitiveProviderImpl, WorkspaceProviderImpl};
-    use context_graph_core::atc::AdaptiveThresholdCalibration;
-    use context_graph_core::dream::{
-        AmortizedLearner, DreamController, DreamScheduler, TriggerManager,
-    };
-    use context_graph_core::neuromod::NeuromodulationManager;
-
-    let teleological_store: Arc<dyn TeleologicalMemoryStore> =
-        Arc::new(InMemoryTeleologicalStore::new());
-    let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
-    let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
-        Arc::new(StubMultiArrayProvider::new());
-    let alignment_calculator: Arc<dyn GoalAlignmentCalculator> =
-        Arc::new(DefaultAlignmentCalculator::new());
-    let goal_hierarchy = Arc::new(ParkingRwLock::new(create_test_hierarchy()));
-    let meta_utl_tracker = Arc::new(ParkingRwLock::new(MetaUtlTracker::new()));
-    let system_monitor: Arc<dyn SystemMonitor> = Arc::new(StubSystemMonitor);
-    let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
-
-    let gwt_system: Arc<dyn GwtSystemProvider> = Arc::new(GwtSystemProviderImpl::new());
-    let workspace_provider: Arc<TokioRwLock<dyn WorkspaceProvider>> =
-        Arc::new(TokioRwLock::new(WorkspaceProviderImpl::new()));
-    let meta_cognitive: Arc<TokioRwLock<dyn MetaCognitiveProvider>> =
-        Arc::new(TokioRwLock::new(MetaCognitiveProviderImpl::new()));
-
-    // TASK-NEUROMOD-MCP: Create REAL NeuromodulationManager
-    let neuromod_manager: Arc<ParkingRwLock<NeuromodulationManager>> =
-        Arc::new(ParkingRwLock::new(NeuromodulationManager::new()));
-
-    // TASK-DREAM-MCP: Create REAL Dream components
-    let dream_controller: Arc<ParkingRwLock<DreamController>> =
-        Arc::new(ParkingRwLock::new(DreamController::new()));
-    let dream_scheduler: Arc<ParkingRwLock<DreamScheduler>> =
-        Arc::new(ParkingRwLock::new(DreamScheduler::new()));
-    let amortized_learner: Arc<ParkingRwLock<AmortizedLearner>> =
-        Arc::new(ParkingRwLock::new(AmortizedLearner::new()));
-
-    // TASK-ATC-001: Create REAL AdaptiveThresholdCalibration
-    let atc: Arc<ParkingRwLock<AdaptiveThresholdCalibration>> =
-        Arc::new(ParkingRwLock::new(AdaptiveThresholdCalibration::new()));
-
-    // TASK-35: Create REAL TriggerManager for manual dream triggering
-    let trigger_manager: Arc<ParkingRwLock<TriggerManager>> =
-        Arc::new(ParkingRwLock::new(TriggerManager::new()));
-
-    // Create handlers with ALL components wired
-    // TASK-35: Add trigger_manager via builder method
-    Handlers::with_gwt_and_subsystems(
-        teleological_store,
-        utl_processor,
-        multi_array_provider,
-        alignment_calculator,
-        goal_hierarchy,
-        meta_utl_tracker,
-        system_monitor,
-        layer_status_provider,
-        gwt_system,
-        workspace_provider,
-        meta_cognitive,
-        atc,
-        dream_controller,
-        dream_scheduler,
-        amortized_learner,
-        neuromod_manager,
-    )
-    .with_trigger_manager(trigger_manager)
-}
+// The following functions were removed as they referenced deleted modules:
+// - create_test_handlers_with_warm_gwt()
+// - create_test_handlers_with_warm_gwt_rocksdb()
+// - create_test_handlers_with_all_components()
+//
+// These functions used:
+// - crate::handlers::core::MetaUtlTracker (deleted)
+// - crate::handlers::gwt_providers (deleted)
+// - crate::handlers::gwt_traits (deleted)
+// - Handlers::with_gwt() (deleted)
+// - Handlers::with_gwt_and_subsystems() (deleted)
+//
+// When GWT/MetaUtl is reimplemented per PRD v6, new test helpers will be added.

@@ -1,6 +1,7 @@
 //! Full State Verification Tests for Search Handlers
 //!
 //! TASK-S002: Comprehensive verification that directly inspects the Source of Truth.
+//! TASK-GAP-001: Updated to use Handlers::with_all() after PRD v6 refactor.
 //!
 //! This test file does NOT rely on handler return values alone.
 //! It directly queries the underlying TeleologicalMemoryStore to verify:
@@ -18,10 +19,11 @@
 
 use std::sync::Arc;
 
+use parking_lot::RwLock;
 use serde_json::json;
 use uuid::Uuid;
 
-use context_graph_core::alignment::{DefaultAlignmentCalculator, GoalAlignmentCalculator};
+use context_graph_core::monitoring::{LayerStatusProvider, StubLayerStatusProvider};
 use context_graph_core::stubs::{
     InMemoryTeleologicalStore, StubMultiArrayProvider, StubUtlProcessor,
 };
@@ -37,26 +39,25 @@ use super::{create_test_hierarchy, make_request};
 
 /// Create test handlers with SHARED access to the store for direct verification.
 ///
-/// TASK-S003: Updated to include GoalAlignmentCalculator and GoalHierarchy.
+/// TASK-GAP-001: Updated to use Handlers::with_all() after PRD v6 refactor.
 /// Returns (Handlers, Arc<InMemoryTeleologicalStore>) so tests can directly query the store.
 fn create_verifiable_handlers() -> (Handlers, Arc<InMemoryTeleologicalStore>) {
     let store = Arc::new(InMemoryTeleologicalStore::new());
     let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
     let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
         Arc::new(StubMultiArrayProvider::new());
-    let alignment_calculator: Arc<dyn GoalAlignmentCalculator> =
-        Arc::new(DefaultAlignmentCalculator::new());
     // Must use test hierarchy with strategic goal - store handler requires it (AP-007)
     let goal_hierarchy = create_test_hierarchy();
+    let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
     // Create handlers with our store (need to clone for both uses)
     let store_for_handlers: Arc<dyn TeleologicalMemoryStore> = store.clone();
-    let handlers = Handlers::new(
+    let handlers = Handlers::with_all(
         store_for_handlers,
         utl_processor,
         multi_array_provider,
-        alignment_calculator,
-        goal_hierarchy,
+        Arc::new(RwLock::new(goal_hierarchy)),
+        layer_status,
     );
 
     (handlers, store)
@@ -78,6 +79,7 @@ fn create_verifiable_handlers() -> (Handlers, Arc<InMemoryTeleologicalStore>) {
 /// 7. AFTER STATE: Verify store count decreased (or soft-deleted)
 /// 8. EVIDENCE: Print actual fingerprint data from Source of Truth
 #[tokio::test]
+#[ignore = "Uses memory/store, search/multi, memory/delete APIs removed in PRD v6 - use tools/call with store_memory, search_graph"]
 async fn test_full_state_verification_store_search_delete_cycle() {
     println!("\n======================================================================");
     println!("FULL STATE VERIFICATION TEST: Store → Search → Delete Cycle");
@@ -373,6 +375,7 @@ async fn test_full_state_verification_store_search_delete_cycle() {
 /// AFTER: No change to store, error returned
 /// EVIDENCE: Store count remains 0
 #[tokio::test]
+#[ignore = "Uses search/multi API removed in PRD v6 - use tools/call with search_graph"]
 async fn test_edge_case_empty_query_string() {
     println!("\n======================================================================");
     println!("EDGE CASE 1: Empty Query String");
@@ -430,6 +433,7 @@ async fn test_edge_case_empty_query_string() {
 /// AFTER: No change to store, error returned
 /// EVIDENCE: Error message mentions 13 weights requirement
 #[tokio::test]
+#[ignore = "Uses search/multi API removed in PRD v6 - use tools/call with search_graph"]
 async fn test_edge_case_12_weights_instead_of_13() {
     println!("\n======================================================================");
     println!("EDGE CASE 2: 12 Weights Instead of 13");
@@ -500,6 +504,7 @@ async fn test_edge_case_12_weights_instead_of_13() {
 /// AFTER: No change to store, error returned
 /// EVIDENCE: Error message mentions valid range 0-12
 #[tokio::test]
+#[ignore = "Uses search/single_space API removed in PRD v6 - use tools/call with search_graph"]
 async fn test_edge_case_space_index_13() {
     println!("\n======================================================================");
     println!("EDGE CASE 3: Space Index 13 (Out of Range)");
@@ -562,6 +567,7 @@ async fn test_edge_case_space_index_13() {
 /// AFTER: No change to store, error returned
 /// EVIDENCE: Error message mentions 13 elements requirement
 #[tokio::test]
+#[ignore = "Uses search/by_purpose API removed in PRD v6 - use tools/call with search_graph"]
 async fn test_edge_case_12_element_purpose_vector() {
     println!("\n======================================================================");
     println!("EDGE CASE 4: 12-Element Purpose Vector");
@@ -632,6 +638,7 @@ async fn test_edge_case_12_element_purpose_vector() {
 /// AFTER: Store contains 10, search returns max 3
 /// EVIDENCE: Direct store.count() shows 10, search results limited to 3
 #[tokio::test]
+#[ignore = "Uses memory/store, search/multi APIs removed in PRD v6 - use tools/call with store_memory, search_graph"]
 async fn test_maximum_limits_topk_restriction() {
     println!("\n======================================================================");
     println!("MAXIMUM LIMITS TEST: Store 10, Search with topK=3");
@@ -744,6 +751,7 @@ async fn test_maximum_limits_topk_restriction() {
 /// This test verifies that the weight_profiles endpoint returns profiles
 /// that are consistent with the 13-embedder architecture.
 #[tokio::test]
+#[ignore = "Uses search/weight_profiles API removed in PRD v6"]
 async fn test_weight_profiles_all_have_13_weights() {
     println!("\n======================================================================");
     println!("WEIGHT PROFILES VERIFICATION: All Profiles Must Have 13 Weights");

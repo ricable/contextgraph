@@ -18,61 +18,41 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 use serde_json::json;
 
-use context_graph_core::alignment::{DefaultAlignmentCalculator, GoalAlignmentCalculator};
+use context_graph_core::monitoring::{LayerStatusProvider, StubLayerStatusProvider};
 use context_graph_core::purpose::GoalHierarchy;
 use context_graph_core::stubs::{
     InMemoryTeleologicalStore, StubMultiArrayProvider, StubUtlProcessor,
 };
-use context_graph_core::traits::TeleologicalMemoryStore;
+use context_graph_core::traits::{
+    MultiArrayEmbeddingProvider, TeleologicalMemoryStore, UtlProcessor,
+};
 
-use crate::handlers::core::MetaUtlTracker;
 use crate::handlers::Handlers;
 use crate::protocol::{error_codes, JsonRpcId, JsonRpcRequest};
 
-/// Create test handlers using the DEFAULT constructor (which uses StubSystemMonitor).
+/// Create test handlers using Handlers::with_all (which uses StubLayerStatusProvider).
 ///
+/// TASK-GAP-001: Updated to use Handlers::with_all() after PRD v6 refactor.
 /// This is the configuration that TASK-EMB-024 requires to fail-fast.
 fn create_handlers_with_stub_monitors() -> Handlers {
     let store: Arc<dyn TeleologicalMemoryStore> = Arc::new(InMemoryTeleologicalStore::new());
-    let utl_processor = Arc::new(StubUtlProcessor::new());
-    let multi_array = Arc::new(StubMultiArrayProvider::new());
-    let alignment_calc: Arc<dyn GoalAlignmentCalculator> =
-        Arc::new(DefaultAlignmentCalculator::new());
+    let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
+    let multi_array: Arc<dyn MultiArrayEmbeddingProvider> = Arc::new(StubMultiArrayProvider::new());
     let goal_hierarchy = GoalHierarchy::default();
+    let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    // NOTE: Handlers::new() uses StubSystemMonitor and StubLayerStatusProvider by default
-    Handlers::new(
+    Handlers::with_all(
         store,
         utl_processor,
         multi_array,
-        alignment_calc,
-        goal_hierarchy,
+        Arc::new(RwLock::new(goal_hierarchy)),
+        layer_status,
     )
 }
 
-/// Create test handlers with shared MetaUtlTracker for direct verification.
-#[allow(dead_code)]
-fn create_handlers_with_tracker() -> (Handlers, Arc<RwLock<MetaUtlTracker>>) {
-    let store = Arc::new(InMemoryTeleologicalStore::new());
-    let utl_processor = Arc::new(StubUtlProcessor::new());
-    let multi_array = Arc::new(StubMultiArrayProvider::new());
-    let alignment_calc: Arc<dyn GoalAlignmentCalculator> =
-        Arc::new(DefaultAlignmentCalculator::new());
-    let goal_hierarchy = Arc::new(RwLock::new(GoalHierarchy::default()));
-    let meta_utl_tracker = Arc::new(RwLock::new(MetaUtlTracker::new()));
-
-    // Uses StubSystemMonitor and StubLayerStatusProvider
-    let handlers = Handlers::with_meta_utl_tracker(
-        store,
-        utl_processor,
-        multi_array,
-        alignment_calc,
-        goal_hierarchy,
-        meta_utl_tracker.clone(),
-    );
-
-    (handlers, meta_utl_tracker)
-}
+// TASK-GAP-001: Removed create_handlers_with_tracker() function.
+// It used MetaUtlTracker and Handlers::with_meta_utl_tracker() which were deleted in fab0622.
+// When MetaUtlTracker is reimplemented per PRD v6, this function can be restored.
 
 fn make_request(method: &str, params: serde_json::Value) -> JsonRpcRequest {
     JsonRpcRequest {
@@ -98,7 +78,9 @@ fn make_request_no_params(method: &str) -> JsonRpcRequest {
 
 /// Test that meta_utl/health_metrics returns SYSTEM_MONITOR_ERROR (-32050)
 /// when using StubSystemMonitor.
+/// TASK-GAP-001: Ignored - meta_utl/health_metrics removed in PRD v6 refactor.
 #[tokio::test]
+#[ignore = "meta_utl/health_metrics removed in PRD v6 - no direct method calls"]
 async fn test_task_emb_024_stub_system_monitor_returns_error_32050() {
     println!("\n======================================================================");
     println!("TASK-EMB-024 VERIFICATION: StubSystemMonitor Fail-Fast Behavior");
@@ -149,7 +131,9 @@ async fn test_task_emb_024_stub_system_monitor_returns_error_32050() {
 }
 
 /// Test that health_metrics fails for coherence_recovery_time_ms specifically.
+/// TASK-GAP-001: Ignored - meta_utl/health_metrics removed in PRD v6 refactor.
 #[tokio::test]
+#[ignore = "meta_utl/health_metrics removed in PRD v6 - no direct method calls"]
 async fn test_task_emb_024_coherence_recovery_fails_with_stub() {
     println!("\n======================================================================");
     println!("TASK-EMB-024: coherence_recovery_time_ms Fail-Fast");
@@ -275,7 +259,9 @@ async fn test_task_emb_024_layer_status_provider_honest_statuses() {
 
 /// Test that search/multi with include_pipeline_breakdown=true returns
 /// PIPELINE_METRICS_UNAVAILABLE (-32052).
+/// TASK-GAP-001: Ignored - search/multi removed in PRD v6, use search_graph via tools/call.
 #[tokio::test]
+#[ignore = "search/multi removed in PRD v6 - use tools/call with search_graph"]
 async fn test_task_emb_024_pipeline_breakdown_returns_error_32052() {
     println!("\n======================================================================");
     println!("TASK-EMB-024 VERIFICATION: Pipeline Breakdown Fail-Fast");
@@ -333,7 +319,9 @@ async fn test_task_emb_024_pipeline_breakdown_returns_error_32052() {
 }
 
 /// Test that search/multi WITHOUT include_pipeline_breakdown succeeds.
+/// TASK-GAP-001: Ignored - search/multi removed in PRD v6, use search_graph via tools/call.
 #[tokio::test]
+#[ignore = "search/multi removed in PRD v6 - use tools/call with search_graph"]
 async fn test_task_emb_024_search_multi_without_breakdown_succeeds() {
     println!("\n======================================================================");
     println!("TASK-EMB-024: search/multi Without Pipeline Breakdown Succeeds");
@@ -376,7 +364,9 @@ async fn test_task_emb_024_search_multi_without_breakdown_succeeds() {
 // ============================================================================
 
 /// Edge Case 1: Empty params for health_metrics - should still fail with SYSTEM_MONITOR_ERROR.
+/// TASK-GAP-001: Ignored - meta_utl/health_metrics removed in PRD v6 refactor.
 #[tokio::test]
+#[ignore = "meta_utl/health_metrics removed in PRD v6 - no direct method calls"]
 async fn test_task_emb_024_edge_case_empty_params() {
     println!("\n======================================================================");
     println!("TASK-EMB-024 EDGE CASE: Empty Params for health_metrics");
@@ -401,7 +391,9 @@ async fn test_task_emb_024_edge_case_empty_params() {
 }
 
 /// Edge Case 2: Invalid format params - should handle gracefully.
+/// TASK-GAP-001: Ignored - meta_utl/health_metrics removed in PRD v6 refactor.
 #[tokio::test]
+#[ignore = "meta_utl/health_metrics removed in PRD v6 - no direct method calls"]
 async fn test_task_emb_024_edge_case_invalid_params_format() {
     println!("\n======================================================================");
     println!("TASK-EMB-024 EDGE CASE: Invalid Params Format");
@@ -441,7 +433,9 @@ async fn test_task_emb_024_edge_case_invalid_params_format() {
 }
 
 /// Edge Case 3: health_metrics with all optional params set.
+/// TASK-GAP-001: Ignored - meta_utl/health_metrics removed in PRD v6 refactor.
 #[tokio::test]
+#[ignore = "meta_utl/health_metrics removed in PRD v6 - no direct method calls"]
 async fn test_task_emb_024_edge_case_all_optional_params() {
     println!("\n======================================================================");
     println!("TASK-EMB-024 EDGE CASE: All Optional Params");

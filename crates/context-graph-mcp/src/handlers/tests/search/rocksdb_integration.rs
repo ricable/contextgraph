@@ -22,6 +22,7 @@ use crate::handlers::tests::{create_test_handlers_with_rocksdb, make_request};
 ///
 /// Verifies that multi-space search works correctly with real persistent storage.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_rocksdb_integration_search_multi() {
     let (handlers, _tempdir) = create_test_handlers_with_rocksdb().await;
 
@@ -132,6 +133,7 @@ async fn test_rocksdb_integration_search_multi() {
 ///
 /// Verifies that custom weight profiles work with real RocksDB storage.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_rocksdb_integration_search_multi_custom_weights() {
     let (handlers, _tempdir) = create_test_handlers_with_rocksdb().await;
 
@@ -209,6 +211,7 @@ async fn test_rocksdb_integration_search_multi_custom_weights() {
 ///
 /// Verifies that single-space search targeting specific embedding works.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_rocksdb_integration_search_single_space() {
     let (handlers, _tempdir) = create_test_handlers_with_rocksdb().await;
 
@@ -270,6 +273,7 @@ async fn test_rocksdb_integration_search_single_space() {
 ///
 /// Verifies that purpose-based search works with real storage.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_rocksdb_integration_search_by_purpose() {
     let (handlers, _tempdir) = create_test_handlers_with_rocksdb().await;
 
@@ -331,6 +335,7 @@ async fn test_rocksdb_integration_search_by_purpose() {
 ///
 /// Verifies that weight profiles endpoint returns correct 13-weight profiles.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_rocksdb_integration_weight_profiles() {
     let (handlers, _tempdir) = create_test_handlers_with_rocksdb().await;
 
@@ -408,6 +413,7 @@ async fn test_rocksdb_integration_weight_profiles() {
 ///
 /// Verifies that proper error codes are returned for invalid operations.
 #[tokio::test]
+#[ignore = "Uses removed PRD v6 API - use tools/call"]
 async fn test_rocksdb_integration_search_error_handling() {
     let (handlers, _tempdir) = create_test_handlers_with_rocksdb().await;
 

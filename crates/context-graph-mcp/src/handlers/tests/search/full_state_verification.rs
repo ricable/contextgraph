@@ -20,6 +20,7 @@ use crate::handlers::tests::{create_test_handlers, make_request};
 ///
 /// Uses STUB implementations for isolated unit testing.
 #[tokio::test]
+#[ignore = "Uses memory/store, search/multi, search/single_space, search/by_purpose, search/weight_profiles APIs removed in PRD v6 - use tools/call"]
 async fn test_full_state_verification_search_workflow() {
     let handlers = create_test_handlers();
 
@@ -248,6 +249,7 @@ async fn test_full_state_verification_search_workflow() {
 
 /// Test error codes are correctly returned for search failures.
 #[tokio::test]
+#[ignore = "Uses search/multi, search/single_space, search/by_purpose APIs removed in PRD v6 - use tools/call"]
 async fn test_full_state_verification_search_error_codes() {
     let handlers = create_test_handlers();
 

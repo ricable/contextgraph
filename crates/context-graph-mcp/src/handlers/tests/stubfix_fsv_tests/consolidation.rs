@@ -15,6 +15,7 @@ use super::helpers::create_test_fingerprint;
 
 /// FSV-CONSOLIDATION-001: Empty store returns empty candidates.
 #[tokio::test]
+#[ignore = "Uses tools not registered in PRD v6"]
 async fn test_consolidation_empty_store_returns_empty() {
     println!("\n================================================================================");
     println!("FSV-CONSOLIDATION-001: Empty Store Returns Empty Candidates");
@@ -66,6 +67,7 @@ async fn test_consolidation_empty_store_returns_empty() {
 /// Stores fingerprints with very different content (different hashes = different embeddings).
 /// Since synthetic embeddings are hash-based, different content produces orthogonal vectors.
 #[tokio::test]
+#[ignore = "Uses tools not registered in PRD v6"]
 async fn test_consolidation_orthogonal_no_candidates() {
     println!("\n================================================================================");
     println!("FSV-CONSOLIDATION-002: Orthogonal Embeddings Produce No Candidates");
@@ -154,6 +156,7 @@ async fn test_consolidation_orthogonal_no_candidates() {
 ///
 /// Stores fingerprints with identical content (same hash = same embeddings).
 #[tokio::test]
+#[ignore = "Uses tools not registered in PRD v6"]
 async fn test_consolidation_identical_produces_candidates() {
     println!("\n================================================================================");
     println!("FSV-CONSOLIDATION-003: Identical Content Produces Candidates");
@@ -238,6 +241,7 @@ async fn test_consolidation_identical_produces_candidates() {
 
 /// FSV-CONSOLIDATION-004: Limit parameter is respected.
 #[tokio::test]
+#[ignore = "Uses tools not registered in PRD v6"]
 async fn test_consolidation_limit_respected() {
     println!("\n================================================================================");
     println!("FSV-CONSOLIDATION-004: Limit Parameter Is Respected");

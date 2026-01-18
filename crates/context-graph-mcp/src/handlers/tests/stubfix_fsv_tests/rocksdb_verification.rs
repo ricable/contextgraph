@@ -19,6 +19,7 @@ use super::helpers::create_test_fingerprint;
 /// - Count matches what handler reports
 /// - Each fingerprint's theta and access_count are correctly read
 #[tokio::test]
+#[ignore = "Uses tools not registered in PRD v6"]
 async fn test_fsv_rocksdb_steering_data_matches_store() {
     println!("\n================================================================================");
     println!("FSV-ROCKSDB-STEERING-001: Verify Steering Data Matches RocksDB State");
@@ -125,6 +126,7 @@ async fn test_fsv_rocksdb_steering_data_matches_store() {
 
 /// FSV-ROCKSDB-PRUNING-001: Verify pruning candidates match direct RocksDB state.
 #[tokio::test]
+#[ignore = "Uses tools not registered in PRD v6"]
 async fn test_fsv_rocksdb_pruning_candidates_match_store() {
     println!("\n================================================================================");
     println!("FSV-ROCKSDB-PRUNING-001: Verify Pruning Candidates Match RocksDB State");

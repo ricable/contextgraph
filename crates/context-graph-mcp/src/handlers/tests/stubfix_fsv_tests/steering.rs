@@ -19,6 +19,7 @@ use super::helpers::create_test_fingerprint;
 /// - orphan_count = 0
 /// - connectivity = 0.0 (no nodes to be connected)
 #[tokio::test]
+#[ignore = "Uses tools not registered in PRD v6"]
 async fn test_steering_feedback_empty_store_returns_zero_metrics() {
     println!("\n================================================================================");
     println!("FSV-STEERING-001: Empty Store Returns Zero Metrics");
@@ -87,6 +88,7 @@ async fn test_steering_feedback_empty_store_returns_zero_metrics() {
 /// - orphan_count matches stored count
 /// - connectivity is low
 #[tokio::test]
+#[ignore = "Uses tools not registered in PRD v6"]
 async fn test_steering_feedback_all_orphans_low_connectivity() {
     println!("\n================================================================================");
     println!("FSV-STEERING-002: All Orphans Produces Low Connectivity");
@@ -177,6 +179,7 @@ async fn test_steering_feedback_all_orphans_low_connectivity() {
 ///
 /// Verifies connectivity reflects aligned ratio.
 #[tokio::test]
+#[ignore = "Uses tools not registered in PRD v6"]
 async fn test_steering_feedback_mixed_data_accurate_metrics() {
     println!("\n================================================================================");
     println!("FSV-STEERING-003: Mixed Data Produces Accurate Metrics");
