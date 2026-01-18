@@ -23,8 +23,8 @@ pub mod result;
 pub mod temporal_enrichment;
 
 pub use budget::{
-    TokenBudget, TokenBudgetManager, SelectionStats,
-    DEFAULT_TOKEN_BUDGET, BRIEF_BUDGET, estimate_tokens,
+    TokenBudget, TokenBudgetManager, SelectionStats, BudgetTooSmall,
+    DEFAULT_TOKEN_BUDGET, BRIEF_BUDGET, MIN_BUDGET, estimate_tokens,
 };
 pub use candidate::{
     InjectionCandidate, InjectionCategory, MAX_DIVERSITY_BONUS, MAX_RECENCY_FACTOR,

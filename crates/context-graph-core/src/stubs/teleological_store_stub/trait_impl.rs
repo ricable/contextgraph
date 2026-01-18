@@ -3,7 +3,6 @@
 //! This module contains the full trait implementation that delegates to
 //! the various impl methods in other submodules.
 
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 

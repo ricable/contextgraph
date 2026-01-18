@@ -94,6 +94,12 @@ pub enum InjectionError {
     /// Occurs when the provided SemanticFingerprint fails validation.
     #[error("Invalid query fingerprint: {0}")]
     InvalidFingerprint(String),
+
+    /// Budget configuration is invalid.
+    ///
+    /// Occurs when budget is below minimum required (100 tokens).
+    #[error("Invalid budget: {0}")]
+    BudgetInvalid(#[from] super::budget::BudgetTooSmall),
 }
 
 // =============================================================================
@@ -309,7 +315,8 @@ impl InjectionPipeline {
         PriorityRanker::rank_candidates(&mut candidates);
 
         // Use brief budget (select top candidates)
-        let brief_budget = TokenBudget::with_total(BRIEF_BUDGET);
+        // Note: BRIEF_BUDGET (200) >= MIN_BUDGET (100), so this always succeeds
+        let brief_budget = TokenBudget::with_total(BRIEF_BUDGET)?;
         let selected = TokenBudgetManager::select_within_budget(&candidates, &brief_budget);
 
         // Format as brief output

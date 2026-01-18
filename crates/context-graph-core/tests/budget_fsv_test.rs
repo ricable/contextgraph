@@ -46,7 +46,7 @@ fn fsv_edge_case_1_invalid_budget_detection() {
 fn fsv_edge_case_2_minimum_total() {
     println!("\n=== FSV Edge Case 2: Minimum Total (100) ===");
 
-    let budget = TokenBudget::with_total(100);
+    let budget = TokenBudget::with_total(100).expect("100 is valid minimum budget");
 
     println!("Input: TokenBudget::with_total(100)");
     println!("Output:");
@@ -84,7 +84,7 @@ fn fsv_edge_case_2_minimum_total() {
 fn fsv_edge_case_3_large_total() {
     println!("\n=== FSV Edge Case 3: Large Total (1,000,000) ===");
 
-    let budget = TokenBudget::with_total(1_000_000);
+    let budget = TokenBudget::with_total(1_000_000).expect("1M is valid budget");
 
     println!("Input: TokenBudget::with_total(1_000_000)");
     println!("Output:");

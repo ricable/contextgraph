@@ -119,7 +119,7 @@ impl TokenPruningEmbedding {
         let zero_point = (-8.0 - min_val / scale).round() as i32;
 
         // Pack two 4-bit values per byte
-        let mut data = Vec::with_capacity((self.values.len() + 1) / 2);
+        let mut data = Vec::with_capacity(self.values.len().div_ceil(2));
         for chunk in self.values.chunks(2) {
             let v0 = ((chunk[0] / scale) + zero_point as f32)
                 .round()

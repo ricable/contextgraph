@@ -68,7 +68,7 @@ pub trait MemoryProvider: Send + Sync + std::fmt::Debug {
     ///
     /// * `limit` - Maximum number of memories to retrieve
     /// * `recency_bias` - How much to favor recent memories [0.0, 1.0]
-    ///                    Constitution default: 0.8
+    ///   Constitution default: 0.8
     ///
     /// # Returns
     ///

@@ -219,7 +219,7 @@ impl GoalDiscoveryPipeline {
         if size >= 50 && coherence >= 0.85 {
             GoalLevel::Strategic
         } else if size >= 20 && coherence >= 0.80 {
-            GoalLevel::Strategic
+            GoalLevel::Tactical
         } else if size >= 10 && coherence >= 0.75 {
             GoalLevel::Tactical
         } else {

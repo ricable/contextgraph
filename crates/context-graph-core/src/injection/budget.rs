@@ -46,17 +46,49 @@ pub const DEFAULT_TOKEN_BUDGET: TokenBudget = TokenBudget {
 /// Only 200 tokens for quick context per constitution.yaml.
 pub const BRIEF_BUDGET: u32 = 200;
 
+/// Minimum total budget required for meaningful allocation.
+pub const MIN_BUDGET: u32 = 100;
+
+/// Error returned when budget is too small.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BudgetTooSmall {
+    /// The budget that was provided.
+    pub provided: u32,
+    /// The minimum required.
+    pub minimum: u32,
+}
+
+impl std::fmt::Display for BudgetTooSmall {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "budget too small: {} provided, minimum is {}",
+            self.provided, self.minimum
+        )
+    }
+}
+
+impl std::error::Error for BudgetTooSmall {}
+
 impl TokenBudget {
     /// Create custom budget with specified total.
     /// Allocates proportionally based on default ratios.
     ///
     /// # Arguments
-    /// * `total` - Total token budget (must be >= 100)
+    /// * `total` - Total token budget (must be >= MIN_BUDGET)
     ///
-    /// # Panics
-    /// Panics if `total < 100` (insufficient for meaningful allocation)
-    pub fn with_total(total: u32) -> Self {
-        assert!(total >= 100, "total must be at least 100, got {}", total);
+    /// # Errors
+    /// Returns `BudgetTooSmall` if `total < MIN_BUDGET` (insufficient for meaningful allocation)
+    ///
+    /// # Constitution Compliance
+    /// - AP-14: Returns Result instead of panicking
+    pub fn with_total(total: u32) -> Result<Self, BudgetTooSmall> {
+        if total < MIN_BUDGET {
+            return Err(BudgetTooSmall {
+                provided: total,
+                minimum: MIN_BUDGET,
+            });
+        }
 
         // Ratios from DEFAULT_TOKEN_BUDGET:
         // divergence: 200/1200 = 1/6
@@ -70,14 +102,14 @@ impl TokenBudget {
         let session_budget = total / 6;
         let reserved = total - divergence_budget - cluster_budget - single_space_budget - session_budget;
 
-        Self {
+        Ok(Self {
             total,
             divergence_budget,
             cluster_budget,
             single_space_budget,
             session_budget,
             reserved,
-        }
+        })
     }
 
     /// Get budget allocation for a specific category.
@@ -383,7 +415,7 @@ mod tests {
 
     #[test]
     fn test_with_total_proportional() {
-        let budget = TokenBudget::with_total(600);
+        let budget = TokenBudget::with_total(600).expect("600 >= MIN_BUDGET");
 
         assert_eq!(budget.total, 600);
         assert!(budget.is_valid(), "Custom budget must be valid");
@@ -399,16 +431,21 @@ mod tests {
 
     #[test]
     fn test_with_total_minimum() {
-        let budget = TokenBudget::with_total(100);
+        let budget = TokenBudget::with_total(100).expect("100 == MIN_BUDGET");
         assert_eq!(budget.total, 100);
         assert!(budget.is_valid());
         println!("[PASS] Minimum total (100) accepted");
     }
 
     #[test]
-    #[should_panic(expected = "total must be at least 100")]
     fn test_with_total_below_minimum() {
-        TokenBudget::with_total(50);
+        // AP-14: Returns Result instead of panicking
+        let result = TokenBudget::with_total(50);
+        assert!(result.is_err(), "50 < MIN_BUDGET should error");
+        let err = result.unwrap_err();
+        assert_eq!(err.provided, 50);
+        assert_eq!(err.minimum, MIN_BUDGET);
+        println!("[PASS] Below minimum (50) returns BudgetTooSmall error");
     }
 
     #[test]
@@ -463,7 +500,7 @@ mod tests {
 
     #[test]
     fn test_large_total() {
-        let budget = TokenBudget::with_total(1_000_000);
+        let budget = TokenBudget::with_total(1_000_000).expect("large budget");
         assert!(budget.is_valid());
         assert_eq!(budget.total, 1_000_000);
         println!("[PASS] Large total (1_000_000) accepted and valid: {:?}", budget);
@@ -471,7 +508,7 @@ mod tests {
 
     #[test]
     fn test_minimum_total_has_positive_allocations() {
-        let b = TokenBudget::with_total(100);
+        let b = TokenBudget::with_total(100).expect("100 == MIN_BUDGET");
         assert!(b.divergence_budget > 0, "divergence_budget should be > 0");
         assert!(b.cluster_budget > 0, "cluster_budget should be > 0");
         assert!(b.is_valid());
@@ -695,7 +732,7 @@ mod budget_manager_tests {
 
     #[test]
     fn test_single_candidate_too_large() {
-        let budget = TokenBudget::with_total(100);
+        let budget = TokenBudget::with_total(100).expect("100 == MIN_BUDGET");
         let candidates = vec![
             make_candidate(150, InjectionCategory::HighRelevanceCluster, 1.0),
         ];
@@ -765,8 +802,8 @@ mod budget_manager_tests {
     fn test_total_budget_invariant_never_exceeded() {
         // Generate various budget and candidate combinations
         let budgets = vec![
-            TokenBudget::with_total(100),
-            TokenBudget::with_total(500),
+            TokenBudget::with_total(100).expect("100 == MIN_BUDGET"),
+            TokenBudget::with_total(500).expect("500 >= MIN_BUDGET"),
             TokenBudget::default(),
         ];
 

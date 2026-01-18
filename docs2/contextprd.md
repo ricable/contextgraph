@@ -650,5 +650,3 @@ This architecture is built on the following core principles:
 ## 15. REFERENCES
 
 **Internal**: Memory Schema (2.1), Topic Portfolio (2.3), Embedder Categories (3.1), Similarity Detection (4.1), Divergence Detection (4.3), Topic Synthesis (5.2), Hook Integration (9)
-
-**External**: HDBSCAN (Campello et al. 2013), BIRCH (Zhang et al. 1996), BM25 (Robertson et al. 1994), Thompson Sampling (Chapelle & Li 2011), MMR (Carbonell & Goldstein 1998)
