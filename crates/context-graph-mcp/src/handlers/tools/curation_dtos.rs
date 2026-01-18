@@ -9,10 +9,7 @@
 //! - BR-MCP-001: forget_concept uses soft delete by default
 //! - BR-MCP-002: boost_importance clamps final value to [0.0, 1.0]
 //!
-//! Note: These DTOs are defined for curation_tools.rs implementation.
-//! The #[allow(dead_code)] attributes will be removed when curation_tools.rs is complete.
-
-#![allow(dead_code)]
+//! Note: These DTOs are used by curation_tools.rs implementation.
 
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
@@ -184,6 +181,9 @@ impl ForgetConceptResponse {
     }
 
     /// Create a response for a soft delete operation with a specific deletion time.
+    ///
+    /// Utility function for testing or when the deletion timestamp is known.
+    #[allow(dead_code)]
     pub fn soft_deleted_at(id: Uuid, deleted_at: DateTime<Utc>) -> Self {
         Self {
             forgotten_id: id,

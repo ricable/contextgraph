@@ -9,6 +9,7 @@
 //! - forget_concept, boost_importance (curation_tools.rs)
 
 mod consolidation;
+mod curation_tools;
 mod dispatch;
 mod helpers;
 mod memory_tools;

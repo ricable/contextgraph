@@ -87,6 +87,8 @@ impl Handlers {
 
             // ========== CURATION TOOLS (PRD Section 10.3) ==========
             tool_names::MERGE_CONCEPTS => self.call_merge_concepts(id, arguments).await,
+            tool_names::FORGET_CONCEPT => self.call_forget_concept(id, arguments).await,
+            tool_names::BOOST_IMPORTANCE => self.call_boost_importance(id, arguments).await,
 
             // Unknown tool
             _ => JsonRpcResponse::error(

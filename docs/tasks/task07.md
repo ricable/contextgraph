@@ -6,6 +6,39 @@
 - **Priority**: High
 - **Complexity**: Medium
 - **Dependencies**: task05 (TASK-GAP-005 - DTOs COMPLETED in `curation_dtos.rs`)
+- **Status**: **COMPLETED** (2026-01-18)
+
+## Completion Summary
+
+### Implementation Complete
+| File | Status | Notes |
+|------|--------|-------|
+| `crates/context-graph-mcp/src/handlers/tools/curation_dtos.rs` | COMPLETE | 680+ lines, DTOs + 30 tests + validation methods |
+| `crates/context-graph-mcp/src/tools/names.rs` | COMPLETE | `FORGET_CONCEPT`, `BOOST_IMPORTANCE` constants (dead_code removed) |
+| `crates/context-graph-mcp/src/handlers/tools/helpers.rs` | COMPLETE | `tool_result_with_pulse()`, `tool_error_with_pulse()` |
+| `crates/context-graph-mcp/src/handlers/tools/mod.rs` | COMPLETE | `mod curation_tools;` added |
+| `crates/context-graph-mcp/src/handlers/tools/dispatch.rs` | COMPLETE | `FORGET_CONCEPT` and `BOOST_IMPORTANCE` dispatch cases added |
+| `crates/context-graph-mcp/src/handlers/tools/curation_tools.rs` | COMPLETE | 140 lines, both handlers implemented |
+| `crates/context-graph-mcp/src/handlers/tests/curation_tools_fsv.rs` | COMPLETE | 13 FSV tests for full state verification |
+
+### Test Results
+- **Total Tests**: 45 curation-related tests
+  - 30 DTO unit tests (curation_dtos.rs)
+  - 2 handler unit tests (curation_tools.rs)
+  - 13 Full State Verification tests (curation_tools_fsv.rs)
+- **All tests PASS**
+
+### Constitution Compliance Verified
+| Requirement | Implementation | Status |
+|-------------|----------------|--------|
+| SEC-06: 30-day recovery | `SOFT_DELETE_RECOVERY_DAYS = 30`, `compute_recovery_deadline()` | COMPLIANT |
+| BR-MCP-001: soft_delete defaults to true | `default_soft_delete() -> true`, `Default` impl | COMPLIANT |
+| BR-MCP-002: clamp to [0.0, 1.0] | `MIN_IMPORTANCE/MAX_IMPORTANCE` constants, `clamp()` | COMPLIANT |
+| AP-10: No NaN/Infinity | Explicit check in `BoostImportanceRequest::validate()` | COMPLIANT |
+
+---
+
+## Original Specification (for reference)
 
 ## Current State Assessment (2026-01-18)
 
@@ -613,31 +646,31 @@ echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"boost_impo
 ## Definition of Done
 
 ### Code Requirements
-- [ ] File `curation_tools.rs` exists at specified path
-- [ ] `call_forget_concept` implemented with full error handling
-- [ ] `call_forget_concept` uses `store.delete(id, soft)` (not `.get()`)
-- [ ] `call_forget_concept` defaults to soft_delete=true per BR-MCP-001
-- [ ] `call_boost_importance` implemented with full error handling
-- [ ] `call_boost_importance` uses `store.retrieve()` then `store.update()`
-- [ ] `call_boost_importance` modifies `fingerprint.alignment_score`
-- [ ] All handlers use `tool_result_with_pulse()` / `tool_error_with_pulse()`
-- [ ] Uses `error_codes::FINGERPRINT_NOT_FOUND` for missing memories
-- [ ] `mod.rs` includes `mod curation_tools;`
-- [ ] `dispatch.rs` includes both dispatch cases
-- [ ] `names.rs` has `#[allow(dead_code)]` removed from constants
+- [x] File `curation_tools.rs` exists at specified path
+- [x] `call_forget_concept` implemented with full error handling
+- [x] `call_forget_concept` uses `store.delete(id, soft)` (not `.get()`)
+- [x] `call_forget_concept` defaults to soft_delete=true per BR-MCP-001
+- [x] `call_boost_importance` implemented with full error handling
+- [x] `call_boost_importance` uses `store.retrieve()` then `store.update()`
+- [x] `call_boost_importance` modifies `fingerprint.alignment_score`
+- [x] All handlers use `tool_result_with_pulse()` / `tool_error_with_pulse()`
+- [x] Uses `error_codes::FINGERPRINT_NOT_FOUND` for missing memories
+- [x] `mod.rs` includes `mod curation_tools;`
+- [x] `dispatch.rs` includes both dispatch cases
+- [x] `names.rs` has `#[allow(dead_code)]` removed from constants
 
 ### Build Requirements
-- [ ] `cargo check -p context-graph-mcp` passes
-- [ ] `cargo clippy -p context-graph-mcp -- -D warnings` passes
-- [ ] No new warnings introduced
+- [x] `cargo check -p context-graph-mcp` passes
+- [x] `cargo clippy -p context-graph-mcp -- -D warnings` passes
+- [x] No new warnings introduced
 
 ### Test Requirements
-- [ ] FSV tests created in `curation_tools_fsv.rs`
-- [ ] FSV test for soft delete verifies storage state
-- [ ] FSV test for boost_importance verifies alignment_score in storage
-- [ ] FSV test for clamping verifies clamped value in storage
-- [ ] All edge cases tested (empty UUID, invalid UUID, non-existent, NaN, bounds)
-- [ ] `cargo test -p context-graph-mcp -- curation` passes
+- [x] FSV tests created in `curation_tools_fsv.rs`
+- [x] FSV test for soft delete verifies storage state
+- [x] FSV test for boost_importance verifies alignment_score in storage
+- [x] FSV test for clamping verifies clamped value in storage
+- [x] All edge cases tested (empty UUID, invalid UUID, non-existent, NaN, bounds)
+- [x] `cargo test -p context-graph-mcp -- curation` passes
 
 ### Verification Commands
 

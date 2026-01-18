@@ -41,6 +41,7 @@
 
 mod cognitive_pulse;
 mod content_storage_verification;
+mod curation_tools_fsv;
 mod error_codes;
 mod full_state_verification_search;
 mod initialize;

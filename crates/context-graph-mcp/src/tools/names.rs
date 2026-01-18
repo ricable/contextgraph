@@ -26,7 +26,5 @@ pub const GET_DIVERGENCE_ALERTS: &str = "get_divergence_alerts";
 
 // ========== CURATION TOOLS (PRD Section 10.3) ==========
 pub const MERGE_CONCEPTS: &str = "merge_concepts";
-#[allow(dead_code)]
 pub const FORGET_CONCEPT: &str = "forget_concept";
-#[allow(dead_code)]
 pub const BOOST_IMPORTANCE: &str = "boost_importance";
