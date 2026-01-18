@@ -21,6 +21,8 @@ use tracing_subscriber::{fmt, EnvFilter};
 
 mod commands;
 mod error;
+pub mod mcp_client;
+pub mod mcp_helpers;
 
 pub use error::{exit_code_for_error, is_corruption_indicator, CliExitCode};
 
