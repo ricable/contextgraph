@@ -78,9 +78,12 @@ use context_graph_core::traits::{
 use context_graph_core::types::fingerprint::SemanticFingerprint;
 use context_graph_storage::teleological::RocksDbTeleologicalStore;
 
-// TASK-P3-01: Import real embedding provider for FSV tests (feature-gated)
+// TASK-EMB-016: Import global warm provider for FSV tests (feature-gated)
 #[cfg(feature = "cuda")]
-use context_graph_embeddings::{GpuConfig, ProductionMultiArrayProvider};
+use context_graph_embeddings::{
+    get_warm_provider, initialize_global_warm_provider, is_warm_initialized, warm_status_message,
+    GpuConfig, ProductionMultiArrayProvider,
+};
 
 // TASK-P3-01: Import PathBuf for models directory resolution
 #[cfg(feature = "cuda")]
@@ -93,6 +96,8 @@ use tokio::sync::OnceCell;
 
 /// Global warm-loaded model cache.
 ///
+/// TASK-EMB-016: Updated to use global_provider.rs singleton.
+///
 /// RTX 5090 32GB VRAM - models should be warm-loaded ONCE and shared.
 /// This prevents CUDA OOM when tests run in parallel, each trying to load
 /// all 13 embedding models (~20GB total) from scratch.
@@ -102,6 +107,10 @@ use tokio::sync::OnceCell;
 static WARM_MODEL_CACHE: OnceCell<Arc<dyn MultiArrayEmbeddingProvider>> = OnceCell::const_new();
 
 /// Get or initialize the warm-loaded embedding provider.
+///
+/// TASK-EMB-016: This now uses the global warm provider singleton from global_provider.rs.
+/// If the global provider is already initialized (e.g., by CLI or another test),
+/// it will be reused. Otherwise, this function initializes it.
 ///
 /// This function ensures models are loaded exactly ONCE into GPU VRAM and
 /// shared across all tests. The Arc allows multiple tests to hold references
@@ -128,12 +137,66 @@ static WARM_MODEL_CACHE: OnceCell<Arc<dyn MultiArrayEmbeddingProvider>> = OnceCe
 async fn get_warm_loaded_provider() -> Arc<dyn MultiArrayEmbeddingProvider> {
     WARM_MODEL_CACHE
         .get_or_init(|| async {
+            // TASK-EMB-016: First try to use global warm provider singleton
+            if is_warm_initialized() {
+                tracing::info!(
+                    "WARM LOAD: Using existing global warm provider (already initialized)"
+                );
+                match get_warm_provider() {
+                    Ok(provider) => {
+                        tracing::info!(
+                            "WARM LOAD: Retrieved global warm provider successfully"
+                        );
+                        return provider;
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "WARM LOAD: Failed to get global warm provider: {}. Falling back to direct load.",
+                            e
+                        );
+                    }
+                }
+            }
+
+            // Try to initialize the global warm provider
+            tracing::info!(
+                "WARM LOAD: Attempting to initialize global warm provider..."
+            );
+            match initialize_global_warm_provider().await {
+                Ok(()) => {
+                    tracing::info!(
+                        "WARM LOAD: Global warm provider initialized successfully"
+                    );
+                    match get_warm_provider() {
+                        Ok(provider) => {
+                            tracing::info!(
+                                "WARM LOAD: All 13 embedding models ready via global warm provider"
+                            );
+                            return provider;
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "WARM LOAD: Global warm provider init succeeded but get failed: {}. Status: {}",
+                                e,
+                                warm_status_message()
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "WARM LOAD: Global warm provider initialization failed: {}. Falling back to ProductionMultiArrayProvider.",
+                        e
+                    );
+                }
+            }
+
+            // Fall back to direct ProductionMultiArrayProvider if global warm provider fails
             let models_dir = resolve_test_models_path();
             tracing::info!(
-                "WARM LOAD: Initializing global embedding provider from {:?}",
+                "WARM LOAD: Falling back to direct ProductionMultiArrayProvider from {:?}",
                 models_dir
             );
-            tracing::info!("WARM LOAD: This loads 13 models ONCE, shared across all tests");
 
             let provider =
                 ProductionMultiArrayProvider::new(models_dir.clone(), GpuConfig::default())
@@ -146,7 +209,7 @@ async fn get_warm_loaded_provider() -> Arc<dyn MultiArrayEmbeddingProvider> {
                         )
                     });
 
-            tracing::info!("WARM LOAD: All 13 embedding models loaded into VRAM successfully");
+            tracing::info!("WARM LOAD: All 13 embedding models loaded into VRAM successfully (fallback)");
             Arc::new(provider) as Arc<dyn MultiArrayEmbeddingProvider>
         })
         .await
@@ -213,7 +276,8 @@ pub(crate) fn extract_mcp_tool_data(result: &serde_json::Value) -> serde_json::V
 /// Create test handlers with real stub implementations (no mocks).
 ///
 /// TASK-S001: Uses TeleologicalMemoryStore and MultiArrayEmbeddingProvider.
-/// TASK-GAP-001: Updated to use Handlers::with_all() after PRD v6 refactor.
+/// TASK-GAP-001: Updated to use Handlers::with_defaults() after PRD v6 refactor.
+/// TASK-INTEG-TOPIC: Uses with_defaults for automatic clustering component creation.
 /// NO legacy MemoryStore support.
 pub(crate) fn create_test_handlers() -> Handlers {
     let teleological_store: Arc<dyn TeleologicalMemoryStore> =
@@ -223,7 +287,7 @@ pub(crate) fn create_test_handlers() -> Handlers {
         Arc::new(StubMultiArrayProvider::new());
     let goal_hierarchy = create_test_hierarchy();
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
-    Handlers::with_all(
+    Handlers::with_defaults(
         teleological_store,
         utl_processor,
         multi_array_provider,
@@ -241,7 +305,7 @@ pub(crate) fn create_test_handlers_no_goals() -> Handlers {
         Arc::new(StubMultiArrayProvider::new());
     let goal_hierarchy = GoalHierarchy::new(); // Empty hierarchy
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
-    Handlers::with_all(
+    Handlers::with_defaults(
         teleological_store,
         utl_processor,
         multi_array_provider,
@@ -318,7 +382,8 @@ pub(crate) async fn create_test_handlers_with_rocksdb() -> (Handlers, TempDir) {
     let goal_hierarchy = create_test_hierarchy();
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    let handlers = Handlers::with_all(
+    // TASK-INTEG-TOPIC: Use with_defaults for automatic clustering component creation
+    let handlers = Handlers::with_defaults(
         teleological_store,
         utl_processor,
         multi_array_provider,
@@ -369,7 +434,7 @@ pub(crate) async fn create_test_handlers_with_rocksdb_no_goals() -> (Handlers, T
     let goal_hierarchy = GoalHierarchy::new(); // Empty hierarchy - no Strategic goals
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    let handlers = Handlers::with_all(
+    let handlers = Handlers::with_defaults(
         teleological_store,
         utl_processor,
         multi_array_provider,
@@ -500,7 +565,7 @@ pub(crate) async fn create_test_handlers_with_rocksdb_store_access(
     let goal_hierarchy = create_test_hierarchy();
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    let handlers = Handlers::with_all(
+    let handlers = Handlers::with_defaults(
         Arc::clone(&teleological_store),
         utl_processor,
         multi_array_provider,
@@ -585,7 +650,7 @@ pub(crate) async fn create_test_handlers_with_real_embeddings() -> (Handlers, Te
     let goal_hierarchy = create_test_hierarchy();
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    let handlers = Handlers::with_all(
+    let handlers = Handlers::with_defaults(
         teleological_store,
         utl_processor,
         multi_array_provider,
@@ -634,7 +699,7 @@ pub(crate) async fn create_test_handlers_with_real_embeddings_store_access(
     let goal_hierarchy = create_test_hierarchy();
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    let handlers = Handlers::with_all(
+    let handlers = Handlers::with_defaults(
         Arc::clone(&teleological_store),
         utl_processor,
         multi_array_provider,

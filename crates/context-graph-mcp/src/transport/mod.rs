@@ -10,6 +10,7 @@ pub mod sse;
 pub use sse::{
     create_sse_router,
     // TASK-33: Handler
+    McpSseEvent,
     SseAppState,
     SseConfig,
 };

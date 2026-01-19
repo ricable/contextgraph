@@ -1,6 +1,8 @@
 //! Handlers struct definition and constructors.
 //!
-//! PRD v6 Section 10 - Minimal Handlers for 6 MCP tools.
+//! PRD v6 Section 10 - Handlers for all 14 MCP tools.
+//!
+//! TASK-INTEG-TOPIC: Added clustering dependencies for topic tools integration.
 
 use std::sync::Arc;
 
@@ -8,6 +10,7 @@ use parking_lot::RwLock;
 use serde_json::json;
 use tracing::info;
 
+use context_graph_core::clustering::{MultiSpaceClusterManager, TopicStabilityTracker};
 use context_graph_core::monitoring::LayerStatusProvider;
 use context_graph_core::purpose::GoalHierarchy;
 use context_graph_core::traits::{
@@ -18,10 +21,11 @@ use crate::protocol::{JsonRpcId, JsonRpcResponse};
 
 /// Request handlers for MCP protocol.
 ///
-/// PRD v6 Section 10 - Supports only:
-/// - inject_context, store_memory, get_memetic_status, search_graph
-/// - trigger_consolidation
-/// - merge_concepts
+/// PRD v6 Section 10 - Supports all 14 MCP tools:
+/// - Core: inject_context, store_memory, get_memetic_status, search_graph, trigger_consolidation
+/// - Topic: get_topic_portfolio, get_topic_stability, detect_topics, get_divergence_alerts
+/// - Curation: merge_concepts, forget_concept, boost_importance
+/// - Dream: trigger_dream, get_dream_status
 pub struct Handlers {
     /// Teleological memory store - stores TeleologicalFingerprint with 13 embeddings.
     pub(in crate::handlers) teleological_store: Arc<dyn TeleologicalMemoryStore>,
@@ -37,6 +41,14 @@ pub struct Handlers {
 
     /// Layer status provider for get_memetic_status.
     pub(in crate::handlers) layer_status_provider: Arc<dyn LayerStatusProvider>,
+
+    /// Multi-space cluster manager for topic detection and clustering.
+    /// TASK-INTEG-TOPIC: Added for topic tools integration.
+    pub(in crate::handlers) cluster_manager: Arc<RwLock<MultiSpaceClusterManager>>,
+
+    /// Topic stability tracker for portfolio-level stability metrics.
+    /// TASK-INTEG-TOPIC: Added for topic tools integration.
+    pub(in crate::handlers) stability_tracker: Arc<RwLock<TopicStabilityTracker>>,
 }
 
 impl Handlers {
@@ -48,12 +60,16 @@ impl Handlers {
     /// * `multi_array_provider` - 13-embedding generator
     /// * `goal_hierarchy` - Goal hierarchy (can be empty initially)
     /// * `layer_status_provider` - Provider for layer status information
+    /// * `cluster_manager` - Multi-space cluster manager for topic detection
+    /// * `stability_tracker` - Topic stability tracker for portfolio metrics
     pub fn with_all(
         teleological_store: Arc<dyn TeleologicalMemoryStore>,
         utl_processor: Arc<dyn UtlProcessor>,
         multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider>,
         goal_hierarchy: Arc<RwLock<GoalHierarchy>>,
         layer_status_provider: Arc<dyn LayerStatusProvider>,
+        cluster_manager: Arc<RwLock<MultiSpaceClusterManager>>,
+        stability_tracker: Arc<RwLock<TopicStabilityTracker>>,
     ) -> Self {
         Self {
             teleological_store,
@@ -61,6 +77,39 @@ impl Handlers {
             multi_array_provider,
             goal_hierarchy,
             layer_status_provider,
+            cluster_manager,
+            stability_tracker,
+        }
+    }
+
+    /// Create handlers with default clustering components.
+    ///
+    /// This is a convenience constructor that creates default cluster manager
+    /// and stability tracker. Use `with_all` for full control over dependencies.
+    ///
+    /// TASK-INTEG-TOPIC: Added for backwards compatibility during integration.
+    pub fn with_defaults(
+        teleological_store: Arc<dyn TeleologicalMemoryStore>,
+        utl_processor: Arc<dyn UtlProcessor>,
+        multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider>,
+        goal_hierarchy: Arc<RwLock<GoalHierarchy>>,
+        layer_status_provider: Arc<dyn LayerStatusProvider>,
+    ) -> Self {
+        // Create default cluster manager
+        let cluster_manager = MultiSpaceClusterManager::with_defaults()
+            .expect("Default cluster manager should always succeed");
+
+        // Create default stability tracker
+        let stability_tracker = TopicStabilityTracker::new();
+
+        Self {
+            teleological_store,
+            utl_processor,
+            multi_array_provider,
+            goal_hierarchy,
+            layer_status_provider,
+            cluster_manager: Arc::new(RwLock::new(cluster_manager)),
+            stability_tracker: Arc::new(RwLock::new(stability_tracker)),
         }
     }
 

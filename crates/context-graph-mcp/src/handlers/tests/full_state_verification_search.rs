@@ -1,7 +1,7 @@
 //! Full State Verification Tests for Search Handlers
 //!
 //! TASK-S002: Comprehensive verification that directly inspects the Source of Truth.
-//! TASK-GAP-001: Updated to use Handlers::with_all() after PRD v6 refactor.
+//! TASK-GAP-001: Updated to use Handlers::with_defaults() after PRD v6 refactor.
 //!
 //! This test file does NOT rely on handler return values alone.
 //! It directly queries the underlying TeleologicalMemoryStore to verify:
@@ -39,7 +39,7 @@ use super::{create_test_hierarchy, make_request};
 
 /// Create test handlers with SHARED access to the store for direct verification.
 ///
-/// TASK-GAP-001: Updated to use Handlers::with_all() after PRD v6 refactor.
+/// TASK-GAP-001: Updated to use Handlers::with_defaults() after PRD v6 refactor.
 /// Returns (Handlers, Arc<InMemoryTeleologicalStore>) so tests can directly query the store.
 fn create_verifiable_handlers() -> (Handlers, Arc<InMemoryTeleologicalStore>) {
     let store = Arc::new(InMemoryTeleologicalStore::new());
@@ -52,7 +52,7 @@ fn create_verifiable_handlers() -> (Handlers, Arc<InMemoryTeleologicalStore>) {
 
     // Create handlers with our store (need to clone for both uses)
     let store_for_handlers: Arc<dyn TeleologicalMemoryStore> = store.clone();
-    let handlers = Handlers::with_all(
+    let handlers = Handlers::with_defaults(
         store_for_handlers,
         utl_processor,
         multi_array_provider,

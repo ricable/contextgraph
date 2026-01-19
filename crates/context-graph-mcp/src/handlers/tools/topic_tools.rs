@@ -11,8 +11,12 @@
 //! - AP-62: Only SEMANTIC embedders for divergence alerts
 //! - ARCH-09: Topic threshold is weighted_agreement >= 2.5
 //! - AP-70: Dream recommended when entropy > 0.7 AND churn > 0.5
+//!
+//! TASK-INTEG-TOPIC: Integrated with MultiSpaceClusterManager and TopicStabilityTracker.
 
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
+
+use context_graph_core::clustering::Topic;
 
 use crate::protocol::{error_codes, JsonRpcId, JsonRpcResponse};
 
@@ -21,10 +25,75 @@ use super::topic_dtos::{
     DetectTopicsRequest, DetectTopicsResponse, DivergenceAlertsResponse,
     GetDivergenceAlertsRequest, GetTopicPortfolioRequest, GetTopicStabilityRequest,
     PhaseBreakdown, StabilityMetricsSummary, TopicPortfolioResponse, TopicStabilityResponse,
+    TopicSummary,
 };
 
 /// Minimum memories required for clustering (per constitution min_cluster_size).
 const MIN_MEMORIES_FOR_CLUSTERING: usize = 3;
+
+/// Convert core Topic to TopicSummary DTO.
+///
+/// TASK-INTEG-TOPIC: Helper for converting between core and DTO types.
+fn topic_to_summary(topic: &Topic) -> TopicSummary {
+    let weighted_agreement = topic.profile.weighted_agreement();
+    let confidence = TopicSummary::compute_confidence(weighted_agreement);
+    // Convert Embedder enum variants to human-readable names
+    let contributing_spaces: Vec<String> = topic
+        .contributing_spaces
+        .iter()
+        .map(|e| format!("{:?}", e))
+        .collect();
+    let phase_str = format!("{:?}", topic.stability.phase);
+
+    TopicSummary {
+        id: topic.id,
+        name: topic.name.clone(),
+        confidence,
+        weighted_agreement,
+        member_count: topic.member_count(),
+        contributing_spaces,
+        phase: phase_str,
+    }
+}
+
+/// Extract entropy from UTL processor status.
+///
+/// TASK-INTEG-TOPIC: Helper to get entropy from get_status() JSON.
+fn extract_entropy_from_status(status: &serde_json::Value) -> f32 {
+    status
+        .get("entropy")
+        .and_then(|v| v.as_f64())
+        .map(|f| f as f32)
+        .unwrap_or(0.0)
+}
+
+/// Compute phase breakdown from topics.
+///
+/// TASK-INTEG-TOPIC: Helper to count topics by lifecycle phase.
+fn compute_phase_breakdown(topics: &std::collections::HashMap<uuid::Uuid, Topic>) -> PhaseBreakdown {
+    use context_graph_core::clustering::TopicPhase;
+
+    let mut emerging = 0;
+    let mut stable = 0;
+    let mut declining = 0;
+    let mut merging = 0;
+
+    for topic in topics.values() {
+        match topic.stability.phase {
+            TopicPhase::Emerging => emerging += 1,
+            TopicPhase::Stable => stable += 1,
+            TopicPhase::Declining => declining += 1,
+            TopicPhase::Merging => merging += 1,
+        }
+    }
+
+    PhaseBreakdown {
+        emerging,
+        stable,
+        declining,
+        merging,
+    }
+}
 
 impl Handlers {
     /// Handle get_topic_portfolio tool call.
@@ -103,20 +172,40 @@ impl Handlers {
             );
         }
 
-        // For tiers 1-6, return response with tier info
-        // Topics will be populated when clustering module is fully integrated
+        // TASK-INTEG-TOPIC: Get topics from cluster_manager
+        let cluster_manager = self.cluster_manager.read();
+        let topics_map = cluster_manager.get_topics();
+
+        // Convert core Topics to TopicSummary DTOs
+        let topics: Vec<TopicSummary> = topics_map
+            .values()
+            .map(topic_to_summary)
+            .collect();
+
+        let total_topics = topics.len();
+
+        // Get stability metrics from stability_tracker
+        let stability_tracker = self.stability_tracker.read();
+        let churn_rate = stability_tracker.current_churn();
+        // Extract entropy from UTL processor status
+        let utl_status = self.utl_processor.get_status();
+        let entropy = extract_entropy_from_status(&utl_status);
+
         let response = TopicPortfolioResponse {
-            topics: vec![],
-            stability: StabilityMetricsSummary::new(0.0, 0.0),
-            total_topics: 0,
+            topics,
+            stability: StabilityMetricsSummary::new(churn_rate, entropy),
+            total_topics,
             tier,
         };
 
-        debug!(
+        info!(
             tier = tier,
             total_topics = response.total_topics,
+            churn_rate = churn_rate,
+            entropy = entropy,
             is_stable = response.stability.is_stable,
-            "get_topic_portfolio: Returning portfolio response"
+            "get_topic_portfolio: Returning portfolio with {} topics",
+            total_topics
         );
 
         self.tool_result_with_pulse(
@@ -174,27 +263,37 @@ impl Handlers {
             "get_topic_stability: Processing stability request"
         );
 
-        // Get stability metrics
-        // Currently returns baseline values; will be computed when clustering is integrated
-        let churn_rate = 0.0;
-        let entropy = 0.0;
+        // TASK-INTEG-TOPIC: Get real stability metrics from stability_tracker
+        let stability_tracker = self.stability_tracker.read();
+        let churn_rate = stability_tracker.current_churn();
+        let average_churn = stability_tracker.average_churn(request.hours as i64);
+
+        // Extract entropy from UTL processor status
+        let utl_status = self.utl_processor.get_status();
+        let entropy = extract_entropy_from_status(&utl_status);
 
         // Per AP-70: Dream recommended when entropy > 0.7 AND churn > 0.5
         let dream_recommended = TopicStabilityResponse::should_recommend_dream(entropy, churn_rate);
         let high_churn_warning = TopicStabilityResponse::is_high_churn(churn_rate);
 
+        // Get phase breakdown from cluster manager topics
+        let cluster_manager = self.cluster_manager.read();
+        let topics = cluster_manager.get_topics();
+        let phases = compute_phase_breakdown(topics);
+
         let response = TopicStabilityResponse {
             churn_rate,
             entropy,
-            phases: PhaseBreakdown::default(),
+            phases,
             dream_recommended,
             high_churn_warning,
-            average_churn: churn_rate,
+            average_churn,
         };
 
-        debug!(
+        info!(
             churn_rate = response.churn_rate,
             entropy = response.entropy,
+            average_churn = response.average_churn,
             dream_recommended = response.dream_recommended,
             high_churn_warning = response.high_churn_warning,
             "get_topic_stability: Returning stability response"
@@ -278,29 +377,61 @@ impl Handlers {
             "detect_topics: Starting topic detection"
         );
 
-        // Topic detection will be performed when clustering module is fully integrated
-        // For now, return a response indicating the placeholder status
-        let response = DetectTopicsResponse {
-            new_topics: vec![],
-            merged_topics: vec![],
-            total_after: 0,
-            message: Some(format!(
-                "Topic detection ready - {} memories available, min_cluster_size={}",
-                memory_count, MIN_MEMORIES_FOR_CLUSTERING
-            )),
-        };
+        // TASK-INTEG-TOPIC: Trigger reclustering via cluster_manager
+        let mut cluster_manager = self.cluster_manager.write();
 
-        debug!(
-            new_topics = response.new_topics.len(),
-            merged_topics = response.merged_topics.len(),
-            total_after = response.total_after,
-            "detect_topics: Returning detection response"
-        );
+        // Track topics before reclustering
+        let topics_before: std::collections::HashSet<uuid::Uuid> =
+            cluster_manager.get_topics().keys().cloned().collect();
 
-        self.tool_result_with_pulse(
-            id,
-            serde_json::to_value(response).expect("DetectTopicsResponse should serialize"),
-        )
+        // Run HDBSCAN reclustering
+        match cluster_manager.recluster() {
+            Ok(result) => {
+                // Track topics after reclustering
+                let topics_after = cluster_manager.get_topics();
+                let total_after = topics_after.len();
+
+                // Find new topics (in after but not in before)
+                let new_topics: Vec<TopicSummary> = topics_after
+                    .values()
+                    .filter(|t| !topics_before.contains(&t.id))
+                    .map(topic_to_summary)
+                    .collect();
+
+                // Note: Merged topics detection would require tracking merge operations
+                // For now, we report new topics only
+                let merged_topics = vec![];
+
+                info!(
+                    new_topics = new_topics.len(),
+                    total_after = total_after,
+                    clusters_found = result.total_clusters,
+                    "detect_topics: Reclustering completed successfully"
+                );
+
+                let response = DetectTopicsResponse {
+                    new_topics,
+                    merged_topics,
+                    total_after,
+                    message: Some(format!(
+                        "Topic detection completed - {} clusters across 13 spaces, {} topics with weighted_agreement >= 2.5",
+                        result.total_clusters, total_after
+                    )),
+                };
+
+                self.tool_result_with_pulse(
+                    id,
+                    serde_json::to_value(response).expect("DetectTopicsResponse should serialize"),
+                )
+            }
+            Err(e) => {
+                error!(error = %e, "detect_topics: Reclustering failed");
+                self.tool_error_with_pulse(
+                    id,
+                    &format!("Clustering error: {}", e),
+                )
+            }
+        }
     }
 
     /// Handle get_divergence_alerts tool call.

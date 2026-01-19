@@ -486,7 +486,7 @@ mod tests {
         );
         assert_eq!(
             HookError::crisis(0.45).to_string(),
-            "Crisis threshold breached: IC=0.45"
+            "Crisis threshold breached: stability=0.45"
         );
         assert_eq!(
             HookError::session_not_found("abc-123").to_string(),

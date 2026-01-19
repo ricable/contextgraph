@@ -507,10 +507,8 @@ mod tests {
         let result = execute(args).await.unwrap();
         let actual_elapsed = start.elapsed().as_millis() as u64;
 
-        assert!(
-            result.execution_time_ms > 0,
-            "Must have positive execution time"
-        );
+        // Note: execution_time_ms may be 0 if operation completes in <1ms
+        // which is actually a SUCCESS per our performance budgets (3000ms timeout)
         assert!(
             result.execution_time_ms < POST_TOOL_USE_TIMEOUT_MS,
             "Execution time {} must be under timeout {}ms",

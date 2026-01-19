@@ -54,6 +54,7 @@ pub mod batch;
 pub mod cache;
 pub mod config;
 pub mod error;
+pub mod global_provider;
 pub mod gpu;
 pub mod models;
 pub mod provider;
@@ -105,4 +106,9 @@ pub use storage::{
 // Pruning re-exports
 pub use pruning::{
     ImportanceScoringMethod, PrunedEmbeddings, TokenPruningConfig, TokenPruningQuantizer,
+};
+
+// Global warm provider re-exports (TASK-EMB-016)
+pub use global_provider::{
+    get_warm_provider, initialize_global_warm_provider, is_warm_initialized, warm_status_message,
 };

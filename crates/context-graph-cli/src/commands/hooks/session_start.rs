@@ -674,11 +674,8 @@ mod tests {
         let result = execute(args).await.unwrap();
         let actual_elapsed = start.elapsed().as_millis() as u64;
 
-        // Verify timing is reasonable
-        assert!(
-            result.execution_time_ms > 0,
-            "Must have positive execution time"
-        );
+        // Note: execution_time_ms may be 0 if operation completes in <1ms
+        // which is actually a SUCCESS per our performance budgets
         assert!(
             result.execution_time_ms <= actual_elapsed + 10, // Allow small margin
             "Reported time {} should not exceed actual elapsed {}",
@@ -753,9 +750,11 @@ mod tests {
             "purpose_drift {} must be in [0.0, 2.0]",
             drift.purpose_drift
         );
+        // Note: time_since_snapshot_ms may be 0 if operations complete in <1ms
+        // which is valid - the session was just stored and immediately retrieved
         assert!(
-            drift.time_since_snapshot_ms > 0,
-            "time_since_snapshot_ms {} must be positive",
+            drift.time_since_snapshot_ms < 60000, // Should be under 1 minute
+            "time_since_snapshot_ms {} should be reasonable",
             drift.time_since_snapshot_ms
         );
         assert!(

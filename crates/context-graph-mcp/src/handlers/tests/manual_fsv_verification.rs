@@ -3,7 +3,7 @@
 //! This module performs REAL verification by directly inspecting Sources of Truth.
 //! NOT relying on handler return values - physically checking data stores.
 //!
-//! TASK-GAP-001: Updated to use Handlers::with_all() after PRD v6 refactor.
+//! TASK-GAP-001: Updated to use Handlers::with_defaults() after PRD v6 refactor.
 //! Removed MetaUtlTracker references (deleted in commit fab0622).
 //! Updated to use PRD v6 API (tools/call with 6 supported tools).
 //!
@@ -122,7 +122,7 @@ async fn manual_fsv_memory_store_physical_verification() {
     let hierarchy = Arc::new(RwLock::new(create_test_hierarchy()));
     let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    let handlers = Handlers::with_all(
+    let handlers = Handlers::with_defaults(
         store.clone(),
         utl_processor,
         multi_array,
@@ -282,7 +282,7 @@ async fn manual_fsv_edge_case_empty_content() {
     let hierarchy = Arc::new(RwLock::new(create_test_hierarchy()));
     let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    let handlers = Handlers::with_all(
+    let handlers = Handlers::with_defaults(
         store.clone(),
         utl_processor,
         multi_array,
@@ -344,7 +344,7 @@ async fn manual_fsv_edge_case_search_empty_store() {
     let hierarchy = Arc::new(RwLock::new(create_test_hierarchy()));
     let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    let handlers = Handlers::with_all(
+    let handlers = Handlers::with_defaults(
         store.clone(),
         utl_processor,
         multi_array,
@@ -396,7 +396,7 @@ async fn manual_fsv_edge_case_memetic_status() {
     let hierarchy = Arc::new(RwLock::new(create_test_hierarchy()));
     let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    let handlers = Handlers::with_all(
+    let handlers = Handlers::with_defaults(
         store.clone(),
         utl_processor,
         multi_array,

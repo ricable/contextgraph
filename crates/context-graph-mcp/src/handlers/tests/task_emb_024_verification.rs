@@ -32,7 +32,7 @@ use crate::protocol::{error_codes, JsonRpcId, JsonRpcRequest};
 
 /// Create test handlers using Handlers::with_all (which uses StubLayerStatusProvider).
 ///
-/// TASK-GAP-001: Updated to use Handlers::with_all() after PRD v6 refactor.
+/// TASK-GAP-001: Updated to use Handlers::with_defaults() after PRD v6 refactor.
 /// This is the configuration that TASK-EMB-024 requires to fail-fast.
 fn create_handlers_with_stub_monitors() -> Handlers {
     let store: Arc<dyn TeleologicalMemoryStore> = Arc::new(InMemoryTeleologicalStore::new());
@@ -41,7 +41,7 @@ fn create_handlers_with_stub_monitors() -> Handlers {
     let goal_hierarchy = GoalHierarchy::default();
     let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    Handlers::with_all(
+    Handlers::with_defaults(
         store,
         utl_processor,
         multi_array,

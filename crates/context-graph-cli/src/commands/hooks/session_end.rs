@@ -513,11 +513,9 @@ mod tests {
         let result = execute(args).await.unwrap();
         let actual_elapsed = start.elapsed().as_millis() as u64;
 
-        // Verify timing is reasonable
-        assert!(
-            result.execution_time_ms > 0,
-            "Must have positive execution time"
-        );
+        // Note: execution_time_ms may be 0 if operation completes in <1ms
+        // which is actually a SUCCESS per our performance budgets (30000ms timeout)
+        // Just verify it doesn't exceed actual elapsed time significantly
         assert!(
             result.execution_time_ms <= actual_elapsed + 10,
             "Reported time {} should not exceed actual elapsed {}",

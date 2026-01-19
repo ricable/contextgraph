@@ -51,7 +51,10 @@ use context_graph_core::traits::{
     MultiArrayEmbeddingProvider, TeleologicalMemoryStore, UtlProcessor,
 };
 
-use context_graph_embeddings::{GpuConfig, ProductionMultiArrayProvider};
+use context_graph_embeddings::{
+    get_warm_provider, initialize_global_warm_provider, is_warm_initialized, warm_status_message,
+    GpuConfig, ProductionMultiArrayProvider,
+};
 
 // REAL implementations - NO STUBS
 use crate::adapters::{LazyMultiArrayProvider, UtlProcessorAdapter};
@@ -147,32 +150,58 @@ impl McpServer {
         // ==========================================================================
         // 3. REAL MultiArrayEmbeddingProvider - 13 GPU-accelerated embedders
         // ==========================================================================
-        // TASK-F007 COMPLETED: ProductionMultiArrayProvider orchestrates all 13 embedders
-        // - E1-E5: Semantic, Temporal (3 variants), Causal
-        // - E6, E13: Sparse embedders (SPLADE)
-        // - E7-E11: Code, Graph, HDC, Multimodal, Entity
-        // - E12: Late-interaction (ColBERT)
+        // TASK-EMB-016: Use global warm provider singleton
+        //
+        // The global warm provider ensures:
+        // - All 13 models are loaded ONCE at startup into VRAM
+        // - Tests and production code use the SAME warm models
+        // - No cold loading overhead in tests or runtime
         //
         // GPU Requirements: NVIDIA CUDA GPU with 8GB+ VRAM
         // Model Directory: ./models relative to binary (configurable via env)
         //
-        // LAZY-STARTUP: Models are loaded in a background task to allow immediate
-        // MCP protocol response. The server will be ready for protocol messages
-        // immediately, but embedding tools will return "models loading" until ready.
-        let models_dir = Self::resolve_models_path(&config);
-        info!(
-            "Will load ProductionMultiArrayProvider with models from {:?} (background)...",
-            models_dir
-        );
+        // STARTUP BEHAVIOR:
+        // - If global warm provider is already initialized (from CLI or test fixture),
+        //   use it directly with no loading delay
+        // - If not initialized, use background loading via LazyMultiArrayProvider
+        //   for immediate MCP protocol response
 
-        // Create shared state for lazy model loading
+        // Create shared state for model provider
         let multi_array_provider: Arc<RwLock<Option<Arc<dyn MultiArrayEmbeddingProvider>>>> =
             Arc::new(RwLock::new(None));
         let models_loading = Arc::new(AtomicBool::new(true));
         let models_failed: Arc<RwLock<Option<String>>> = Arc::new(RwLock::new(None));
 
-        // Spawn background task to load models
-        {
+        // Check if global warm provider is already initialized
+        let warm_provider_initialized = is_warm_initialized();
+
+        if warm_provider_initialized {
+            // Use the already-warm global provider
+            info!("Global warm provider already initialized - using warm models immediately");
+            match get_warm_provider() {
+                Ok(provider) => {
+                    let mut slot = multi_array_provider.write().await;
+                    *slot = Some(provider);
+                    models_loading.store(false, Ordering::SeqCst);
+                    info!("Using global warm provider - all 13 models ready (no loading delay)");
+                }
+                Err(e) => {
+                    error!("Failed to get global warm provider: {}. Status: {}", e, warm_status_message());
+                    let mut failed = models_failed.write().await;
+                    *failed = Some(format!("{}", e));
+                    models_loading.store(false, Ordering::SeqCst);
+                }
+            }
+        } else {
+            // Initialize global warm provider in background
+            // This allows immediate MCP protocol response while models load
+            info!("Global warm provider not yet initialized - loading in background...");
+            let models_dir = Self::resolve_models_path(&config);
+            info!(
+                "Will load ProductionMultiArrayProvider with models from {:?} (background)...",
+                models_dir
+            );
+
             let provider_slot = Arc::clone(&multi_array_provider);
             let loading_flag = Arc::clone(&models_loading);
             let failed_slot = Arc::clone(&models_failed);
@@ -180,27 +209,55 @@ impl McpServer {
 
             tokio::spawn(async move {
                 info!("Background model loading started...");
-                match ProductionMultiArrayProvider::new(models_dir_clone.clone(), GpuConfig::default()).await {
-                    Ok(provider) => {
-                        let mut slot = provider_slot.write().await;
-                        *slot = Some(Arc::new(provider));
-                        loading_flag.store(false, Ordering::SeqCst);
-                        info!("Background model loading COMPLETE - 13 embedders ready");
+
+                // First try to initialize global warm provider
+                match initialize_global_warm_provider().await {
+                    Ok(()) => {
+                        // Global provider initialized, get it
+                        match get_warm_provider() {
+                            Ok(provider) => {
+                                let mut slot = provider_slot.write().await;
+                                *slot = Some(provider);
+                                loading_flag.store(false, Ordering::SeqCst);
+                                info!("Global warm provider initialized - 13 embedders ready (warm)");
+                            }
+                            Err(e) => {
+                                error!("Failed to get global warm provider after init: {}", e);
+                                let mut failed = failed_slot.write().await;
+                                *failed = Some(format!("{}", e));
+                                loading_flag.store(false, Ordering::SeqCst);
+                            }
+                        }
                     }
                     Err(e) => {
-                        error!(
-                            "FATAL: Background model loading FAILED: {}. \
-                             Ensure models exist at {:?} and CUDA GPU is available.",
-                            e, models_dir_clone
+                        // Global warm provider failed, fall back to direct ProductionMultiArrayProvider
+                        warn!(
+                            "Global warm provider initialization failed: {}. Falling back to direct loading.",
+                            e
                         );
-                        let mut failed = failed_slot.write().await;
-                        *failed = Some(format!("{}", e));
-                        loading_flag.store(false, Ordering::SeqCst);
+
+                        match ProductionMultiArrayProvider::new(models_dir_clone.clone(), GpuConfig::default()).await {
+                            Ok(provider) => {
+                                let mut slot = provider_slot.write().await;
+                                *slot = Some(Arc::new(provider));
+                                loading_flag.store(false, Ordering::SeqCst);
+                                info!("Background model loading COMPLETE - 13 embedders ready (cold loaded)");
+                            }
+                            Err(e) => {
+                                error!(
+                                    "FATAL: Background model loading FAILED: {}. \
+                                     Ensure models exist at {:?} and CUDA GPU is available.",
+                                    e, models_dir_clone
+                                );
+                                let mut failed = failed_slot.write().await;
+                                *failed = Some(format!("{}", e));
+                                loading_flag.store(false, Ordering::SeqCst);
+                            }
+                        }
                     }
                 }
             });
         }
-        info!("Spawned background task to load 13 embedding models (GPU-accelerated)");
 
         // Create lazy provider wrapper for immediate MCP startup
         let lazy_provider: Arc<dyn MultiArrayEmbeddingProvider> = Arc::new(LazyMultiArrayProvider::new(
@@ -216,14 +273,15 @@ impl McpServer {
         let layer_status_provider: Arc<dyn context_graph_core::monitoring::LayerStatusProvider> =
             Arc::new(context_graph_core::monitoring::StubLayerStatusProvider::new());
 
-        let handlers = Handlers::with_all(
+        // TASK-INTEG-TOPIC: Use with_defaults to automatically create clustering components
+        let handlers = Handlers::with_defaults(
             Arc::clone(&teleological_store),
             Arc::clone(&utl_processor),
             lazy_provider,
             goal_hierarchy,
             layer_status_provider,
         );
-        info!("Created Handlers for PRD v6 tools: inject_context, store_memory, get_memetic_status, search_graph, trigger_consolidation, merge_concepts");
+        info!("Created Handlers with 14 MCP tools including topic detection and clustering");
 
         info!("MCP Server initialization complete - TeleologicalFingerprint mode with 13 embeddings");
 

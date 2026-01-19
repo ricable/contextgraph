@@ -93,12 +93,15 @@ impl Default for ToolRegistry {
 ///
 /// Uses existing definitions from tools/definitions/ modules.
 ///
-/// Per PRD v6 Section 10, only 6 tools are exposed:
+/// Per PRD v6 Section 10, 14 tools are exposed:
 ///
 /// | Category | Count | Source |
 /// |----------|-------|--------|
 /// | Core | 5 | definitions/core.rs |
 /// | Merge | 1 | definitions/merge.rs |
+/// | Curation | 2 | definitions/curation.rs |
+/// | Topic | 4 | definitions/topic.rs |
+/// | Dream | 2 | definitions/dream.rs |
 pub fn register_all_tools() -> ToolRegistry {
     use super::definitions;
 
@@ -114,11 +117,26 @@ pub fn register_all_tools() -> ToolRegistry {
         registry.register(tool);
     }
 
-    // Verify expected tool count (PRD v6: 6 tools)
+    // Register curation tools (2): forget_concept, boost_importance
+    for tool in definitions::curation::definitions() {
+        registry.register(tool);
+    }
+
+    // Register topic tools (4): get_topic_portfolio, get_topic_stability, detect_topics, get_divergence_alerts
+    for tool in definitions::topic::definitions() {
+        registry.register(tool);
+    }
+
+    // Register dream tools (2): trigger_dream, get_dream_status
+    for tool in definitions::dream::definitions() {
+        registry.register(tool);
+    }
+
+    // Verify expected tool count (PRD v6: 14 tools)
     let actual_count = registry.len();
     assert_eq!(
-        actual_count, 6,
-        "Expected 6 tools per PRD v6, got {}. Check definitions modules.",
+        actual_count, 14,
+        "Expected 14 tools per PRD v6, got {}. Check definitions modules.",
         actual_count
     );
 
@@ -140,7 +158,7 @@ mod tests {
     #[test]
     fn test_register_all_tools_count() {
         let registry = register_all_tools();
-        assert_eq!(registry.len(), 6, "Must have exactly 6 tools per PRD v6");
+        assert_eq!(registry.len(), 14, "Must have exactly 14 tools per PRD v6");
     }
 
     #[test]
@@ -169,10 +187,44 @@ mod tests {
     fn test_list_returns_all_tools_sorted() {
         let registry = register_all_tools();
         let tools = registry.list();
-        assert_eq!(tools.len(), 6);
+        assert_eq!(tools.len(), 14);
 
         for i in 1..tools.len() {
             assert!(tools[i - 1].name <= tools[i].name);
+        }
+    }
+
+    #[test]
+    fn test_all_14_tools_registered() {
+        let registry = register_all_tools();
+        let expected_tools = [
+            // Core (5)
+            "inject_context",
+            "store_memory",
+            "get_memetic_status",
+            "search_graph",
+            "trigger_consolidation",
+            // Merge (1)
+            "merge_concepts",
+            // Curation (2)
+            "forget_concept",
+            "boost_importance",
+            // Topic (4)
+            "get_topic_portfolio",
+            "get_topic_stability",
+            "detect_topics",
+            "get_divergence_alerts",
+            // Dream (2)
+            "trigger_dream",
+            "get_dream_status",
+        ];
+
+        for name in expected_tools {
+            assert!(
+                registry.contains(name),
+                "Tool '{}' should be registered but is not",
+                name
+            );
         }
     }
 }
