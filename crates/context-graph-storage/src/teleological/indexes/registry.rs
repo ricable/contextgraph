@@ -242,13 +242,13 @@ mod tests {
 
     #[test]
     fn test_registry_creation() {
-        println!("=== TEST: Registry creates 12 HNSW indexes ===");
+        println!("=== TEST: Registry creates 11 HNSW indexes ===");
         println!("BEFORE: Creating new registry");
 
         let registry = EmbedderIndexRegistry::new();
 
         println!("AFTER: registry.len()={}", registry.len());
-        assert_eq!(registry.len(), 12);
+        assert_eq!(registry.len(), 11);
         assert!(!registry.is_empty());
 
         println!("RESULT: PASS");
@@ -401,7 +401,7 @@ mod tests {
             count += 1;
         }
 
-        assert_eq!(count, 12);
+        assert_eq!(count, 11);
         println!("RESULT: PASS - iterated over {} indexes", count);
     }
 
@@ -412,7 +412,7 @@ mod tests {
         let registry = EmbedderIndexRegistry::new();
         let embedders = registry.embedders();
 
-        assert_eq!(embedders.len(), 12);
+        assert_eq!(embedders.len(), 11);
 
         // Verify E6, E12, E13 are NOT in the list
         assert!(!embedders.contains(&EmbedderIndex::E6Sparse));
@@ -489,7 +489,7 @@ mod tests {
         println!("=== TEST: Registry implements Default ===");
 
         let registry: EmbedderIndexRegistry = Default::default();
-        assert_eq!(registry.len(), 12);
+        assert_eq!(registry.len(), 11);
 
         println!("RESULT: PASS");
     }
@@ -513,7 +513,6 @@ mod tests {
             (EmbedderIndex::E10Multimodal, 768),
             (EmbedderIndex::E11Entity, 384),
             (EmbedderIndex::E1Matryoshka128, 128),
-            (EmbedderIndex::PurposeVector, 13),
         ];
 
         for (embedder, expected_dim) in expected_dims {
@@ -537,16 +536,16 @@ mod tests {
 
         println!("Struct Verification:");
         println!("  - EmbedderIndexRegistry: HashMap<EmbedderIndex, Arc<HnswEmbedderIndex>>");
-        println!("  - 12 indexes (E1-E5, E7-E11, Matryoshka, PurposeVector)");
+        println!("  - 11 indexes (E1-E5, E7-E11, Matryoshka)");
         println!("  - Excludes E6, E12, E13 (non-HNSW)");
 
         println!();
         println!("Method Verification:");
-        println!("  - new(): Creates all 12 indexes");
+        println!("  - new(): Creates all 11 indexes");
         println!("  - get(): Returns Option (None for E6/E12/E13)");
         println!("  - get_or_panic(): Panics for E6/E12/E13");
         println!("  - get_dyn(): Returns Arc<dyn EmbedderIndexOps>");
-        println!("  - len(): Always 12");
+        println!("  - len(): Always 11");
         println!("  - iter(): Iterates over all");
         println!("  - embedders(): List of embedder types");
         println!("  - total_memory_bytes(): Sum of all indexes");
@@ -555,7 +554,7 @@ mod tests {
 
         println!();
         println!("Test Coverage:");
-        println!("  - Registry creation (12 indexes): PASS");
+        println!("  - Registry creation (11 indexes): PASS");
         println!("  - get() all HNSW embedders: PASS");
         println!("  - get() E6/E12/E13 returns None: PASS");
         println!("  - get_or_panic() HNSW: PASS");

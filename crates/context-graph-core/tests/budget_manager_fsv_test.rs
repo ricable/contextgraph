@@ -71,7 +71,7 @@ fn fsv_happy_path_selection() {
     println!("  All 5 candidates selected (total 700 tokens < 1200)");
     println!("  Each candidate within its category budget");
 
-    let (selected, stats) = TokenBudgetManager::select_with_stats(&candidates, &budget);
+    let (_selected, stats) = TokenBudgetManager::select_with_stats(&candidates, &budget);
 
     println!("\nACTUAL OUTPUT:");
     println!("  selected_count: {}", stats.selected_count);
@@ -162,7 +162,7 @@ fn fsv_high_priority_overflow() {
     println!("  Both candidates selected (overflow allowed for DivergenceAlert, priority=1)");
     println!("  Total tokens: 250 (within total budget 500)");
 
-    let (selected, stats) = TokenBudgetManager::select_with_stats(&candidates, &budget);
+    let (_selected, stats) = TokenBudgetManager::select_with_stats(&candidates, &budget);
 
     println!("\nACTUAL OUTPUT:");
     println!("  selected_count: {}", stats.selected_count);
@@ -218,7 +218,7 @@ fn fsv_low_priority_no_overflow() {
     println!("  NO candidates selected (low priority cannot overflow)");
     println!("  RecentSession priority=4, SingleSpaceMatch priority=3");
 
-    let (selected, stats) = TokenBudgetManager::select_with_stats(&candidates, &budget);
+    let (_selected, stats) = TokenBudgetManager::select_with_stats(&candidates, &budget);
 
     println!("\nACTUAL OUTPUT:");
     println!("  selected_count: {}", stats.selected_count);
@@ -270,7 +270,7 @@ fn fsv_total_budget_hard_limit() {
     println!("  C1 and C2 selected (250 tokens)");
     println!("  C3 rejected (would make 350 > 300 total)");
 
-    let (selected, stats) = TokenBudgetManager::select_with_stats(&candidates, &budget);
+    let (_selected, stats) = TokenBudgetManager::select_with_stats(&candidates, &budget);
 
     println!("\nACTUAL OUTPUT:");
     println!("  selected_count: {}", stats.selected_count);
@@ -350,7 +350,8 @@ fn fsv_category_priority_order() {
     println!("    - C3: SingleSpaceMatch (priority=3), 50 tokens");
     println!("    - C4: HighRelevanceCluster (priority=2), 50 tokens");
 
-    let budget = TokenBudget::default();
+    // budget is used only for documentation
+    let _budget = TokenBudget::default();
 
     // Intentionally create unsorted candidates
     let mut candidates = vec![
@@ -418,7 +419,7 @@ fn fsv_zero_token_candidate() {
     println!("\nEXPECTED OUTPUT:");
     println!("  Candidate selected (0 tokens fits in any budget)");
 
-    let (selected, stats) = TokenBudgetManager::select_with_stats(&candidates, &budget);
+    let (_selected, stats) = TokenBudgetManager::select_with_stats(&candidates, &budget);
 
     println!("\nACTUAL OUTPUT:");
     println!("  selected_count: {}", stats.selected_count);

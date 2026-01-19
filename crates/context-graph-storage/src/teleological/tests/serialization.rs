@@ -15,11 +15,7 @@ fn test_serialize_teleological_roundtrip() {
     let original = create_real_fingerprint();
     println!("BEFORE: Created real fingerprint with ID: {}", original.id);
     println!("  - SemanticFingerprint: default (all 13 embedders)");
-    println!("  - PurposeVector: 13D with alignment 0.75");
-    println!(
-        "  - Evolution snapshots: {}",
-        original.purpose_evolution.len()
-    );
+    println!("  - content_hash present");
 
     let serialized = serialize_teleological_fingerprint(&original);
     println!("SERIALIZED: {} bytes", serialized.len());
@@ -28,10 +24,6 @@ fn test_serialize_teleological_roundtrip() {
 
     let deserialized = deserialize_teleological_fingerprint(&serialized);
     println!("AFTER: Deserialized fingerprint ID: {}", deserialized.id);
-    println!(
-        "  - Evolution snapshots: {}",
-        deserialized.purpose_evolution.len()
-    );
 
     assert_eq!(original.id, deserialized.id);
     assert_eq!(original.content_hash, deserialized.content_hash);
@@ -47,8 +39,8 @@ fn test_fingerprint_size_in_range() {
 
     // Actual size calculation (with E9_DIM = 1024 projected):
     // - TOTAL_DENSE_DIMS = 7,424 → 29,696 bytes for dense embeddings
-    // - Plus sparse vectors, PurposeVector (52B), metadata
-    // - Total: ~32-40KB for a fresh fingerprint with 1 evolution snapshot
+    // - Plus sparse vectors and metadata
+    // - Total: ~32-40KB for a fingerprint
     println!("BEFORE: Expected range [25KB, 100KB]");
     println!(
         "AFTER: Actual size {} bytes ({:.2}KB)",

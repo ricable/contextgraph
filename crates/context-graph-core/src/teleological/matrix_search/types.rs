@@ -35,8 +35,8 @@ pub enum ComparisonScope {
     /// Compare all components: purpose + correlations + groups
     #[default]
     Full,
-    /// Compare only the 13D purpose vector
-    PurposeVectorOnly,
+    /// Compare only the 13D topic profile
+    TopicProfileOnly,
     /// Compare only the 78 cross-correlations
     CrossCorrelationsOnly,
     /// Compare only the 6D group alignments

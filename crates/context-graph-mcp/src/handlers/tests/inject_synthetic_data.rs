@@ -21,9 +21,6 @@ use context_graph_storage::teleological::RocksDbTeleologicalStore;
 /// Production database path - this is the REAL database
 const PRODUCTION_DB_PATH: &str = "/home/cabdru/contextgraph/contextgraph_data";
 
-/// Number of embedders
-const NUM_EMBEDDERS: usize = 13;
-
 /// Embedding dimensions from semantic/constants.rs
 const E1_DIM: usize = 1024; // Semantic
 const E2_DIM: usize = 512; // Temporal Recent
@@ -105,9 +102,8 @@ fn create_synthetic_fingerprint(content: &str, topic: &str) -> TeleologicalFinge
     // Create synthetic semantic fingerprint with varied embedding values
     let semantic = create_synthetic_semantic(content, &content_hash);
 
-    // PurposeVector was removed from TeleologicalFingerprint
-    // topic parameter is no longer used for purpose alignment
-    let _ = topic; // Suppress unused variable warning
+    // topic parameter is preserved for API compatibility
+    let _ = topic;
 
     TeleologicalFingerprint::new(semantic, content_hash)
 }
@@ -212,9 +208,6 @@ fn create_synthetic_semantic(content: &str, hash: &[u8; 32]) -> SemanticFingerpr
         },
     }
 }
-
-// NOTE: create_synthetic_purpose_vector was removed along with PurposeVector.
-// TeleologicalFingerprint no longer has a purpose_vector field.
 
 /// Inject synthetic data into the PRODUCTION database.
 ///

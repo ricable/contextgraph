@@ -52,12 +52,12 @@ impl MatrixSearchConfig {
         }
     }
 
-    /// Create config for purpose-aligned search
-    pub fn purpose_aligned() -> Self {
+    /// Create config for topic-profile-focused search
+    pub fn topic_profile_focused() -> Self {
         Self {
             strategy: SearchStrategy::Cosine,
-            scope: ComparisonScope::PurposeVectorOnly,
-            weights: ComponentWeights::purpose_focused(),
+            scope: ComparisonScope::TopicProfileOnly,
+            weights: ComponentWeights::topic_focused(),
             ..Default::default()
         }
     }

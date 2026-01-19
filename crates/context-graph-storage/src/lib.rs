@@ -16,21 +16,18 @@
 //! - `serialization`: Bincode serialization utilities
 //! - `indexes`: Secondary index operations (tags, temporal, sources)
 //!
-//! # Column Families (35 total per PRD v6)
+//! # Column Families (32 total per PRD v6)
 //!
 //! Base (8): nodes, edges, embeddings, metadata, temporal, tags, sources, system
 //! Teleological (11): fingerprints, purpose_vectors, e13_splade_inverted, e1_matryoshka_128,
 //!                    synergy_matrix, teleological_profiles, teleological_vectors
 //! Quantized Embedder (13): emb_0..emb_12
-//! Autonomous (5): autonomous_config, adaptive_threshold_state, autonomous_lineage,
-//!                 consolidation_history, memory_curation
 //!
 //! # Constitution Reference
 //! - db.dev: sqlite (ghost phase), db.prod: postgres16+
 //! - db.vector: faiss_gpu (separate from RocksDB node storage)
 //! - SEC-06: Soft delete 30-day recovery
 
-pub mod autonomous;
 pub mod column_families;
 pub mod indexes;
 pub mod memex;
@@ -170,36 +167,3 @@ pub use teleological::{
     TELEOLOGICAL_VERSION,
 };
 
-// Re-export autonomous storage types (TASK-NORTH-007)
-// TASK-P0-004: Removed drift_history and goal_activity_metrics exports
-pub use autonomous::{
-    // CF option builders (5 after TASK-P0-004)
-    adaptive_threshold_state_cf_options,
-    autonomous_config_cf_options,
-    autonomous_lineage_cf_options,
-    // Key format functions (remaining after TASK-P0-004)
-    autonomous_lineage_key,
-    autonomous_lineage_timestamp_prefix,
-    consolidation_history_cf_options,
-    consolidation_history_key,
-    consolidation_history_timestamp_prefix,
-    // Descriptor getter
-    get_autonomous_cf_descriptors,
-    memory_curation_cf_options,
-    memory_curation_key,
-    parse_autonomous_lineage_key,
-    parse_consolidation_history_key,
-    parse_memory_curation_key,
-    // Singleton key constants
-    ADAPTIVE_THRESHOLD_STATE_KEY,
-    // CF arrays and counts
-    AUTONOMOUS_CFS,
-    AUTONOMOUS_CF_COUNT,
-    AUTONOMOUS_CONFIG_KEY,
-    // Column family names (5 after TASK-P0-004)
-    CF_ADAPTIVE_THRESHOLD_STATE,
-    CF_AUTONOMOUS_CONFIG,
-    CF_AUTONOMOUS_LINEAGE,
-    CF_CONSOLIDATION_HISTORY,
-    CF_MEMORY_CURATION,
-};

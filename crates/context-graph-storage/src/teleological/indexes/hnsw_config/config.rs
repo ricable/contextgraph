@@ -177,13 +177,6 @@ mod tests {
     }
 
     #[test]
-    fn test_purpose_vector() {
-        let cfg = HnswConfig::purpose_vector();
-        assert_eq!(cfg.dimension, 13);
-        assert_eq!(cfg.m, 16);
-    }
-
-    #[test]
     fn test_inverted_index_e6() {
         let cfg = InvertedIndexConfig::e6_sparse();
         assert_eq!(cfg.vocab_size, 30_522);

@@ -44,8 +44,8 @@ impl ComponentWeights {
         }
     }
 
-    /// Weights emphasizing purpose alignment (for goal-directed search)
-    pub fn purpose_focused() -> Self {
+    /// Weights emphasizing topic profile (for semantic topic search)
+    pub fn topic_focused() -> Self {
         Self {
             purpose_vector: 0.6,
             cross_correlations: 0.2,

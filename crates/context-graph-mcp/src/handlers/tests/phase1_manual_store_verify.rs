@@ -156,11 +156,11 @@ async fn phase1_manual_store_verify() {
             .expect("retrieve() should work");
 
         if let Some(fp) = &retrieved {
+            // NOTE: purpose_vector was removed from TeleologicalFingerprint
             println!(
-                "  [{}] {} EXISTS - aggregate={:.4}, access_count={}, hash={}...",
+                "  [{}] {} EXISTS - access_count={}, hash={}...",
                 i + 1,
                 fingerprint_id,
-                fp.purpose_vector.aggregate_alignment(),
                 fp.access_count,
                 hex::encode(&fp.content_hash[..8])
             );
@@ -245,10 +245,8 @@ async fn phase1_verify_mcp_retrieve_matches_store() {
 
     println!("[DIRECT STORE] Retrieved fingerprint:");
     println!("  - ID: {}", direct_fp.id);
-    println!(
-        "  - aggregate: {:.4}",
-        direct_fp.purpose_vector.aggregate_alignment()
-    );
+    // NOTE: purpose_vector was removed from TeleologicalFingerprint
+    println!("  - access_count: {}", direct_fp.access_count);
     println!("  - content_hash: {}", hex::encode(direct_fp.content_hash));
 
     // === MCP HANDLER RETRIEVE ===

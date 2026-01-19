@@ -57,6 +57,7 @@ impl Handlers {
     /// * `layer_status_provider` - Provider for layer status information
     /// * `cluster_manager` - Multi-space cluster manager for topic detection
     /// * `stability_tracker` - Topic stability tracker for portfolio metrics
+    #[allow(dead_code)]
     pub fn with_all(
         teleological_store: Arc<dyn TeleologicalMemoryStore>,
         utl_processor: Arc<dyn UtlProcessor>,

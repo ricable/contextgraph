@@ -56,9 +56,6 @@ impl TeleologicalMemoryStore for RocksDbTeleologicalStore {
         self.search_semantic_async(query, options).await
     }
 
-    // Note: search_purpose was removed when PurposeVector/alignment fields were
-    // removed from TeleologicalFingerprint. Use search_semantic instead.
-
     async fn search_text(
         &self,
         text: &str,

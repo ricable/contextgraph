@@ -66,7 +66,7 @@ impl Handlers {
         // This must be done before TeleologicalFingerprint::new() moves the semantic fingerprint.
         let cluster_array = embedding_output.fingerprint.to_cluster_array();
 
-        // Create TeleologicalFingerprint (no PurposeVector - alignment removed)
+        // Create TeleologicalFingerprint from embeddings
         let fingerprint =
             TeleologicalFingerprint::new(embedding_output.fingerprint, content_hash);
         let fingerprint_id = fingerprint.id;
@@ -178,7 +178,7 @@ impl Handlers {
         // This must be done before TeleologicalFingerprint::new() moves the semantic fingerprint.
         let cluster_array = embedding_output.fingerprint.to_cluster_array();
 
-        // Create TeleologicalFingerprint (no PurposeVector - alignment removed)
+        // Create TeleologicalFingerprint from embeddings
         let fingerprint =
             TeleologicalFingerprint::new(embedding_output.fingerprint, content_hash);
         let fingerprint_id = fingerprint.id;

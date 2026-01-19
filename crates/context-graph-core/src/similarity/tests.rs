@@ -481,32 +481,8 @@ async fn test_weighting_strategy_static() {
     assert!(result.score >= 0.0 && result.score <= 1.0);
 }
 
-#[tokio::test]
-async fn test_weighting_strategy_purpose_aligned() {
-    let engine = DefaultCrossSpaceEngine::new();
-    let fp1 = create_test_fingerprint(1);
-    let fp2 = create_test_fingerprint(2);
-
-    let config = CrossSpaceConfig {
-        weighting_strategy: WeightingStrategy::PurposeAligned,
-        use_purpose_weighting: true,
-        include_breakdown: true,
-        ..Default::default()
-    };
-
-    let result = engine
-        .compute_similarity(&fp1, &fp2, &config)
-        .await
-        .unwrap();
-
-    println!(
-        "[TEST] Purpose-aligned: score={:.4}, purpose_contribution={:?}",
-        result.score, result.purpose_contribution
-    );
-
-    assert!(result.score >= 0.0 && result.score <= 1.0);
-    assert!(result.purpose_contribution.is_some());
-}
+// NOTE: test_weighting_strategy_purpose_aligned was removed - purpose system removed per PRD v6
+// Topics now emerge from clustering, not manual goal/purpose setting
 
 // ============================================================================
 // Explanation Tests

@@ -32,7 +32,6 @@ use super::{
 // ============================================================================
 
 /// Create a test fingerprint with known content.
-/// Note: importance parameter is no longer used (PurposeVector was removed).
 fn create_test_fingerprint(content: &str, _importance: f32) -> TeleologicalFingerprint {
     // Compute content hash
     let content_hash: [u8; 32] = {
@@ -41,10 +40,8 @@ fn create_test_fingerprint(content: &str, _importance: f32) -> TeleologicalFinge
         hasher.finalize().into()
     };
 
-    // Create semantic fingerprint
+    // Create semantic fingerprint and teleological fingerprint
     let semantic = SemanticFingerprint::zeroed();
-
-    // Create fingerprint (PurposeVector was removed from TeleologicalFingerprint)
     TeleologicalFingerprint::new(semantic, content_hash)
 }
 

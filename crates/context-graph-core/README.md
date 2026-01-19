@@ -47,7 +47,7 @@ context-graph-core/
 ├── types/              # Core domain types
 │   ├── memory_node/    # MemoryNode, NodeMetadata, ValidationError
 │   ├── graph_edge/     # GraphEdge, EdgeId
-│   ├── fingerprint/    # TeleologicalFingerprint, SemanticFingerprint, PurposeVector
+│   ├── fingerprint/    # TeleologicalFingerprint, SemanticFingerprint, TopicProfile
 │   ├── pulse.rs        # CognitivePulse, SuggestedAction
 │   ├── utl.rs          # UtlMetrics, EmotionalState
 │   └── nervous.rs      # LayerId, NervousSystemState

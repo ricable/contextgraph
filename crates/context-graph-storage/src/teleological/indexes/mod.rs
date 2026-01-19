@@ -123,7 +123,7 @@ mod tests {
 
         // Verify function exports
         let configs = all_hnsw_configs();
-        assert_eq!(configs.len(), 12);
+        assert_eq!(configs.len(), 11);
 
         println!("RESULT: PASS");
     }
@@ -180,11 +180,11 @@ mod tests {
         println!("\n=== TASK-F005 ACCEPTANCE CRITERIA VERIFICATION ===");
         println!();
 
-        // AC1: EmbedderIndex enum: 15 variants
-        println!("AC1: EmbedderIndex has 15 variants");
+        // AC1: EmbedderIndex enum: 14 variants
+        println!("AC1: EmbedderIndex has 14 variants");
         let hnsw = EmbedderIndex::all_hnsw();
-        assert_eq!(hnsw.len(), 12); // 15 - 3 (E6, E12, E13)
-        println!("    - 12 HNSW variants verified");
+        assert_eq!(hnsw.len(), 11); // 14 - 3 (E6, E12, E13)
+        println!("    - 11 HNSW variants verified");
         println!("    - 3 non-HNSW variants (E6, E12, E13)");
         println!("    PASS");
 
@@ -226,11 +226,11 @@ mod tests {
         assert!(get_hnsw_config(EmbedderIndex::E13Splade).is_none());
         println!("    PASS");
 
-        // AC6: all_hnsw_configs returns 12 entries
+        // AC6: all_hnsw_configs returns 11 entries
         println!();
-        println!("AC6: all_hnsw_configs returns HashMap with 12 entries");
+        println!("AC6: all_hnsw_configs returns HashMap with 11 entries");
         let configs = all_hnsw_configs();
-        assert_eq!(configs.len(), 12);
+        assert_eq!(configs.len(), 11);
         println!("    PASS");
 
         // AC7: get_inverted_index_config returns Some for E6, E13 only
@@ -310,7 +310,7 @@ mod tests {
         println!("=== TEST: Module exports EmbedderIndexRegistry (TASK-CORE-007) ===");
 
         let registry = EmbedderIndexRegistry::new();
-        assert_eq!(registry.len(), 12);
+        assert_eq!(registry.len(), 11);
 
         // Verify get() for HNSW embedder
         let e1_index = registry.get(EmbedderIndex::E1Semantic);
@@ -350,20 +350,20 @@ mod tests {
         // insert, remove, search, insert_batch, flush, memory_bytes tested elsewhere
         println!("    PASS");
 
-        // AC2: HnswEmbedderIndex for all 12 HNSW embedders
+        // AC2: HnswEmbedderIndex for all 11 HNSW embedders
         println!();
-        println!("AC2: HnswEmbedderIndex works for all 12 HNSW embedders");
+        println!("AC2: HnswEmbedderIndex works for all 11 HNSW embedders");
         for embedder in EmbedderIndex::all_hnsw() {
             let idx = HnswEmbedderIndex::new(embedder);
             assert!(idx.config().dimension >= 1);
         }
         println!("    PASS");
 
-        // AC3: EmbedderIndexRegistry manages 12 indexes
+        // AC3: EmbedderIndexRegistry manages 11 indexes
         println!();
-        println!("AC3: EmbedderIndexRegistry manages 12 indexes");
+        println!("AC3: EmbedderIndexRegistry manages 11 indexes");
         let registry = EmbedderIndexRegistry::new();
-        assert_eq!(registry.len(), 12);
+        assert_eq!(registry.len(), 11);
         println!("    PASS");
 
         // AC4: FAIL FAST - E6/E12/E13 return None from registry
@@ -443,16 +443,16 @@ mod tests {
         println!("\n=== EDGE CASE VERIFICATION WITH SYNTHETIC DATA ===");
         println!();
 
-        // Edge case 1: Very small vectors (PurposeVector 13D)
-        println!("Edge 1: PurposeVector 13D index");
-        let pv_index = HnswEmbedderIndex::new(EmbedderIndex::PurposeVector);
-        assert_eq!(pv_index.config().dimension, 13);
-        let pv_id = Uuid::new_v4();
-        let pv_vec: Vec<f32> = (0..13).map(|i| (i as f32) / 13.0).collect();
-        pv_index.insert(pv_id, &pv_vec).unwrap();
-        let pv_results = pv_index.search(&pv_vec, 1, None).unwrap();
-        assert_eq!(pv_results.len(), 1);
-        assert_eq!(pv_results[0].0, pv_id);
+        // Edge case 1: Matryoshka 128D index (smallest HNSW dimension)
+        println!("Edge 1: Matryoshka 128D index");
+        let mat_index = HnswEmbedderIndex::new(EmbedderIndex::E1Matryoshka128);
+        assert_eq!(mat_index.config().dimension, 128);
+        let mat_id = Uuid::new_v4();
+        let mat_vec: Vec<f32> = (0..128).map(|i| (i as f32) / 128.0).collect();
+        mat_index.insert(mat_id, &mat_vec).unwrap();
+        let mat_results = mat_index.search(&mat_vec, 1, None).unwrap();
+        assert_eq!(mat_results.len(), 1);
+        assert_eq!(mat_results[0].0, mat_id);
         println!("    PASS");
 
         // Edge case 2: Large vectors (E7Code 1536D)
@@ -553,7 +553,7 @@ mod tests {
         for embedder in [
             EmbedderIndex::E1Semantic,
             EmbedderIndex::E8Graph,
-            EmbedderIndex::PurposeVector,
+            EmbedderIndex::E1Matryoshka128,
         ] {
             let idx = registry.get(embedder).unwrap();
             let dim = idx.config().dimension;
@@ -579,7 +579,7 @@ mod tests {
         println!("\n=== FULL STATE VERIFICATION ===");
         println!();
 
-        // Verify all 12 indexes exist and have correct dimensions
+        // Verify all 11 indexes exist and have correct dimensions
         let registry = EmbedderIndexRegistry::new();
 
         let expected: Vec<(EmbedderIndex, usize)> = vec![
@@ -594,10 +594,9 @@ mod tests {
             (EmbedderIndex::E9HDC, 1024),
             (EmbedderIndex::E10Multimodal, 768),
             (EmbedderIndex::E11Entity, 384),
-            (EmbedderIndex::PurposeVector, 13),
         ];
 
-        println!("Verifying 12 HNSW indexes:");
+        println!("Verifying 11 HNSW indexes:");
         for (embedder, expected_dim) in &expected {
             let idx = registry.get(*embedder);
             assert!(idx.is_some(), "{:?} should have index", embedder);

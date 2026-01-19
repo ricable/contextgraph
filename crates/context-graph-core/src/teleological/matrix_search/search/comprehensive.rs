@@ -24,7 +24,7 @@ impl TeleologicalMatrixSearch {
 
         // Purpose vector only
         let pv_config = MatrixSearchConfig {
-            scope: ComparisonScope::PurposeVectorOnly,
+            scope: ComparisonScope::TopicProfileOnly,
             ..Default::default()
         };
         let pv_search = TeleologicalMatrixSearch::with_config(pv_config);

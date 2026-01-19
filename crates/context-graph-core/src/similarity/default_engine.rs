@@ -202,16 +202,6 @@ impl DefaultCrossSpaceEngine {
         }
     }
 
-    /// Normalize weights to sum to 1.0.
-    fn normalize_weights(weights: &mut [f32; NUM_EMBEDDERS]) {
-        let sum: f32 = weights.iter().sum();
-        if sum > f32::EPSILON {
-            for w in weights.iter_mut() {
-                *w /= sum;
-            }
-        }
-    }
-
     /// Compute weighted average similarity.
     fn weighted_average(scores: &[Option<f32>], weights: &[f32]) -> (f32, f32) {
         let mut sum = 0.0f32;
@@ -334,8 +324,7 @@ impl CrossSpaceSimilarityEngine for DefaultCrossSpaceEngine {
         // Step 4: Get weights based on strategy
         let weights = self.get_weights(&config.weighting_strategy);
 
-        // Note: Purpose weighting was removed when alignment/purpose fields were removed
-        // from TeleologicalFingerprint. The config.use_purpose_weighting field is now a no-op.
+        // Note: Topic weighting uses topic profile strengths from the fingerprint.
         // Weights are applied as-is based on the weighting strategy.
 
         // Step 5: Compute aggregated score
@@ -485,15 +474,15 @@ impl CrossSpaceSimilarityEngine for DefaultCrossSpaceEngine {
         match strategy {
             WeightingStrategy::Uniform => WeightingStrategy::uniform_weights(),
             WeightingStrategy::Static(weights) => *weights,
-            WeightingStrategy::PurposeAligned => {
-                // Base uniform weights - actual purpose modulation happens in compute_similarity
+            WeightingStrategy::TopicAligned => {
+                // Base uniform weights - actual topic modulation happens in compute_similarity
                 WeightingStrategy::uniform_weights()
             }
             WeightingStrategy::RRF { .. } => {
                 // RRF doesn't use weights per se, return uniform for explanation
                 WeightingStrategy::uniform_weights()
             }
-            WeightingStrategy::PurposeWeightedRRF { .. } => WeightingStrategy::uniform_weights(),
+            WeightingStrategy::TopicWeightedRRF { .. } => WeightingStrategy::uniform_weights(),
             WeightingStrategy::LateInteraction => {
                 // Emphasize E12 for late interaction
                 let mut weights = [0.05; NUM_EMBEDDERS];
@@ -614,15 +603,4 @@ mod tests {
         println!("[PASS] Constant scores variance: {}", variance);
     }
 
-    #[test]
-    fn test_normalize_weights() {
-        let mut weights = [2.0; NUM_EMBEDDERS];
-        DefaultCrossSpaceEngine::normalize_weights(&mut weights);
-        let sum: f32 = weights.iter().sum();
-        assert!(
-            (sum - 1.0).abs() < 1e-5,
-            "Normalized weights should sum to 1.0"
-        );
-        println!("[PASS] Normalized weights sum: {}", sum);
-    }
 }

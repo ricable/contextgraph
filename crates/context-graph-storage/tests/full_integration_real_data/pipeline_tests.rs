@@ -57,7 +57,6 @@ async fn test_full_storage_pipeline_real_data() {
     let search_options = context_graph_core::traits::TeleologicalSearchOptions {
         top_k: 10,
         min_similarity: 0.0,
-        min_alignment: None,
         include_deleted: false,
         embedder_indices: vec![],
         semantic_query: None,

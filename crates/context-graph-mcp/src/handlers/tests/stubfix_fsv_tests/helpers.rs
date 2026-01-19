@@ -28,7 +28,7 @@ pub(crate) const NUM_EMBEDDERS: usize = 13;
 ///
 /// Parameters:
 /// - content: Used to generate content hash and embeddings deterministically
-/// - _purpose_value: DEPRECATED - no longer used (PurposeVector removed)
+/// - _theta: Unused parameter (preserved for API compatibility)
 /// - access_count: Number of times this fingerprint has been accessed
 pub(crate) fn create_test_fingerprint(
     content: &str,
@@ -132,6 +132,3 @@ pub(crate) fn create_test_semantic(hash: &[u8; 32]) -> SemanticFingerprint {
         },
     }
 }
-
-// NOTE: create_test_purpose_vector was removed along with PurposeVector.
-// TeleologicalFingerprint no longer has a purpose_vector field.

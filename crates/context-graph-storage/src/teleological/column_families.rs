@@ -13,14 +13,13 @@ use rocksdb::{BlockBasedOptions, Cache, ColumnFamilyDescriptor, Options, SliceTr
 ///
 /// Each fingerprint contains:
 /// - SemanticFingerprint (13 embeddings, 15,120 dense dims = ~60KB)
-/// - PurposeVector (13D, 52 bytes)
-/// - PurposeEvolution (up to 100 snapshots, ~30KB max)
+/// - TopicProfile (13D, 52 bytes)
 /// - Metadata (timestamps, hash, etc.)
 pub const CF_FINGERPRINTS: &str = "fingerprints";
 
-/// Column family for 13D purpose vectors (52 bytes each).
+/// Column family for 13D topic profile vectors (52 bytes each).
 ///
-/// Stored separately from full fingerprints for fast purpose-only queries.
+/// Stored separately from full fingerprints for fast profile-only queries.
 /// Key: UUID (16 bytes) → Value: 13 × f32 = 52 bytes
 pub const CF_PURPOSE_VECTORS: &str = "purpose_vectors";
 

@@ -1,4 +1,4 @@
-//! Tests for the 5-stage retrieval pipeline.
+//! Tests for the 4-stage retrieval pipeline.
 
 #[cfg(test)]
 mod tests {
@@ -43,16 +43,12 @@ mod tests {
         // Verify default values
         assert_eq!(config.k, 10);
         assert_eq!(config.rrf_k, 60.0);
-        assert!(config.purpose_vector.is_none());
 
-        // Verify stage defaults
-        assert_eq!(config.stages[0].max_latency_ms, 5); // Stage 1
-        assert_eq!(config.stages[1].max_latency_ms, 10); // Stage 2
-        assert_eq!(config.stages[2].max_latency_ms, 20); // Stage 3
-        assert_eq!(config.stages[3].max_latency_ms, 10); // Stage 4
-        assert_eq!(config.stages[4].max_latency_ms, 15); // Stage 5
-
-        assert!((config.stages[3].min_score_threshold - 0.55).abs() < 0.001);
+        // Verify stage defaults (4 stages)
+        assert_eq!(config.stages[0].max_latency_ms, 5); // Stage 1: SpladeFilter
+        assert_eq!(config.stages[1].max_latency_ms, 10); // Stage 2: MatryoshkaAnn
+        assert_eq!(config.stages[2].max_latency_ms, 20); // Stage 3: RrfRerank
+        assert_eq!(config.stages[3].max_latency_ms, 15); // Stage 4: MaxSimRerank
 
         println!("[VERIFIED] Default config values correct");
     }
@@ -85,15 +81,13 @@ mod tests {
             .matryoshka(vec![0.5; 128])
             .semantic(vec![0.5; 1024])
             .tokens(vec![vec![0.5; 128]; 5])
-            .k(20)
-            .purpose([0.5; 13]);
+            .k(20);
 
         assert!(builder.query_splade.is_some());
         assert!(builder.query_matryoshka.is_some());
         assert!(builder.query_semantic.is_some());
         assert!(builder.query_tokens.is_some());
         assert_eq!(builder.k, Some(20));
-        assert!(builder.purpose_vector.is_some());
 
         println!("[VERIFIED] PipelineBuilder pattern works correctly");
     }
@@ -315,28 +309,6 @@ mod tests {
         println!("[VERIFIED] Wrong dimension causes FAIL FAST");
     }
 
-    #[test]
-    fn test_missing_purpose_vector_fails_fast() {
-        println!("=== TEST: Missing Purpose Vector Fails Fast ===");
-
-        let registry = Arc::new(EmbedderIndexRegistry::new());
-        let pipeline = RetrievalPipeline::new(registry, None, None);
-
-        // Stage 4 requires purpose vector
-        let result = pipeline.execute_stages(
-            &[],
-            &vec![0.5; 128],
-            &vec![0.5; 1024],
-            &[],
-            &[PipelineStage::AlignmentFilter],
-        );
-
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(matches!(err, PipelineError::MissingPurposeVector));
-
-        println!("[VERIFIED] Missing purpose vector causes FAIL FAST");
-    }
 
     // ========================================================================
     // PIPELINE STAGE TESTS
@@ -349,8 +321,7 @@ mod tests {
         assert_eq!(PipelineStage::SpladeFilter.index(), 0);
         assert_eq!(PipelineStage::MatryoshkaAnn.index(), 1);
         assert_eq!(PipelineStage::RrfRerank.index(), 2);
-        assert_eq!(PipelineStage::AlignmentFilter.index(), 3);
-        assert_eq!(PipelineStage::MaxSimRerank.index(), 4);
+        assert_eq!(PipelineStage::MaxSimRerank.index(), 3);
 
         println!("[VERIFIED] Stage indexes correct");
     }
@@ -360,11 +331,11 @@ mod tests {
         println!("=== TEST: Pipeline Stage All ===");
 
         let all = PipelineStage::all();
-        assert_eq!(all.len(), 5);
+        assert_eq!(all.len(), 4);
         assert_eq!(all[0], PipelineStage::SpladeFilter);
-        assert_eq!(all[4], PipelineStage::MaxSimRerank);
+        assert_eq!(all[3], PipelineStage::MaxSimRerank);
 
-        println!("[VERIFIED] PipelineStage::all() returns 5 stages");
+        println!("[VERIFIED] PipelineStage::all() returns 4 stages");
     }
 
     // ========================================================================
@@ -409,7 +380,6 @@ mod tests {
             stage_results: vec![],
             total_latency_us: 5000,
             stages_executed: vec![PipelineStage::SpladeFilter],
-            alignment_verified: false,
         };
 
         assert!(!result.is_empty());
@@ -466,40 +436,38 @@ mod tests {
         println!("\n=== PIPELINE.RS VERIFICATION LOG ===\n");
 
         println!("Type Verification:");
-        println!("  - PipelineError: 6 variants (Stage, Timeout, MissingQuery, EmptyCandidates, MissingPurposeVector, Search)");
-        println!("  - PipelineStage: 5 variants (SpladeFilter, MatryoshkaAnn, RrfRerank, AlignmentFilter, MaxSimRerank)");
+        println!("  - PipelineError: 5 variants (Stage, Timeout, MissingQuery, EmptyCandidates, Search)");
+        println!("  - PipelineStage: 4 variants (SpladeFilter, MatryoshkaAnn, RrfRerank, MaxSimRerank)");
         println!("  - StageConfig: 4 fields (enabled, candidate_multiplier, min_score_threshold, max_latency_ms)");
-        println!("  - PipelineConfig: 5 fields (stages, k, purpose_vector, rrf_k, rrf_embedders)");
+        println!("  - PipelineConfig: 4 fields (stages, k, rrf_k, rrf_embedders)");
         println!("  - PipelineCandidate: 3 fields (id, score, stage_scores)");
         println!("  - StageResult: 5 fields (candidates, latency_us, candidates_in, candidates_out, stage)");
-        println!("  - PipelineResult: 5 fields (results, stage_results, total_latency_us, stages_executed, alignment_verified)");
-        println!("  - RetrievalPipeline: 5 fields (single_search, multi_search, splade_index, token_storage, config)");
+        println!("  - PipelineResult: 4 fields (results, stage_results, total_latency_us, stages_executed)");
+        println!("  - RetrievalPipeline: 4 fields (single_search, multi_search, splade_index, token_storage, config)");
 
         println!("\nStage Implementation:");
         println!("  - Stage 1 (SpladeFilter): Inverted index with BM25, NOT HNSW");
         println!("  - Stage 2 (MatryoshkaAnn): HNSW with E1Matryoshka128 (128D)");
         println!("  - Stage 3 (RrfRerank): MultiEmbedderSearch with RRF scoring");
-        println!("  - Stage 4 (AlignmentFilter): PurposeVector (13D) alignment");
-        println!("  - Stage 5 (MaxSimRerank): ColBERT MaxSim token-level, NOT HNSW");
+        println!("  - Stage 4 (MaxSimRerank): ColBERT MaxSim token-level, NOT HNSW");
 
         println!("\nFAIL FAST Compliance:");
         println!("  - NaN detection: YES");
         println!("  - Inf detection: YES");
         println!("  - Dimension mismatch: YES");
-        println!("  - Missing purpose vector: YES");
         println!("  - Timeout enforcement: YES");
 
         println!("\nTest Coverage:");
         println!("  - Structural tests: 4");
         println!("  - Stage 1 tests: 4");
         println!("  - Stage 2 tests: 1");
-        println!("  - Stage 5 tests: 3");
-        println!("  - FAIL FAST tests: 3");
+        println!("  - Stage 4 tests: 3");
+        println!("  - FAIL FAST tests: 2");
         println!("  - Pipeline stage tests: 2");
         println!("  - Candidate tests: 1");
         println!("  - Result tests: 1");
         println!("  - Integration tests: 1");
-        println!("  - Total: 20+ tests");
+        println!("  - Total: 19 tests");
 
         println!("\nVERIFICATION COMPLETE");
     }

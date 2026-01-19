@@ -143,14 +143,6 @@ mod tests {
     }
 
     #[test]
-    fn test_get_hnsw_config_purpose_vector() {
-        let config = get_hnsw_config(EmbedderIndex::PurposeVector);
-        assert!(config.is_some());
-        let cfg = config.unwrap();
-        assert_eq!(cfg.dimension, 13);
-    }
-
-    #[test]
     fn test_get_hnsw_config_e5_causal() {
         let config = get_hnsw_config(EmbedderIndex::E5Causal).unwrap();
         assert_eq!(config.metric, DistanceMetric::AsymmetricCosine);
@@ -164,13 +156,12 @@ mod tests {
     }
 
     #[test]
-    fn test_all_hnsw_configs_returns_12() {
+    fn test_all_hnsw_configs_returns_11() {
         let configs = all_hnsw_configs();
-        assert_eq!(configs.len(), 12);
+        assert_eq!(configs.len(), 11);
 
         assert!(configs.contains_key(&EmbedderIndex::E1Semantic));
         assert!(configs.contains_key(&EmbedderIndex::E1Matryoshka128));
-        assert!(configs.contains_key(&EmbedderIndex::PurposeVector));
 
         assert!(!configs.contains_key(&EmbedderIndex::E6Sparse));
         assert!(!configs.contains_key(&EmbedderIndex::E12LateInteraction));

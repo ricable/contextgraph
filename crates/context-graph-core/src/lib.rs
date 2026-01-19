@@ -11,7 +11,7 @@
 //! # Architecture
 //!
 //! This crate defines:
-//! - Domain types (`TeleologicalFingerprint`, `SemanticFingerprint`, `PurposeVector`, etc.)
+//! - Domain types (`TeleologicalFingerprint`, `SemanticFingerprint`, `TopicProfile`, etc.)
 //! - Core traits (`TeleologicalMemoryStore`, `MultiArrayEmbeddingProvider`, `NervousLayer`, etc.)
 //! - Error types and result aliases
 //! - Configuration structures
@@ -29,7 +29,6 @@
 //! ```
 
 pub mod atc;
-pub mod autonomous;
 pub mod causal;
 pub mod clustering;
 pub mod config;

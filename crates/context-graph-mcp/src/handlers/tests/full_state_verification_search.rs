@@ -19,7 +19,6 @@
 
 use std::sync::Arc;
 
-use parking_lot::RwLock;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -35,19 +34,20 @@ use context_graph_core::types::fingerprint::NUM_EMBEDDERS;
 use crate::handlers::Handlers;
 use crate::protocol::JsonRpcId;
 
-use super::{create_test_hierarchy, make_request};
+use super::make_request;
 
 /// Create test handlers with SHARED access to the store for direct verification.
 ///
 /// TASK-GAP-001: Updated to use Handlers::with_defaults() after PRD v6 refactor.
 /// Returns (Handlers, Arc<InMemoryTeleologicalStore>) so tests can directly query the store.
+///
+/// Note: GoalHierarchy was removed along with the purpose module. Handlers::with_defaults
+/// now takes 4 arguments instead of 5.
 fn create_verifiable_handlers() -> (Handlers, Arc<InMemoryTeleologicalStore>) {
     let store = Arc::new(InMemoryTeleologicalStore::new());
     let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
     let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
         Arc::new(StubMultiArrayProvider::new());
-    // Must use test hierarchy with strategic goal - store handler requires it (AP-007)
-    let goal_hierarchy = create_test_hierarchy();
     let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
     // Create handlers with our store (need to clone for both uses)
@@ -56,7 +56,6 @@ fn create_verifiable_handlers() -> (Handlers, Arc<InMemoryTeleologicalStore>) {
         store_for_handlers,
         utl_processor,
         multi_array_provider,
-        Arc::new(RwLock::new(goal_hierarchy)),
         layer_status,
     );
 

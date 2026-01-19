@@ -422,8 +422,7 @@ impl Handlers {
 
     /// Check fingerprint compatibility (AP-11: merge_concepts without priors_vibe_check).
     ///
-    /// Now uses E1 semantic similarity as a compatibility check since PurposeVector
-    /// has been removed from TeleologicalFingerprint.
+    /// Uses E1 semantic similarity as a compatibility check.
     fn check_fingerprint_compatibility(
         &self,
         fingerprints: &[TeleologicalFingerprint],

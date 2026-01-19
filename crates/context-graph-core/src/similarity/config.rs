@@ -21,10 +21,10 @@ use serde::{Deserialize, Serialize};
 /// // Default RRF configuration
 /// let config = CrossSpaceConfig::default();
 ///
-/// // Custom configuration with purpose weighting
+/// // Custom configuration with topic weighting
 /// let custom = CrossSpaceConfig {
-///     weighting_strategy: WeightingStrategy::PurposeAligned,
-///     use_purpose_weighting: true,
+///     weighting_strategy: WeightingStrategy::TopicAligned,
+///     use_topic_weighting: true,
 ///     include_breakdown: true,
 ///     ..Default::default()
 /// };
@@ -40,10 +40,10 @@ pub struct CrossSpaceConfig {
     /// Default: 1
     pub min_active_spaces: usize,
 
-    /// Whether to apply purpose vector weighting on top of similarity.
-    /// When true, similarity scores are modulated by purpose alignment.
+    /// Whether to apply topic profile weighting on top of similarity.
+    /// When true, similarity scores are modulated by topic alignment.
     /// Default: false
-    pub use_purpose_weighting: bool,
+    pub use_topic_weighting: bool,
 
     /// How to handle missing embeddings in a fingerprint.
     /// Default: Skip (reduce denominator)
@@ -60,7 +60,7 @@ impl Default for CrossSpaceConfig {
         Self {
             weighting_strategy: WeightingStrategy::RRF { k: 60.0 },
             min_active_spaces: 1,
-            use_purpose_weighting: false,
+            use_topic_weighting: false,
             missing_space_handling: MissingSpaceHandling::Skip,
             include_breakdown: false,
         }
@@ -79,14 +79,14 @@ impl CrossSpaceConfig {
         }
     }
 
-    /// Create a configuration for purpose-aligned similarity.
+    /// Create a configuration for topic-profile-aligned similarity.
     ///
-    /// Uses purpose vector alignments as weights for each embedding space.
+    /// Uses topic profile strengths as weights for each embedding space.
     #[inline]
-    pub fn purpose_aligned() -> Self {
+    pub fn topic_aligned() -> Self {
         Self {
-            weighting_strategy: WeightingStrategy::PurposeAligned,
-            use_purpose_weighting: true,
+            weighting_strategy: WeightingStrategy::TopicAligned,
+            use_topic_weighting: true,
             ..Default::default()
         }
     }
@@ -121,9 +121,9 @@ impl CrossSpaceConfig {
 ///
 /// - `Uniform`: Equal weight to all active spaces (1/13 each)
 /// - `Static`: User-provided fixed weights (must sum to 1.0)
-/// - `PurposeAligned`: Weight by purpose vector alignment values
+/// - `TopicAligned`: Weight by topic profile strength values
 /// - `RRF`: Reciprocal Rank Fusion (primary strategy)
-/// - `PurposeWeightedRRF`: RRF with purpose vector modulation
+/// - `TopicWeightedRRF`: RRF with topic profile modulation
 /// - `LateInteraction`: MaxSim for E12 ColBERT embeddings
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum WeightingStrategy {
@@ -137,10 +137,10 @@ pub enum WeightingStrategy {
     /// The implementation will normalize if they don't.
     Static([f32; NUM_EMBEDDERS]),
 
-    /// Weight by purpose vector alignment values.
+    /// Weight by topic profile strength values.
     ///
-    /// Uses `PurposeVector::alignments[i]` as the weight for space i.
-    PurposeAligned,
+    /// Uses the topic profile's per-embedder strengths as weights.
+    TopicAligned,
 
     /// Reciprocal Rank Fusion - PRIMARY STRATEGY.
     ///
@@ -154,11 +154,11 @@ pub enum WeightingStrategy {
         k: f32,
     },
 
-    /// RRF with purpose vector modulation.
+    /// RRF with topic profile modulation.
     ///
     /// Formula: `RRF_weighted(d) = SUM_i (tau_i / (k + rank_i(d) + 1))`
-    /// where `tau_i` is the purpose alignment for space i.
-    PurposeWeightedRRF {
+    /// where `tau_i` is the topic alignment for space i.
+    TopicWeightedRRF {
         /// RRF constant k.
         k: f32,
     },
@@ -180,7 +180,7 @@ impl WeightingStrategy {
     /// Check if this strategy requires rank-based input (vs. similarity scores).
     #[inline]
     pub fn requires_ranks(&self) -> bool {
-        matches!(self, Self::RRF { .. } | Self::PurposeWeightedRRF { .. })
+        matches!(self, Self::RRF { .. } | Self::TopicWeightedRRF { .. })
     }
 
     /// Get uniform weights (1/NUM_EMBEDDERS for each space).
@@ -317,9 +317,9 @@ mod tests {
     #[test]
     fn test_weighting_strategy_requires_ranks() {
         assert!(WeightingStrategy::RRF { k: 60.0 }.requires_ranks());
-        assert!(WeightingStrategy::PurposeWeightedRRF { k: 60.0 }.requires_ranks());
+        assert!(WeightingStrategy::TopicWeightedRRF { k: 60.0 }.requires_ranks());
         assert!(!WeightingStrategy::Uniform.requires_ranks());
-        assert!(!WeightingStrategy::PurposeAligned.requires_ranks());
+        assert!(!WeightingStrategy::TopicAligned.requires_ranks());
         assert!(!WeightingStrategy::LateInteraction.requires_ranks());
         println!("[PASS] requires_ranks correctly identifies RRF strategies");
     }

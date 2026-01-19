@@ -28,16 +28,14 @@ pub const TELEOLOGICAL_VERSION: u8 = 1;
 ///
 /// Based on actual SemanticFingerprint size:
 /// - TOTAL_DENSE_DIMS = 7,424 → 29,696 bytes for dense embeddings (f32)
-/// - Plus sparse vectors, PurposeVector, metadata
+/// - Plus sparse vectors and metadata
 /// - Bincode may compress zeros efficiently, so actual size varies
 /// - Using conservative minimum of 5KB to allow for heavy compression
 const MIN_FINGERPRINT_SIZE: usize = 5_000;
 
 /// Maximum expected size for a serialized TeleologicalFingerprint.
 ///
-/// With 100 evolution snapshots (MAX_EVOLUTION_SNAPSHOTS), size could grow significantly.
-/// Each snapshot contains PurposeVector (52B) + trigger + timestamp.
-/// Also, maximum-size fingerprints with many sparse entries and tokens can exceed 100KB:
+/// Maximum-size fingerprints with many sparse entries and tokens can exceed 100KB:
 /// - 2000 E6 sparse entries: ~12KB (2000 * 6 bytes)
 /// - 1500 E13 SPLADE entries: ~9KB (1500 * 6 bytes)
 /// - 100 E12 tokens: ~51KB (100 * 128 * 4 bytes)

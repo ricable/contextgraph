@@ -230,7 +230,6 @@ pub const NUM_EMBEDDERS: usize = 13;
 ///
 /// # Constitution Compliance
 ///
-/// This type replaces the former `PurposeVector` which was tied to goal alignment.
 /// TopicProfile focuses on embedder-level weighting for topic detection and
 /// multi-space clustering.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

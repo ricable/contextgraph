@@ -346,10 +346,10 @@ mod tests {
 
     #[test]
     fn test_all_hnsw_embedders() {
-        println!("=== TEST: All 12 HNSW embedders can create indexes ===");
+        println!("=== TEST: All 11 HNSW embedders can create indexes ===");
 
         let embedders = EmbedderIndex::all_hnsw();
-        assert_eq!(embedders.len(), 12);
+        assert_eq!(embedders.len(), 11);
 
         for embedder in &embedders {
             let index = HnswEmbedderIndex::new(*embedder);
@@ -358,7 +358,7 @@ mod tests {
             assert!(dim >= 1);
         }
 
-        println!("RESULT: PASS - all 12 HNSW embedders create valid indexes");
+        println!("RESULT: PASS - all 11 HNSW embedders create valid indexes");
     }
 
     #[test]

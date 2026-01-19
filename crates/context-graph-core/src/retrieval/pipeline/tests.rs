@@ -5,26 +5,10 @@ use std::time::Duration;
 
 use crate::retrieval::InMemoryMultiEmbeddingExecutor;
 use crate::stubs::{InMemoryTeleologicalStore, StubMultiArrayProvider};
-use crate::types::fingerprint::SemanticFingerprint;
 
 use super::super::teleological_query::TeleologicalQuery;
 use super::{DefaultTeleologicalPipeline, PipelineHealth, TeleologicalRetrievalPipeline};
 use crate::error::CoreError;
-
-/// Create a test fingerprint for pipeline tests.
-fn create_test_goal_fingerprint(base: f32) -> SemanticFingerprint {
-    let mut fp = SemanticFingerprint::zeroed();
-    for i in 0..fp.e1_semantic.len() {
-        fp.e1_semantic[i] = (i as f32 / 1024.0).sin() * base;
-    }
-    for i in 0..fp.e5_causal.len() {
-        fp.e5_causal[i] = base + (i as f32 * 0.0001);
-    }
-    for i in 0..fp.e7_code.len() {
-        fp.e7_code[i] = base + (i as f32 * 0.0001);
-    }
-    fp
-}
 
 async fn create_test_pipeline(
 ) -> DefaultTeleologicalPipeline<InMemoryMultiEmbeddingExecutor, InMemoryTeleologicalStore> {
@@ -39,7 +23,6 @@ async fn create_test_pipeline(
         Arc::new(provider),
     ));
 
-    // Pipeline no longer requires GoalHierarchy - topics emerge from clustering
     DefaultTeleologicalPipeline::new(executor, store_arc)
 }
 
@@ -49,7 +32,6 @@ async fn test_pipeline_creation() {
     let health = pipeline.health_check().await.unwrap();
 
     assert_eq!(health.spaces_available, 13);
-    // has_goal_hierarchy is always false now - topics emerge from clustering
     assert!(!health.has_goal_hierarchy);
 
     println!("[VERIFIED] Pipeline created with all components");
@@ -142,7 +124,7 @@ fn test_pipeline_health_defaults() {
     let health = PipelineHealth {
         is_healthy: true,
         spaces_available: 13,
-        has_goal_hierarchy: false, // No longer using goal hierarchy
+        has_goal_hierarchy: false,
         index_size: 1_000_000,
         last_query_time: Some(Duration::from_millis(45)),
     };

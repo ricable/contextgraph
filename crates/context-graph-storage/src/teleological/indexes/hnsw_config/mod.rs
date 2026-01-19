@@ -85,8 +85,8 @@ mod tests {
 
         println!("Enum Verification:");
         let hnsw_count = EmbedderIndex::all_hnsw().len();
-        assert_eq!(hnsw_count, 12);
-        println!("  - EmbedderIndex: 12 HNSW + 3 non-HNSW = 15 variants");
+        assert_eq!(hnsw_count, 11);
+        println!("  - EmbedderIndex: 11 HNSW + 3 non-HNSW = 14 variants");
         println!("  - DistanceMetric: 5 variants");
 
         println!("Struct Verification:");
@@ -95,7 +95,7 @@ mod tests {
 
         println!("Function Verification:");
         let configs = all_hnsw_configs();
-        assert_eq!(configs.len(), 12);
+        assert_eq!(configs.len(), 11);
         println!("  - all_hnsw_configs: {} entries", configs.len());
 
         assert!(get_hnsw_config(EmbedderIndex::E6Sparse).is_none());

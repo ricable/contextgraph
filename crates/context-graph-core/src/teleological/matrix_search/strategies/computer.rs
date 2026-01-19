@@ -55,7 +55,7 @@ impl<'a> SimilarityComputer<'a> {
                     + w.group_alignments * ga_sim
                     + w.confidence * conf_sim
             }
-            ComparisonScope::PurposeVectorOnly => compute_purpose_similarity(a, b),
+            ComparisonScope::TopicProfileOnly => compute_purpose_similarity(a, b),
             ComparisonScope::CrossCorrelationsOnly => compute_correlation_similarity(a, b),
             ComparisonScope::GroupAlignmentsOnly => {
                 a.group_alignments.similarity(&b.group_alignments)

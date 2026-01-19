@@ -20,14 +20,14 @@ use context_graph_core::types::fingerprint::TeleologicalFingerprint;
 
 use crate::teleological::column_families::{
     get_all_teleological_cf_descriptors, CF_CONTENT, CF_E12_LATE_INTERACTION, CF_E1_MATRYOSHKA_128,
-    CF_FINGERPRINTS, CF_PURPOSE_VECTORS, QUANTIZED_EMBEDDER_CFS, TELEOLOGICAL_CFS,
+    CF_FINGERPRINTS, QUANTIZED_EMBEDDER_CFS, TELEOLOGICAL_CFS,
 };
 use crate::teleological::indexes::EmbedderIndexRegistry;
 use crate::teleological::schema::{
-    e12_late_interaction_key, e1_matryoshka_128_key, fingerprint_key, purpose_vector_key,
+    e12_late_interaction_key, e1_matryoshka_128_key, fingerprint_key,
 };
 use crate::teleological::serialization::{
-    serialize_e1_matryoshka_128, serialize_purpose_vector, serialize_teleological_fingerprint,
+    serialize_e1_matryoshka_128, serialize_teleological_fingerprint,
 };
 
 use super::types::{TeleologicalStoreConfig, TeleologicalStoreError, TeleologicalStoreResult};

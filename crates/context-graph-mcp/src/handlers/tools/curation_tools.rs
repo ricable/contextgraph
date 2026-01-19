@@ -12,9 +12,6 @@
 use chrono::Utc;
 use tracing::{debug, error, info, warn};
 
-// Note: PurposeVector was removed when alignment fields were removed from TeleologicalFingerprint
-// boost_importance now just updates last_updated timestamp as a proxy for "importance touch"
-
 use crate::protocol::{error_codes, JsonRpcId, JsonRpcResponse};
 
 use super::super::Handlers;

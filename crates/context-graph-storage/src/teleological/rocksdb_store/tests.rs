@@ -7,7 +7,7 @@ use tempfile::TempDir;
 
 use context_graph_core::traits::TeleologicalMemoryStore;
 use context_graph_core::types::fingerprint::{
-    PurposeVector, SemanticFingerprint, SparseVector, TeleologicalFingerprint, NUM_EMBEDDERS,
+    SemanticFingerprint, SparseVector, TeleologicalFingerprint,
 };
 
 /// Create a test fingerprint with real (non-zero) embeddings.
@@ -64,22 +64,13 @@ fn create_test_fingerprint_with_seed(seed: u64) -> TeleologicalFingerprint {
         e13_splade: generate_sparse(seed + 12),              // Sparse
     };
 
-    // Create PurposeVector with correct structure (alignments: [f32; 13])
-    let mut alignments = [0.5f32; NUM_EMBEDDERS];
-    for (i, a) in alignments.iter_mut().enumerate() {
-        *a = ((seed as f64 * 0.1 + i as f64 * 0.3) * std::f32::consts::PI as f64).sin() as f32
-            * 0.5
-            + 0.5;
-    }
-    let purpose = PurposeVector::new(alignments);
-
     // Create unique hash
     let mut hash = [0u8; 32];
     for (i, byte) in hash.iter_mut().enumerate() {
         *byte = ((seed + i as u64) % 256) as u8;
     }
 
-    TeleologicalFingerprint::new(semantic, purpose, hash)
+    TeleologicalFingerprint::new(semantic, hash)
 }
 
 fn create_test_fingerprint() -> TeleologicalFingerprint {

@@ -64,7 +64,6 @@ mod topic_tools_fsv;
 
 use std::sync::Arc;
 
-use parking_lot::RwLock;
 use tempfile::TempDir;
 
 use context_graph_core::monitoring::{LayerStatusProvider, StubLayerStatusProvider};
@@ -277,37 +276,20 @@ pub(crate) fn extract_mcp_tool_data(result: &serde_json::Value) -> serde_json::V
 /// TASK-GAP-001: Updated to use Handlers::with_defaults() after PRD v6 refactor.
 /// TASK-INTEG-TOPIC: Uses with_defaults for automatic clustering component creation.
 /// NO legacy MemoryStore support.
+///
+/// Note: GoalHierarchy was removed along with the purpose module. Handlers::with_defaults
+/// now takes 4 arguments instead of 5.
 pub(crate) fn create_test_handlers() -> Handlers {
     let teleological_store: Arc<dyn TeleologicalMemoryStore> =
         Arc::new(InMemoryTeleologicalStore::new());
     let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
     let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
         Arc::new(StubMultiArrayProvider::new());
-    let goal_hierarchy = create_test_hierarchy();
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
     Handlers::with_defaults(
         teleological_store,
         utl_processor,
         multi_array_provider,
-        Arc::new(RwLock::new(goal_hierarchy)),
-        layer_status_provider,
-    )
-}
-
-/// Create test handlers WITHOUT top-level goals (for testing error cases).
-pub(crate) fn create_test_handlers_no_goals() -> Handlers {
-    let teleological_store: Arc<dyn TeleologicalMemoryStore> =
-        Arc::new(InMemoryTeleologicalStore::new());
-    let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
-    let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
-        Arc::new(StubMultiArrayProvider::new());
-    let goal_hierarchy = GoalHierarchy::new(); // Empty hierarchy
-    let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
-    Handlers::with_defaults(
-        teleological_store,
-        utl_processor,
-        multi_array_provider,
-        Arc::new(RwLock::new(goal_hierarchy)),
         layer_status_provider,
     )
 }
@@ -377,66 +359,14 @@ pub(crate) async fn create_test_handlers_with_rocksdb() -> (Handlers, TempDir) {
     let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
         Arc::new(StubMultiArrayProvider::new());
 
-    let goal_hierarchy = create_test_hierarchy();
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
     // TASK-INTEG-TOPIC: Use with_defaults for automatic clustering component creation
+    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 4 args
     let handlers = Handlers::with_defaults(
         teleological_store,
         utl_processor,
         multi_array_provider,
-        Arc::new(RwLock::new(goal_hierarchy)),
-        layer_status_provider,
-    );
-
-    (handlers, tempdir)
-}
-
-/// Create test handlers with REAL RocksDbTeleologicalStore but NO top-level goals.
-///
-/// Same as `create_test_handlers_with_rocksdb()` but with an empty goal hierarchy.
-/// Use this for testing error cases where Strategic goals are required but missing.
-///
-/// # Returns
-///
-/// `(Handlers, TempDir)` - The Handlers instance and the TempDir that owns the database.
-///
-/// # Example
-///
-/// ```ignore
-/// #[tokio::test]
-/// async fn test_missing_strategic_goal_error() {
-///     let (handlers, _tempdir) = create_test_handlers_with_rocksdb_no_goals().await;
-///
-///     // Should fail because no Strategic goal is configured
-///     let result = handlers.handle_purpose_align(...).await;
-///     assert!(result.error.is_some());
-/// }
-/// ```
-#[allow(dead_code)]
-pub(crate) async fn create_test_handlers_with_rocksdb_no_goals() -> (Handlers, TempDir) {
-    let tempdir = TempDir::new().expect("Failed to create temp directory for RocksDB test");
-    let db_path = tempdir.path().join("test_rocksdb");
-
-    // Open RocksDB store
-    let rocksdb_store = RocksDbTeleologicalStore::open(&db_path)
-        .expect("Failed to open RocksDbTeleologicalStore in test");
-
-    // Note: EmbedderIndexRegistry is initialized in constructor
-
-    let teleological_store: Arc<dyn TeleologicalMemoryStore> = Arc::new(rocksdb_store);
-
-    let utl_processor: Arc<dyn UtlProcessor> = Arc::new(UtlProcessorAdapter::with_defaults());
-    let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
-        Arc::new(StubMultiArrayProvider::new());
-    let goal_hierarchy = GoalHierarchy::new(); // Empty hierarchy - no Strategic goals
-    let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
-
-    let handlers = Handlers::with_defaults(
-        teleological_store,
-        utl_processor,
-        multi_array_provider,
-        Arc::new(RwLock::new(goal_hierarchy)),
         layer_status_provider,
     );
 
@@ -495,14 +425,12 @@ pub(crate) async fn create_test_handlers_with_rocksdb_store_access(
     let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
         Arc::new(StubMultiArrayProvider::new());
 
-    let goal_hierarchy = create_test_hierarchy();
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
     let handlers = Handlers::with_defaults(
         Arc::clone(&teleological_store),
         utl_processor,
         multi_array_provider,
-        Arc::new(RwLock::new(goal_hierarchy)),
         layer_status_provider,
     );
 
@@ -580,14 +508,12 @@ pub(crate) async fn create_test_handlers_with_real_embeddings() -> (Handlers, Te
     // This prevents CUDA OOM when tests run in parallel
     let multi_array_provider = get_warm_loaded_provider().await;
 
-    let goal_hierarchy = create_test_hierarchy();
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
     let handlers = Handlers::with_defaults(
         teleological_store,
         utl_processor,
         multi_array_provider,
-        Arc::new(RwLock::new(goal_hierarchy)),
         layer_status_provider,
     );
 
@@ -629,14 +555,12 @@ pub(crate) async fn create_test_handlers_with_real_embeddings_store_access(
     // RTX 5090 32GB - models loaded ONCE, shared across all tests
     let multi_array_provider = get_warm_loaded_provider().await;
 
-    let goal_hierarchy = create_test_hierarchy();
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
     let handlers = Handlers::with_defaults(
         Arc::clone(&teleological_store),
         utl_processor,
         multi_array_provider,
-        Arc::new(RwLock::new(goal_hierarchy)),
         layer_status_provider,
     );
 

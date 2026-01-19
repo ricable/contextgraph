@@ -1,19 +1,12 @@
 //! Helper functions for creating REAL test data (no mocks).
 
-use context_graph_core::types::fingerprint::{
-    PurposeVector, SemanticFingerprint, TeleologicalFingerprint, NUM_EMBEDDERS,
-};
+use context_graph_core::types::fingerprint::{SemanticFingerprint, TeleologicalFingerprint};
 
 /// Create a SemanticFingerprint with zeroed embeddings for testing.
 /// NOTE: This uses zeroed data which is only suitable for serialization tests.
 /// For search/alignment tests, use real embeddings from the embedding pipeline.
 pub fn create_real_semantic() -> SemanticFingerprint {
     SemanticFingerprint::zeroed()
-}
-
-/// Create a REAL PurposeVector with specified alignment.
-pub fn create_real_purpose(alignment: f32) -> PurposeVector {
-    PurposeVector::new([alignment; NUM_EMBEDDERS])
 }
 
 /// Create a REAL content hash.
@@ -29,7 +22,7 @@ pub fn create_real_hash() -> [u8; 32] {
 
 /// Create a REAL TeleologicalFingerprint for testing.
 pub fn create_real_fingerprint() -> TeleologicalFingerprint {
-    TeleologicalFingerprint::new(create_real_semantic(), create_real_purpose(0.75), create_real_hash())
+    TeleologicalFingerprint::new(create_real_semantic(), create_real_hash())
 }
 
 /// Create a TeleologicalFingerprint with the correct content hash for the given content.
@@ -41,5 +34,5 @@ pub fn create_fingerprint_for_content(content: &str) -> TeleologicalFingerprint 
     hasher.update(content.as_bytes());
     let content_hash: [u8; 32] = hasher.finalize().into();
 
-    TeleologicalFingerprint::new(create_real_semantic(), create_real_purpose(0.8), content_hash)
+    TeleologicalFingerprint::new(create_real_semantic(), content_hash)
 }

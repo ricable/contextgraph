@@ -80,7 +80,8 @@ pub trait MultiSpaceIndexProvider: Send + Sync {
 /// let results = engine.search_multi_space(&queries, None, 100, 20)?;
 /// ```
 pub struct MultiSpaceSearchEngine<S: QuantizedFingerprintRetriever> {
-    /// Storage backend for fingerprint retrieval
+    /// Storage backend for fingerprint retrieval (reserved for future use)
+    #[allow(dead_code)]
     storage: Arc<S>,
 
     /// HNSW index manager (from context-graph-core)

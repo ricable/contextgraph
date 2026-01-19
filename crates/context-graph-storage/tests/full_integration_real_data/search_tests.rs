@@ -52,7 +52,6 @@ async fn test_search_returns_correct_results() {
     let options = context_graph_core::traits::TeleologicalSearchOptions {
         top_k: 10,
         min_similarity: 0.0,
-        min_alignment: None,
         include_deleted: false,
         embedder_indices: vec![],
         semantic_query: None,   // No semantic query for this test

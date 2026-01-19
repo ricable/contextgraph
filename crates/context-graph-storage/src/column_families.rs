@@ -226,7 +226,7 @@ pub fn get_column_family_descriptors(block_cache: &Cache) -> Vec<ColumnFamilyDes
     ]
 }
 
-/// Get ALL column family descriptors: base (8) + teleological + autonomous.
+/// Get ALL column family descriptors: base (8) + teleological.
 ///
 /// Returns total column families for a fully configured Context Graph database.
 ///
@@ -236,9 +236,8 @@ pub fn get_column_family_descriptors(block_cache: &Cache) -> Vec<ColumnFamilyDes
 /// # Returns
 /// Vector of `ColumnFamilyDescriptor`s:
 /// - 8 base CFs (nodes, edges, embeddings, metadata, temporal, tags, sources, system)
-/// - Teleological CFs (fingerprints, purpose_vectors, synergy_matrix, etc.)
+/// - Teleological CFs (fingerprints, synergy_matrix, etc.)
 /// - 13 quantized embedder CFs (emb_0 through emb_12)
-/// - Autonomous CFs (autonomous_config, etc.)
 ///
 /// # Example
 /// ```ignore
@@ -250,22 +249,17 @@ pub fn get_column_family_descriptors(block_cache: &Cache) -> Vec<ColumnFamilyDes
 /// assert_eq!(descriptors.len(), TOTAL_COLUMN_FAMILIES);
 /// ```
 pub fn get_all_column_family_descriptors(block_cache: &Cache) -> Vec<ColumnFamilyDescriptor> {
-    use crate::autonomous::get_autonomous_cf_descriptors;
     use crate::teleological::get_all_teleological_cf_descriptors;
 
     let mut descriptors = get_column_family_descriptors(block_cache);
     descriptors.extend(get_all_teleological_cf_descriptors(block_cache));
-    descriptors.extend(get_autonomous_cf_descriptors(block_cache));
     descriptors
 }
 
 /// Total number of column families in a fully configured Context Graph database.
-/// Base (8) + Teleological (11) + Quantized Embedder (13) + Autonomous (5) = 37
-/// TASK-CONTENT-001: +1 for CF_CONTENT
-/// TASK-STORAGE-P2-001: +1 for CF_E12_LATE_INTERACTION
-/// TASK-P0-004: -2 (removed drift_history and goal_activity_metrics)
-/// LEGACY-COMPAT: +2 for legacy CFs (session_identity, ego_node) for backwards compatibility
-pub const TOTAL_COLUMN_FAMILIES: usize = 37;
+/// Base (8) + Teleological (11) + Quantized Embedder (13) = 32
+/// PRD v6: Autonomous module removed - topics emerge from clustering, not goal hierarchies
+pub const TOTAL_COLUMN_FAMILIES: usize = 32;
 
 #[cfg(test)]
 mod tests {
@@ -528,14 +522,11 @@ mod tests {
     #[test]
     fn test_total_column_families_constant() {
         // Verify the constant is correct:
-        // 8 base + 9 teleological + 13 quantized + 5 autonomous = 35
-        // TASK-CONTENT-001: +1 for CF_CONTENT
-        // TASK-STORAGE-P2-001: +1 for CF_E12_LATE_INTERACTION
-        // TASK-P0-004: -2 (removed drift_history and goal_activity_metrics)
-        // LEGACY-COMPAT: +2 for legacy CFs (session_identity, ego_node)
+        // 8 base + 11 teleological + 13 quantized = 32
+        // PRD v6: Autonomous module removed - topics emerge from clustering, not goal hierarchies
         assert_eq!(
-            TOTAL_COLUMN_FAMILIES, 37,
-            "Total column families should be 37 (8 base + 11 teleological + 13 quantized + 5 autonomous)"
+            TOTAL_COLUMN_FAMILIES, 32,
+            "Total column families should be 32 (8 base + 11 teleological + 13 quantized)"
         );
     }
 
@@ -621,36 +612,4 @@ mod tests {
         );
     }
 
-    // TASK-P0-004: Updated test to verify 5 autonomous CFs.
-    // Removed drift_history and goal_activity_metrics (ARCH-10, ARCH-03).
-    #[test]
-    fn test_all_cf_descriptors_includes_autonomous_cfs() {
-        let cache = Cache::new_lru_cache(256 * 1024 * 1024);
-        let descriptors = get_all_column_family_descriptors(&cache);
-        let names: Vec<_> = descriptors.iter().map(|d| d.name()).collect();
-
-        // Verify all 5 autonomous CFs are present (TASK-P0-004: reduced from 7)
-        assert!(
-            names.contains(&"autonomous_config"),
-            "Missing CF: autonomous_config"
-        );
-        assert!(
-            names.contains(&"adaptive_threshold_state"),
-            "Missing CF: adaptive_threshold_state"
-        );
-        // TASK-P0-004: drift_history removed - old drift detection replaced by topic_stability.churn_rate (ARCH-10)
-        // TASK-P0-004: goal_activity_metrics removed - manual goals forbidden by ARCH-03
-        assert!(
-            names.contains(&"autonomous_lineage"),
-            "Missing CF: autonomous_lineage"
-        );
-        assert!(
-            names.contains(&"consolidation_history"),
-            "Missing CF: consolidation_history"
-        );
-        assert!(
-            names.contains(&"memory_curation"),
-            "Missing CF: memory_curation"
-        );
-    }
 }

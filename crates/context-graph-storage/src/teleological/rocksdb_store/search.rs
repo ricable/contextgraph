@@ -90,9 +90,6 @@ impl RocksDbTeleologicalStore {
         Ok(results)
     }
 
-    // Note: search_purpose was removed when PurposeVector/alignment fields were
-    // removed from TeleologicalFingerprint. Use search_semantic_async instead.
-
     /// Search by text (internal async wrapper).
     pub(crate) async fn search_text_async(
         &self,

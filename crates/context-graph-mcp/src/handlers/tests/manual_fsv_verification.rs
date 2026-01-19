@@ -23,7 +23,6 @@
 //! - manual_fsv_edge_case_nonexistent_fingerprint (memory/retrieve removed in PRD v6)
 //! - manual_fsv_meta_utl_tracker_physical_verification (MetaUtlTracker removed in PRD v6)
 
-use parking_lot::RwLock;
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -38,7 +37,6 @@ use context_graph_core::stubs::{
 use context_graph_core::traits::{
     MultiArrayEmbeddingProvider, TeleologicalMemoryStore, UtlProcessor,
 };
-use context_graph_core::types::fingerprint::SemanticFingerprint;
 
 use crate::handlers::Handlers;
 use crate::protocol::{JsonRpcId, JsonRpcRequest};
@@ -94,14 +92,13 @@ async fn manual_fsv_memory_store_physical_verification() {
     let store: Arc<dyn TeleologicalMemoryStore> = Arc::new(InMemoryTeleologicalStore::new());
     let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
     let multi_array: Arc<dyn MultiArrayEmbeddingProvider> = Arc::new(StubMultiArrayProvider::new());
-    let hierarchy = Arc::new(RwLock::new(create_test_hierarchy()));
     let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
+    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 4 args
     let handlers = Handlers::with_defaults(
         store.clone(),
         utl_processor,
         multi_array,
-        hierarchy,
         layer_status,
     );
 
@@ -253,14 +250,13 @@ async fn manual_fsv_edge_case_empty_content() {
     let store: Arc<dyn TeleologicalMemoryStore> = Arc::new(InMemoryTeleologicalStore::new());
     let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
     let multi_array: Arc<dyn MultiArrayEmbeddingProvider> = Arc::new(StubMultiArrayProvider::new());
-    let hierarchy = Arc::new(RwLock::new(create_test_hierarchy()));
     let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
+    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 4 args
     let handlers = Handlers::with_defaults(
         store.clone(),
         utl_processor,
         multi_array,
-        hierarchy,
         layer_status,
     );
 
@@ -315,14 +311,13 @@ async fn manual_fsv_edge_case_search_empty_store() {
     let store: Arc<dyn TeleologicalMemoryStore> = Arc::new(InMemoryTeleologicalStore::new());
     let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
     let multi_array: Arc<dyn MultiArrayEmbeddingProvider> = Arc::new(StubMultiArrayProvider::new());
-    let hierarchy = Arc::new(RwLock::new(create_test_hierarchy()));
     let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
+    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 4 args
     let handlers = Handlers::with_defaults(
         store.clone(),
         utl_processor,
         multi_array,
-        hierarchy,
         layer_status,
     );
 
@@ -367,14 +362,13 @@ async fn manual_fsv_edge_case_memetic_status() {
     let store: Arc<dyn TeleologicalMemoryStore> = Arc::new(InMemoryTeleologicalStore::new());
     let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
     let multi_array: Arc<dyn MultiArrayEmbeddingProvider> = Arc::new(StubMultiArrayProvider::new());
-    let hierarchy = Arc::new(RwLock::new(create_test_hierarchy()));
     let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
+    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 4 args
     let handlers = Handlers::with_defaults(
         store.clone(),
         utl_processor,
         multi_array,
-        hierarchy,
         layer_status,
     );
 

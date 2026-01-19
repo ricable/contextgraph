@@ -5,14 +5,132 @@
 use serde::Deserialize;
 use serde_json::json;
 use tracing::{debug, error, info};
+use uuid::Uuid;
 
-use context_graph_core::autonomous::{
-    ConsolidationConfig, ConsolidationService, MemoryContent, MemoryId, MemoryPair,
-};
 use context_graph_core::traits::TeleologicalSearchOptions;
 
 use crate::handlers::Handlers;
 use crate::protocol::{JsonRpcId, JsonRpcResponse};
+
+// ============================================================================
+// LOCAL TYPES FOR CONSOLIDATION
+// ============================================================================
+
+/// Memory identifier wrapper.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct MemoryId(Uuid);
+
+/// Memory content for consolidation analysis.
+#[derive(Debug, Clone)]
+struct MemoryContent {
+    id: MemoryId,
+    embedding: Vec<f32>,
+    #[allow(dead_code)]
+    text: String,
+    alignment: f32,
+    access_count: u32,
+}
+
+impl MemoryContent {
+    fn new(id: MemoryId, embedding: Vec<f32>, text: String, alignment: f32) -> Self {
+        Self {
+            id,
+            embedding,
+            text,
+            alignment,
+            access_count: 0,
+        }
+    }
+
+    fn with_access_count(mut self, count: u32) -> Self {
+        self.access_count = count;
+        self
+    }
+}
+
+/// A pair of memories to potentially consolidate.
+#[derive(Debug, Clone)]
+struct MemoryPair {
+    first: MemoryContent,
+    second: MemoryContent,
+}
+
+impl MemoryPair {
+    fn new(first: MemoryContent, second: MemoryContent) -> Self {
+        Self { first, second }
+    }
+}
+
+/// A consolidation candidate - memories that should be merged.
+#[derive(Debug)]
+struct ConsolidationCandidate {
+    source_ids: Vec<MemoryId>,
+    target_id: MemoryId,
+    similarity: f32,
+    combined_alignment: f32,
+}
+
+/// Configuration for consolidation service.
+#[derive(Debug, Clone)]
+struct ConsolidationConfig {
+    enabled: bool,
+    similarity_threshold: f32,
+    #[allow(dead_code)]
+    max_daily_merges: usize,
+    theta_diff_threshold: f32,
+}
+
+/// Service that finds consolidation candidates.
+struct ConsolidationService {
+    config: ConsolidationConfig,
+}
+
+impl ConsolidationService {
+    fn with_config(config: ConsolidationConfig) -> Self {
+        Self { config }
+    }
+
+    fn find_consolidation_candidates(&self, pairs: &[MemoryPair]) -> Vec<ConsolidationCandidate> {
+        if !self.config.enabled {
+            return Vec::new();
+        }
+
+        pairs
+            .iter()
+            .filter_map(|pair| {
+                // Compute similarity
+                let sim: f32 = pair
+                    .first
+                    .embedding
+                    .iter()
+                    .zip(pair.second.embedding.iter())
+                    .map(|(a, b)| a * b)
+                    .sum();
+
+                // Compute alignment difference
+                let alignment_diff = (pair.first.alignment - pair.second.alignment).abs();
+
+                // Accept if high similarity and small alignment difference
+                if sim >= self.config.similarity_threshold
+                    && alignment_diff <= self.config.theta_diff_threshold
+                {
+                    Some(ConsolidationCandidate {
+                        source_ids: vec![pair.first.id, pair.second.id],
+                        target_id: pair.first.id, // Keep the first as target
+                        similarity: sim,
+                        combined_alignment: (pair.first.alignment + pair.second.alignment) / 2.0,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+}
+
+// ============================================================================
+// HANDLER IMPLEMENTATION
+// ============================================================================
 
 /// Parameters for trigger_consolidation tool.
 #[derive(Debug, Deserialize)]
@@ -125,23 +243,18 @@ impl Handlers {
 
         // Convert TeleologicalFingerprint to MemoryContent
         let mut memory_contents: Vec<MemoryContent> = Vec::with_capacity(search_results.len());
-        let mut fingerprints: Vec<(uuid::Uuid, chrono::DateTime<chrono::Utc>)> = Vec::new();
+        let mut fingerprints: Vec<(Uuid, chrono::DateTime<chrono::Utc>)> = Vec::new();
 
         for result in search_results.iter() {
             let fp = &result.fingerprint;
             // Use E1 (semantic 1024D) embedding for comparison
             let embedding = fp.semantic.e1_semantic.clone();
 
-            // Use result similarity as alignment proxy (no PurposeVector available)
+            // Use result similarity as alignment proxy
             let alignment = result.similarity;
 
-            let content = MemoryContent::new(
-                MemoryId(fp.id),
-                embedding,
-                String::new(),
-                alignment,
-            )
-            .with_access_count(fp.access_count as u32);
+            let content = MemoryContent::new(MemoryId(fp.id), embedding, String::new(), alignment)
+                .with_access_count(fp.access_count as u32);
 
             memory_contents.push(content);
             fingerprints.push((fp.id, fp.created_at));
