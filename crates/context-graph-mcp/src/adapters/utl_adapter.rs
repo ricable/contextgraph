@@ -125,10 +125,18 @@ impl UtlProcessorAdapter {
     }
 
     /// Build context embeddings from UtlContext.
-    /// Uses goal_vector as the primary embedding source.
-    fn get_context_embeddings(_context: &UtlContext) -> Vec<Vec<f32>> {
-        // For now, return empty context - real usage would have prior embeddings
-        Vec::new()
+    ///
+    /// Uses `reference_embeddings` for historical context. When reference_embeddings
+    /// is None or empty, returns empty Vec which causes surprise calculator to
+    /// return 1.0 (maximum surprise for novel content).
+    ///
+    /// # ARCH-02 Compliance
+    /// Reference embeddings must be from the same embedding space for apples-to-apples comparison.
+    fn get_context_embeddings(context: &UtlContext) -> Vec<Vec<f32>> {
+        context
+            .reference_embeddings
+            .clone()
+            .unwrap_or_default()
     }
 }
 

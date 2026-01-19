@@ -9,6 +9,7 @@ use uuid::Uuid;
 use context_graph_core::types::fingerprint::{SemanticFingerprint, TeleologicalFingerprint};
 
 use crate::teleological::indexes::{EmbedderIndex, EmbedderIndexOps, IndexError};
+use crate::teleological::search::compute_maxsim_direct;
 
 use super::helpers::compute_cosine_similarity;
 use super::store::RocksDbTeleologicalStore;
@@ -97,15 +98,19 @@ impl RocksDbTeleologicalStore {
 
     /// Compute similarity scores for all 13 embedders.
     ///
-    /// Uses cosine similarity for dense embedders.
-    /// E6 and E13 (sparse) return 0.0 - use search_sparse() separately.
-    /// E12 (late-interaction) returns 0.0 - use MaxSim separately.
+    /// Uses cosine similarity for dense embedders (E1-E5, E7-E11).
+    /// Uses SparseVector::cosine_similarity for sparse embedders (E6, E13).
+    /// Uses MaxSim for late-interaction embedder (E12).
+    ///
+    /// # ARCH-02 Compliance
+    /// All comparisons are apples-to-apples: E1<->E1, E6<->E6, etc.
     pub(crate) fn compute_embedder_scores(
         &self,
         query: &SemanticFingerprint,
         stored: &SemanticFingerprint,
     ) -> [f32; 13] {
         [
+            // E1-E5: Dense embedders - cosine similarity
             compute_cosine_similarity(&query.e1_semantic, &stored.e1_semantic),
             compute_cosine_similarity(&query.e2_temporal_recent, &stored.e2_temporal_recent),
             compute_cosine_similarity(&query.e3_temporal_periodic, &stored.e3_temporal_periodic),
@@ -114,14 +119,18 @@ impl RocksDbTeleologicalStore {
                 &stored.e4_temporal_positional,
             ),
             compute_cosine_similarity(&query.e5_causal, &stored.e5_causal),
-            0.0, // E6 sparse - use search_sparse()
+            // E6: Sparse embedder - sparse cosine similarity
+            query.e6_sparse.cosine_similarity(&stored.e6_sparse),
+            // E7-E11: Dense embedders - cosine similarity
             compute_cosine_similarity(&query.e7_code, &stored.e7_code),
             compute_cosine_similarity(&query.e8_graph, &stored.e8_graph),
             compute_cosine_similarity(&query.e9_hdc, &stored.e9_hdc),
             compute_cosine_similarity(&query.e10_multimodal, &stored.e10_multimodal),
             compute_cosine_similarity(&query.e11_entity, &stored.e11_entity),
-            0.0, // E12 late-interaction - use MaxSim
-            0.0, // E13 SPLADE - use search_sparse()
+            // E12: Late-interaction - MaxSim over token embeddings
+            compute_maxsim_direct(&query.e12_late_interaction, &stored.e12_late_interaction),
+            // E13: SPLADE sparse - sparse cosine similarity
+            query.e13_splade.cosine_similarity(&stored.e13_splade),
         ]
     }
 }

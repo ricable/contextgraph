@@ -312,4 +312,27 @@ pub trait EmbeddingModel: Send + Sync {
     fn is_pretrained(&self) -> bool {
         self.model_id().is_pretrained()
     }
+
+    /// Generate a sparse embedding for the given input.
+    ///
+    /// This method is only implemented by sparse models (E6, E13). Other models
+    /// return `EmbeddingError::UnsupportedModality`.
+    ///
+    /// # Arguments
+    /// * `input` - The input to embed (text only for SPLADE models)
+    ///
+    /// # Returns
+    /// - `Ok((indices, values))` with the sparse representation
+    /// - `Err(EmbeddingError)` on failure or for non-sparse models
+    ///
+    /// # Errors
+    /// - `EmbeddingError::UnsupportedModality` for models that don't support sparse output
+    /// - `EmbeddingError::NotInitialized` if model not initialized
+    async fn embed_sparse(&self, input: &ModelInput) -> EmbeddingResult<(Vec<u16>, Vec<f32>)> {
+        // Default: sparse embedding not supported
+        Err(EmbeddingError::UnsupportedModality {
+            model_id: self.model_id(),
+            input_type: InputType::from(input),
+        })
+    }
 }

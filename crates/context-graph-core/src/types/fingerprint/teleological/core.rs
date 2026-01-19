@@ -14,16 +14,34 @@ impl TeleologicalFingerprint {
     /// From constitution.yaml: ~46KB per node.
     pub const EXPECTED_SIZE_BYTES: usize = 46_000;
 
-    /// Create a new TeleologicalFingerprint.
+    /// Default importance score for new fingerprints.
+    pub const DEFAULT_IMPORTANCE: f32 = 0.5;
+
+    /// Create a new TeleologicalFingerprint with default importance (0.5).
     ///
     /// Automatically:
     /// - Generates a new UUID v4
     /// - Sets timestamps to now
+    /// - Sets importance to 0.5 (default)
     ///
     /// # Arguments
     /// * `semantic` - The semantic fingerprint (13 embeddings)
     /// * `content_hash` - SHA-256 hash of source content
     pub fn new(semantic: SemanticFingerprint, content_hash: [u8; 32]) -> Self {
+        Self::with_importance(semantic, content_hash, Self::DEFAULT_IMPORTANCE)
+    }
+
+    /// Create a new TeleologicalFingerprint with specific importance.
+    ///
+    /// # Arguments
+    /// * `semantic` - The semantic fingerprint (13 embeddings)
+    /// * `content_hash` - SHA-256 hash of source content
+    /// * `importance` - Importance score [0.0, 1.0], clamped if out of range
+    pub fn with_importance(
+        semantic: SemanticFingerprint,
+        content_hash: [u8; 32],
+        importance: f32,
+    ) -> Self {
         let now = Utc::now();
 
         Self {
@@ -33,6 +51,7 @@ impl TeleologicalFingerprint {
             created_at: now,
             last_updated: now,
             access_count: 0,
+            importance: importance.clamp(0.0, 1.0),
         }
     }
 

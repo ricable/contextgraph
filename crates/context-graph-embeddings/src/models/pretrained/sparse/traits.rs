@@ -35,4 +35,19 @@ impl EmbeddingModel for SparseModel {
         // Delegate to the inherent impl
         SparseModel::embed(self, input).await
     }
+
+    async fn embed_sparse(&self, input: &ModelInput) -> EmbeddingResult<(Vec<u16>, Vec<f32>)> {
+        // Call the inherent sparse embedding method
+        let sparse_vector = SparseModel::embed_sparse(self, input).await?;
+
+        // Convert from local SparseVector (usize indices) to (u16, f32) for core SparseVector
+        let indices: Vec<u16> = sparse_vector
+            .indices
+            .into_iter()
+            .map(|i| i as u16)
+            .collect();
+        let values = sparse_vector.weights;
+
+        Ok((indices, values))
+    }
 }

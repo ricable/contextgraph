@@ -34,4 +34,9 @@ pub struct TeleologicalFingerprint {
 
     /// Number of times this memory has been accessed
     pub access_count: u64,
+
+    /// Importance score [0.0, 1.0] for memory prioritization.
+    /// Used by consolidation, boost_importance, and dream phases.
+    /// Default: 0.5
+    pub importance: f32,
 }

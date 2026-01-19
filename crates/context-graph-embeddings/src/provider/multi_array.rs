@@ -183,25 +183,14 @@ impl SparseEmbedder for SparseEmbedderAdapter {
             message: e.to_string(),
         })?;
 
-        let embedding = model.embed(&input).await.map_err(|e| {
+        // Call embed_sparse() to get actual sparse vocabulary indices and weights
+        // NOT embed() which returns a 1536D projected dense vector
+        let (indices, values) = model.embed_sparse(&input).await.map_err(|e| {
             CoreError::Embedding(format!(
                 "Sparse embedding failed for {:?}: {}",
                 self.model_id, e
             ))
         })?;
-
-        // Convert dense SPLADE output to sparse vector
-        // SPLADE produces logits over vocabulary, we keep non-zero activations
-        let dense = embedding.into_vec();
-        let mut indices = Vec::with_capacity(1500); // Typical sparsity
-        let mut values = Vec::with_capacity(1500);
-
-        for (idx, &val) in dense.iter().enumerate() {
-            if val > 0.0 && idx < 30522 {
-                indices.push(idx as u16);
-                values.push(val);
-            }
-        }
 
         SparseVector::new(indices, values)
             .map_err(|e| CoreError::Internal(format!("Failed to create sparse vector: {}", e)))

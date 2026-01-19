@@ -191,34 +191,25 @@ impl Handlers {
             }
         };
 
-        // Compute current importance from access_count using BM25 formula (PRD Section 7)
-        // Frequency_Score = BM25_saturated(log(1+access_count)) with k1=1.2
-        let k1 = 1.2f32;
-        let freq = (1.0 + fingerprint.access_count as f32).ln();
-        let old_importance = (freq * (k1 + 1.0)) / (freq + k1);
+        // Read actual importance field from fingerprint (not computed from access_count)
+        let old_importance = fingerprint.importance;
 
         // Apply delta and clamp to [0.0, 1.0] per BR-MCP-002
         let (new_importance, clamped) = request.apply_delta(old_importance);
 
-        // Convert importance delta to access_count adjustment
-        // If delta is positive, increment access_count; if negative, we can't truly decrease importance
-        // but we update timestamp to affect recency_weight
-        if request.delta > 0.0 {
-            // Increment access_count to boost computed importance
-            fingerprint.access_count = fingerprint.access_count.saturating_add(1);
-        }
+        // Update the importance field directly
+        fingerprint.importance = new_importance;
 
         debug!(
             node_id = %node_id,
-            access_count = fingerprint.access_count,
             old_importance = old_importance,
             delta = request.delta,
             new_importance = new_importance,
             clamped = clamped,
-            "boost_importance: Updated access_count to adjust importance"
+            "boost_importance: Updated importance field directly"
         );
 
-        // Update last_updated timestamp (affects recency_weight in importance calculation)
+        // Update last_updated timestamp
         fingerprint.last_updated = Utc::now();
 
         // Persist the updated fingerprint

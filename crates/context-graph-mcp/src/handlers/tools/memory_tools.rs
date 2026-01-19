@@ -68,27 +68,74 @@ impl Handlers {
             );
         }
 
-        let _importance = args
+        let importance = args
             .get("importance")
             .and_then(|v| v.as_f64())
-            .unwrap_or(0.5);
+            .map(|v| v as f32)
+            .unwrap_or(TeleologicalFingerprint::DEFAULT_IMPORTANCE);
 
-        // Compute UTL metrics for the content
-        let context = UtlContext::default();
-        let metrics = match self.utl_processor.compute_metrics(&content, &context).await {
-            Ok(m) => m,
-            Err(e) => {
-                error!(error = %e, "inject_context: UTL processing FAILED");
-                return self.tool_error_with_pulse(id, &format!("UTL processing failed: {}", e));
-            }
-        };
-
-        // Generate all 13 embeddings using MultiArrayEmbeddingProvider
+        // STEP 1: Generate all 13 embeddings FIRST (needed for UTL reference lookup)
         let embedding_output = match self.multi_array_provider.embed_all(&content).await {
             Ok(output) => output,
             Err(e) => {
                 error!(error = %e, "inject_context: Multi-array embedding FAILED");
                 return self.tool_error_with_pulse(id, &format!("Embedding failed: {}", e));
+            }
+        };
+
+        // STEP 2: Search for similar recent memories to populate reference_embeddings
+        // This enables proper surprise/entropy calculation (not always 1.0)
+        let reference_embeddings = {
+            let search_options = TeleologicalSearchOptions {
+                top_k: 10, // Get top 10 similar memories for context
+                ..Default::default()
+            };
+            match self
+                .teleological_store
+                .search_semantic(&embedding_output.fingerprint, search_options)
+                .await
+            {
+                Ok(results) => {
+                    // Extract E1 semantic embeddings from results for apples-to-apples comparison
+                    // Per ARCH-02: Only compare same embedder space
+                    results
+                        .into_iter()
+                        .filter_map(|r| {
+                            // Skip if this is somehow the same content (should be impossible since not stored yet)
+                            Some(r.fingerprint.semantic.e1_semantic.clone())
+                        })
+                        .collect::<Vec<_>>()
+                }
+                Err(e) => {
+                    // Non-fatal: log warning but continue with empty reference (max surprise)
+                    warn!(
+                        error = %e,
+                        "inject_context: Failed to search for reference embeddings. \
+                         UTL will compute maximum surprise (entropy=1.0)."
+                    );
+                    Vec::new()
+                }
+            }
+        };
+
+        // STEP 3: Build UTL context with reference embeddings for proper surprise calculation
+        let context = UtlContext {
+            reference_embeddings: if reference_embeddings.is_empty() {
+                None
+            } else {
+                Some(reference_embeddings)
+            },
+            // Use E1 semantic embedding for goal alignment computation
+            input_embedding: Some(embedding_output.fingerprint.e1_semantic.clone()),
+            ..Default::default()
+        };
+
+        // STEP 4: Compute UTL metrics with proper context
+        let metrics = match self.utl_processor.compute_metrics(&content, &context).await {
+            Ok(m) => m,
+            Err(e) => {
+                error!(error = %e, "inject_context: UTL processing FAILED");
+                return self.tool_error_with_pulse(id, &format!("UTL processing failed: {}", e));
             }
         };
 
@@ -101,8 +148,9 @@ impl Handlers {
         // This must be done before TeleologicalFingerprint::new() moves the semantic fingerprint.
         let cluster_array = embedding_output.fingerprint.to_cluster_array();
 
-        // Create TeleologicalFingerprint from embeddings
-        let fingerprint = TeleologicalFingerprint::new(embedding_output.fingerprint, content_hash);
+        // Create TeleologicalFingerprint from embeddings with user-specified importance
+        let fingerprint =
+            TeleologicalFingerprint::with_importance(embedding_output.fingerprint, content_hash, importance);
         let fingerprint_id = fingerprint.id;
 
         // Store in TeleologicalMemoryStore
@@ -189,10 +237,11 @@ impl Handlers {
             None => return self.tool_error_with_pulse(id, "Missing 'content' parameter"),
         };
 
-        let _importance = args
+        let importance = args
             .get("importance")
             .and_then(|v| v.as_f64())
-            .unwrap_or(0.5);
+            .map(|v| v as f32)
+            .unwrap_or(TeleologicalFingerprint::DEFAULT_IMPORTANCE);
 
         // Generate all 13 embeddings using MultiArrayEmbeddingProvider
         let embedding_output = match self.multi_array_provider.embed_all(&content).await {
@@ -212,8 +261,9 @@ impl Handlers {
         // This must be done before TeleologicalFingerprint::new() moves the semantic fingerprint.
         let cluster_array = embedding_output.fingerprint.to_cluster_array();
 
-        // Create TeleologicalFingerprint from embeddings
-        let fingerprint = TeleologicalFingerprint::new(embedding_output.fingerprint, content_hash);
+        // Create TeleologicalFingerprint from embeddings with user-specified importance
+        let fingerprint =
+            TeleologicalFingerprint::with_importance(embedding_output.fingerprint, content_hash, importance);
         let fingerprint_id = fingerprint.id;
 
         match self.teleological_store.store(fingerprint).await {
