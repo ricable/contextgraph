@@ -10,8 +10,8 @@ meta:
   hook_architecture: "NATIVE Claude Code hooks ONLY (via .claude/settings.json)"
 
 # ABBREVIATIONS
-# TF=Teleological Fingerprint, PV=Purpose Vector (13D)
-# TS=Topic Stability, TP=Topic Portfolio
+# TF=Teleological Fingerprint, TP=Topic Profile (13D)
+# TS=Topic Stability, TPF=Topic Portfolio
 # weighted_agreement=Sum of category-weighted cluster membership
 # E1-E13=Embedder spaces, HDBSCAN=Density clustering, BIRCH=Online clustering
 
@@ -24,7 +24,7 @@ stack:
   deps: [tokio@1.35+, serde@1.0+, uuid@1.6+, chrono@0.4+, rmcp@0.1+, cudarc@0.10+, faiss@0.12+gpu, rocksdb@0.21+, scylladb@1.0+, hdbscan@0.5+, birch@0.3+]
   db:
     primary: { dev: rocksdb, prod: scylladb }
-    indexes: { per_embedder: "13x HNSW", matryoshka_128d: HNSW, splade_inverted: inverted, purpose: "13D HNSW" }
+    indexes: { per_embedder: "13x HNSW", matryoshka_128d: HNSW, splade_inverted: inverted, topic: "13D topic_profile HNSW" }
     temporal: timescaledb
     cache: redis7+
 
@@ -334,7 +334,7 @@ clustering:
 # ===============================================================================
 teleological:
   core: "13-embedding array IS the teleological vector"
-  purpose_vector: "PV = [A(E1,V)..A(E13,V)] # 13D searchable"
+  topic_profile: "TP = [A(E1,V)..A(E13,V)] # 13D alignment scores, searchable"
 
   embedder_purposes:
     E1: "V_meaning"
@@ -353,7 +353,7 @@ teleological:
 
   # Topics emerge AUTONOMOUSLY from clustering
   # Manual goal/topic setting is FORBIDDEN
-  # Valid: TeleologicalFingerprint<->TeleologicalFingerprint, PV<->PV, Ei<->Ei
+  # Valid: TeleologicalFingerprint<->TeleologicalFingerprint, TP<->TP, Ei<->Ei
   # Invalid: Manual topic definition, E1<->E7 comparison
 
 # ===============================================================================
@@ -529,7 +529,7 @@ embeddings:
     E12_LateInteraction: { dim: "128D/tok", type: dense_per_token, category: SEMANTIC, topic_weight: 1.0, use: "Precise match" }
     E13_SPLADE: { dim: "~30K sparse", type: sparse, category: SEMANTIC, topic_weight: 1.0, use: "Term expansion" }
 
-  fingerprint: { semantic_fingerprint: "[E1..E13]", purpose_vector: "[A(E1,V)..A(E13,V)]", topic_profile: "[strength_E1..strength_E13]" }
+  fingerprint: { semantic_fingerprint: "[E1..E13]", topic_profile: "[A(E1,V)..A(E13,V)]" }
 
   retrieval: # 5-Stage (<60ms @ 1M)
     S1: { desc: "BM25+E13 sparse", out: "10K", lat: "<5ms" }
@@ -543,12 +543,12 @@ embeddings:
 # ===============================================================================
 storage:
   primary: { dev: rocksdb, prod: scylladb }
-  schema: ["id:UUID", "embeddings:BYTEA", "purpose_vector:REAL[13]", "topic_profile:BYTEA", "source:ENUM(HookDescription,ClaudeResponse,MDFileChunk)", "coherence:REAL", "created_at:TIMESTAMPTZ", "session_id:VARCHAR", "chunk_metadata:JSONB"]
+  schema: ["id:UUID", "embeddings:BYTEA", "topic_profile:REAL[13]", "source:ENUM(HookDescription,ClaudeResponse,MDFileChunk)", "coherence:REAL", "created_at:TIMESTAMPTZ", "session_id:VARCHAR", "chunk_metadata:JSONB"]
   indexes:
     L2A_sparse: "E13 SPLADE inverted"
     L2B_matryoshka: "E1[..128] HNSW M:32"
     L2C_per_embedder: "13x HNSW quantized"
-    L2D_purpose: "13D HNSW"
+    L2D_topic: "13D topic_profile HNSW"
 
 # ===============================================================================
 # PROGRESSIVE FEATURE ACTIVATION

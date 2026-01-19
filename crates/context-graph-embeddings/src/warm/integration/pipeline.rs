@@ -54,7 +54,7 @@ impl WarmEmbeddingPipeline {
     /// # CUDA Requirement
     ///
     /// This function requires the `cuda` feature. CUDA is mandatory per Constitution AP-007.
-    #[cfg(feature = "cuda")]
+    #[cfg(feature = "candle")]
     pub fn create_and_warm(config: WarmConfig) -> WarmResult<Self> {
         tracing::info!("Starting WarmEmbeddingPipeline initialization");
         let start_time = Instant::now();
@@ -160,7 +160,7 @@ impl WarmEmbeddingPipeline {
     /// # CUDA Requirement
     ///
     /// This function requires the `cuda` feature. CUDA is mandatory per Constitution AP-007.
-    #[cfg(feature = "cuda")]
+    #[cfg(feature = "candle")]
     pub fn warm(&mut self) -> WarmResult<()> {
         if self.initialized.load(Ordering::SeqCst) {
             tracing::warn!("Pipeline already initialized, skipping warm()");

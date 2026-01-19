@@ -134,7 +134,7 @@ impl EmbedderIndexRegistry {
     ///
     /// ```
     /// use context_graph_storage::teleological::indexes::{
-    ///     EmbedderIndex, EmbedderIndexRegistry,
+    ///     EmbedderIndex, EmbedderIndexOps, EmbedderIndexRegistry,
     /// };
     ///
     /// let registry = EmbedderIndexRegistry::new();
@@ -194,7 +194,9 @@ impl EmbedderIndexRegistry {
     /// # Example
     ///
     /// ```
-    /// use context_graph_storage::teleological::indexes::EmbedderIndexRegistry;
+    /// use context_graph_storage::teleological::indexes::{
+    ///     EmbedderIndexOps, EmbedderIndexRegistry,
+    /// };
     ///
     /// let registry = EmbedderIndexRegistry::new();
     /// for (embedder, index) in registry.iter() {

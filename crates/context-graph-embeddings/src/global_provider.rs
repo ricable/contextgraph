@@ -67,7 +67,7 @@ struct ProviderState {
 // CUDA-specific implementation - Uses ProductionMultiArrayProvider directly
 // =============================================================================
 
-#[cfg(feature = "cuda")]
+#[cfg(feature = "candle")]
 mod cuda_impl {
     use super::*;
     use std::path::PathBuf;
@@ -193,7 +193,7 @@ mod cuda_impl {
 /// # Panics
 ///
 /// Does NOT panic. All errors are returned as `EmbeddingResult`.
-#[cfg(feature = "cuda")]
+#[cfg(feature = "candle")]
 pub async fn initialize_global_warm_provider() -> EmbeddingResult<()> {
     cuda_impl::initialize_global_warm_provider_impl().await
 }
@@ -201,7 +201,7 @@ pub async fn initialize_global_warm_provider() -> EmbeddingResult<()> {
 /// Initialize the global warm provider (non-CUDA stub).
 ///
 /// When CUDA is not available, this returns an error per Constitution AP-007.
-#[cfg(not(feature = "cuda"))]
+#[cfg(not(feature = "candle"))]
 pub async fn initialize_global_warm_provider() -> EmbeddingResult<()> {
     Err(EmbeddingError::CudaUnavailable {
         message: "Global warm provider requires CUDA feature. Build with --features cuda"

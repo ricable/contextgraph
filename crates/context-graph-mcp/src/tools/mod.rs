@@ -7,18 +7,12 @@
 //!
 //! - `types`: Core type definitions (`ToolDefinition`)
 //! - `names`: Tool name constants for dispatch matching
-//! - `registry`: Centralized tool registry with O(1) lookup (TASK-41)
+//! - `registry`: Centralized tool registry with O(1) lookup
 //! - `definitions`: Tool definitions organized by category
-//!   - `core`: Core tools (inject, store, search, status)
-//!   - `gwt`: Global Workspace Theory tools
-//!   - `utl`: Unified Theory of Learning tools
-//!   - `atc`: Adaptive Threshold Calibration tools
-//!   - `dream`: Dream consolidation tools
-//!   - `neuromod`: Neuromodulation tools
-//!   - `steering`: Steering feedback tools
-//!   - `causal`: Causal inference tools
-//!   - `teleological`: 13-embedder fusion tools
-//!   - `autonomous`: Autonomous system tools
+//!   - `core`: Core tools (inject_context, store_memory, search_graph, get_memetic_status)
+//!   - `topic`: Topic tools (get_topic_portfolio, get_topic_stability, detect_topics, get_divergence_alerts)
+//!   - `curation`: Curation tools (merge_concepts, forget_concept, boost_importance)
+//!   - `dream`: Dream consolidation tools (trigger_dream, get_dream_status)
 
 pub mod aliases;
 pub mod definitions;
@@ -26,108 +20,12 @@ pub mod names;
 pub mod registry;
 pub mod types;
 
-// Re-export for backwards compatibility
 pub use self::definitions::get_tool_definitions;
 pub use self::names as tool_names;
-
-// TASK-41: Export ToolRegistry for centralized tool management
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    #[ignore = "Expects 57 tools but PRD v6 only has 6 core tools - TASK-GAP-002"]
-    fn test_get_tool_definitions() {
-        let tools = get_tool_definitions();
-        // 6 original + 9 GWT tools + 1 UTL delta-S/C + 3 ATC tools + 5 Dream tools
-        // + 2 Neuromod tools + 1 Steering + 1 Causal + 5 Teleological + 12 Autonomous = 45 total
-        // + 3 Meta-UTL tools (TASK-METAUTL-P0-005) = 48 total
-        // + 1 Epistemic tool (TASK-MCP-001) = 49 total
-        // + 1 Merge tool (TASK-MCP-003) = 50 total
-        // + 4 Session tools (TASK-013/014) = 55 total (session_start, session_end, pre_tool_use, post_tool_use)
-        // NOTE: GWT now has 4 tools (get_workspace_status, get_ego_state, trigger_workspace_broadcast, get_coherence_state)
-        // NOTE: Dream now has 8 tools (TASK-37 added get_gpu_status, TASK-S01/S02/S03 added trigger_mental_check, get_trigger_config, get_trigger_history)
-        // NOTE: Autonomous now has 12 tools (7 original + 5 SPEC-AUTONOMOUS-001)
-        // TASK-FIX-002: Added get_drift_history tool
-        assert_eq!(tools.len(), 57);
-
-        let tool_names: Vec<_> = tools.iter().map(|t| t.name.as_str()).collect();
-
-        // Original 6 tools
-        assert!(tool_names.contains(&"inject_context"));
-        assert!(tool_names.contains(&"store_memory"));
-        assert!(tool_names.contains(&"get_memetic_status"));
-        assert!(tool_names.contains(&"get_graph_manifest"));
-        assert!(tool_names.contains(&"search_graph"));
-        assert!(tool_names.contains(&"utl_status"));
-
-        // GWT tools (TASK-GWT-001, TASK-33/34)
-        // Note: Consciousness and IC tools removed per PRD v6
-        assert!(tool_names.contains(&"get_workspace_status"));
-        assert!(tool_names.contains(&"get_ego_state"));
-        assert!(tool_names.contains(&"trigger_workspace_broadcast"));
-        assert!(tool_names.contains(&"get_coherence_state")); // TASK-33/34
-
-        // UTL delta-S/C tool (TASK-UTL-P1-001)
-        assert!(tool_names.contains(&"gwt/compute_delta_sc"));
-
-        // ATC tools (TASK-ATC-001)
-        assert!(tool_names.contains(&"get_threshold_status"));
-        assert!(tool_names.contains(&"get_calibration_metrics"));
-        assert!(tool_names.contains(&"trigger_recalibration"));
-
-        // Dream tools (TASK-DREAM-MCP, TASK-37)
-        assert!(tool_names.contains(&"trigger_dream"));
-        assert!(tool_names.contains(&"get_dream_status"));
-        assert!(tool_names.contains(&"abort_dream"));
-        assert!(tool_names.contains(&"get_amortized_shortcuts"));
-        assert!(tool_names.contains(&"get_gpu_status")); // TASK-37
-
-        // Neuromod tools (TASK-NEUROMOD-MCP)
-        assert!(tool_names.contains(&"get_neuromodulation_state"));
-        assert!(tool_names.contains(&"adjust_neuromodulator"));
-
-        // Steering tools (TASK-STEERING-001)
-        assert!(tool_names.contains(&"get_steering_feedback"));
-
-        // Causal tools (TASK-CAUSAL-001)
-        assert!(tool_names.contains(&"omni_infer"));
-
-
-        // Teleological tools (TELEO-007 through TELEO-011)
-        assert!(tool_names.contains(&"search_teleological"));
-        assert!(tool_names.contains(&"compute_teleological_vector"));
-        assert!(tool_names.contains(&"fuse_embeddings"));
-        assert!(tool_names.contains(&"update_synergy_matrix"));
-        assert!(tool_names.contains(&"manage_teleological_profile"));
-
-        // Autonomous tools (TASK-AUTONOMOUS-MCP)
-        assert!(tool_names.contains(&"trigger_drift_correction"));
-        assert!(tool_names.contains(&"get_pruning_candidates"));
-        assert!(tool_names.contains(&"trigger_consolidation"));
-        assert!(tool_names.contains(&"discover_sub_goals"));
-        assert!(tool_names.contains(&"get_autonomous_status"));
-
-        // SPEC-AUTONOMOUS-001: 5 new tools for learner, pruning, health
-        assert!(tool_names.contains(&"get_learner_state"));
-        assert!(tool_names.contains(&"observe_outcome"));
-        assert!(tool_names.contains(&"execute_prune"));
-        assert!(tool_names.contains(&"get_health_status"));
-        assert!(tool_names.contains(&"trigger_healing"));
-
-        // Epistemic tools (TASK-MCP-001)
-        assert!(tool_names.contains(&"epistemic_action"));
-
-        // Merge tools (TASK-MCP-003)
-        assert!(tool_names.contains(&"merge_concepts"));
-
-        // Session tools (TASK-013/014)
-        assert!(tool_names.contains(&"session_start"));
-        assert!(tool_names.contains(&"session_end"));
-        assert!(tool_names.contains(&"pre_tool_use"));
-        assert!(tool_names.contains(&"post_tool_use"));
-    }
 
     #[test]
     fn test_tool_definition_serialization() {

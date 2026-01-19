@@ -308,7 +308,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // Requires GPU
     fn test_gpu_device_creation() {
         let device = GpuDevice::new(0).expect("GPU device creation failed");
 
@@ -335,7 +334,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // Requires GPU
     fn test_gpu_device_invalid_ordinal() {
         let result = GpuDevice::new(999);
         assert!(result.is_err(), "Should fail for invalid device ordinal");
@@ -359,7 +357,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // Requires GPU
     fn test_gpu_device_drop_cleanup() {
         // Test that creating and dropping GpuDevice works without crashing
         // and that multiple devices can be created sequentially.
@@ -410,7 +407,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // Requires GPU
     fn test_cuda_init_once() {
         // Create multiple devices - should not double-init
         let d1 = GpuDevice::new(0).expect("First device failed");

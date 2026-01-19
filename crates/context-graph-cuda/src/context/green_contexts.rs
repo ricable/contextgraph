@@ -627,7 +627,6 @@ mod tests {
     // ========================================================================
 
     #[test]
-    #[ignore] // Requires GPU
     fn test_green_contexts_with_real_gpu() {
         let device = GpuDevice::new(0).expect("GPU required for this test");
         let config = GreenContextsConfig::default();
@@ -670,7 +669,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // Requires RTX 5090 specifically
     fn test_green_contexts_rtx5090() {
         let device = GpuDevice::new(0).expect("GPU required");
         let (major, minor) = device.compute_capability();
@@ -718,7 +716,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // Requires GPU
     fn test_graceful_degradation() {
         let device = GpuDevice::new(0).expect("GPU required");
 

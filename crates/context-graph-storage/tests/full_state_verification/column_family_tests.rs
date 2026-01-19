@@ -25,8 +25,8 @@ async fn test_e1_matryoshka_truncation_verification() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let store = create_test_store(&temp_dir);
 
-    let id = Uuid::new_v4();
-    let fingerprint = generate_real_teleological_fingerprint(id);
+    let fingerprint = generate_real_teleological_fingerprint(Uuid::new_v4());
+    let id = fingerprint.id; // Use the fingerprint's actual ID
 
     // Record original E1 vector (1024D)
     let original_e1 = fingerprint.semantic.e1_semantic.clone();
@@ -81,8 +81,8 @@ async fn test_all_17_column_families_populated() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let store = create_test_store(&temp_dir);
 
-    let id = Uuid::new_v4();
-    let fingerprint = generate_real_teleological_fingerprint(id);
+    let fingerprint = generate_real_teleological_fingerprint(Uuid::new_v4());
+    let id = fingerprint.id; // Use the fingerprint's actual ID
 
     store.store(fingerprint).await.expect("Store failed");
 

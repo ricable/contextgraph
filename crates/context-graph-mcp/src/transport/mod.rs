@@ -7,4 +7,7 @@
 
 pub mod sse;
 
-pub use sse::{create_sse_router, SseAppState, SseConfig};
+// Note: McpSseEvent is re-exported for external use even if not used within this crate.
+// It's part of the public API documented in sse.rs doctests.
+#[allow(unused_imports)]
+pub use sse::{create_sse_router, McpSseEvent, SseAppState, SseConfig};

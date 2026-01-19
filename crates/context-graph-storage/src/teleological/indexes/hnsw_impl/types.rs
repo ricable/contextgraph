@@ -91,7 +91,9 @@ impl HnswEmbedderIndex {
     /// # Example
     ///
     /// ```
-    /// use context_graph_storage::teleological::indexes::{EmbedderIndex, HnswEmbedderIndex};
+    /// use context_graph_storage::teleological::indexes::{
+    ///     EmbedderIndex, EmbedderIndexOps, HnswEmbedderIndex,
+    /// };
     ///
     /// let index = HnswEmbedderIndex::new(EmbedderIndex::E1Semantic);
     /// assert_eq!(index.config().dimension, 1024);

@@ -29,10 +29,9 @@ async fn test_edge_case_minimal_fingerprint() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let store = create_test_store(&temp_dir);
 
-    let id = Uuid::new_v4();
-
     // Create minimal fingerprint with minimum required dimensions
-    let mut fingerprint = generate_real_teleological_fingerprint(id);
+    let mut fingerprint = generate_real_teleological_fingerprint(Uuid::new_v4());
+    let id = fingerprint.id; // Use the fingerprint's actual ID
 
     // Test with minimal sparse vectors (1 element each)
     fingerprint.semantic.e6_sparse =
@@ -94,8 +93,8 @@ async fn test_edge_case_maximum_size_fingerprint() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let store = create_test_store(&temp_dir);
 
-    let id = Uuid::new_v4();
-    let mut fingerprint = generate_real_teleological_fingerprint(id);
+    let mut fingerprint = generate_real_teleological_fingerprint(Uuid::new_v4());
+    let id = fingerprint.id; // Use the fingerprint's actual ID
 
     // Maximum sparse vectors (within 150KB serialization limit)
     // E6 sparse: 2000 elements = 2000 * 6 bytes = ~12KB
@@ -196,8 +195,8 @@ async fn test_edge_case_concurrent_access() {
         handles.push(tokio::spawn(async move {
             let mut ids = Vec::new();
             for i in 0..writes_per_task {
-                let id = Uuid::new_v4();
-                let fingerprint = generate_real_teleological_fingerprint(id);
+                let fingerprint = generate_real_teleological_fingerprint(Uuid::new_v4());
+                let id = fingerprint.id; // Use the fingerprint's actual ID
                 store
                     .store(fingerprint)
                     .await

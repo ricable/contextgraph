@@ -1,17 +1,13 @@
 //! TASK-EMB-024: Full State Verification Tests
 //!
 //! This module verifies the TASK-EMB-024 implementation:
-//! 1. StubSystemMonitor fail-fast behavior (returns error code -32050)
-//! 2. StubLayerStatusProvider returns honest layer statuses
-//! 3. Pipeline breakdown fail-fast behavior (returns error code -32052)
+//! 1. StubLayerStatusProvider returns honest layer statuses
 //!
 //! ## Test Methodology
 //!
-//! - Source of Truth: StubSystemMonitor, StubLayerStatusProvider, search handlers
-//! - Execute & Inspect: Call handlers and verify error codes/responses
-//! - Edge Cases: Empty inputs, malformed params
-//!
-//! NO mock data, NO fallbacks - verify that stubs FAIL with correct error codes.
+//! - Source of Truth: StubLayerStatusProvider
+//! - Execute & Inspect: Call handlers and verify responses
+//! - NO mock data, NO fallbacks
 
 use std::sync::Arc;
 
@@ -26,30 +22,17 @@ use context_graph_core::traits::{
 };
 
 use crate::handlers::Handlers;
-use crate::protocol::{error_codes, JsonRpcId, JsonRpcRequest};
+use crate::protocol::{JsonRpcId, JsonRpcRequest};
 
 /// Create test handlers using Handlers::with_defaults (which uses StubLayerStatusProvider).
-///
-/// TASK-GAP-001: Updated to use Handlers::with_defaults() after PRD v6 refactor.
-/// This is the configuration that TASK-EMB-024 requires to fail-fast.
-/// NOTE: GoalHierarchy was removed - Handlers::with_defaults now takes 4 args.
 fn create_handlers_with_stub_monitors() -> Handlers {
     let store: Arc<dyn TeleologicalMemoryStore> = Arc::new(InMemoryTeleologicalStore::new());
     let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
     let multi_array: Arc<dyn MultiArrayEmbeddingProvider> = Arc::new(StubMultiArrayProvider::new());
     let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    Handlers::with_defaults(
-        store,
-        utl_processor,
-        multi_array,
-        layer_status,
-    )
+    Handlers::with_defaults(store, utl_processor, multi_array, layer_status)
 }
-
-// TASK-GAP-001: Removed create_handlers_with_tracker() function.
-// It used MetaUtlTracker and Handlers::with_meta_utl_tracker() which were deleted in fab0622.
-// When MetaUtlTracker is reimplemented per PRD v6, this function can be restored.
 
 fn make_request(method: &str, params: serde_json::Value) -> JsonRpcRequest {
     JsonRpcRequest {
@@ -60,119 +43,13 @@ fn make_request(method: &str, params: serde_json::Value) -> JsonRpcRequest {
     }
 }
 
-fn make_request_no_params(method: &str) -> JsonRpcRequest {
-    JsonRpcRequest {
-        jsonrpc: "2.0".to_string(),
-        id: Some(JsonRpcId::Number(1)),
-        method: method.to_string(),
-        params: None,
-    }
-}
-
 // ============================================================================
-// SECTION 1: StubSystemMonitor Fail-Fast Verification
-// ============================================================================
-
-/// Test that meta_utl/health_metrics returns SYSTEM_MONITOR_ERROR (-32050)
-/// when using StubSystemMonitor.
-/// TASK-GAP-001: Ignored - meta_utl/health_metrics removed in PRD v6 refactor.
-#[tokio::test]
-#[ignore = "meta_utl/health_metrics removed in PRD v6 - no direct method calls"]
-async fn test_task_emb_024_stub_system_monitor_returns_error_32050() {
-    println!("\n======================================================================");
-    println!("TASK-EMB-024 VERIFICATION: StubSystemMonitor Fail-Fast Behavior");
-    println!("======================================================================\n");
-
-    let handlers = create_handlers_with_stub_monitors();
-
-    // Call meta_utl/health_metrics - should fail with -32050
-    let request = make_request("meta_utl/health_metrics", json!({}));
-    let response = handlers.dispatch(request).await;
-
-    // VERIFY: Response should be an error
-    println!("RESPONSE INSPECTION:");
-    assert!(
-        response.error.is_some(),
-        "Expected error response, got success: {:?}",
-        response.result
-    );
-
-    let error = response.error.unwrap();
-    println!(
-        "  Error code: {} (expected: -32050 SYSTEM_MONITOR_ERROR)",
-        error.code
-    );
-    println!("  Error message: {}", error.message);
-
-    // VERIFY: Error code is -32050
-    assert_eq!(
-        error.code,
-        error_codes::SYSTEM_MONITOR_ERROR,
-        "Expected SYSTEM_MONITOR_ERROR (-32050), got {}",
-        error.code
-    );
-
-    // VERIFY: Error message contains "Not implemented"
-    assert!(
-        error.message.to_lowercase().contains("not implemented")
-            || error.message.to_lowercase().contains("failed to get"),
-        "Error message should indicate not implemented: {}",
-        error.message
-    );
-
-    println!("\n======================================================================");
-    println!("EVIDENCE: StubSystemMonitor correctly returns error code -32050");
-    println!("  - meta_utl/health_metrics FAILS with SYSTEM_MONITOR_ERROR");
-    println!("  - No hardcoded metrics returned");
-    println!("======================================================================\n");
-}
-
-/// Test that health_metrics fails for coherence_recovery_time_ms specifically.
-/// TASK-GAP-001: Ignored - meta_utl/health_metrics removed in PRD v6 refactor.
-#[tokio::test]
-#[ignore = "meta_utl/health_metrics removed in PRD v6 - no direct method calls"]
-async fn test_task_emb_024_coherence_recovery_fails_with_stub() {
-    println!("\n======================================================================");
-    println!("TASK-EMB-024: coherence_recovery_time_ms Fail-Fast");
-    println!("======================================================================\n");
-
-    let handlers = create_handlers_with_stub_monitors();
-
-    // The first metric to fail is coherence_recovery_time_ms
-    let request = make_request(
-        "meta_utl/health_metrics",
-        json!({ "include_targets": true }),
-    );
-    let response = handlers.dispatch(request).await;
-
-    assert!(response.error.is_some(), "Should fail with error");
-    let error = response.error.unwrap();
-
-    // Should fail with SYSTEM_MONITOR_ERROR
-    assert_eq!(error.code, error_codes::SYSTEM_MONITOR_ERROR);
-
-    // Error message should mention the metric
-    assert!(
-        error.message.contains("coherence_recovery") || error.message.contains("Not implemented"),
-        "Error should mention the failing metric: {}",
-        error.message
-    );
-
-    println!("EVIDENCE: coherence_recovery_time_ms FAILS (no hardcoded 8500 value)");
-    println!("  Error: {}", error.message);
-}
-
-// ============================================================================
-// SECTION 2: StubLayerStatusProvider Verification
+// StubLayerStatusProvider Verification
 // ============================================================================
 
 /// Test that get_memetic_status returns proper layer statuses from StubLayerStatusProvider.
 #[tokio::test]
 async fn test_task_emb_024_layer_status_provider_honest_statuses() {
-    println!("\n======================================================================");
-    println!("TASK-EMB-024 VERIFICATION: StubLayerStatusProvider Layer Statuses");
-    println!("======================================================================\n");
-
     let handlers = create_handlers_with_stub_monitors();
 
     // Call get_memetic_status via tools/call
@@ -203,15 +80,9 @@ async fn test_task_emb_024_layer_status_provider_honest_statuses() {
     let data: serde_json::Value =
         serde_json::from_str(content).expect("Content should be valid JSON");
 
-    println!("LAYER STATUSES FROM StubLayerStatusProvider:");
-    let layers = &data["layers"];
-    println!("  perception: {}", layers["perception"]);
-    println!("  memory: {}", layers["memory"]);
-    println!("  action: {}", layers["action"]);
-    println!("  meta: {}", layers["meta"]);
-
     // VERIFY: Expected statuses per StubLayerStatusProvider
     // All 4 layers are "active" (have working implementations)
+    let layers = &data["layers"];
     assert_eq!(
         layers["perception"].as_str().unwrap(),
         "active",
@@ -232,236 +103,15 @@ async fn test_task_emb_024_layer_status_provider_honest_statuses() {
         "active",
         "meta should be active"
     );
-
-    println!("\n======================================================================");
-    println!("EVIDENCE: StubLayerStatusProvider returns honest layer statuses");
-    println!("  - perception: active (13-embedder ProductionMultiArrayProvider works)");
-    println!("  - memory: active (RocksDbTeleologicalStore works)");
-    println!("  - action: active (UtlProcessorAdapter works)");
-    println!("  - meta: active (Topic synthesis via HDBSCAN works)");
-    println!("======================================================================\n");
 }
 
 // ============================================================================
-// SECTION 3: Pipeline Breakdown Fail-Fast Verification
-// ============================================================================
-
-/// Test that search/multi with include_pipeline_breakdown=true returns
-/// PIPELINE_METRICS_UNAVAILABLE (-32052).
-/// TASK-GAP-001: Ignored - search/multi removed in PRD v6, use search_graph via tools/call.
-#[tokio::test]
-#[ignore = "search/multi removed in PRD v6 - use tools/call with search_graph"]
-async fn test_task_emb_024_pipeline_breakdown_returns_error_32052() {
-    println!("\n======================================================================");
-    println!("TASK-EMB-024 VERIFICATION: Pipeline Breakdown Fail-Fast");
-    println!("======================================================================\n");
-
-    let handlers = create_handlers_with_stub_monitors();
-
-    // Call search/multi with include_pipeline_breakdown=true
-    let request = make_request(
-        "search/multi",
-        json!({
-            "query": "test query for pipeline breakdown verification",
-            "include_pipeline_breakdown": true,
-            "top_k": 5,
-            "minSimilarity": 0.0  // P1-FIX-1: Required parameter (test expects pipeline breakdown error)
-        }),
-    );
-    let response = handlers.dispatch(request).await;
-
-    // VERIFY: Response should be an error
-    println!("RESPONSE INSPECTION:");
-    assert!(
-        response.error.is_some(),
-        "Expected error response when include_pipeline_breakdown=true"
-    );
-
-    let error = response.error.unwrap();
-    println!(
-        "  Error code: {} (expected: -32052 PIPELINE_METRICS_UNAVAILABLE)",
-        error.code
-    );
-    println!("  Error message: {}", error.message);
-
-    // VERIFY: Error code is -32052
-    assert_eq!(
-        error.code,
-        error_codes::PIPELINE_METRICS_UNAVAILABLE,
-        "Expected PIPELINE_METRICS_UNAVAILABLE (-32052), got {}",
-        error.code
-    );
-
-    // VERIFY: Error message is descriptive
-    assert!(
-        error.message.contains("not yet implemented")
-            || error.message.contains("Pipeline breakdown"),
-        "Error message should explain the issue: {}",
-        error.message
-    );
-
-    println!("\n======================================================================");
-    println!("EVIDENCE: Pipeline breakdown correctly returns error code -32052");
-    println!("  - search/multi with include_pipeline_breakdown=true FAILS");
-    println!("  - No simulated timing data returned");
-    println!("======================================================================\n");
-}
-
-/// Test that search/multi WITHOUT include_pipeline_breakdown succeeds.
-/// TASK-GAP-001: Ignored - search/multi removed in PRD v6, use search_graph via tools/call.
-#[tokio::test]
-#[ignore = "search/multi removed in PRD v6 - use tools/call with search_graph"]
-async fn test_task_emb_024_search_multi_without_breakdown_succeeds() {
-    println!("\n======================================================================");
-    println!("TASK-EMB-024: search/multi Without Pipeline Breakdown Succeeds");
-    println!("======================================================================\n");
-
-    let handlers = create_handlers_with_stub_monitors();
-
-    // Call search/multi without include_pipeline_breakdown (default false)
-    let request = make_request(
-        "search/multi",
-        json!({
-            "query": "test query without pipeline breakdown",
-            "top_k": 5,
-            "minSimilarity": 0.0  // P1-FIX-1: Required parameter for fail-fast
-        }),
-    );
-    let response = handlers.dispatch(request).await;
-
-    // VERIFY: Should succeed (no pipeline breakdown requested)
-    assert!(
-        response.error.is_none(),
-        "search/multi should succeed without pipeline breakdown: {:?}",
-        response.error
-    );
-
-    let result = response.result.unwrap();
-    println!("SUCCESS: search/multi returned {} results", result["count"]);
-
-    // Verify no pipeline_breakdown in response
-    assert!(
-        result.get("pipeline_breakdown").is_none(),
-        "Should not have pipeline_breakdown field"
-    );
-
-    println!("EVIDENCE: search/multi works normally when include_pipeline_breakdown=false");
-}
-
-// ============================================================================
-// SECTION 4: Edge Case Tests
-// ============================================================================
-
-/// Edge Case 1: Empty params for health_metrics - should still fail with SYSTEM_MONITOR_ERROR.
-/// TASK-GAP-001: Ignored - meta_utl/health_metrics removed in PRD v6 refactor.
-#[tokio::test]
-#[ignore = "meta_utl/health_metrics removed in PRD v6 - no direct method calls"]
-async fn test_task_emb_024_edge_case_empty_params() {
-    println!("\n======================================================================");
-    println!("TASK-EMB-024 EDGE CASE: Empty Params for health_metrics");
-    println!("======================================================================\n");
-
-    let handlers = create_handlers_with_stub_monitors();
-
-    // Call with empty params
-    let request = make_request_no_params("meta_utl/health_metrics");
-    let response = handlers.dispatch(request).await;
-
-    // Should still fail with SYSTEM_MONITOR_ERROR
-    assert!(
-        response.error.is_some(),
-        "Should fail even with empty params"
-    );
-    let error = response.error.unwrap();
-    assert_eq!(error.code, error_codes::SYSTEM_MONITOR_ERROR);
-
-    println!("EVIDENCE: Empty params still triggers SYSTEM_MONITOR_ERROR (-32050)");
-    println!("  - Error: {}", error.message);
-}
-
-/// Edge Case 2: Invalid format params - should handle gracefully.
-/// TASK-GAP-001: Ignored - meta_utl/health_metrics removed in PRD v6 refactor.
-#[tokio::test]
-#[ignore = "meta_utl/health_metrics removed in PRD v6 - no direct method calls"]
-async fn test_task_emb_024_edge_case_invalid_params_format() {
-    println!("\n======================================================================");
-    println!("TASK-EMB-024 EDGE CASE: Invalid Params Format");
-    println!("======================================================================\n");
-
-    let handlers = create_handlers_with_stub_monitors();
-
-    // Call with malformed params (wrong types)
-    let request = make_request(
-        "meta_utl/health_metrics",
-        json!({
-            "include_targets": "not_a_boolean",  // Should be bool
-            "include_recommendations": 12345     // Should be bool
-        }),
-    );
-    let response = handlers.dispatch(request).await;
-
-    // The handler should still fail with SYSTEM_MONITOR_ERROR (params are optional)
-    // because it reaches the actual monitoring call
-    assert!(response.error.is_some(), "Should fail");
-    let error = response.error.unwrap();
-
-    // Should be SYSTEM_MONITOR_ERROR because invalid params just default to false
-    // and then it hits the actual monitoring code which fails
-    println!("Response error code: {}", error.code);
-    println!("Response error message: {}", error.message);
-
-    // The error should be either INVALID_PARAMS or SYSTEM_MONITOR_ERROR
-    assert!(
-        error.code == error_codes::SYSTEM_MONITOR_ERROR
-            || error.code == error_codes::INVALID_PARAMS,
-        "Should be SYSTEM_MONITOR_ERROR or INVALID_PARAMS, got {}",
-        error.code
-    );
-
-    println!("EVIDENCE: Invalid params handled gracefully (no panic)");
-}
-
-/// Edge Case 3: health_metrics with all optional params set.
-/// TASK-GAP-001: Ignored - meta_utl/health_metrics removed in PRD v6 refactor.
-#[tokio::test]
-#[ignore = "meta_utl/health_metrics removed in PRD v6 - no direct method calls"]
-async fn test_task_emb_024_edge_case_all_optional_params() {
-    println!("\n======================================================================");
-    println!("TASK-EMB-024 EDGE CASE: All Optional Params");
-    println!("======================================================================\n");
-
-    let handlers = create_handlers_with_stub_monitors();
-
-    // Call with all optional params
-    let request = make_request(
-        "meta_utl/health_metrics",
-        json!({
-            "include_targets": true,
-            "include_recommendations": true
-        }),
-    );
-    let response = handlers.dispatch(request).await;
-
-    // Should still fail with SYSTEM_MONITOR_ERROR
-    assert!(response.error.is_some(), "Should fail with all params set");
-    let error = response.error.unwrap();
-    assert_eq!(error.code, error_codes::SYSTEM_MONITOR_ERROR);
-
-    println!("EVIDENCE: All optional params still results in SYSTEM_MONITOR_ERROR");
-    println!("  - No hardcoded values returned regardless of params");
-}
-
-// ============================================================================
-// SECTION 5: No Hardcoded Values Verification
+// No Hardcoded Values Verification
 // ============================================================================
 
 /// Verify that no hardcoded metric values appear in responses.
 #[tokio::test]
 async fn test_task_emb_024_no_hardcoded_values_8500_097_0015() {
-    println!("\n======================================================================");
-    println!("TASK-EMB-024: No Hardcoded Values (8500, 0.97, 0.015)");
-    println!("======================================================================\n");
-
     let handlers = create_handlers_with_stub_monitors();
 
     // Call health_metrics
@@ -490,22 +140,12 @@ async fn test_task_emb_024_no_hardcoded_values_8500_097_0015() {
         response.error.is_some(),
         "Should be error, not success with fake values"
     );
-
-    println!("EVIDENCE: No hardcoded values found in response");
-    println!("  - '8500' NOT found (old coherence_recovery_time_ms)");
-    println!("  - '0.97' NOT found (old attack_detection_rate)");
-    println!("  - '0.015' NOT found (old false_positive_rate)");
-    println!("  - Response is ERROR (as expected)");
 }
 
 /// Verify that layer statuses don't contain hardcoded "stub" strings as
 /// the RESULT - only as honest reporting when appropriate.
 #[tokio::test]
 async fn test_task_emb_024_layer_statuses_are_honest_not_placeholder() {
-    println!("\n======================================================================");
-    println!("TASK-EMB-024: Layer Statuses Are Honest (Not Placeholder)");
-    println!("======================================================================\n");
-
     let handlers = create_handlers_with_stub_monitors();
 
     let request = make_request(
@@ -541,8 +181,4 @@ async fn test_task_emb_024_layer_statuses_are_honest_not_placeholder() {
         memory, "active",
         "memory should be active, not placeholder stub"
     );
-
-    println!("EVIDENCE: Layer statuses are honest, not placeholders");
-    println!("  - perception='active' (has real implementation)");
-    println!("  - memory='active' (InMemoryTeleologicalStore works)");
 }

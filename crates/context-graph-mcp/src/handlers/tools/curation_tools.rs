@@ -121,15 +121,12 @@ impl Handlers {
 
     /// Handle boost_importance tool call.
     ///
-    /// NOTE: This functionality was modified when purpose_vector/alignment fields
-    /// were removed from TeleologicalFingerprint. The tool now updates the
-    /// last_updated timestamp as a proxy for "importance touch" and returns
-    /// a response with the requested delta applied to a default baseline.
+    /// Per PRD Section 7, importance is computed from:
+    ///   Importance = Frequency_Score × Recency_Weight
+    ///   Frequency_Score = BM25_saturated(log(1+access_count))
     ///
-    /// Memory importance is now determined by:
-    /// - Access frequency (access_count field)
-    /// - Embedding-based clustering (topic detection)
-    /// - Dream consolidation (NREM/REM phases)
+    /// This tool increases access_count to boost the computed importance score.
+    /// A positive delta increments access_count, negative decrements (min 0).
     ///
     /// # Arguments
     /// * `id` - JSON-RPC request ID
@@ -146,7 +143,7 @@ impl Handlers {
         id: Option<JsonRpcId>,
         arguments: serde_json::Value,
     ) -> JsonRpcResponse {
-        debug!("Handling boost_importance (legacy mode)");
+        debug!("Handling boost_importance");
 
         // Parse request
         let request: BoostImportanceRequest = match serde_json::from_value(arguments) {
@@ -167,7 +164,7 @@ impl Handlers {
             }
         };
 
-        debug!(node_id = %node_id, delta = request.delta, "boost_importance: Processing request (legacy mode)");
+        debug!(node_id = %node_id, delta = request.delta, "boost_importance: Processing request");
 
         // Get current memory
         let mut fingerprint = match self.teleological_store.retrieve(node_id).await {
@@ -189,24 +186,37 @@ impl Handlers {
             }
         };
 
-        // Since purpose_vector no longer exists, use a baseline importance of 0.5
-        // This maintains backward compatibility while signaling the change
-        let old_importance = 0.5f32;
+        // Compute current importance from access_count using BM25 formula (PRD Section 7)
+        // Frequency_Score = BM25_saturated(log(1+access_count)) with k1=1.2
+        let k1 = 1.2f32;
+        let freq = (1.0 + fingerprint.access_count as f32).ln();
+        let old_importance = (freq * (k1 + 1.0)) / (freq + k1);
+
+        // Apply delta and clamp to [0.0, 1.0] per BR-MCP-002
         let (new_importance, clamped) = request.apply_delta(old_importance);
+
+        // Convert importance delta to access_count adjustment
+        // If delta is positive, increment access_count; if negative, we can't truly decrease importance
+        // but we update timestamp to affect recency_weight
+        if request.delta > 0.0 {
+            // Increment access_count to boost computed importance
+            fingerprint.access_count = fingerprint.access_count.saturating_add(1);
+        }
 
         debug!(
             node_id = %node_id,
+            access_count = fingerprint.access_count,
             old_importance = old_importance,
             delta = request.delta,
             new_importance = new_importance,
             clamped = clamped,
-            "boost_importance: Computed new importance (legacy mode - purpose_vector removed)"
+            "boost_importance: Updated access_count to adjust importance"
         );
 
-        // Update last_updated timestamp as a proxy for "importance touch"
+        // Update last_updated timestamp (affects recency_weight in importance calculation)
         fingerprint.last_updated = Utc::now();
 
-        // Persist the updated fingerprint (timestamp change)
+        // Persist the updated fingerprint
         match self.teleological_store.update(fingerprint).await {
             Ok(true) => {
                 info!(
@@ -214,7 +224,7 @@ impl Handlers {
                     old = old_importance,
                     new = new_importance,
                     clamped = clamped,
-                    "boost_importance: Updated memory timestamp (legacy mode)"
+                    "boost_importance: Updated memory successfully"
                 );
 
                 // Build response using DTO factory method

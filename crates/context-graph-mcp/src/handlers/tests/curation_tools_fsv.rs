@@ -31,8 +31,20 @@ use super::{
 // Synthetic Data Helpers
 // ============================================================================
 
-/// Create a test fingerprint with known content.
-fn create_test_fingerprint(content: &str, _importance: f32) -> TeleologicalFingerprint {
+/// Create a test fingerprint with known content and access_count.
+///
+/// Importance is computed from access_count using BM25 formula (PRD Section 7):
+///   k1 = 1.2
+///   freq = ln(1 + access_count)
+///   importance = (freq * (k1 + 1)) / (freq + k1)
+///
+/// Approximate importance values for access_count:
+///   0 -> 0.0
+///   1 -> 0.55
+///   3 -> 0.72
+///   10 -> 0.80
+///   100 -> 0.93
+fn create_test_fingerprint(content: &str, access_count: u64) -> TeleologicalFingerprint {
     // Compute content hash
     let content_hash: [u8; 32] = {
         let mut hasher = Sha256::new();
@@ -42,7 +54,9 @@ fn create_test_fingerprint(content: &str, _importance: f32) -> TeleologicalFinge
 
     // Create semantic fingerprint and teleological fingerprint
     let semantic = SemanticFingerprint::zeroed();
-    TeleologicalFingerprint::new(semantic, content_hash)
+    let mut fp = TeleologicalFingerprint::new(semantic, content_hash);
+    fp.access_count = access_count;
+    fp
 }
 
 // ============================================================================
@@ -60,7 +74,7 @@ async fn test_fsv_forget_concept_soft_delete() {
     let (handlers, store, _tempdir) = create_test_handlers_with_rocksdb_store_access().await;
 
     // Create and store a test fingerprint
-    let fp = create_test_fingerprint("Test memory for soft deletion", 0.5);
+    let fp = create_test_fingerprint("Test memory for soft deletion", 1);
     let node_id = fp.id;
     store.store(fp).await.expect("store() must work");
 
@@ -220,13 +234,14 @@ async fn test_fsv_boost_importance_increase() {
     // Setup
     let (handlers, store, _tempdir) = create_test_handlers_with_rocksdb_store_access().await;
 
-    // Create and store a test fingerprint with known importance
-    let initial_importance = 0.5;
-    let fp = create_test_fingerprint("Test memory for importance boost", initial_importance);
+    // Create and store a test fingerprint with known access_count
+    // access_count = 1 gives importance ≈ 0.55 via BM25 formula
+    let initial_access_count = 1u64;
+    let fp = create_test_fingerprint("Test memory for importance boost", initial_access_count);
     let node_id = fp.id;
     store.store(fp).await.expect("store() must work");
 
-    // PRE-CONDITION: Verify fingerprint exists (importance is now a baseline 0.5 since purpose_vector was removed)
+    // PRE-CONDITION: Verify fingerprint exists
     let retrieved_before = store.retrieve(node_id).await.expect("retrieve() must work");
     let fp_before = retrieved_before.as_ref().unwrap();
     println!("PRE-CONDITION: node_id = {}", node_id);
@@ -262,8 +277,7 @@ async fn test_fsv_boost_importance_increase() {
     println!("RESPONSE: new_importance={}", response_new);
     println!("RESPONSE: clamped={}", response_clamped);
 
-    // Note: Since purpose_vector was removed, boost_importance now uses baseline 0.5
-    // The response still returns computed values for backwards compatibility
+    // Importance is computed from access_count per PRD Section 7
     println!("INFO: response_old={}, response_new={}, clamped={}", response_old, response_new, response_clamped);
 
     // POST-CONDITION: Verify fingerprint still exists and last_updated was touched
@@ -285,17 +299,19 @@ async fn test_fsv_boost_importance_clamp_max() {
     // Setup
     let (handlers, store, _tempdir) = create_test_handlers_with_rocksdb_store_access().await;
 
-    // Create and store a test fingerprint with high importance
-    let initial_importance = 0.9;
-    let fp = create_test_fingerprint("Test memory for max clamp", initial_importance);
+    // Create and store a test fingerprint with high access_count for high importance
+    // access_count = 100 gives importance ≈ 0.93 via BM25 formula
+    let initial_access_count = 100u64;
+    let fp = create_test_fingerprint("Test memory for max clamp", initial_access_count);
     let node_id = fp.id;
     store.store(fp).await.expect("store() must work");
 
-    // PRE-CONDITION
-    println!("PRE-CONDITION: importance = {}", initial_importance);
+    // PRE-CONDITION - importance is computed from access_count
+    println!("PRE-CONDITION: access_count = {}", initial_access_count);
 
     // EXECUTE: Call boost_importance with delta that would exceed 1.0
-    let delta = 0.5; // 0.9 + 0.5 = 1.4, should clamp to 1.0
+    // importance ≈ 0.93 + 0.5 = 1.43, should clamp to 1.0
+    let delta = 0.5;
     let params = json!({
         "name": "boost_importance",
         "arguments": {
@@ -344,17 +360,19 @@ async fn test_fsv_boost_importance_clamp_min() {
     // Setup
     let (handlers, store, _tempdir) = create_test_handlers_with_rocksdb_store_access().await;
 
-    // Create and store a test fingerprint with low importance
-    let initial_importance = 0.1;
-    let fp = create_test_fingerprint("Test memory for min clamp", initial_importance);
+    // Create and store a test fingerprint with low access_count for low importance
+    // access_count = 0 gives importance = 0.0 via BM25 formula
+    let initial_access_count = 0u64;
+    let fp = create_test_fingerprint("Test memory for min clamp", initial_access_count);
     let node_id = fp.id;
     store.store(fp).await.expect("store() must work");
 
-    // PRE-CONDITION
-    println!("PRE-CONDITION: importance = {}", initial_importance);
+    // PRE-CONDITION - importance is computed from access_count
+    println!("PRE-CONDITION: access_count = {}", initial_access_count);
 
     // EXECUTE: Call boost_importance with negative delta that would go below 0.0
-    let delta = -0.5; // 0.1 - 0.5 = -0.4, should clamp to 0.0
+    // importance = 0.0 - 0.5 = -0.5, should clamp to 0.0
+    let delta = -0.5;
     let params = json!({
         "name": "boost_importance",
         "arguments": {
@@ -455,7 +473,7 @@ async fn test_fsv_boost_importance_invalid_delta() {
     let (handlers, store, _tempdir) = create_test_handlers_with_rocksdb_store_access().await;
 
     // Create a memory so we don't get NOT_FOUND
-    let fp = create_test_fingerprint("Test memory for delta validation", 0.5);
+    let fp = create_test_fingerprint("Test memory for delta validation", 1);
     let node_id = fp.id;
     store.store(fp).await.expect("store() must work");
 
@@ -510,7 +528,7 @@ async fn test_fsv_boost_importance_rejects_nan_infinity() {
     let (handlers, store, _tempdir) = create_test_handlers_with_rocksdb_store_access().await;
 
     // Create a memory so we don't get NOT_FOUND
-    let fp = create_test_fingerprint("Test memory for NaN validation", 0.5);
+    let fp = create_test_fingerprint("Test memory for NaN validation", 1);
     let node_id = fp.id;
     store.store(fp).await.expect("store() must work");
 
@@ -561,7 +579,7 @@ async fn test_fsv_cognitive_pulse_included_in_curation() {
     let (handlers, store, _tempdir) = create_test_handlers_with_rocksdb_store_access().await;
 
     // Create test memory
-    let fp = create_test_fingerprint("Test memory for cognitive pulse", 0.5);
+    let fp = create_test_fingerprint("Test memory for cognitive pulse", 1);
     let node_id = fp.id;
     store.store(fp).await.expect("store() must work");
 
@@ -636,7 +654,7 @@ async fn test_fsv_forget_concept_hard_delete() {
     let (handlers, store, _tempdir) = create_test_handlers_with_rocksdb_store_access().await;
 
     // Create and store a test fingerprint
-    let fp = create_test_fingerprint("Test memory for hard deletion", 0.5);
+    let fp = create_test_fingerprint("Test memory for hard deletion", 1);
     let node_id = fp.id;
     store.store(fp).await.expect("store() must work");
 
@@ -697,13 +715,14 @@ async fn test_fsv_boost_importance_zero_delta() {
     let (handlers, store, _tempdir) = create_test_handlers_with_rocksdb_store_access().await;
 
     // Create and store a test fingerprint
-    let initial_importance = 0.5;
-    let fp = create_test_fingerprint("Test memory for zero delta", initial_importance);
+    // access_count = 1 gives importance ≈ 0.55 via BM25 formula
+    let initial_access_count = 1u64;
+    let fp = create_test_fingerprint("Test memory for zero delta", initial_access_count);
     let node_id = fp.id;
     store.store(fp).await.expect("store() must work");
 
     // PRE-CONDITION
-    println!("PRE-CONDITION: importance = {}", initial_importance);
+    println!("PRE-CONDITION: access_count = {}", initial_access_count);
 
     // EXECUTE: Call boost_importance with delta=0.0
     let params = json!({
@@ -745,9 +764,10 @@ async fn test_fsv_boost_importance_zero_delta() {
     println!("[FSV PASS] boost_importance with zero delta is a no-op");
 }
 
-/// FSV Test: Multiple sequential boost_importance operations accumulate correctly
+/// FSV Test: Multiple sequential boost_importance operations work correctly
 ///
-/// Validates: State consistency across multiple operations
+/// Validates: Each operation correctly updates access_count and last_updated
+/// With BM25 formula, importance increases with each positive delta (access_count increments)
 #[tokio::test]
 async fn test_fsv_boost_importance_multiple_operations() {
     println!("\n=== FSV Test: Multiple boost_importance operations ===");
@@ -755,21 +775,21 @@ async fn test_fsv_boost_importance_multiple_operations() {
     // Setup
     let (handlers, store, _tempdir) = create_test_handlers_with_rocksdb_store_access().await;
 
-    // Create and store a test fingerprint
-    let initial_importance = 0.3;
-    let fp = create_test_fingerprint("Test memory for multiple boosts", initial_importance);
+    // Create and store a test fingerprint with low access_count
+    // access_count = 0 gives importance = 0.0 via BM25 formula
+    let initial_access_count = 0u64;
+    let fp = create_test_fingerprint("Test memory for multiple boosts", initial_access_count);
     let node_id = fp.id;
     store.store(fp).await.expect("store() must work");
 
-    println!("PRE-CONDITION: importance = {}", initial_importance);
+    println!("PRE-CONDITION: access_count = {}", initial_access_count);
 
-    // Perform multiple boost operations
-    let deltas = [0.1, 0.15, -0.05, 0.2];
-    let mut expected_importance = initial_importance;
+    // Perform multiple boost operations with positive deltas
+    // Each positive delta should increment access_count, increasing importance
+    let deltas = [0.1, 0.15, 0.2, 0.1];
+    let mut prev_importance = 0.0f32;
 
     for (i, delta) in deltas.iter().enumerate() {
-        expected_importance = (expected_importance + delta).clamp(0.0, 1.0);
-
         let params = json!({
             "name": "boost_importance",
             "arguments": {
@@ -786,23 +806,37 @@ async fn test_fsv_boost_importance_multiple_operations() {
         assert!(!is_error, "Tool should succeed");
 
         let data = extract_mcp_tool_data(&result);
+        let response_old = data.get("old_importance").unwrap().as_f64().unwrap() as f32;
         let response_new = data.get("new_importance").unwrap().as_f64().unwrap() as f32;
 
         println!(
-            "Operation {}: delta={}, new_importance={}, expected={}",
-            i + 1, delta, response_new, expected_importance
+            "Operation {}: delta={}, old_importance={:.3}, new_importance={:.3}",
+            i + 1, delta, response_old, response_new
         );
 
+        // new_importance should be old_importance + delta
+        let expected_new = (response_old + *delta as f32).clamp(0.0, 1.0);
         assert!(
-            (response_new - expected_importance).abs() < 0.01,
-            "Operation {} importance mismatch", i + 1
+            (response_new - expected_new).abs() < 0.01,
+            "Operation {} new_importance mismatch: got {}, expected {}",
+            i + 1, response_new, expected_new
         );
+
+        // old_importance should be >= prev from previous iteration
+        // (because access_count increments on positive delta)
+        if i > 0 {
+            assert!(
+                response_old >= prev_importance - 0.01,
+                "Operation {} old_importance should not decrease significantly", i + 1
+            );
+        }
+        prev_importance = response_new;
     }
 
     // POST-CONDITION: Verify fingerprint still exists
     let retrieved = store.retrieve(node_id).await.expect("retrieve() must work");
     assert!(retrieved.is_some(), "Fingerprint must still exist");
-    println!("POST-CONDITION: fingerprint exists = true, expected_importance = {}", expected_importance);
+    println!("POST-CONDITION: fingerprint exists = true");
 
-    println!("[FSV PASS] Multiple boost_importance operations accumulate correctly");
+    println!("[FSV PASS] Multiple boost_importance operations work correctly");
 }

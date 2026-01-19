@@ -106,13 +106,25 @@ impl McpServer {
     ///
     /// TASK-S001: Creates TeleologicalMemoryStore and MultiArrayEmbeddingProvider.
     /// TASK-S004: Uses REAL implementations - RocksDbTeleologicalStore, UtlProcessorAdapter.
+    /// TASK-EMB-WARMUP: When `warm_first` is true, blocks until all 13 embedding models
+    /// are loaded into VRAM before returning. This ensures embedding operations are
+    /// available immediately when the server starts accepting requests.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Server configuration
+    /// * `warm_first` - If true, block startup until models are loaded into VRAM (default: true)
+    ///                  If false, models load in background while server starts immediately
     ///
     /// # Errors
     ///
     /// - Returns error if RocksDB fails to open (path issues, permissions, corruption)
-    /// - Returns error if MultiArrayEmbeddingProvider is not yet implemented (FAIL FAST)
-    pub async fn new(config: Config) -> Result<Self> {
-        info!("Initializing MCP Server with REAL implementations (NO STUBS)...");
+    /// - Returns error if `warm_first` is true and model loading fails
+    pub async fn new(config: Config, warm_first: bool) -> Result<Self> {
+        info!(
+            "Initializing MCP Server with REAL implementations (NO STUBS), warm_first={}...",
+            warm_first
+        );
 
         // ==========================================================================
         // 1. Create RocksDB teleological store (REAL persistent storage)
@@ -150,20 +162,24 @@ impl McpServer {
         // 3. REAL MultiArrayEmbeddingProvider - 13 GPU-accelerated embedders
         // ==========================================================================
         // TASK-EMB-016: Use global warm provider singleton
+        // TASK-EMB-WARMUP: Support blocking and background warmup modes
         //
         // The global warm provider ensures:
         // - All 13 models are loaded ONCE at startup into VRAM
         // - Tests and production code use the SAME warm models
         // - No cold loading overhead in tests or runtime
         //
-        // GPU Requirements: NVIDIA CUDA GPU with 8GB+ VRAM
+        // GPU Requirements: NVIDIA CUDA GPU with 32GB VRAM (RTX 5090)
         // Model Directory: ./models relative to binary (configurable via env)
         //
-        // STARTUP BEHAVIOR:
-        // - If global warm provider is already initialized (from CLI or test fixture),
-        //   use it directly with no loading delay
-        // - If not initialized, use background loading via LazyMultiArrayProvider
-        //   for immediate MCP protocol response
+        // STARTUP BEHAVIOR (controlled by warm_first):
+        // - warm_first=true: BLOCK until all models are loaded into VRAM
+        //   This is the DEFAULT and RECOMMENDED mode for production.
+        //   Ensures embedding operations are available immediately.
+        //
+        // - warm_first=false: Background loading via LazyMultiArrayProvider
+        //   Server starts immediately but embedding operations fail until
+        //   models finish loading (20-30s on RTX 5090).
 
         // Create shared state for model provider
         let multi_array_provider: Arc<RwLock<Option<Arc<dyn MultiArrayEmbeddingProvider>>>> =
@@ -175,7 +191,7 @@ impl McpServer {
         let warm_provider_initialized = is_warm_initialized();
 
         if warm_provider_initialized {
-            // Use the already-warm global provider
+            // Use the already-warm global provider (regardless of warm_first flag)
             info!("Global warm provider already initialized - using warm models immediately");
             match get_warm_provider() {
                 Ok(provider) => {
@@ -186,15 +202,70 @@ impl McpServer {
                 }
                 Err(e) => {
                     error!("Failed to get global warm provider: {}. Status: {}", e, warm_status_message());
+                    if warm_first {
+                        // FAIL FAST when warm_first is enabled
+                        return Err(anyhow::anyhow!(
+                            "Failed to get global warm provider with warm_first=true: {}. \
+                             Ensure CUDA GPU is available and models are downloaded.",
+                            e
+                        ));
+                    }
                     let mut failed = models_failed.write().await;
                     *failed = Some(format!("{}", e));
                     models_loading.store(false, Ordering::SeqCst);
                 }
             }
+        } else if warm_first {
+            // TASK-EMB-WARMUP: BLOCKING warmup mode
+            // Block startup until all 13 models are loaded into VRAM
+            info!("warm_first=true: Blocking startup until embedding models are loaded into VRAM...");
+            info!("This may take 20-30 seconds on RTX 5090 (32GB VRAM)...");
+
+            let models_dir = Self::resolve_models_path(&config);
+            info!("Loading models from {:?}...", models_dir);
+
+            // Initialize global warm provider SYNCHRONOUSLY
+            match initialize_global_warm_provider().await {
+                Ok(()) => {
+                    info!("Global warm provider initialized successfully");
+                    match get_warm_provider() {
+                        Ok(provider) => {
+                            let mut slot = multi_array_provider.write().await;
+                            *slot = Some(provider);
+                            models_loading.store(false, Ordering::SeqCst);
+                            info!("SUCCESS: All 13 embedding models loaded into VRAM and ready");
+                        }
+                        Err(e) => {
+                            error!("Failed to get global warm provider after init: {}. Status: {}", e, warm_status_message());
+                            return Err(anyhow::anyhow!(
+                                "Failed to get global warm provider after initialization: {}. \
+                                 This is unexpected - check GPU status.",
+                                e
+                            ));
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!(
+                        "FATAL: Global warm provider initialization failed: {}. \
+                         Ensure CUDA 13.1+ is installed, RTX 5090 is available, \
+                         and models are downloaded to {:?}",
+                        e, models_dir
+                    );
+                    return Err(anyhow::anyhow!(
+                        "Failed to initialize embedding models with warm_first=true: {}. \
+                         Use --no-warm to skip blocking warmup (embeddings will fail until background load completes).",
+                        e
+                    ));
+                }
+            }
         } else {
+            // TASK-EMB-WARMUP: BACKGROUND warmup mode (warm_first=false)
             // Initialize global warm provider in background
             // This allows immediate MCP protocol response while models load
-            info!("Global warm provider not yet initialized - loading in background...");
+            info!("warm_first=false: Loading embedding models in background...");
+            warn!("WARNING: Embedding operations will fail until models finish loading (20-30s)");
+
             let models_dir = Self::resolve_models_path(&config);
             info!(
                 "Will load ProductionMultiArrayProvider with models from {:?} (background)...",

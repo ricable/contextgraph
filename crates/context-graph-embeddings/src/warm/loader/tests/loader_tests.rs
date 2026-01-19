@@ -95,7 +95,7 @@ fn test_loading_order_uses_registry() {
 /// The RTX 5090 reports ~32607 MiB (~31.8 GiB) available VRAM even though
 /// it has 32GB physical GDDR7, due to driver/OS reservations.
 #[test]
-#[cfg(feature = "cuda")]
+#[cfg(feature = "candle")]
 fn test_preflight_checks_gpu_requirements() {
     let config = test_config();
     let mut loader = WarmLoader::new(config).expect("Failed to create loader");
@@ -156,7 +156,7 @@ fn test_preflight_checks_gpu_requirements() {
 /// CUDA feature required because initialize_cuda_for_test() and allocate_model_vram()
 /// are only defined with cuda feature.
 #[test]
-#[cfg(feature = "cuda")]
+#[cfg(feature = "candle")]
 fn test_fail_fast_on_allocation_error() {
     let mut config = test_config();
     // Set a very small VRAM budget to trigger allocation failure

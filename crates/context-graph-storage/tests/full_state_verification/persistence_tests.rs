@@ -24,8 +24,8 @@ async fn test_update_delete_physical_verification() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let store = create_test_store(&temp_dir);
 
-    let id = Uuid::new_v4();
-    let mut fingerprint = generate_real_teleological_fingerprint(id);
+    let mut fingerprint = generate_real_teleological_fingerprint(Uuid::new_v4());
+    let id = fingerprint.id; // Use the fingerprint's actual ID
 
     // Initial store
     let original_hash = fingerprint.content_hash;
@@ -104,8 +104,8 @@ async fn test_persistence_across_reopen() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let path = temp_dir.path().to_path_buf();
 
-    let id = Uuid::new_v4();
-    let fingerprint = generate_real_teleological_fingerprint(id);
+    let fingerprint = generate_real_teleological_fingerprint(Uuid::new_v4());
+    let id = fingerprint.id; // Use the fingerprint's actual ID
     let original_hash = fingerprint.content_hash;
 
     // First session: store data

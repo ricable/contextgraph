@@ -3,10 +3,10 @@
 //! CRITICAL: This module has NO stub mode. CUDA is REQUIRED.
 //! Constitution Reference: v4.0.0, stack.gpu, AP-007
 
-// CRITICAL: CUDA feature is REQUIRED. No stub mode.
-#[cfg(not(feature = "cuda"))]
+// CRITICAL: Candle feature (GPU support) is REQUIRED. No stub mode.
+#[cfg(not(feature = "candle"))]
 compile_error!(
-    "[EMB-E001] CUDA_UNAVAILABLE: The 'cuda' feature MUST be enabled.
+    "[EMB-E001] CUDA_UNAVAILABLE: The 'candle' feature MUST be enabled.
 
     Context Graph embeddings require GPU acceleration.
     There is NO CPU fallback and NO stub mode.
@@ -19,23 +19,23 @@ compile_error!(
     Remediation:
     1. Install CUDA 13.1+
     2. Ensure RTX 5090 or compatible GPU is available
-    3. Build with: cargo build --features cuda
+    3. Build with default features (candle is enabled by default)
 
     Constitution Reference: stack.gpu, AP-007
     Exit Code: 101 (CUDA_UNAVAILABLE)"
 );
 
-#[cfg(feature = "cuda")]
+#[cfg(feature = "candle")]
 use super::constants::{GB, MODEL_SIZES};
-#[cfg(feature = "cuda")]
+#[cfg(feature = "candle")]
 use super::helpers::format_bytes;
-#[cfg(feature = "cuda")]
+#[cfg(feature = "candle")]
 use crate::warm::config::WarmConfig;
-#[cfg(feature = "cuda")]
+#[cfg(feature = "candle")]
 use crate::warm::cuda_alloc::{
     GpuInfo, WarmCudaAllocator, MINIMUM_VRAM_BYTES, REQUIRED_COMPUTE_MAJOR, REQUIRED_COMPUTE_MINOR,
 };
-#[cfg(feature = "cuda")]
+#[cfg(feature = "candle")]
 use crate::warm::error::{WarmError, WarmResult};
 
 /// Run pre-flight checks before loading.
@@ -57,7 +57,7 @@ use crate::warm::error::{WarmError, WarmResult};
 ///
 /// Returns `WarmError::VramInsufficientTotal` with EMB-E003 if:
 /// - Total VRAM below 32GB
-#[cfg(feature = "cuda")]
+#[cfg(feature = "candle")]
 pub fn run_preflight_checks(config: &WarmConfig, gpu_info: &mut Option<GpuInfo>) -> WarmResult<()> {
     tracing::info!("Running pre-flight checks...");
 
@@ -139,7 +139,7 @@ pub fn run_preflight_checks(config: &WarmConfig, gpu_info: &mut Option<GpuInfo>)
 /// # Errors
 ///
 /// Returns `WarmError::CudaUnavailable` if CUDA device cannot be initialized.
-#[cfg(feature = "cuda")]
+#[cfg(feature = "candle")]
 pub fn initialize_cuda_allocator(config: &WarmConfig) -> WarmResult<WarmCudaAllocator> {
     tracing::info!(
         "Initializing CUDA allocator for device {}",

@@ -59,6 +59,8 @@ pub fn generate_real_semantic_fingerprint() -> SemanticFingerprint {
 }
 
 pub fn generate_real_teleological_fingerprint(_id: Uuid) -> TeleologicalFingerprint {
+    // Note: TeleologicalFingerprint::new() generates its own UUID internally,
+    // so the passed _id parameter is ignored. Callers should use fingerprint.id.
     TeleologicalFingerprint::new(generate_real_semantic_fingerprint(), [0u8; 32])
 }
 

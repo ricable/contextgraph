@@ -207,7 +207,6 @@ async fn manual_fsv_memory_store_physical_verification() {
         stored_fp.semantic.e13_splade.indices.len()
     );
 
-    // 4. Note: purpose_vector was removed from TeleologicalFingerprint
     println!("\n   FINGERPRINT METADATA:");
     println!("   - Access count: {}", stored_fp.access_count);
     println!("   - Last updated: {}", stored_fp.last_updated);

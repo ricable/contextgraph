@@ -21,7 +21,7 @@ use crate::warm::validation::WarmValidator;
 
 use super::constants::{DEFAULT_EMBEDDING_DIMENSION, GB, MODEL_SIZES};
 use super::operations::{load_single_model, mark_model_failed, verify_all_warm};
-#[cfg(feature = "cuda")]
+#[cfg(feature = "candle")]
 use super::preflight::{initialize_cuda_allocator, run_preflight_checks};
 use super::summary::LoadingSummary;
 
@@ -123,7 +123,7 @@ impl WarmLoader {
     ///
     /// This function requires the `cuda` feature to be enabled.
     /// Without CUDA, warm loading fails fast per Constitution AP-007.
-    #[cfg(feature = "cuda")]
+    #[cfg(feature = "candle")]
     pub fn load_all_models(&mut self) -> WarmResult<()> {
         self.start_time = Some(Instant::now());
 
@@ -289,7 +289,7 @@ impl WarmLoader {
     // ========================================================================
 
     /// Run pre-flight checks (exposed for testing).
-    #[cfg(all(test, feature = "cuda"))]
+    #[cfg(all(test, feature = "candle"))]
     pub(crate) fn run_preflight_checks(&mut self) -> WarmResult<()> {
         run_preflight_checks(&self.config, &mut self.gpu_info)
     }
@@ -300,7 +300,7 @@ impl WarmLoader {
     ///
     /// This initializes a real WarmCudaAllocator using Candle.
     /// Per Constitution AP-007, no fake allocators are allowed.
-    #[cfg(all(test, feature = "cuda"))]
+    #[cfg(all(test, feature = "candle"))]
     pub(crate) fn initialize_cuda_for_test(&mut self) -> WarmResult<()> {
         // Run preflight first if not done
         if self.gpu_info.is_none() {

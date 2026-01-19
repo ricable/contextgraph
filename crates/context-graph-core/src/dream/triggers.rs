@@ -1882,7 +1882,6 @@ mod tests {
         use super::*;
 
         #[test]
-        #[ignore = "Requires NVIDIA GPU and nvml feature"]
         fn test_nvml_gpu_monitor_initialization() {
             // This test only runs on systems with NVIDIA GPUs
             let result = NvmlGpuMonitor::new();
@@ -1906,7 +1905,6 @@ mod tests {
         }
 
         #[test]
-        #[ignore = "Requires NVIDIA GPU and nvml feature"]
         fn test_nvml_gpu_monitor_utilization_query() {
             let mut monitor = match NvmlGpuMonitor::new() {
                 Ok(m) => m,
@@ -1929,7 +1927,6 @@ mod tests {
         }
 
         #[test]
-        #[ignore = "Requires NVIDIA GPU and nvml feature"]
         fn test_nvml_gpu_monitor_caching() {
             let mut monitor =
                 match NvmlGpuMonitor::with_cache_duration(std::time::Duration::from_millis(50)) {
@@ -1958,7 +1955,6 @@ mod tests {
         }
 
         #[test]
-        #[ignore = "Requires NVIDIA GPU and nvml feature"]
         fn test_nvml_gpu_monitor_eligibility_check() {
             let mut monitor = match NvmlGpuMonitor::new() {
                 Ok(m) => m,
@@ -1983,7 +1979,6 @@ mod tests {
         }
 
         #[test]
-        #[ignore = "Requires NVIDIA GPU and nvml feature"]
         fn test_nvml_gpu_monitor_abort_check() {
             let mut monitor = match NvmlGpuMonitor::new() {
                 Ok(m) => m,
@@ -2008,7 +2003,6 @@ mod tests {
         }
 
         #[test]
-        #[ignore = "Requires NVIDIA GPU and nvml feature"]
         fn test_nvml_gpu_monitor_trait_impl() {
             let mut monitor: Box<dyn GpuMonitor> = match NvmlGpuMonitor::new() {
                 Ok(m) => Box::new(m),
@@ -2029,7 +2023,6 @@ mod tests {
         }
 
         #[test]
-        #[ignore = "Requires NVIDIA GPU and nvml feature"]
         fn test_nvml_gpu_monitor_cache_invalidation() {
             let mut monitor = match NvmlGpuMonitor::new() {
                 Ok(m) => m,

@@ -52,9 +52,9 @@ fn create_real_fingerprint() -> TeleologicalFingerprint {
 // =========================================================================
 
 #[test]
-fn test_rocksdb_open_with_17_column_families() {
+fn test_rocksdb_open_with_19_column_families() {
     println!(
-        "=== INTEGRATION: Open RocksDB with 17 column families (8 base + 9 teleological) ==="
+        "=== INTEGRATION: Open RocksDB with 19 column families (8 base + 11 teleological) ==="
     );
 
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
@@ -65,19 +65,19 @@ fn test_rocksdb_open_with_17_column_families() {
     println!("BEFORE: {} base column families", descriptors.len());
     assert_eq!(descriptors.len(), 8);
 
-    // Add 9 teleological CFs (TELEOLOGICAL_CF_COUNT per column_families.rs)
-    // PRD v6: Removed CF_SESSION_IDENTITY (Session Identity deprecated)
+    // Add 11 teleological CFs (TELEOLOGICAL_CF_COUNT per column_families.rs)
+    // 9 active + 2 legacy (CF_SESSION_IDENTITY, CF_EGO_NODE for backwards compatibility)
     descriptors.extend(get_teleological_cf_descriptors(&cache));
     println!("AFTER: {} total column families", descriptors.len());
-    assert_eq!(descriptors.len(), 17);
+    assert_eq!(descriptors.len(), 19);
 
-    // Open DB with all 17 CFs
+    // Open DB with all 19 CFs
     let mut opts = Options::default();
     opts.create_if_missing(true);
     opts.create_missing_column_families(true);
 
     let db = DB::open_cf_descriptors(&opts, temp_dir.path(), descriptors)
-        .expect("Failed to open RocksDB with 17 CFs");
+        .expect("Failed to open RocksDB with 19 CFs");
 
     // Verify all 8 base CFs accessible
     println!("Verifying base column families:");
@@ -90,8 +90,7 @@ fn test_rocksdb_open_with_17_column_families() {
         println!("  [OK] {}", cf_name);
     }
 
-    // Verify all 9 teleological CFs accessible
-    // PRD v6: Reduced from 10 to 9 (removed CF_SESSION_IDENTITY)
+    // Verify all 11 teleological CFs accessible (9 active + 2 legacy)
     println!("Verifying teleological column families:");
     for cf_name in TELEOLOGICAL_CFS {
         assert!(
@@ -102,7 +101,7 @@ fn test_rocksdb_open_with_17_column_families() {
         println!("  [OK] {}", cf_name);
     }
 
-    println!("RESULT: PASS - All 17 CFs accessible");
+    println!("RESULT: PASS - All 19 CFs accessible");
 }
 
 #[test]
@@ -455,9 +454,8 @@ fn test_rocksdb_persistence() {
 }
 
 #[test]
-fn test_total_column_families_is_17() {
-    // PRD v6: Removed CF_SESSION_IDENTITY (Session Identity deprecated)
-    println!("=== INTEGRATION: Verify exactly 17 column families (8 base + 9 teleological) ===");
+fn test_total_column_families_is_19() {
+    println!("=== INTEGRATION: Verify exactly 19 column families (8 base + 11 teleological) ===");
 
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let cache = Cache::new_lru_cache(256 * 1024 * 1024);
@@ -467,8 +465,8 @@ fn test_total_column_families_is_17() {
     println!("Base column families: {}", base_descriptors.len());
     assert_eq!(base_descriptors.len(), 8, "Expected 8 base CFs");
 
-    // Count teleological CFs (TELEOLOGICAL_CF_COUNT = 9 per column_families.rs)
-    // PRD v6: Reduced from 10 to 9 (removed CF_SESSION_IDENTITY)
+    // Count teleological CFs (TELEOLOGICAL_CF_COUNT = 11 per column_families.rs)
+    // 9 active + 2 legacy (CF_SESSION_IDENTITY, CF_EGO_NODE for backwards compatibility)
     let teleological_descriptors = get_teleological_cf_descriptors(&cache);
     println!(
         "Teleological column families: {}",
@@ -476,16 +474,16 @@ fn test_total_column_families_is_17() {
     );
     assert_eq!(
         teleological_descriptors.len(),
-        9,
-        "Expected 9 teleological CFs (TELEOLOGICAL_CF_COUNT)"
+        11,
+        "Expected 11 teleological CFs (TELEOLOGICAL_CF_COUNT)"
     );
 
     // Total
     let total = base_descriptors.len() + teleological_descriptors.len();
     println!("Total column families: {}", total);
     assert_eq!(
-        total, 17,
-        "Expected 17 total CFs (8 base + 9 teleological)"
+        total, 19,
+        "Expected 19 total CFs (8 base + 11 teleological)"
     );
 
     // Verify by opening DB
@@ -497,7 +495,7 @@ fn test_total_column_families_is_17() {
     opts.create_missing_column_families(true);
 
     let _db = DB::open_cf_descriptors(&opts, temp_dir.path(), all_descriptors)
-        .expect("Failed to open RocksDB with 17 CFs");
+        .expect("Failed to open RocksDB with 19 CFs");
 
-    println!("RESULT: PASS - Exactly 17 column families confirmed (8 base + 9 teleological)");
+    println!("RESULT: PASS - Exactly 19 column families confirmed (8 base + 11 teleological)");
 }

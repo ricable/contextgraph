@@ -5,11 +5,13 @@
 //! - `session`: Session persistence commands
 //! - `hooks`: Hook types for Claude Code native integration (TASK-HOOKS-001)
 //! - `memory`: Memory capture and context injection commands (TASK-P6-003)
+//! - `warmup`: Pre-load embedding models into VRAM (TASK-EMB-WARMUP)
 
 pub mod hooks;
 pub mod memory;
 pub mod session;
 pub mod setup;
+pub mod warmup;
 
 /// Test utilities for CLI tests
 #[cfg(test)]

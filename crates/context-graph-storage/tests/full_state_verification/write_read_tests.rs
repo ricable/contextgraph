@@ -25,8 +25,8 @@ async fn test_physical_write_read_verification() {
     let store = create_test_store(&temp_dir);
 
     // Generate REAL fingerprint
-    let id = Uuid::new_v4();
-    let fingerprint = generate_real_teleological_fingerprint(id);
+    let fingerprint = generate_real_teleological_fingerprint(Uuid::new_v4());
+    let id = fingerprint.id; // Use the fingerprint's actual ID
 
     println!("[1] WRITE OPERATION");
     println!("    ID: {}", id);

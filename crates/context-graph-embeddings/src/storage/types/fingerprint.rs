@@ -23,13 +23,13 @@ use super::constants::{NUM_EMBEDDERS, STORAGE_VERSION};
 /// ~17KB per fingerprint (Constitution requirement)
 ///
 /// # Difference from TeleologicalFingerprint
-/// - `TeleologicalFingerprint` (in context-graph-core): ~63KB UNQUANTIZED, includes:
+/// - `TeleologicalFingerprint` (in context-graph-core): ~46KB UNQUANTIZED, includes:
 ///   - `SemanticFingerprint` with raw f32 arrays
-///   - `PurposeSnapshot` evolution history
+///   - Metadata (timestamps, access_count)
 ///
 /// - `StoredQuantizedFingerprint` (this type): ~17KB QUANTIZED for storage
 ///   - Uses `QuantizedEmbedding` (compressed bytes)
-///   - No evolution history (kept in TimescaleDB temporal store)
+///   - Temporal history kept in TimescaleDB temporal store
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredQuantizedFingerprint {
     /// UUID of the fingerprint (primary key).

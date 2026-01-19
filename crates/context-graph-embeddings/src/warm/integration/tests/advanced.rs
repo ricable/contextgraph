@@ -12,7 +12,7 @@ use super::test_config;
 ///
 /// CUDA feature required because warm() is only defined with cuda feature.
 #[test]
-#[cfg(feature = "cuda")]
+#[cfg(feature = "candle")]
 fn test_pipeline_warm_already_initialized() {
     let config = test_config();
     let mut pipeline = WarmEmbeddingPipeline::new(config).expect("Failed to create pipeline");

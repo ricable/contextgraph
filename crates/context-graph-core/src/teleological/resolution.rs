@@ -16,7 +16,7 @@ use super::types::NUM_EMBEDDERS;
 /// Number of core domains at Level 2.
 pub const NUM_DOMAINS: usize = 3;
 
-/// 3D Core Purpose Vector domains.
+/// 3D Core Topic Profile domains (What/How/Why).
 ///
 /// From teleoplan.md:
 /// - What = Factual + Relational

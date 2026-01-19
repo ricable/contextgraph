@@ -8,12 +8,14 @@
 //! - `session persist-identity`: Persist session state to storage
 //! - `hooks`: Claude Code native hooks commands
 //! - `memory`: Memory capture and context injection commands
+//! - `warmup`: Pre-load embedding models into VRAM
 //!
 //! This CLI provides hooks integration for Claude Code via .claude/settings.json.
 //! NO BACKWARDS COMPATIBILITY - FAIL FAST WITH ROBUST LOGGING.
 //!
 //! # Constitution Reference
 //! - ARCH-07: Native Claude Code hooks
+//! - ARCH-08: CUDA GPU required for production
 //! - AP-26: Exit code 1 on error, 2 on corruption
 
 use clap::{Parser, Subcommand};
@@ -64,6 +66,17 @@ enum Commands {
     /// Creates .claude/settings.json and .claude/hooks/ directory with
     /// all required hook scripts for context-graph integration.
     Setup(commands::setup::SetupArgs),
+    /// Pre-load embedding models into VRAM
+    ///
+    /// Loads all 13 embedding models into GPU VRAM before the MCP server
+    /// starts. This ensures embedding operations are available immediately.
+    ///
+    /// Run this before starting the MCP server:
+    ///   context-graph-cli warmup
+    ///   context-graph-mcp
+    ///
+    /// Takes approximately 20-30 seconds on RTX 5090 (32GB VRAM).
+    Warmup(commands::warmup::WarmupArgs),
 }
 
 #[tokio::main]
@@ -91,6 +104,7 @@ async fn main() {
         Commands::Hooks { action } => commands::hooks::handle_hooks_command(action).await,
         Commands::Memory { action } => commands::memory::handle_memory_command(action).await,
         Commands::Setup(args) => commands::setup::handle_setup(args).await,
+        Commands::Warmup(args) => commands::warmup::handle_warmup(args).await,
     };
 
     std::process::exit(exit_code);

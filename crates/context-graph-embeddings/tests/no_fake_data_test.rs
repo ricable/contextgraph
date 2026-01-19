@@ -411,13 +411,13 @@ fn create_valid_embeddings() -> HashMap<u8, QuantizedEmbedding> {
 #[test]
 fn test_valid_fingerprint_creation() {
     let embeddings = create_valid_embeddings();
-    let purpose_vector = [0.5f32; 13];
+    let topic_profile = [0.5f32; 13];
     let content_hash: [u8; 32] = [0x42; 32]; // Non-zero
 
     let fp = StoredQuantizedFingerprint::new(
         Uuid::new_v4(),
         embeddings,
-        purpose_vector,
+        topic_profile,
         content_hash,
     );
 
