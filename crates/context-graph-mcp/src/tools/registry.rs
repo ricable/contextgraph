@@ -93,7 +93,7 @@ impl Default for ToolRegistry {
 ///
 /// Uses existing definitions from tools/definitions/ modules.
 ///
-/// Per PRD v6 Section 10, 14 tools are exposed:
+/// Per PRD v6, 18 tools are exposed (14 core + 4 file watcher):
 ///
 /// | Category | Count | Source |
 /// |----------|-------|--------|
@@ -102,6 +102,7 @@ impl Default for ToolRegistry {
 /// | Curation | 2 | definitions/curation.rs |
 /// | Topic | 4 | definitions/topic.rs |
 /// | Dream | 2 | definitions/dream.rs |
+/// | File Watcher | 4 | definitions/file_watcher.rs |
 pub fn register_all_tools() -> ToolRegistry {
     use super::definitions;
 
@@ -132,11 +133,16 @@ pub fn register_all_tools() -> ToolRegistry {
         registry.register(tool);
     }
 
-    // Verify expected tool count (PRD v6: 14 tools)
+    // Register file watcher tools (4): list_watched_files, get_file_watcher_stats, delete_file_content, reconcile_files
+    for tool in definitions::file_watcher::definitions() {
+        registry.register(tool);
+    }
+
+    // Verify expected tool count (PRD v6: 14 core + 4 file watcher = 18 total)
     let actual_count = registry.len();
     assert_eq!(
-        actual_count, 14,
-        "Expected 14 tools per PRD v6, got {}. Check definitions modules.",
+        actual_count, 18,
+        "Expected 18 tools (14 core + 4 file watcher), got {}. Check definitions modules.",
         actual_count
     );
 
@@ -158,7 +164,8 @@ mod tests {
     #[test]
     fn test_register_all_tools_count() {
         let registry = register_all_tools();
-        assert_eq!(registry.len(), 14, "Must have exactly 14 tools per PRD v6");
+        // 14 core tools (PRD v6) + 4 file watcher tools = 18 total
+        assert_eq!(registry.len(), 18, "Must have exactly 18 tools (14 core + 4 file watcher)");
     }
 
     #[test]
@@ -187,7 +194,8 @@ mod tests {
     fn test_list_returns_all_tools_sorted() {
         let registry = register_all_tools();
         let tools = registry.list();
-        assert_eq!(tools.len(), 14);
+        // 14 core tools + 4 file watcher tools = 18 total
+        assert_eq!(tools.len(), 18);
 
         for i in 1..tools.len() {
             assert!(tools[i - 1].name <= tools[i].name);
@@ -195,7 +203,7 @@ mod tests {
     }
 
     #[test]
-    fn test_all_14_tools_registered() {
+    fn test_all_18_tools_registered() {
         let registry = register_all_tools();
         let expected_tools = [
             // Core (5)
@@ -217,6 +225,11 @@ mod tests {
             // Dream (2)
             "trigger_dream",
             "get_dream_status",
+            // File Watcher (4)
+            "list_watched_files",
+            "get_file_watcher_stats",
+            "delete_file_content",
+            "reconcile_files",
         ];
 
         for name in expected_tools {

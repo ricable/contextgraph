@@ -61,6 +61,7 @@ async fn test_full_storage_pipeline_real_data() {
         embedder_indices: vec![],
         semantic_query: None,
         include_content: false, // TASK-CONTENT-005
+        ..Default::default()
     };
 
     let query_semantic = generate_real_semantic_fingerprint();

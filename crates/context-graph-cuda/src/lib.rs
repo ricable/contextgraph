@@ -110,7 +110,7 @@ pub use ffi::{
     FAISS_OK,
 };
 // Safe RAII wrappers (TASK-04)
-pub use safe::GpuDevice;
+pub use safe::{gpu_memory_usage_percent, GpuDevice};
 // Green Contexts GPU partitioning (TASK-13)
 pub use context::{
     should_enable_green_contexts, should_enable_green_contexts_with_config, GreenContext,

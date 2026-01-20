@@ -313,7 +313,7 @@ impl Handlers {
         debug!(dream_id = ?request.dream_id, "get_dream_status: querying status");
 
         // Create a controller to get the current status
-        let controller = DreamController::new();
+        let mut controller = DreamController::new();
         let status = controller.get_status();
 
         // Map core DreamState to our DreamStatus

@@ -242,6 +242,33 @@ impl GpuDevice {
         self.ordinal
     }
 
+    /// Get GPU memory usage as a percentage (0.0 - 1.0).
+    ///
+    /// This calculates `1.0 - (free / total)` to show how much memory is in use.
+    ///
+    /// # Returns
+    ///
+    /// A value between 0.0 (no memory used) and 1.0 (fully utilized).
+    /// Returns 0.0 if memory info cannot be retrieved.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let device = GpuDevice::new(0)?;
+    /// let usage = device.memory_usage_percent();
+    /// println!("GPU memory usage: {:.1}%", usage * 100.0);
+    /// ```
+    #[must_use]
+    pub fn memory_usage_percent(&self) -> f32 {
+        match self.memory_info() {
+            Ok((free, total)) if total > 0 => {
+                let used = total - free;
+                (used as f64 / total as f64) as f32
+            }
+            _ => 0.0, // Return 0 if we can't get memory info
+        }
+    }
+
     /// Get the raw CUDA device handle.
     ///
     /// # Usage Notes

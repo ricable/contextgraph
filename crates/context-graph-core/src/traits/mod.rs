@@ -44,8 +44,9 @@ pub use nervous_layer::NervousLayer;
 
 // Teleological memory store trait - TASK-F008
 pub use teleological_memory_store::{
-    TeleologicalMemoryStore, TeleologicalMemoryStoreExt, TeleologicalSearchOptions,
-    TeleologicalSearchResult, TeleologicalStorageBackend,
+    NormalizationStrategyOption, SearchStrategy, TeleologicalMemoryStore,
+    TeleologicalMemoryStoreExt, TeleologicalSearchOptions, TeleologicalSearchResult,
+    TeleologicalStorageBackend,
 };
 
 // UTL processor trait

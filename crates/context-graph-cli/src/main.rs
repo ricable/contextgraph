@@ -61,6 +61,32 @@ enum Commands {
         #[command(subcommand)]
         action: commands::memory::MemoryCommands,
     },
+    /// Topic portfolio and stability commands
+    ///
+    /// Explore emergent topics and stability metrics.
+    /// Topics emerge from weighted multi-space clustering (threshold >= 2.5).
+    Topic {
+        #[command(subcommand)]
+        action: commands::topic::TopicCommands,
+    },
+    /// Divergence detection commands
+    ///
+    /// Check for divergence from recent activity patterns.
+    /// Uses SEMANTIC embedders only (E1, E5-E7, E10, E12, E13).
+    /// Temporal embedders (E2-E4) are excluded per AP-62, AP-63.
+    Divergence {
+        #[command(subcommand)]
+        action: commands::divergence::DivergenceCommands,
+    },
+    /// Dream consolidation commands
+    ///
+    /// Execute NREM/REM dream cycles for memory consolidation.
+    /// NREM: Hebbian replay strengthening
+    /// REM: Hyperbolic random walk discovering blind spots
+    Dream {
+        #[command(subcommand)]
+        action: commands::dream::DreamCommands,
+    },
     /// Initialize context-graph hooks for Claude Code
     ///
     /// Creates .claude/settings.json and .claude/hooks/ directory with
@@ -111,6 +137,9 @@ async fn main() {
         Commands::Session { action } => commands::session::handle_session_command(action).await,
         Commands::Hooks { action } => commands::hooks::handle_hooks_command(action).await,
         Commands::Memory { action } => commands::memory::handle_memory_command(action).await,
+        Commands::Topic { action } => commands::topic::handle_topic_command(action).await,
+        Commands::Divergence { action } => commands::divergence::handle_divergence_command(action).await,
+        Commands::Dream { action } => commands::dream::handle_dream_command(action).await,
         Commands::Setup(args) => commands::setup::handle_setup(args).await,
         Commands::Warmup(args) => commands::warmup::handle_warmup(args).await,
         Commands::Watch(args) => commands::watch::handle_watch(args).await,

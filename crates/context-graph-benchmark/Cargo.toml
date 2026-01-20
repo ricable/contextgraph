@@ -1,0 +1,91 @@
+[package]
+name = "context-graph-benchmark"
+description = "Benchmarking suite comparing 13-embedder multi-space fingerprinting vs single-embedder RAG"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+default = []
+test-utils = ["context-graph-core/test-utils"]
+real-embeddings = ["dep:context-graph-embeddings", "dep:context-graph-mcp"]
+
+[dependencies]
+# Internal crates
+context-graph-core = { path = "../context-graph-core", features = ["test-utils"] }
+context-graph-storage = { path = "../context-graph-storage" }
+
+# Async runtime
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# IDs and time
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+# Random number generation
+rand = { workspace = true }
+rand_chacha = "0.3"
+rand_distr = { workspace = true }
+
+# Statistics
+statrs = "0.17"
+
+# Hashing
+md5 = "0.7"
+
+# Optional: Real embeddings (GPU required)
+context-graph-embeddings = { path = "../context-graph-embeddings", optional = true }
+
+# Criterion for benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
+
+# TempDir for benchmark temp storage
+tempfile = "3.10"
+
+# MCP handlers for true MCP benchmark
+context-graph-mcp = { path = "../context-graph-mcp", optional = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[[bench]]
+name = "comparative_suite"
+harness = false
+
+[[bench]]
+name = "scaling_analysis"
+harness = false
+
+[[bin]]
+name = "benchmark-report"
+path = "src/bin/report.rs"
+
+[[bin]]
+name = "realdata-bench"
+path = "src/bin/realdata_bench.rs"
+
+[[bin]]
+name = "gpu-bench"
+path = "src/bin/gpu_bench.rs"
+
+[[bin]]
+name = "mcp-bench"
+path = "src/bin/mcp_bench.rs"
+
+[[bin]]
+name = "embedder-stress"
+path = "src/bin/embedder_stress.rs"

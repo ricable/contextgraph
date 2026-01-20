@@ -33,67 +33,120 @@ use context_graph_core::types::fingerprint::NUM_EMBEDDERS;
 /// Each profile has 13 weights corresponding to:
 /// [E1, E2, E3, E4, E5, E6, E7, E8, E9, E10, E11, E12, E13]
 ///
-/// E13 (SPLADE) is typically weighted lower in final aggregation
-/// since it's primarily used in Stage 1 pre-filtering.
+/// # IMPORTANT: Temporal Embedders (E2-E4)
+///
+/// Per AP-71 and research findings ([Pinecone Cascading Retrieval](https://www.pinecone.io/blog/cascading-retrieval/),
+/// [ACM TOIS Fusion](https://dl.acm.org/doi/10.1145/3596512)):
+///
+/// **Temporal embedders (E2-E4) have weight 0.0 in semantic search profiles.**
+///
+/// Temporal proximity ≠ topical similarity. Documents created at the same time
+/// are NOT necessarily on the same topic. Time should be a post-retrieval boost,
+/// not a similarity measure.
+///
+/// # Profile Categories
+///
+/// - **Semantic Profiles** (E2-E4 = 0.0): semantic_search, code_search, causal_reasoning, fact_checking
+/// - **Special Profiles**: temporal_navigation (for explicit time-based queries)
+/// - **Category-Weighted**: category_weighted (constitution-compliant)
+///
+/// E12 (Late Interaction) and E13 (SPLADE) have low weights in aggregation
+/// because they're primarily used in pipeline stages:
+/// - E13: Stage 1 recall (inverted index)
+/// - E12: Stage 3 re-ranking (MaxSim)
 pub const WEIGHT_PROFILES: &[(&str, [f32; NUM_EMBEDDERS])] = &[
-    // Semantic Search: Heavy E1 (general semantic), moderate E7 (code), E5 (causal)
+    // =========================================================================
+    // SEMANTIC PROFILES - Temporal (E2-E4) = 0.0 per AP-71
+    // =========================================================================
+
+    // Semantic Search: General queries - E1 primary, E5/E7/E10 supporting
+    // Sum of weights = 1.0 (excluding temporal which are 0.0)
     (
         "semantic_search",
         [
-            0.28, // E1_Semantic (primary)
-            0.05, // E2_Temporal_Recent
-            0.05, // E3_Temporal_Periodic
-            0.05, // E4_Temporal_Positional
-            0.10, // E5_Causal
-            0.04, // E6_Sparse
-            0.18, // E7_Code
-            0.05, // E8_Graph
-            0.05, // E9_HDC
-            0.05, // E10_Multimodal
-            0.03, // E11_Entity
-            0.05, // E12_Late_Interaction
-            0.02, // E13_SPLADE (low - used in Stage 1 filtering)
+            0.35, // E1_Semantic (primary)
+            0.0,  // E2_Temporal_Recent - NOT for semantic search
+            0.0,  // E3_Temporal_Periodic - NOT for semantic search
+            0.0,  // E4_Temporal_Positional - NOT for semantic search
+            0.15, // E5_Causal
+            0.05, // E6_Sparse (keyword backup)
+            0.20, // E7_Code
+            0.05, // E8_Graph (relational)
+            0.0,  // E9_HDC (noise-robust backup, not in fusion)
+            0.15, // E10_Multimodal
+            0.05, // E11_Entity (relational)
+            0.0,  // E12_Late_Interaction (Stage 3 rerank only)
+            0.0,  // E13_SPLADE (Stage 1 recall only)
         ],
     ),
-    // Causal Reasoning: Heavy E5 (causal), moderate E1, E8 (graph)
+
+    // Causal Reasoning: "Why" questions - E5 primary
     (
         "causal_reasoning",
         [
-            0.15, // E1_Semantic
-            0.03, // E2_Temporal_Recent
-            0.03, // E3_Temporal_Periodic
-            0.03, // E4_Temporal_Positional
-            0.40, // E5_Causal (primary)
-            0.03, // E6_Sparse
+            0.20, // E1_Semantic
+            0.0,  // E2_Temporal_Recent - NOT for semantic search
+            0.0,  // E3_Temporal_Periodic - NOT for semantic search
+            0.0,  // E4_Temporal_Positional - NOT for semantic search
+            0.45, // E5_Causal (primary)
+            0.05, // E6_Sparse
             0.10, // E7_Code
-            0.08, // E8_Graph
-            0.03, // E9_HDC
+            0.10, // E8_Graph (causal chains)
+            0.0,  // E9_HDC
             0.05, // E10_Multimodal
-            0.03, // E11_Entity
-            0.02, // E12_Late_Interaction
-            0.02, // E13_SPLADE
+            0.05, // E11_Entity
+            0.0,  // E12_Late_Interaction
+            0.0,  // E13_SPLADE
         ],
     ),
-    // Code Search: Heavy E7 (code), E4 (positional), E1
+
+    // Code Search: Programming queries - E7 primary
     (
         "code_search",
         [
-            0.15, // E1_Semantic
-            0.02, // E2_Temporal_Recent
-            0.02, // E3_Temporal_Periodic
-            0.15, // E4_Temporal_Positional (line numbers, structure)
-            0.05, // E5_Causal
-            0.05, // E6_Sparse
-            0.35, // E7_Code (primary)
-            0.02, // E8_Graph
-            0.02, // E9_HDC
-            0.05, // E10_Multimodal
-            0.05, // E11_Entity
-            0.05, // E12_Late_Interaction
-            0.02, // E13_SPLADE
+            0.20, // E1_Semantic
+            0.0,  // E2_Temporal_Recent - NOT for semantic search
+            0.0,  // E3_Temporal_Periodic - NOT for semantic search
+            0.0,  // E4_Temporal_Positional - Use for line numbers via recency_boost instead
+            0.10, // E5_Causal
+            0.10, // E6_Sparse (keywords)
+            0.40, // E7_Code (primary)
+            0.0,  // E8_Graph
+            0.0,  // E9_HDC
+            0.10, // E10_Multimodal
+            0.10, // E11_Entity (function names, etc.)
+            0.0,  // E12_Late_Interaction
+            0.0,  // E13_SPLADE
         ],
     ),
-    // Temporal Navigation: Heavy E2, E3, E4 (all temporal)
+
+    // Fact Checking: Entity/fact queries - E11 primary, E6 for keywords
+    (
+        "fact_checking",
+        [
+            0.15, // E1_Semantic
+            0.0,  // E2_Temporal_Recent - NOT for semantic search
+            0.0,  // E3_Temporal_Periodic - NOT for semantic search
+            0.0,  // E4_Temporal_Positional - NOT for semantic search
+            0.15, // E5_Causal
+            0.15, // E6_Sparse (keyword match)
+            0.05, // E7_Code
+            0.05, // E8_Graph
+            0.0,  // E9_HDC
+            0.05, // E10_Multimodal
+            0.40, // E11_Entity (primary - named entities)
+            0.0,  // E12_Late_Interaction
+            0.0,  // E13_SPLADE
+        ],
+    ),
+
+    // =========================================================================
+    // SPECIAL PROFILES
+    // =========================================================================
+
+    // Temporal Navigation: EXPLICIT time-based queries only
+    // Use when user explicitly asks for "recent" or "from last week"
+    // NOT for general semantic search
     (
         "temporal_navigation",
         [
@@ -112,26 +165,34 @@ pub const WEIGHT_PROFILES: &[(&str, [f32; NUM_EMBEDDERS])] = &[
             0.02, // E13_SPLADE
         ],
     ),
-    // Fact Checking: Heavy E11 (entity), E5 (causal), E6 (sparse)
+
+    // Category-Weighted: Constitution-compliant weights per CLAUDE.md
+    // SEMANTIC (E1,E5,E6,E7,E10,E12,E13): weight 1.0
+    // TEMPORAL (E2,E3,E4): weight 0.0 per AP-60
+    // RELATIONAL (E8,E11): weight 0.5
+    // STRUCTURAL (E9): weight 0.5
+    // max_weighted_agreement = 8.5
     (
-        "fact_checking",
+        "category_weighted",
         [
-            0.10, // E1_Semantic
-            0.02, // E2_Temporal_Recent
-            0.02, // E3_Temporal_Periodic
-            0.02, // E4_Temporal_Positional
-            0.18, // E5_Causal
-            0.10, // E6_Sparse (keyword matching)
-            0.05, // E7_Code
-            0.05, // E8_Graph
-            0.02, // E9_HDC
-            0.05, // E10_Multimodal
-            0.35, // E11_Entity (primary - named entities)
-            0.02, // E12_Late_Interaction
-            0.02, // E13_SPLADE
+            1.0 / 8.5,   // E1_Semantic (SEMANTIC)
+            0.0,         // E2_Temporal_Recent (TEMPORAL - excluded)
+            0.0,         // E3_Temporal_Periodic (TEMPORAL - excluded)
+            0.0,         // E4_Temporal_Positional (TEMPORAL - excluded)
+            1.0 / 8.5,   // E5_Causal (SEMANTIC)
+            1.0 / 8.5,   // E6_Sparse (SEMANTIC)
+            1.0 / 8.5,   // E7_Code (SEMANTIC)
+            0.5 / 8.5,   // E8_Graph (RELATIONAL)
+            0.5 / 8.5,   // E9_HDC (STRUCTURAL)
+            1.0 / 8.5,   // E10_Multimodal (SEMANTIC)
+            0.5 / 8.5,   // E11_Entity (RELATIONAL)
+            1.0 / 8.5,   // E12_Late_Interaction (SEMANTIC)
+            1.0 / 8.5,   // E13_SPLADE (SEMANTIC)
         ],
     ),
-    // Balanced: Equal weights across all 13 spaces
+
+    // Balanced: Equal weights across all 13 spaces (for testing/comparison)
+    // NOTE: This is NOT recommended for production - temporal affects results
     (
         "balanced",
         [
@@ -363,14 +424,73 @@ mod tests {
         let semantic = get_weight_profile("semantic_search");
         assert!(semantic.is_some(), "semantic_search profile should exist");
         assert!(
-            (semantic.unwrap()[0] - 0.28).abs() < 0.001,
-            "E1 should be 0.28"
+            (semantic.unwrap()[0] - 0.35).abs() < 0.001,
+            "E1 should be 0.35 in semantic_search profile"
         );
 
         let missing = get_weight_profile("nonexistent");
         assert!(missing.is_none(), "Unknown profile should return None");
 
         println!("[VERIFIED] get_weight_profile works correctly");
+    }
+
+    #[test]
+    fn test_temporal_embedders_excluded_from_semantic_profiles() {
+        // Per AP-71: Temporal embedders (E2-E4) MUST NOT be used in similarity scoring
+        // All semantic search profiles should have E2-E4 = 0.0
+
+        let semantic_profiles = ["semantic_search", "causal_reasoning", "code_search", "fact_checking"];
+
+        for profile_name in semantic_profiles {
+            let weights = get_weight_profile(profile_name).expect(&format!(
+                "Profile '{}' should exist",
+                profile_name
+            ));
+
+            assert_eq!(
+                weights[1], 0.0,
+                "E2 (temporal recent) should be 0.0 in '{}' profile per AP-71",
+                profile_name
+            );
+            assert_eq!(
+                weights[2], 0.0,
+                "E3 (temporal periodic) should be 0.0 in '{}' profile per AP-71",
+                profile_name
+            );
+            assert_eq!(
+                weights[3], 0.0,
+                "E4 (temporal positional) should be 0.0 in '{}' profile per AP-71",
+                profile_name
+            );
+
+            println!(
+                "[VERIFIED] Profile '{}' has temporal embedders (E2-E4) = 0.0",
+                profile_name
+            );
+        }
+    }
+
+    #[test]
+    fn test_category_weighted_profile() {
+        // Per constitution: SEMANTIC=1.0, TEMPORAL=0.0, RELATIONAL=0.5, STRUCTURAL=0.5
+        let weights = get_weight_profile("category_weighted").expect("category_weighted should exist");
+
+        // Temporal (E2-E4) = 0.0
+        assert_eq!(weights[1], 0.0, "E2 should be 0.0 (TEMPORAL)");
+        assert_eq!(weights[2], 0.0, "E3 should be 0.0 (TEMPORAL)");
+        assert_eq!(weights[3], 0.0, "E4 should be 0.0 (TEMPORAL)");
+
+        // SEMANTIC embedders should have non-zero weights
+        assert!(weights[0] > 0.0, "E1 should have non-zero weight (SEMANTIC)");
+        assert!(weights[4] > 0.0, "E5 should have non-zero weight (SEMANTIC)");
+        assert!(weights[6] > 0.0, "E7 should have non-zero weight (SEMANTIC)");
+        assert!(weights[9] > 0.0, "E10 should have non-zero weight (SEMANTIC)");
+
+        // RELATIONAL embedders should have ~half the weight of SEMANTIC
+        assert!(weights[7] > 0.0, "E8 should have non-zero weight (RELATIONAL)");
+        assert!(weights[10] > 0.0, "E11 should have non-zero weight (RELATIONAL)");
+
+        println!("[VERIFIED] category_weighted profile follows constitution");
     }
 
     #[test]

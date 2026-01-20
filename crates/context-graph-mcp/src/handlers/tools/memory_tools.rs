@@ -1,11 +1,21 @@
 //! Memory operation tool implementations (inject_context, store_memory, search_graph).
+//!
+//! # Multi-Space Search (TASK-MULTISPACE)
+//!
+//! The `search_graph` tool supports three search strategies:
+//!
+//! - `e1_only`: Original E1-only HNSW search (default, backward compatible)
+//! - `multi_space`: Weighted fusion of semantic embedders
+//! - `pipeline`: Full 3-stage retrieval
+//!
+//! Temporal embedders (E2-E4) have weight 0.0 in semantic search per AP-71.
 
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use tracing::{debug, error, warn};
 
 use context_graph_core::teleological::matrix_search::embedder_names;
-use context_graph_core::traits::TeleologicalSearchOptions;
+use context_graph_core::traits::{SearchStrategy, TeleologicalSearchOptions};
 use context_graph_core::types::fingerprint::{TeleologicalFingerprint, NUM_EMBEDDERS};
 use context_graph_core::types::UtlContext;
 
@@ -383,7 +393,56 @@ impl Handlers {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
-        let options = TeleologicalSearchOptions::quick(top_k).with_min_similarity(min_similarity);
+        // TASK-MULTISPACE: Parse search strategy (default: e1_only for backward compatibility)
+        let strategy = args
+            .get("strategy")
+            .and_then(|v| v.as_str())
+            .map(|s| match s {
+                "multi_space" => SearchStrategy::MultiSpace,
+                "pipeline" => SearchStrategy::Pipeline,
+                _ => SearchStrategy::E1Only, // "e1_only" or unknown
+            })
+            .unwrap_or(SearchStrategy::E1Only);
+
+        // TASK-MULTISPACE: Parse weight profile (default: "semantic_search")
+        let weight_profile = args
+            .get("weightProfile")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        // TASK-MULTISPACE: Parse recency boost (default: 0.0 = no boost)
+        // Per ARCH-14: Temporal is a POST-retrieval boost, not similarity
+        let recency_boost = args
+            .get("recencyBoost")
+            .and_then(|v| v.as_f64())
+            .map(|v| (v as f32).clamp(0.0, 1.0))
+            .unwrap_or(0.0);
+
+        // TASK-MULTISPACE: Parse enable_rerank (default: false)
+        // Per AP-73: ColBERT is for re-ranking only
+        let enable_rerank = args
+            .get("enableRerank")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // Build search options with multi-space parameters
+        let mut options = TeleologicalSearchOptions::quick(top_k)
+            .with_min_similarity(min_similarity)
+            .with_strategy(strategy)
+            .with_recency_boost(recency_boost)
+            .with_rerank(enable_rerank);
+
+        if let Some(profile) = weight_profile {
+            options = options.with_weight_profile(&profile);
+        }
+
+        debug!(
+            strategy = ?strategy,
+            weight_profile = ?options.weight_profile,
+            recency_boost = recency_boost,
+            enable_rerank = enable_rerank,
+            "search_graph: Multi-space options configured"
+        );
 
         // Generate query embedding
         let query_embedding = match self.multi_array_provider.embed_all(query).await {
@@ -477,9 +536,20 @@ impl Handlers {
                     })
                     .collect();
 
+                // TASK-MULTISPACE: Include search strategy in response for debugging
+                let strategy_name = match strategy {
+                    SearchStrategy::E1Only => "e1_only",
+                    SearchStrategy::MultiSpace => "multi_space",
+                    SearchStrategy::Pipeline => "pipeline",
+                };
+
                 self.tool_result_with_pulse(
                     id,
-                    json!({ "results": results_json, "count": results_json.len() }),
+                    json!({
+                        "results": results_json,
+                        "count": results_json.len(),
+                        "searchStrategy": strategy_name
+                    }),
                 )
             }
             Err(e) => {

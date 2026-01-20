@@ -59,6 +59,11 @@ arch_rules:
   ARCH-10: "Divergence detection uses SEMANTIC embedders only (E1, E5, E6, E7, E10, E12, E13)"
   ARCH-11: "Memory sources: HookDescription, ClaudeResponse, MDFileChunk"
 
+  # Multi-Space Search Architecture (TASK-MULTISPACE)
+  ARCH-12: "Search strategies: E1Only (default), MultiSpace (weighted fusion), Pipeline (3-stage)"
+  ARCH-13: "Weight profiles MUST have E2-E4 = 0.0 for semantic search"
+  ARCH-14: "Recency boost is applied POST-retrieval as: final = semantic*(1-boost) + temporal*boost"
+
 # ===============================================================================
 # CODING STANDARDS
 # ===============================================================================
@@ -108,6 +113,17 @@ forbidden:
   AP-70: "Dream triggers MUST use entropy > 0.7 AND churn > 0.5"
   AP-71: "Dream NREM/REM returning stubs forbidden"
   AP-72: "nrem.rs/rem.rs TODO stubs MUST be implemented"
+
+  # Critical - Multi-Space Search (TASK-MULTISPACE)
+  # References:
+  # - Pinecone Cascading Retrieval: https://www.pinecone.io/blog/cascading-retrieval/
+  # - ACM TOIS Fusion: https://dl.acm.org/doi/10.1145/3596512
+  # - ColBERT Late Interaction: https://weaviate.io/blog/late-interaction-overview
+  # - SPLADE Sparse Expansion: https://www.pinecone.io/learn/splade/
+  AP-73: "Temporal embedders (E2-E4) MUST NOT be used in similarity scoring fusion - temporal proximity != topical similarity"
+  AP-74: "E12 ColBERT MUST only be used for re-ranking, NOT initial retrieval"
+  AP-75: "E13 SPLADE MUST be used for Stage 1 recall, NOT final ranking"
+  AP-76: "Multi-stage retrieval pipeline MUST use: Stage 1 (sparse recall) → Stage 2 (dense scoring) → Stage 3 (optional rerank)"
 
   # High
   AP-11: "Check existing utils before creating helpers"

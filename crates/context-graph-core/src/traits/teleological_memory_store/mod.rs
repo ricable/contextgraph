@@ -42,6 +42,6 @@ mod store;
 // Re-export all public types
 pub use backend::TeleologicalStorageBackend;
 pub use ext::TeleologicalMemoryStoreExt;
-pub use options::TeleologicalSearchOptions;
+pub use options::{NormalizationStrategyOption, SearchStrategy, TeleologicalSearchOptions};
 pub use result::TeleologicalSearchResult;
 pub use store::TeleologicalMemoryStore;

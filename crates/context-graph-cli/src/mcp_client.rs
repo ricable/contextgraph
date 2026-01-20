@@ -444,6 +444,173 @@ impl McpClient {
         self.call_tool(params).await
     }
 
+    /// Call the `get_topic_portfolio` MCP tool.
+    ///
+    /// Gets all discovered topics with profiles and stability metrics.
+    /// Topics emerge from weighted multi-space clustering (threshold >= 2.5).
+    ///
+    /// # Arguments
+    ///
+    /// - `format`: Output format - "brief", "standard", or "verbose"
+    ///
+    /// # Returns
+    ///
+    /// The MCP tool result as JSON value containing topic portfolio.
+    pub async fn get_topic_portfolio(
+        &self,
+        format: Option<&str>,
+    ) -> Result<serde_json::Value, McpClientError> {
+        let params = json!({
+            "name": "get_topic_portfolio",
+            "arguments": {
+                "format": format.unwrap_or("standard")
+            }
+        });
+
+        info!(
+            format = format.unwrap_or("standard"),
+            "Calling MCP get_topic_portfolio"
+        );
+
+        self.call_tool(params).await
+    }
+
+    /// Call the `get_topic_stability` MCP tool.
+    ///
+    /// Gets portfolio-level stability metrics including churn rate and entropy.
+    /// Dream consolidation is recommended when entropy > 0.7 AND churn > 0.5.
+    ///
+    /// # Arguments
+    ///
+    /// - `hours`: Lookback period in hours for computing averages (1-168, default: 6)
+    ///
+    /// # Returns
+    ///
+    /// The MCP tool result as JSON value containing stability metrics.
+    pub async fn get_topic_stability(
+        &self,
+        hours: Option<u32>,
+    ) -> Result<serde_json::Value, McpClientError> {
+        let params = json!({
+            "name": "get_topic_stability",
+            "arguments": {
+                "hours": hours.unwrap_or(6)
+            }
+        });
+
+        info!(
+            hours = hours.unwrap_or(6),
+            "Calling MCP get_topic_stability"
+        );
+
+        self.call_tool(params).await
+    }
+
+    /// Call the `detect_topics` MCP tool.
+    ///
+    /// Force topic detection recalculation using HDBSCAN clustering.
+    /// Requires minimum 3 memories (per clustering.parameters.min_cluster_size).
+    /// Topics require weighted_agreement >= 2.5 to be recognized.
+    ///
+    /// # Arguments
+    ///
+    /// - `force`: Force detection even if recently computed
+    ///
+    /// # Returns
+    ///
+    /// The MCP tool result as JSON value containing detected topics.
+    pub async fn detect_topics(
+        &self,
+        force: bool,
+    ) -> Result<serde_json::Value, McpClientError> {
+        let params = json!({
+            "name": "detect_topics",
+            "arguments": {
+                "force": force
+            }
+        });
+
+        info!(force, "Calling MCP detect_topics");
+
+        self.call_tool(params).await
+    }
+
+    /// Call the `trigger_dream` MCP tool.
+    ///
+    /// Execute NREM/REM dream consolidation cycle.
+    ///
+    /// # Arguments
+    ///
+    /// - `blocking`: Wait for completion (default: true)
+    /// - `dry_run`: Simulate without modifying graph (default: false)
+    /// - `skip_nrem`: Skip NREM phase (default: false)
+    /// - `skip_rem`: Skip REM phase (default: false)
+    /// - `max_duration_secs`: Max duration in seconds (10-600, default: 300)
+    ///
+    /// # Returns
+    ///
+    /// The MCP tool result as JSON value containing dream status.
+    pub async fn trigger_dream(
+        &self,
+        blocking: bool,
+        dry_run: bool,
+        skip_nrem: bool,
+        skip_rem: bool,
+        max_duration_secs: Option<u32>,
+    ) -> Result<serde_json::Value, McpClientError> {
+        let params = json!({
+            "name": "trigger_dream",
+            "arguments": {
+                "blocking": blocking,
+                "dry_run": dry_run,
+                "skip_nrem": skip_nrem,
+                "skip_rem": skip_rem,
+                "max_duration_secs": max_duration_secs.unwrap_or(300)
+            }
+        });
+
+        info!(
+            blocking,
+            dry_run,
+            skip_nrem,
+            skip_rem,
+            max_duration_secs = max_duration_secs.unwrap_or(300),
+            "Calling MCP trigger_dream"
+        );
+
+        self.call_tool(params).await
+    }
+
+    /// Call the `get_dream_status` MCP tool.
+    ///
+    /// Get status of a running or completed dream cycle.
+    ///
+    /// # Arguments
+    ///
+    /// - `dream_id`: Dream cycle UUID (default: most recent)
+    ///
+    /// # Returns
+    ///
+    /// The MCP tool result as JSON value containing dream status.
+    pub async fn get_dream_status(
+        &self,
+        dream_id: Option<&str>,
+    ) -> Result<serde_json::Value, McpClientError> {
+        let mut args = serde_json::Map::new();
+        if let Some(id) = dream_id {
+            args.insert("dream_id".to_string(), json!(id));
+        }
+
+        let params = json!({
+            "name": "get_dream_status",
+            "arguments": args
+        });
+
+        info!(dream_id, "Calling MCP get_dream_status");
+
+        self.call_tool(params).await
+    }
+
     /// Internal method to call an MCP tool.
     ///
     /// Establishes TCP connection, sends JSON-RPC request, and reads response.
