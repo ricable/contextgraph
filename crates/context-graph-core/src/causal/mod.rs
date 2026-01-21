@@ -17,10 +17,13 @@
 //!   - Abduction: Best hypothesis for observation
 //! - **E5 Asymmetric Similarity**: Constitution-specified causal similarity
 //!   with direction modifiers (cause→effect=1.2, effect→cause=0.8)
+//! - **Transitive Chain Reasoning**: Multi-hop causal scoring with attenuation
+//! - **Abductive Reasoning**: Finding most likely causes given observed effects
 //!
 //! ## NO BACKWARDS COMPATIBILITY - FAIL FAST WITH ROBUST LOGGING
 
 pub mod asymmetric;
+pub mod chain;
 pub mod inference;
 pub mod scm;
 
@@ -28,6 +31,12 @@ pub use asymmetric::{
     adjust_batch_similarities, compute_asymmetric_similarity, compute_asymmetric_similarity_simple,
     compute_e5_asymmetric_fingerprint_similarity, compute_e5_asymmetric_full,
     detect_causal_query_intent, CausalDirection, InterventionContext,
+};
+pub use chain::{
+    build_causal_chain, compute_chain_score, compute_chain_score_raw, rank_causes_by_abduction,
+    rank_causes_by_abduction_raw, score_causal_chain, score_causal_chain_attenuated,
+    AbductionResult, CausalHop, CausalPairEmbedding, HOP_ATTENUATION, MAX_CHAIN_LENGTH,
+    MIN_CHAIN_SCORE,
 };
 pub use inference::{InferenceDirection, InferenceResult, OmniInfer};
 pub use scm::{CausalEdge, CausalGraph, CausalNode};

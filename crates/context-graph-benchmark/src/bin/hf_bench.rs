@@ -11,10 +11,6 @@
 //!     cargo run -p context-graph-benchmark --bin hf-bench --release --features real-embeddings -- \
 //!         --data-dir data/hf_benchmark
 //!
-//!     # With synthetic embeddings (for testing):
-//!     cargo run -p context-graph-benchmark --bin hf-bench --release -- \
-//!         --data-dir data/hf_benchmark --synthetic
-//!
 //!     # Generate report only (from existing results):
 //!     cargo run -p context-graph-benchmark --bin hf-bench --release -- \
 //!         --generate-report --input docs/hf-benchmark-results.json
@@ -44,7 +40,6 @@ struct Args {
     max_chunks: usize,
     num_queries: usize,
     seed: u64,
-    synthetic: bool,
     checkpoint_dir: Option<PathBuf>,
     checkpoint_interval: usize,
     generate_report: bool,
@@ -59,7 +54,6 @@ impl Default for Args {
             max_chunks: 0, // unlimited
             num_queries: 500,
             seed: 42,
-            synthetic: false,
             checkpoint_dir: Some(PathBuf::from("data/hf_benchmark/checkpoints")),
             checkpoint_interval: 1000,
             generate_report: false,
@@ -100,9 +94,6 @@ fn parse_args() -> Args {
                     .expect("--seed requires a value")
                     .parse()
                     .expect("--seed must be a number");
-            }
-            "--synthetic" => {
-                args.synthetic = true;
             }
             "--checkpoint-dir" => {
                 args.checkpoint_dir =
@@ -154,13 +145,15 @@ OPTIONS:
     --max-chunks, -n <NUM>      Maximum chunks to load (0 = unlimited)
     --num-queries <NUM>         Number of query chunks to sample
     --seed <NUM>                Random seed for reproducibility
-    --synthetic                 Use synthetic embeddings (no GPU required)
     --checkpoint-dir <PATH>     Directory for embedding checkpoints
     --no-checkpoint             Disable checkpointing
     --checkpoint-interval <NUM> Save checkpoint every N embeddings
     --generate-report           Generate report from existing results
     --input, -i <PATH>          Input results file for report generation
     --help, -h                  Show this help message
+
+NOTE:
+    This benchmark requires --features real-embeddings and a CUDA GPU.
 "#
     );
 }
@@ -332,27 +325,23 @@ async fn embed_dataset(
 
     let start = Instant::now();
 
-    let embedded = if args.synthetic {
-        println!("  Using SYNTHETIC embeddings (no GPU)");
-        embedder.embed_dataset_synthetic(dataset, args.seed)?
-    } else {
-        #[cfg(feature = "real-embeddings")]
-        {
-            println!("  Using REAL GPU embeddings");
-            if let Some(ref checkpoint_dir) = args.checkpoint_dir {
-                embedder
-                    .embed_dataset_batched(dataset, Some(checkpoint_dir), args.checkpoint_interval)
-                    .await?
-            } else {
-                embedder.embed_dataset(dataset).await?
-            }
+    #[cfg(feature = "real-embeddings")]
+    let embedded = {
+        println!("  Using REAL GPU embeddings");
+        if let Some(ref checkpoint_dir) = args.checkpoint_dir {
+            embedder
+                .embed_dataset_batched(dataset, Some(checkpoint_dir), args.checkpoint_interval)
+                .await?
+        } else {
+            embedder.embed_dataset(dataset).await?
         }
-        #[cfg(not(feature = "real-embeddings"))]
-        {
-            eprintln!("ERROR: Real embeddings require the 'real-embeddings' feature.");
-            eprintln!("Either use --synthetic or run with --features real-embeddings");
-            std::process::exit(1);
-        }
+    };
+    #[cfg(not(feature = "real-embeddings"))]
+    let embedded: EmbeddedDataset = {
+        eprintln!("ERROR: This benchmark requires the 'real-embeddings' feature.");
+        eprintln!("Run with: cargo run --release -p context-graph-benchmark --bin hf-bench --features real-embeddings -- ...");
+        let _ = embedder; // suppress unused warning
+        std::process::exit(1);
     };
 
     let elapsed = start.elapsed();

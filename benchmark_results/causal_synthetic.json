@@ -1,0 +1,142 @@
+{
+  "metrics": {
+    "direction": {
+      "accuracy": 0.9533333333333334,
+      "cause_precision": 1.0,
+      "cause_recall": 1.0,
+      "effect_precision": 1.0,
+      "effect_recall": 0.86,
+      "direction_f1": 0.9623655913978495,
+      "confusion_matrix": {
+        "true_cause_pred_cause": 100,
+        "true_cause_pred_effect": 0,
+        "true_cause_pred_unknown": 0,
+        "true_effect_pred_cause": 0,
+        "true_effect_pred_effect": 43,
+        "true_effect_pred_unknown": 7,
+        "true_unknown_pred_cause": 0,
+        "true_unknown_pred_effect": 0,
+        "true_unknown_pred_unknown": 50
+      }
+    },
+    "asymmetric": {
+      "cause_to_effect_mrr": 0.9796666666666666,
+      "effect_to_cause_mrr": 0.98,
+      "asymmetry_ratio": 1.5000000402814258,
+      "avg_rank_improvement": -0.02903333333333333,
+      "direction_modifier_effectiveness": 0.9999999731457162,
+      "intervention_overlap_correlation": 0.0630966991341426,
+      "cause_to_effect_mrr_at": {
+        "20": 0.9796666666666666,
+        "1": 0.962,
+        "5": 0.9796666666666666,
+        "10": 0.9796666666666666
+      },
+      "effect_to_cause_mrr_at": {
+        "5": 0.98,
+        "20": 0.98,
+        "1": 0.96,
+        "10": 0.98
+      }
+    },
+    "reasoning": {
+      "copa_accuracy": 0.4,
+      "chain_traversal_accuracy": 0.7525773195876289,
+      "causal_ordering_tau": 0.5711111111111111,
+      "counterfactual_accuracy": 0.5,
+      "accuracy_by_type": {
+        "effect": 0.4523809523809524,
+        "cause": 0.3620689655172414
+      }
+    },
+    "composite": {
+      "overall_causal_score": 0.8257406484062165,
+      "improvement_over_symmetric": -0.17425935159378347,
+      "e5_contribution": 0.032175810507761575,
+      "feature_contributions": {
+        "direction_detection": 0.9578494623655914,
+        "asymmetric_similarity": 0.989899986572858,
+        "intervention_overlap": 0.0630966991341426,
+        "causal_reasoning": 0.599533218785796
+      }
+    },
+    "query_count": 1300
+  },
+  "ablation": {
+    "symmetric_baseline_score": 1.0,
+    "direction_modifiers_only_score": 1.0,
+    "intervention_overlap_only_score": 0.841,
+    "full_e5_score": 0.8257406484062165,
+    "without_e5_score": 0.800000000000007,
+    "improvements": {
+      "full_e5": -0.17425935159378347,
+      "direction_modifiers": 0.0,
+      "intervention_overlap": -0.15900000000000003
+    },
+    "e5_contribution": 0.032175810507761575
+  },
+  "timings": {
+    "total_ms": 236,
+    "dataset_generation_ms": 1,
+    "direction_benchmark_ms": 0,
+    "asymmetric_benchmark_ms": 233,
+    "reasoning_benchmark_ms": 0,
+    "ablation_ms": 0
+  },
+  "config": {
+    "dataset": {
+      "num_causal_pairs": 500,
+      "num_direction_queries": 200,
+      "num_copa_questions": 100,
+      "num_chains": 30,
+      "avg_chain_length": 4,
+      "seed": 42,
+      "domains": [
+        "Programming",
+        "Physics",
+        "Economics",
+        "Biology",
+        "Psychology",
+        "Engineering"
+      ],
+      "cause_effect_ratio": 0.5
+    },
+    "direction": {
+      "include_unknown": true,
+      "custom_patterns": []
+    },
+    "asymmetric": {
+      "test_direction_modifiers": true,
+      "test_intervention_overlap": true,
+      "num_distractors": 10
+    },
+    "reasoning": {
+      "include_copa": true,
+      "include_chains": true,
+      "include_counterfactuals": true
+    },
+    "run_ablation": true,
+    "k_values": [
+      1,
+      5,
+      10,
+      20
+    ],
+    "use_real_embeddings": false,
+    "warmup_provider": false
+  },
+  "dataset_stats": {
+    "total_pairs": 500,
+    "total_direction_queries": 200,
+    "total_copa_questions": 100,
+    "total_chains": 30,
+    "domains_used": [
+      "Physics",
+      "Psychology",
+      "Biology",
+      "Economics",
+      "Programming",
+      "Engineering"
+    ]
+  }
+}

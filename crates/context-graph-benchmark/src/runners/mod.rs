@@ -3,12 +3,18 @@
 //! This module provides the main harness for running benchmarks and
 //! comparing multi-space vs single-embedder approaches.
 
+pub mod causal;
 pub mod comparative;
 pub mod retrieval;
 pub mod scaling;
 pub mod temporal;
 pub mod topic;
 
+pub use causal::{
+    CausalBenchmarkConfig, CausalBenchmarkResults, CausalBenchmarkRunner,
+    CausalAblationResults, CausalBenchmarkTimings, CausalDatasetStats,
+    DirectionBenchmarkSettings, AsymmetricBenchmarkSettings, ReasoningBenchmarkSettings,
+};
 pub use comparative::{BenchmarkHarness, BenchmarkResults, ComparativeResults};
 pub use retrieval::RetrievalRunner;
 pub use scaling::ScalingRunner;

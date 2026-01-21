@@ -7,13 +7,16 @@
 //! - **Divergence**: TPR, FPR for topic drift detection
 //! - **Performance**: Latency percentiles, throughput, memory
 //! - **Temporal**: E2/E3/E4 embedder effectiveness metrics
+//! - **Causal**: E5 embedder effectiveness metrics (direction detection, asymmetric retrieval)
 
+pub mod causal;
 pub mod clustering;
 pub mod divergence;
 pub mod performance;
 pub mod retrieval;
 pub mod temporal;
 
+pub use causal::CausalMetrics;
 pub use clustering::ClusteringMetrics;
 pub use divergence::DivergenceMetrics;
 pub use performance::PerformanceMetrics;

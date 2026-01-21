@@ -26,8 +26,6 @@ pub struct RealDataBenchConfig {
     pub num_queries: usize,
     /// Seed for reproducibility.
     pub seed: u64,
-    /// Whether to use synthetic embeddings (true) or real GPU embeddings (false).
-    pub synthetic_embeddings: bool,
 }
 
 impl Default for RealDataBenchConfig {
@@ -37,7 +35,6 @@ impl Default for RealDataBenchConfig {
             max_chunks: 10_000,
             num_queries: 100,
             seed: 42,
-            synthetic_embeddings: true,
         }
     }
 }
@@ -122,6 +119,8 @@ impl RealDataBenchRunner {
     }
 
     /// Generate embeddings for the dataset.
+    ///
+    /// Requires the `real-embeddings` feature to be enabled.
     pub fn embed_dataset(&mut self) -> Result<&EmbeddedDataset, RealDataError> {
         let dataset = self
             .dataset
@@ -129,25 +128,22 @@ impl RealDataBenchRunner {
             .ok_or_else(|| RealDataError::DatasetNotLoaded)?;
 
         let embedder = RealDataEmbedder::new();
-        let embedded = if self.config.synthetic_embeddings {
-            embedder
-                .embed_dataset_synthetic(dataset, self.config.seed)
+
+        #[cfg(feature = "real-embeddings")]
+        let embedded = {
+            // Use tokio runtime for async embedding
+            let rt = tokio::runtime::Runtime::new()
+                .map_err(|e| RealDataError::EmbedError(format!("Failed to create runtime: {}", e)))?;
+            rt.block_on(embedder.embed_dataset(dataset))
                 .map_err(|e| RealDataError::EmbedError(e.to_string()))?
-        } else {
-            #[cfg(feature = "real-embeddings")]
-            {
-                // Use tokio runtime for async embedding
-                let rt = tokio::runtime::Runtime::new()
-                    .map_err(|e| RealDataError::EmbedError(format!("Failed to create runtime: {}", e)))?;
-                rt.block_on(embedder.embed_dataset(dataset))
-                    .map_err(|e| RealDataError::EmbedError(e.to_string()))?
-            }
-            #[cfg(not(feature = "real-embeddings"))]
-            {
-                return Err(RealDataError::EmbedError(
-                    "Real embeddings require 'real-embeddings' feature".to_string(),
-                ));
-            }
+        };
+
+        #[cfg(not(feature = "real-embeddings"))]
+        let embedded = {
+            let _ = embedder; // suppress unused warning
+            return Err(RealDataError::EmbedError(
+                "Real embeddings require 'real-embeddings' feature".to_string(),
+            ));
         };
 
         self.embedded = Some(embedded);
@@ -796,7 +792,6 @@ mod tests {
             max_chunks: 50,
             num_queries: 10,
             seed: 42,
-            synthetic_embeddings: true,
         };
 
         let mut runner = RealDataBenchRunner::with_config(config);

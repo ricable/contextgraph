@@ -32,7 +32,7 @@ fn main() {
     println!("  Max chunks: {}", if config.max_chunks == 0 { "unlimited".to_string() } else { config.max_chunks.to_string() });
     println!("  Num queries: {}", config.num_queries);
     println!("  Seed: {}", config.seed);
-    println!("  Embeddings: {}", if config.synthetic_embeddings { "synthetic" } else { "real (GPU)" });
+    println!("  Embeddings: real (GPU)");
     println!();
 
     let mut runner = RealDataBenchRunner::with_config(config.clone());
@@ -168,9 +168,6 @@ fn parse_args(args: &[String]) -> RealDataBenchConfig {
                 if i < args.len() {
                     config.seed = args[i].parse().unwrap_or(42);
                 }
-            }
-            "--real-embeddings" => {
-                config.synthetic_embeddings = false;
             }
             "--output" | "-o" => {
                 // Handled separately

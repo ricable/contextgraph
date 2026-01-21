@@ -97,3 +97,7 @@ path = "src/bin/hf_bench.rs"
 [[bin]]
 name = "temporal-bench"
 path = "src/bin/temporal_bench.rs"
+
+[[bin]]
+name = "causal-realdata-bench"
+path = "src/bin/causal_realdata_bench.rs"

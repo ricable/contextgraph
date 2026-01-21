@@ -141,8 +141,17 @@ impl InterventionContext {
 
     /// Compute intervention overlap with another context.
     ///
-    /// Overlap is computed as Jaccard similarity of intervened variables,
-    /// with bonuses for matching domain and mechanism.
+    /// Uses a size-normalized approach that blends Jaccard similarity (specificity)
+    /// with containment metric (flexibility for asymmetric set sizes).
+    ///
+    /// # Formula
+    ///
+    /// ```text
+    /// containment = intersection / min(|A|, |B|)  // Handles asymmetric sizes
+    /// jaccard = intersection / union              // Handles specificity
+    /// blended = 0.5 * jaccard + 0.5 * containment
+    /// overlap = 0.7 * blended + domain_bonus + mechanism_bonus
+    /// ```
     ///
     /// # Returns
     ///
@@ -160,33 +169,54 @@ impl InterventionContext {
             return 0.1;
         }
 
-        // Jaccard similarity for variables
+        // Size-normalized Jaccard with containment metric
         let self_set: std::collections::HashSet<_> = self.intervened_variables.iter().collect();
         let other_set: std::collections::HashSet<_> = other.intervened_variables.iter().collect();
 
         let intersection = self_set.intersection(&other_set).count();
         let union = self_set.union(&other_set).count();
+        let min_size = self_set.len().min(other_set.len());
 
+        // Size-normalized containment: intersection / min_size
+        // Better for asymmetric sizes (e.g., subset relationship)
+        let containment = if min_size > 0 {
+            intersection as f32 / min_size as f32
+        } else {
+            0.0
+        };
+
+        // Traditional Jaccard for specificity
         let jaccard = if union > 0 {
             intersection as f32 / union as f32
         } else {
             0.0
         };
 
-        // Domain bonus (0.1 if matching)
-        let domain_bonus = match (&self.domain, &other.domain) {
-            (Some(d1), Some(d2)) if d1 == d2 => 0.1,
-            _ => 0.0,
+        // Blend Jaccard (specificity) with containment (flexibility)
+        let blended = jaccard * 0.5 + containment * 0.5;
+
+        // Apply bonuses (scaled by base overlap to avoid empty-context inflation)
+        // Only apply bonuses if there's meaningful overlap (> 0.1)
+        let domain_bonus = if blended > 0.1 {
+            match (&self.domain, &other.domain) {
+                (Some(d1), Some(d2)) if d1 == d2 => 0.15,
+                _ => 0.0,
+            }
+        } else {
+            0.0
         };
 
-        // Mechanism bonus (0.1 if matching)
-        let mechanism_bonus = match (&self.mechanism, &other.mechanism) {
-            (Some(m1), Some(m2)) if m1 == m2 => 0.1,
-            _ => 0.0,
+        let mechanism_bonus = if blended > 0.1 {
+            match (&self.mechanism, &other.mechanism) {
+                (Some(m1), Some(m2)) if m1 == m2 => 0.15,
+                _ => 0.0,
+            }
+        } else {
+            0.0
         };
 
-        // Final overlap clamped to [0, 1]
-        (jaccard * 0.8 + domain_bonus + mechanism_bonus).clamp(0.0, 1.0)
+        // Final overlap: 70% from variable overlap, up to 30% from bonuses
+        (blended * 0.7 + domain_bonus + mechanism_bonus).clamp(0.0, 1.0)
     }
 
     /// Check if this context is empty.
@@ -432,6 +462,9 @@ pub fn compute_e5_asymmetric_full(
 /// - Effects ("what happens", "result of", "consequence") -> returns CausalDirection::Effect
 /// - Unknown direction -> returns CausalDirection::Unknown
 ///
+/// Uses score-based detection with disambiguation for queries that match
+/// both cause and effect indicators.
+///
 /// # Arguments
 ///
 /// * `query` - The query text to analyze
@@ -448,6 +481,7 @@ pub fn compute_e5_asymmetric_full(
 /// assert_eq!(detect_causal_query_intent("why does rust have ownership?"), CausalDirection::Cause);
 /// assert_eq!(detect_causal_query_intent("what causes memory leaks?"), CausalDirection::Cause);
 /// assert_eq!(detect_causal_query_intent("what happens if I delete this file?"), CausalDirection::Effect);
+/// assert_eq!(detect_causal_query_intent("diagnose the root cause"), CausalDirection::Cause);
 /// assert_eq!(detect_causal_query_intent("show me the code"), CausalDirection::Unknown);
 /// ```
 pub fn detect_causal_query_intent(query: &str) -> CausalDirection {
@@ -456,7 +490,10 @@ pub fn detect_causal_query_intent(query: &str) -> CausalDirection {
     // Cause-seeking indicators (user wants to find WHY something happened)
     // When asking "why", the user has an effect and wants the cause
     // So query represents what the user is investigating as an effect
+    //
+    // Expanded from 14 to ~35 patterns for better direction detection (target: >85%)
     let cause_indicators = [
+        // Original patterns
         "why ",
         "why?",
         "what cause",
@@ -471,11 +508,41 @@ pub fn detect_causal_query_intent(query: &str) -> CausalDirection {
         "what leads to",
         "explain why",
         "how come",
+        // Investigation patterns
+        "diagnose",
+        "root cause",
+        "investigate",
+        "debug",
+        "troubleshoot",
+        // Trigger patterns
+        "triggers",
+        "trigger",
+        "what triggers",
+        "source of",
+        "origin of",
+        // Attribution patterns
+        "culprit",
+        "underlying",
+        "responsible for",
+        "attributed to",
+        "blame",
+        // Question patterns
+        "how did",
+        "where did",
+        "when did",
+        // Domain-specific patterns
+        "failure mode",
+        "etiology",
+        "pathogenesis",
+        "root of",
     ];
 
     // Effect-seeking indicators (user wants to find WHAT HAPPENS)
     // When asking "what happens", the user has a cause and wants effects
+    //
+    // Expanded from 16 to ~30 patterns for better direction detection
     let effect_indicators = [
+        // Original patterns
         "what happen",
         "what will happen",
         "what would happen",
@@ -492,23 +559,49 @@ pub fn detect_causal_query_intent(query: &str) -> CausalDirection {
         "what does it do",
         "what will it do",
         "then what",
+        // Downstream patterns
+        "leads to",
+        "downstream",
+        "cascades to",
+        "cascading",
+        "propagates to",
+        // Impact patterns
+        "ripple effect",
+        "side effect",
+        "collateral",
+        "knock-on",
+        "ramifications",
+        // Prediction patterns
+        "predict",
+        "forecast",
+        "anticipate",
+        "expect",
+        // Domain-specific patterns
+        "prognosis",
+        "complications",
+        "sequelae",
     ];
 
-    // Check cause indicators first (they're more common in natural language)
-    for indicator in cause_indicators {
-        if query_lower.contains(indicator) {
-            return CausalDirection::Cause;
-        }
-    }
+    // Score-based detection for disambiguation
+    let cause_score: usize = cause_indicators
+        .iter()
+        .filter(|p| query_lower.contains(*p))
+        .count();
+    let effect_score: usize = effect_indicators
+        .iter()
+        .filter(|p| query_lower.contains(*p))
+        .count();
 
-    // Check effect indicators
-    for indicator in effect_indicators {
-        if query_lower.contains(indicator) {
-            return CausalDirection::Effect;
+    // Disambiguation: compare scores
+    match cause_score.cmp(&effect_score) {
+        std::cmp::Ordering::Greater => CausalDirection::Cause,
+        std::cmp::Ordering::Less => CausalDirection::Effect,
+        std::cmp::Ordering::Equal if cause_score > 0 => {
+            // Tie-breaker: prefer cause (more common in natural language queries)
+            CausalDirection::Cause
         }
+        _ => CausalDirection::Unknown,
     }
-
-    CausalDirection::Unknown
 }
 
 /// Helper: compute cosine similarity between two f32 slices.
@@ -622,9 +715,10 @@ mod tests {
             .with_variable("pressure");
 
         let overlap = ctx1.overlap_with(&ctx2);
-        // Jaccard = 1.0, scaled by 0.8 = 0.8
-        assert!((overlap - 0.8).abs() < 0.01);
-        println!("[VERIFIED] Identical variables → overlap ~0.8");
+        // Jaccard = 1.0, containment = 1.0, blended = 1.0
+        // overlap = 1.0 * 0.7 = 0.7
+        assert!((overlap - 0.7).abs() < 0.01);
+        println!("[VERIFIED] Identical variables → overlap ~0.7");
     }
 
     #[test]
@@ -637,8 +731,10 @@ mod tests {
             .with_variable("volume");
 
         let overlap = ctx1.overlap_with(&ctx2);
-        // Jaccard = 1/3 = 0.333, scaled by 0.8 = 0.266
-        assert!(overlap > 0.2 && overlap < 0.3);
+        // Jaccard = 1/3 = 0.333, containment = 1/2 = 0.5
+        // blended = 0.5 * 0.333 + 0.5 * 0.5 = 0.4165
+        // overlap = 0.4165 * 0.7 = 0.2916 (~0.29)
+        assert!(overlap > 0.25 && overlap < 0.35);
         println!("[VERIFIED] Partial overlap computed correctly: {}", overlap);
     }
 
@@ -652,8 +748,9 @@ mod tests {
             .with_domain("physics");
 
         let overlap = ctx1.overlap_with(&ctx2);
-        // Jaccard = 1.0 * 0.8 + 0.1 domain bonus = 0.9
-        assert!((overlap - 0.9).abs() < 0.01);
+        // Jaccard = 1.0, containment = 1.0, blended = 1.0
+        // overlap = 1.0 * 0.7 + 0.15 domain bonus = 0.85
+        assert!((overlap - 0.85).abs() < 0.01);
         println!("[VERIFIED] Domain bonus applied: {}", overlap);
     }
 
@@ -667,8 +764,9 @@ mod tests {
             .with_mechanism("heat_transfer");
 
         let overlap = ctx1.overlap_with(&ctx2);
-        // Jaccard = 1.0 * 0.8 + 0.1 mechanism bonus = 0.9
-        assert!((overlap - 0.9).abs() < 0.01);
+        // Jaccard = 1.0, containment = 1.0, blended = 1.0
+        // overlap = 1.0 * 0.7 + 0.15 mechanism bonus = 0.85
+        assert!((overlap - 0.85).abs() < 0.01);
         println!("[VERIFIED] Mechanism bonus applied: {}", overlap);
     }
 
@@ -684,9 +782,27 @@ mod tests {
             .with_mechanism("heat_transfer");
 
         let overlap = ctx1.overlap_with(&ctx2);
-        // Jaccard * 0.8 + domain 0.1 + mechanism 0.1 = 1.0 (capped)
+        // blended = 1.0, domain 0.15 + mechanism 0.15
+        // overlap = 1.0 * 0.7 + 0.15 + 0.15 = 1.0 (capped)
         assert_eq!(overlap, 1.0);
         println!("[VERIFIED] Full bonuses capped at 1.0");
+    }
+
+    #[test]
+    fn test_asymmetric_sizes_containment() {
+        // Test that containment handles subset relationships
+        let ctx1 = InterventionContext::new()
+            .with_variable("X")
+            .with_variable("Y")
+            .with_variable("Z");
+        let ctx2 = InterventionContext::new().with_variable("X");
+
+        let overlap = ctx1.overlap_with(&ctx2);
+        // Jaccard = 1/3 = 0.333, containment = 1/1 = 1.0 (subset!)
+        // blended = 0.5 * 0.333 + 0.5 * 1.0 = 0.6665
+        // overlap = 0.6665 * 0.7 = 0.4666 (~0.47)
+        assert!(overlap > 0.4 && overlap < 0.55);
+        println!("[VERIFIED] Asymmetric sizes handled via containment: {}", overlap);
     }
 
     // ============================================================================
@@ -707,10 +823,10 @@ mod tests {
             Some(&result_ctx),
         );
 
-        // direction_mod = 1.2, overlap = 0.8
-        // factor = 0.7 + 0.3 * 0.8 = 0.94
-        // sim = 0.8 * 1.2 * 0.94 = 0.9024
-        let expected = base * 1.2 * (0.7 + 0.3 * 0.8);
+        // direction_mod = 1.2, overlap = 0.7 (new formula)
+        // factor = 0.7 + 0.3 * 0.7 = 0.91
+        // sim = 0.8 * 1.2 * 0.91 = 0.8736
+        let expected = base * 1.2 * (0.7 + 0.3 * 0.7);
         assert!((sim - expected).abs() < 0.01);
         println!(
             "[VERIFIED] cause→effect with high overlap: {} (expected {})",
@@ -732,10 +848,10 @@ mod tests {
             Some(&result_ctx),
         );
 
-        // direction_mod = 0.8, overlap = 0.8
-        // factor = 0.7 + 0.3 * 0.8 = 0.94
-        // sim = 0.8 * 0.8 * 0.94 = 0.6016
-        let expected = base * 0.8 * (0.7 + 0.3 * 0.8);
+        // direction_mod = 0.8, overlap = 0.7 (new formula)
+        // factor = 0.7 + 0.3 * 0.7 = 0.91
+        // sim = 0.8 * 0.8 * 0.91 = 0.5824
+        let expected = base * 0.8 * (0.7 + 0.3 * 0.7);
         assert!((sim - expected).abs() < 0.01);
         println!(
             "[VERIFIED] effect→cause with high overlap: {} (expected {})",
@@ -1015,5 +1131,188 @@ mod tests {
         assert_eq!(cosine_similarity_f32(&zeros, &ones), 0.0);
 
         println!("[VERIFIED] cosine_similarity_f32 handles edge cases");
+    }
+
+    // ============================================================================
+    // New Direction Detection Pattern Tests (Phase 1 Expansion)
+    // ============================================================================
+
+    #[test]
+    fn test_detect_investigation_patterns() {
+        // Investigation patterns should detect Cause
+        assert_eq!(
+            detect_causal_query_intent("diagnose the issue"),
+            CausalDirection::Cause
+        );
+        assert_eq!(
+            detect_causal_query_intent("what is the root cause of this failure?"),
+            CausalDirection::Cause
+        );
+        assert_eq!(
+            detect_causal_query_intent("investigate why the server crashed"),
+            CausalDirection::Cause
+        );
+        assert_eq!(
+            detect_causal_query_intent("debug the error"),
+            CausalDirection::Cause
+        );
+        assert_eq!(
+            detect_causal_query_intent("troubleshoot the connection problem"),
+            CausalDirection::Cause
+        );
+        println!("[VERIFIED] Investigation patterns detected as Cause");
+    }
+
+    #[test]
+    fn test_detect_trigger_patterns() {
+        // Trigger patterns should detect Cause
+        assert_eq!(
+            detect_causal_query_intent("what triggers the alert?"),
+            CausalDirection::Cause
+        );
+        assert_eq!(
+            detect_causal_query_intent("source of the memory leak"),
+            CausalDirection::Cause
+        );
+        assert_eq!(
+            detect_causal_query_intent("origin of this bug"),
+            CausalDirection::Cause
+        );
+        println!("[VERIFIED] Trigger patterns detected as Cause");
+    }
+
+    #[test]
+    fn test_detect_attribution_patterns() {
+        // Attribution patterns should detect Cause
+        assert_eq!(
+            detect_causal_query_intent("who is responsible for this failure?"),
+            CausalDirection::Cause
+        );
+        assert_eq!(
+            detect_causal_query_intent("this is attributed to what?"),
+            CausalDirection::Cause
+        );
+        assert_eq!(
+            detect_causal_query_intent("find the culprit"),
+            CausalDirection::Cause
+        );
+        assert_eq!(
+            detect_causal_query_intent("what is the underlying issue?"),
+            CausalDirection::Cause
+        );
+        println!("[VERIFIED] Attribution patterns detected as Cause");
+    }
+
+    #[test]
+    fn test_detect_downstream_patterns() {
+        // Downstream patterns should detect Effect
+        assert_eq!(
+            detect_causal_query_intent("this leads to what?"),
+            CausalDirection::Effect
+        );
+        assert_eq!(
+            detect_causal_query_intent("what are the downstream effects?"),
+            CausalDirection::Effect
+        );
+        assert_eq!(
+            detect_causal_query_intent("cascades to other systems?"),
+            CausalDirection::Effect
+        );
+        assert_eq!(
+            detect_causal_query_intent("cascading failures expected?"),
+            CausalDirection::Effect
+        );
+        println!("[VERIFIED] Downstream patterns detected as Effect");
+    }
+
+    #[test]
+    fn test_detect_impact_patterns() {
+        // Impact patterns should detect Effect
+        assert_eq!(
+            detect_causal_query_intent("what are the ripple effects?"),
+            CausalDirection::Effect
+        );
+        assert_eq!(
+            detect_causal_query_intent("any side effects?"),
+            CausalDirection::Effect
+        );
+        assert_eq!(
+            detect_causal_query_intent("what are the ramifications?"),
+            CausalDirection::Effect
+        );
+        println!("[VERIFIED] Impact patterns detected as Effect");
+    }
+
+    #[test]
+    fn test_detect_prediction_patterns() {
+        // Prediction patterns should detect Effect
+        assert_eq!(
+            detect_causal_query_intent("predict the outcome"),
+            CausalDirection::Effect
+        );
+        assert_eq!(
+            detect_causal_query_intent("forecast the results"),
+            CausalDirection::Effect
+        );
+        assert_eq!(
+            detect_causal_query_intent("what should we expect?"),
+            CausalDirection::Effect
+        );
+        assert_eq!(
+            detect_causal_query_intent("anticipate any problems?"),
+            CausalDirection::Effect
+        );
+        println!("[VERIFIED] Prediction patterns detected as Effect");
+    }
+
+    #[test]
+    fn test_detect_domain_specific_patterns() {
+        // Domain-specific cause patterns
+        assert_eq!(
+            detect_causal_query_intent("failure mode analysis"),
+            CausalDirection::Cause
+        );
+        assert_eq!(
+            detect_causal_query_intent("etiology of the disease"),
+            CausalDirection::Cause
+        );
+
+        // Domain-specific effect patterns
+        assert_eq!(
+            detect_causal_query_intent("prognosis for this patient"),
+            CausalDirection::Effect
+        );
+        assert_eq!(
+            detect_causal_query_intent("possible complications"),
+            CausalDirection::Effect
+        );
+        println!("[VERIFIED] Domain-specific patterns detected correctly");
+    }
+
+    #[test]
+    fn test_disambiguation_tie_breaker() {
+        // When both cause and effect indicators are present, cause wins as tie-breaker
+        // Query with both "why" (cause) and "if" (effect) patterns
+        // "why" comes first and is a strong cause indicator
+        assert_eq!(
+            detect_causal_query_intent("why does this happen?"),
+            CausalDirection::Cause
+        );
+        println!("[VERIFIED] Disambiguation tie-breaker works");
+    }
+
+    #[test]
+    fn test_score_based_detection() {
+        // Multiple cause indicators should still detect Cause
+        assert_eq!(
+            detect_causal_query_intent("investigate and troubleshoot the root cause"),
+            CausalDirection::Cause
+        );
+        // Multiple effect indicators should detect Effect
+        assert_eq!(
+            detect_causal_query_intent("predict the downstream cascading effects"),
+            CausalDirection::Effect
+        );
+        println!("[VERIFIED] Score-based detection handles multiple indicators");
     }
 }

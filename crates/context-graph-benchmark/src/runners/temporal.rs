@@ -1447,29 +1447,40 @@ fn compute_direction_accuracy(dataset: &TemporalBenchmarkDataset) -> (f64, f64) 
     for query in &dataset.sequence_queries {
         let anchor_ts = query.anchor_timestamp.timestamp_millis();
 
-        let retrieved: Vec<_> = dataset
+        // Score and sort by temporal proximity (closer to anchor = higher score)
+        let mut scored: Vec<_> = dataset
             .memories
             .iter()
             .filter(|m| m.id != query.anchor_id)
-            .map(|m| (m.id, m.timestamp.timestamp_millis()))
+            .map(|m| {
+                let ts = m.timestamp.timestamp_millis();
+                let distance = (ts - anchor_ts).abs() as f64;
+                let score = 1.0 / (1.0 + distance / 1000.0);
+                (m.id, ts, score)
+            })
             .collect();
+
+        // Sort by score descending (closest items first)
+        scored.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
 
         match query.direction.as_str() {
             "before" => {
-                let correct = retrieved
+                let correct = scored
                     .iter()
                     .take(10)
-                    .filter(|(_, ts)| *ts < anchor_ts)
+                    .filter(|(_, ts, _)| *ts < anchor_ts)
                     .count();
-                before_scores.push(correct as f64 / 10.0);
+                let k = 10.0_f64.min(scored.len() as f64);
+                before_scores.push(correct as f64 / k.max(1.0));
             }
             "after" => {
-                let correct = retrieved
+                let correct = scored
                     .iter()
                     .take(10)
-                    .filter(|(_, ts)| *ts > anchor_ts)
+                    .filter(|(_, ts, _)| *ts > anchor_ts)
                     .count();
-                after_scores.push(correct as f64 / 10.0);
+                let k = 10.0_f64.min(scored.len() as f64);
+                after_scores.push(correct as f64 / k.max(1.0));
             }
             _ => {}
         }

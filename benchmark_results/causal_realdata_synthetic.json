@@ -1,0 +1,173 @@
+{
+  "timestamp": "2026-01-21T18:13:42.209837231+00:00",
+  "config": {
+    "max_chunks": 5000,
+    "num_direction_samples": 500,
+    "num_asymmetric_queries": 200,
+    "num_copa_questions": 100,
+    "seed": 42,
+    "synthetic": true
+  },
+  "dataset_info": {
+    "total_chunks": 5000,
+    "total_documents": 1250,
+    "source_datasets": [
+      "arxiv"
+    ],
+    "topic_count": 11,
+    "has_asymmetric_e5": true,
+    "e5_coverage": 1.0
+  },
+  "embedding_stats": {
+    "total_embeddings": 5000,
+    "embedding_time_secs": 2.413110779,
+    "embeddings_per_sec": 2072.0142827723867,
+    "e5_as_cause_populated": 5000,
+    "e5_as_effect_populated": 5000
+  },
+  "direction_detection": {
+    "total_samples": 500,
+    "cause_detected": 47,
+    "effect_detected": 62,
+    "unknown_detected": 391,
+    "detection_rate": 0.218,
+    "sample_queries": [
+      {
+        "text_snippet": "above inequality to get: n o 1 ∃x ∈ X : ηh∗ (x) (x) − ηh̄(x) (x) > 2φ n o = sup 1 ηh∗ (x) (x) − ηh̄(...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "its toString method. To bypass potential tampering, we use a private copy of Function.prototype.toSt...",
+        "detected_direction": "Effect",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "t0,1 + t0,2 + t1,2 − t0,1,2 , and b3κ/2c ≤ t0 + t1 + t2 ≤ d3κ/2e . (12) The last constraint in (12) ...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "Recognition, pages 3009–3016, 2013. 3 Supplementary Material 7. Framework details ties was reversed,...",
+        "detected_direction": "Effect",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "1 2 λ|βj | − 2γ I(|βj | ≤ γλ) + 2 γλ I(|βj | ≥ γλ) j=1 j=1 Enet, AL and Aenet, respectively, stand f...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "x = X |xihx|X ⊗ [log2 (pX (x)) (IB − |ψ x ihψ x |B ) + log2 ρB ]2 . (4.77) x Furthermore, we have th...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "as the maximum compression error of ZFP, which will make the maximum compression errors of SZ-1.4 an...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "we additionally require that γ1 and γ2 |{ℓ1 ,...,ℓn } have the same length. We refer to (val i , val...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "in the backward pass, we propagate the gradients along these dynamic links. Obviously, the atomic-ty...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "Now let G/Z(G) = PSU4 (q), q > 3 odd. Then µ3 (G) = (q −q+1)(q . Suppose first that 2 4|(q + 1). We ...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "whose Γ matrix is unrelated to Γ1 by the partial ordering. We now show that for a given pair of pdfs...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "mimic the teacher model, a way of knowledge transfer. In this study, a DNN model is used as the teac...",
+        "detected_direction": "Effect",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "tasks as well as partially on is a and derived from assertions. This is an interesting finding which...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "computation. Our focus is on numerical integration, where a probabilistic integrator is equipped wit...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "v then P else P conditional execution S ::= M ::= {li = (~xi ) Pi }i∈I t ::= net | this Fig. 2. Netw...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "under which the operation is allowed to be performed. For example, as we consider an extension to th...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "key to send, with its position and battery charge, in a forward call. Then, it stores the key in its...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "use of the scaling (logical) operators, the iterative process and the presence of several concept la...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "of counting strategy: Implementation C1 calls manually implemented method countChar to count the num...",
+        "detected_direction": "Cause",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "results of our static analysis, hence improving the precision dynamically. 2 Preliminaries We introd...",
+        "detected_direction": "Effect",
+        "source_dataset": "arxiv"
+      }
+    ]
+  },
+  "asymmetric_retrieval": {
+    "num_queries": 200,
+    "mrr_cause_to_effect": 0.26400992063492085,
+    "mrr_effect_to_cause": 0.26400992063492085,
+    "mrr_symmetric_e1": 0.4595595238095238,
+    "asymmetry_ratio": 1.0,
+    "improvement_over_symmetric": -0.4255152881036875,
+    "direction_breakdown": {
+      "cause_queries_mrr": 0.0,
+      "effect_queries_mrr": 0.0,
+      "neutral_queries_mrr": 0.26400992063492085
+    }
+  },
+  "copa_reasoning": {
+    "num_questions": 100,
+    "accuracy_e5_asymmetric": 0.51,
+    "accuracy_e1_symmetric": 0.57,
+    "accuracy_random": 0.5,
+    "improvement_over_e1": -0.10526315789473675,
+    "improvement_over_random": 0.020000000000000018
+  },
+  "e5_contribution": {
+    "mrr_with_e5": 0.4563630952380953,
+    "mrr_without_e5": 0.4595595238095238,
+    "e5_contribution_pct": -0.006955417972696243,
+    "asymmetric_vs_symmetric": 0.9930445820273037,
+    "per_source_contribution": {
+      "arxiv": -0.0031964285714285723
+    }
+  },
+  "recommendations": [
+    "Asymmetry ratio below target (1.5). Consider tuning E5 direction modifiers.",
+    "COPA accuracy below 70%. E5 embedder may need domain-specific fine-tuning.",
+    "E5 contribution below 5%. Consider increasing E5 weight in fusion formula.",
+    "E5 asymmetric performing worse than E1 symmetric. Check E5 embedding quality."
+  ]
+}

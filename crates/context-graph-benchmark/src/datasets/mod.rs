@@ -3,11 +3,13 @@
 //! This module generates controlled test data with known ground truth for
 //! evaluating retrieval and clustering performance.
 
+pub mod causal;
 pub mod generator;
 pub mod ground_truth;
 pub mod temporal;
 pub mod topic_clusters;
 
+pub use causal::{CausalBenchmarkDataset, CausalDatasetConfig, CausalDatasetGenerator, CausalDomain};
 pub use generator::{DatasetGenerator, GeneratorConfig};
 pub use ground_truth::GroundTruth;
 pub use temporal::{TemporalBenchmarkDataset, TemporalDatasetConfig, TemporalDatasetGenerator};

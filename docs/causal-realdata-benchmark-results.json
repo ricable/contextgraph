@@ -1,0 +1,172 @@
+{
+  "timestamp": "2026-01-21T17:58:04.224424705+00:00",
+  "config": {
+    "max_chunks": 100,
+    "num_direction_samples": 50,
+    "num_asymmetric_queries": 30,
+    "num_copa_questions": 20,
+    "seed": 42,
+    "synthetic": true
+  },
+  "dataset_info": {
+    "total_chunks": 100,
+    "total_documents": 1250,
+    "source_datasets": [
+      "arxiv"
+    ],
+    "topic_count": 11,
+    "has_asymmetric_e5": true,
+    "e5_coverage": 1.0
+  },
+  "embedding_stats": {
+    "total_embeddings": 100,
+    "embedding_time_secs": 1.781338121,
+    "embeddings_per_sec": 56.137573670664175,
+    "e5_as_cause_populated": 100,
+    "e5_as_effect_populated": 100
+  },
+  "direction_detection": {
+    "total_samples": 50,
+    "cause_detected": 8,
+    "effect_detected": 7,
+    "unknown_detected": 35,
+    "detection_rate": 0.3,
+    "sample_queries": [
+      {
+        "text_snippet": "using standard techniques—see, e.g., [8]). For the sake of simplicity, we chose here the easier to a...",
+        "detected_direction": "Effect",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "· max {0, f (OP T \\ Z) − f (OP T ∪ Z)} + (e−t − O(n−4 )) · f (OP T \\ Z)] − O(n−1 δt ) · f (OP T ) ≥ ...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "the observation that it is possible to find a set S obeying 1S ∈ P and f (S) = f (OP T ) in constant...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "deformation of the original lattice during the modeling phase. As opposed to this, Figure 1b, shows ...",
+        "detected_direction": "Cause",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "h1 (ts ) ≥ 0. There are two cases to consider. First, if f (OP T ) ≥ f (Z ∪ OP T ), then ts · A − et...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "L. Fisher, and G. L. Nemhauser. On the uncapacitated location problem. Annals of Discrete Mathematic...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "and non-negativity of f , for every such set B(λ) f (B(λ) ∪ A) ≥ f (A) + f (B(λ) ∪ Z ∪ A) − f (Z ∪ A...",
+        "detected_direction": "Effect",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "ε)(τ −τ )/ε . Next, assume the claim holds for some t, and let us prove it for t + δt . yu (t + δt )...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "(y(t)) = x(t) · w(t) ≥ 1OP T \\Z · w(t) = dt ≥ F (y(t) ∨ 1OP T \\Z ) − F (y(t)) , X [F (y(t) ∨ 1u ) − ...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "Corollary A.7 with Lemma A.8 gives us the following corollary. Corollary A.10. Given A, for every ti...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "1 produces a solution whose expected value is at least c · f (OP T ) for some constant c > 0.385. Th...",
+        "detected_direction": "Effect",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "for any vector x ∈ [0, 1]N is defined as the expected value of f over a random subset R(x) ⊆ N conta...",
+        "detected_direction": "Effect",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "− 2e−ts ) · E[F (x1 ∨ 1OP T )] + 2 + p3 · ets −1 (2 − ts − e−ts ) · f (OP T ) − o(1) · f (OP T ) . 1...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "result for this fundamental problem remains an important open problem. 1 A A 3 A upper 2 set functio...",
+        "detected_direction": "Cause",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": ") · A − ets · h1 (ts )}dτ t t ≤ h2 (t) + δt · e−t · {(1 − t + ts ) · A − ets · h1 (ts )} = (1 − δt )...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "methods by which a SOM with an underlying Binary Search Tree (BST) structure can be adaptively re-st...",
+        "detected_direction": "Cause",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "∈ [0, ts ) Algorithm 2 chooses as x(t) a vector maximizing a linear function in P which assigns a ne...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "u)] − E[f (R(y(t)))] = E[f (u | R(y(t)))] . Lemma A.6 (A rephrased version of Lemma 2.3.7 in [23]). ...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "Tt′ u∈OP Tt′  f (R(y(t)) + u) − f (R(y(t))) − n−1 · f (OP T ) \u0003 ≥ E f (R(y(t)) ∪ OP Tt′ ) − f (R(y...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "mentioned goals. In other words, our goal is to enhance the capabilities of the original SOM algorit...",
+        "detected_direction": "Cause",
+        "source_dataset": "arxiv"
+      }
+    ]
+  },
+  "asymmetric_retrieval": {
+    "num_queries": 30,
+    "mrr_cause_to_effect": 0.8227777777777778,
+    "mrr_effect_to_cause": 0.8227777777777778,
+    "mrr_symmetric_e1": 0.7558730158730157,
+    "asymmetry_ratio": 1.0,
+    "improvement_over_symmetric": 0.08851322973540561,
+    "direction_breakdown": {
+      "cause_queries_mrr": 0.0,
+      "effect_queries_mrr": 0.0,
+      "neutral_queries_mrr": 0.8227777777777778
+    }
+  },
+  "copa_reasoning": {
+    "num_questions": 20,
+    "accuracy_e5_asymmetric": 0.4,
+    "accuracy_e1_symmetric": 0.95,
+    "accuracy_random": 0.5,
+    "improvement_over_e1": -0.5789473684210525,
+    "improvement_over_random": -0.19999999999999996
+  },
+  "e5_contribution": {
+    "mrr_with_e5": 0.8865833333333333,
+    "mrr_without_e5": 0.844857142857143,
+    "e5_contribution_pct": 0.049388456769247906,
+    "asymmetric_vs_symmetric": 1.049388456769248,
+    "per_source_contribution": {
+      "arxiv": 0.041726190476190486
+    }
+  },
+  "recommendations": [
+    "Asymmetry ratio below target (1.5). Consider tuning E5 direction modifiers.",
+    "COPA accuracy below 70%. E5 embedder may need domain-specific fine-tuning.",
+    "E5 contribution below 5%. Consider increasing E5 weight in fusion formula."
+  ]
+}

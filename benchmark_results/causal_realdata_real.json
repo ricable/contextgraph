@@ -1,0 +1,171 @@
+{
+  "timestamp": "2026-01-21T19:22:55.250113204+00:00",
+  "config": {
+    "max_chunks": 2000,
+    "num_direction_samples": 300,
+    "num_asymmetric_queries": 100,
+    "num_copa_questions": 50,
+    "seed": 42
+  },
+  "dataset_info": {
+    "total_chunks": 2000,
+    "total_documents": 1250,
+    "source_datasets": [
+      "arxiv"
+    ],
+    "topic_count": 11,
+    "has_asymmetric_e5": true,
+    "e5_coverage": 1.0
+  },
+  "embedding_stats": {
+    "total_embeddings": 2000,
+    "embedding_time_secs": 2289.955922653,
+    "embeddings_per_sec": 0.8733792560002311,
+    "e5_as_cause_populated": 2000,
+    "e5_as_effect_populated": 2000
+  },
+  "direction_detection": {
+    "total_samples": 300,
+    "cause_detected": 31,
+    "effect_detected": 49,
+    "unknown_detected": 220,
+    "detection_rate": 0.26666666666666666,
+    "sample_queries": [
+      {
+        "text_snippet": "Automated Identification of Trampoline Skills Using Computer Vision Extracted Pose Estimation Paul W...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "is in the line with the standard practice of replacing input with extracted features in order to imp...",
+        "detected_direction": "Effect",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "truncation phase in order to generate a more efficient basis will be the subject of future work. The...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "with the corresponding durations of sleep time and listen time, respectively. Low duty-cycle protoco...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "work for personal or classroom use is granted without fee provided that copies are not made or distr...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "derivation by the following ten rules: 1. ε, τ `G s → >(s). 2. For every a ∈ T , a, τ `G (w, I, b) →...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "I/O-Efficient Similarity Join⋆ Rasmus Pagh, Ninh Pham, Francesco Silvestri⋆⋆ , and Morten Stöckel⋆ ...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "if cℓ 6= 0 (1) vt j=ℓ where 0 ≤ ℓ ∈ Z. For 0 ≤ i ≤ p − 1, we define a function fi by ! ∞ ∞ ∞ X X X j...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "of the estimators. However, the limit distribution of the L1 -based statistics usually contains the ...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "grow the syntax forest. Then the parser performs the nonterminal shift move ϑ (K[k], A). Nonterminal...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "= m. The ideal estimator is given by the L2 (X, dρ) orthogonal projection of u onto Vm , namely Pm u...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "the bridge deck [1, 2] which may have a considerable effect, making its analysis and design more com...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "for Example 5.2, with the call BT (B, 0B , 4, 4 ). Notice that since a leftmost derivation uniquely ...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "Earley syntactic analysis. - - analyze the terminal string x for possible acceptance - - define the ...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "1 2 3 4 5 Times (s) 6 7 8 9 6 7 8 9 (a) 4 Anal. model Simpl. model FE model Acceleration (m/s2 ) 3 2...",
+        "detected_direction": "Effect",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "column LS /LI we report the largest ratio of specification and average matched implementation in ter...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "[X] from Definition 2 implies that X is quasi-compact. By the following example, it can be seen that...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "which have a much larger number of students, this challenge is even more pressing. Hence, there is a...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "establish a proxy for the ground truth concerning the outcome distributions of the 32 considered pre...",
+        "detected_direction": "Effect",
+        "source_dataset": "arxiv"
+      },
+      {
+        "text_snippet": "is the set LA (G) = { x ∈ Σ∗ | A ⇒ x }. A language is nullable if it contains the empty string. A no...",
+        "detected_direction": "Unknown",
+        "source_dataset": "arxiv"
+      }
+    ]
+  },
+  "asymmetric_retrieval": {
+    "num_queries": 100,
+    "mrr_cause_to_effect": 0.9783333333333334,
+    "mrr_effect_to_cause": 0.9783333333333334,
+    "mrr_symmetric_e1": 1.0,
+    "asymmetry_ratio": 1.0,
+    "improvement_over_symmetric": -0.021666666666666612,
+    "direction_breakdown": {
+      "cause_queries_mrr": 0.0,
+      "effect_queries_mrr": 0.0,
+      "neutral_queries_mrr": 0.9783333333333334
+    }
+  },
+  "copa_reasoning": {
+    "num_questions": 50,
+    "accuracy_e5_asymmetric": 0.72,
+    "accuracy_e1_symmetric": 0.96,
+    "accuracy_random": 0.5,
+    "improvement_over_e1": -0.25,
+    "improvement_over_random": 0.43999999999999995
+  },
+  "e5_contribution": {
+    "mrr_with_e5": 1.0,
+    "mrr_without_e5": 1.0,
+    "e5_contribution_pct": 0.0,
+    "asymmetric_vs_symmetric": 1.0,
+    "per_source_contribution": {
+      "arxiv": 0.0
+    }
+  },
+  "recommendations": [
+    "Asymmetry ratio below target (1.5). Consider tuning E5 direction modifiers.",
+    "E5 contribution below 5%. Consider increasing E5 weight in fusion formula.",
+    "E5 asymmetric performing worse than E1 symmetric. Check E5 embedding quality."
+  ]
+}
