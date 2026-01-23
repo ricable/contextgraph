@@ -1,0 +1,579 @@
+{
+  "metrics": {
+    "enhancement": {
+      "e1_only_mrr": 1.0,
+      "e1_e10_blend_mrr": 1.0,
+      "improvement_percent": 0.0,
+      "optimal_blend": 0.05,
+      "blend_sweep": [
+        {
+          "blend": 0.05,
+          "e1_weight": 0.95,
+          "mrr": 1.0,
+          "precision_at_5": 0.234,
+          "precision_at_10": 0.1374999999999999
+        },
+        {
+          "blend": 0.1,
+          "e1_weight": 0.9,
+          "mrr": 1.0,
+          "precision_at_5": 0.248,
+          "precision_at_10": 0.14549999999999985
+        },
+        {
+          "blend": 0.15,
+          "e1_weight": 0.85,
+          "mrr": 1.0,
+          "precision_at_5": 0.252,
+          "precision_at_10": 0.14949999999999986
+        },
+        {
+          "blend": 0.2,
+          "e1_weight": 0.8,
+          "mrr": 1.0,
+          "precision_at_5": 0.25100000000000006,
+          "precision_at_10": 0.1554999999999999
+        },
+        {
+          "blend": 0.25,
+          "e1_weight": 0.75,
+          "mrr": 1.0,
+          "precision_at_5": 0.2540000000000001,
+          "precision_at_10": 0.15749999999999986
+        },
+        {
+          "blend": 0.3,
+          "e1_weight": 0.7,
+          "mrr": 1.0,
+          "precision_at_5": 0.2600000000000001,
+          "precision_at_10": 0.1624999999999999
+        }
+      ],
+      "e1_strong_refine_rate": 1.0,
+      "e1_weak_broaden_rate": 1.0,
+      "queries_evaluated": 200
+    },
+    "tools": {
+      "search_by_intent": {
+        "name": "search_by_intent",
+        "mrr": 1.0,
+        "precision_at_k": {
+          "20": 0.08949999999999989,
+          "10": 0.12999999999999978,
+          "1": 1.0,
+          "5": 0.22799999999999962
+        },
+        "recall_at_k": {
+          "5": 0.22799999999999962,
+          "10": 0.25999999999999956,
+          "1": 0.19999999999999962,
+          "20": 0.35799999999999954
+        },
+        "ndcg_at_k": {
+          "20": 0.4198281873425267,
+          "10": 0.3789415399038003,
+          "5": 0.3615491892959213,
+          "1": 1.0
+        },
+        "latency_p50_ms": 2.266,
+        "latency_p95_ms": 2.54,
+        "latency_p99_ms": 2.852,
+        "queries_executed": 100,
+        "error_rate": 0.0,
+        "timeout_rate": 0.0
+      },
+      "find_contextual_matches": {
+        "name": "find_contextual_matches",
+        "mrr": 1.0,
+        "precision_at_k": {},
+        "recall_at_k": {},
+        "ndcg_at_k": {},
+        "latency_p50_ms": 2.296,
+        "latency_p95_ms": 2.548,
+        "latency_p99_ms": 2.66,
+        "queries_executed": 100,
+        "error_rate": 0.0,
+        "timeout_rate": 0.0
+      },
+      "search_graph_intent": {
+        "name": "search_graph_intent",
+        "mrr": 1.0,
+        "precision_at_k": {},
+        "recall_at_k": {},
+        "ndcg_at_k": {},
+        "latency_p50_ms": 2.257,
+        "latency_p95_ms": 2.426,
+        "latency_p99_ms": 2.655,
+        "queries_executed": 100,
+        "error_rate": 0.0,
+        "timeout_rate": 0.0
+      }
+    },
+    "asymmetric": {
+      "total_pairs": 50,
+      "ratio": 1.0,
+      "expected_ratio": 1.0,
+      "compliant": true,
+      "intent_to_context_mrr": 0.8129498255252838,
+      "context_to_intent_mrr": 0.8129498255252838,
+      "pair_results": [
+        {
+          "base_similarity": 0.8169912,
+          "intent_to_context_score": 0.8169912,
+          "context_to_intent_score": 0.8169912,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8063455,
+          "intent_to_context_score": 0.8063455,
+          "context_to_intent_score": 0.8063455,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8287868,
+          "intent_to_context_score": 0.8287868,
+          "context_to_intent_score": 0.8287868,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.7951674,
+          "intent_to_context_score": 0.7951674,
+          "context_to_intent_score": 0.7951674,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8115244,
+          "intent_to_context_score": 0.8115244,
+          "context_to_intent_score": 0.8115244,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8124542,
+          "intent_to_context_score": 0.8124542,
+          "context_to_intent_score": 0.8124542,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.81303436,
+          "intent_to_context_score": 0.81303436,
+          "context_to_intent_score": 0.81303436,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.7971282,
+          "intent_to_context_score": 0.7971282,
+          "context_to_intent_score": 0.7971282,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8109758,
+          "intent_to_context_score": 0.8109758,
+          "context_to_intent_score": 0.8109758,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.80773294,
+          "intent_to_context_score": 0.80773294,
+          "context_to_intent_score": 0.80773294,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.82039785,
+          "intent_to_context_score": 0.82039785,
+          "context_to_intent_score": 0.82039785,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8292232,
+          "intent_to_context_score": 0.8292232,
+          "context_to_intent_score": 0.8292232,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.80314296,
+          "intent_to_context_score": 0.80314296,
+          "context_to_intent_score": 0.80314296,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8207002,
+          "intent_to_context_score": 0.8207002,
+          "context_to_intent_score": 0.8207002,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.81740075,
+          "intent_to_context_score": 0.81740075,
+          "context_to_intent_score": 0.81740075,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8002641,
+          "intent_to_context_score": 0.8002641,
+          "context_to_intent_score": 0.8002641,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.80969334,
+          "intent_to_context_score": 0.80969334,
+          "context_to_intent_score": 0.80969334,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8104571,
+          "intent_to_context_score": 0.8104571,
+          "context_to_intent_score": 0.8104571,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8092791,
+          "intent_to_context_score": 0.8092791,
+          "context_to_intent_score": 0.8092791,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8104067,
+          "intent_to_context_score": 0.8104067,
+          "context_to_intent_score": 0.8104067,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8146847,
+          "intent_to_context_score": 0.8146847,
+          "context_to_intent_score": 0.8146847,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8099866,
+          "intent_to_context_score": 0.8099866,
+          "context_to_intent_score": 0.8099866,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.80844396,
+          "intent_to_context_score": 0.80844396,
+          "context_to_intent_score": 0.80844396,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.80897516,
+          "intent_to_context_score": 0.80897516,
+          "context_to_intent_score": 0.80897516,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8222842,
+          "intent_to_context_score": 0.8222842,
+          "context_to_intent_score": 0.8222842,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8317888,
+          "intent_to_context_score": 0.8317888,
+          "context_to_intent_score": 0.8317888,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.81721556,
+          "intent_to_context_score": 0.81721556,
+          "context_to_intent_score": 0.81721556,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8105418,
+          "intent_to_context_score": 0.8105418,
+          "context_to_intent_score": 0.8105418,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8205692,
+          "intent_to_context_score": 0.8205692,
+          "context_to_intent_score": 0.8205692,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.79299325,
+          "intent_to_context_score": 0.79299325,
+          "context_to_intent_score": 0.79299325,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8071944,
+          "intent_to_context_score": 0.8071944,
+          "context_to_intent_score": 0.8071944,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.81932074,
+          "intent_to_context_score": 0.81932074,
+          "context_to_intent_score": 0.81932074,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.80140364,
+          "intent_to_context_score": 0.80140364,
+          "context_to_intent_score": 0.80140364,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8115746,
+          "intent_to_context_score": 0.8115746,
+          "context_to_intent_score": 0.8115746,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8042411,
+          "intent_to_context_score": 0.8042411,
+          "context_to_intent_score": 0.8042411,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.80958194,
+          "intent_to_context_score": 0.80958194,
+          "context_to_intent_score": 0.80958194,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.82873714,
+          "intent_to_context_score": 0.82873714,
+          "context_to_intent_score": 0.82873714,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.81662655,
+          "intent_to_context_score": 0.81662655,
+          "context_to_intent_score": 0.81662655,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.81052464,
+          "intent_to_context_score": 0.81052464,
+          "context_to_intent_score": 0.81052464,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.7932254,
+          "intent_to_context_score": 0.7932254,
+          "context_to_intent_score": 0.7932254,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.82082397,
+          "intent_to_context_score": 0.82082397,
+          "context_to_intent_score": 0.82082397,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8262418,
+          "intent_to_context_score": 0.8262418,
+          "context_to_intent_score": 0.8262418,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8235373,
+          "intent_to_context_score": 0.8235373,
+          "context_to_intent_score": 0.8235373,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.81670046,
+          "intent_to_context_score": 0.81670046,
+          "context_to_intent_score": 0.81670046,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8140214,
+          "intent_to_context_score": 0.8140214,
+          "context_to_intent_score": 0.8140214,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8236193,
+          "intent_to_context_score": 0.8236193,
+          "context_to_intent_score": 0.8236193,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8095169,
+          "intent_to_context_score": 0.8095169,
+          "context_to_intent_score": 0.8095169,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.81177074,
+          "intent_to_context_score": 0.81177074,
+          "context_to_intent_score": 0.81177074,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.8088411,
+          "intent_to_context_score": 0.8088411,
+          "context_to_intent_score": 0.8088411,
+          "observed_ratio": 1.0,
+          "passed": true
+        },
+        {
+          "base_similarity": 0.82139874,
+          "intent_to_context_score": 0.82139874,
+          "context_to_intent_score": 0.82139874,
+          "observed_ratio": 1.0,
+          "passed": true
+        }
+      ]
+    },
+    "compliance": {
+      "arch_12_e1_foundation": true,
+      "arch_17_enhancement_behavior": true,
+      "ap_02_no_cross_comparison": true,
+      "score": 1.0,
+      "rule_details": {
+        "ARCH-12": {
+          "rule_id": "ARCH-12",
+          "description": "E1 is THE semantic foundation - blend weight < 0.5",
+          "passed": true,
+          "evidence": "Optimal blend = 0.05 (threshold: < 0.5)",
+          "metric_value": 0.05,
+          "threshold": 0.5
+        },
+        "AP-02": {
+          "rule_id": "AP-02",
+          "description": "No cross-embedder comparison (E1↔E1, E10↔E10 only)",
+          "passed": true,
+          "evidence": "All comparisons use matching embedding spaces",
+          "metric_value": null,
+          "threshold": null
+        },
+        "ARCH-17": {
+          "rule_id": "ARCH-17",
+          "description": "E10 refines strong E1, broadens weak E1",
+          "passed": true,
+          "evidence": "Refine rate = 100.0% (>=70%), Broaden rate = 100.0% (>=50%)",
+          "metric_value": 1.0,
+          "threshold": 0.7
+        }
+      }
+    }
+  },
+  "timings": {
+    "total_ms": 10757,
+    "dataset_generation_ms": 13,
+    "enhancement_phase_ms": 9136,
+    "tool_phase_ms": 1607,
+    "asymmetric_phase_ms": 0,
+    "compliance_phase_ms": 0
+  },
+  "config": {
+    "dataset": {
+      "num_memories": 1000,
+      "num_intent_queries": 100,
+      "num_context_queries": 100,
+      "num_asymmetric_pairs": 50,
+      "num_e1_strong_queries": 30,
+      "num_e1_weak_queries": 30,
+      "seed": 42,
+      "domains": [
+        "PerformanceOptimization",
+        "BugFixing",
+        "FeatureDevelopment",
+        "Refactoring",
+        "Testing",
+        "Documentation",
+        "Security",
+        "Infrastructure"
+      ],
+      "e1_dim": 1024,
+      "e10_dim": 768
+    },
+    "run_enhancement_phase": true,
+    "run_tool_phase": true,
+    "run_asymmetric_phase": true,
+    "run_compliance_phase": true,
+    "k_values": [
+      1,
+      5,
+      10,
+      20
+    ],
+    "blend_values": [
+      0.05,
+      0.1,
+      0.15,
+      0.2,
+      0.25,
+      0.3
+    ],
+    "intent_to_context_modifier": 1.0,
+    "context_to_intent_modifier": 1.0
+  },
+  "dataset_stats": {
+    "total_memories": 1000,
+    "intent_memories": 500,
+    "context_memories": 500,
+    "memories_per_domain": {
+      "feature_development": 126,
+      "refactoring": 126,
+      "performance_optimization": 126,
+      "bug_fixing": 126,
+      "security": 124,
+      "testing": 124,
+      "documentation": 124,
+      "infrastructure": 124
+    },
+    "intent_queries": 100,
+    "context_queries": 100,
+    "asymmetric_pairs": 50,
+    "e1_strong_queries": 30,
+    "e1_weak_queries": 30,
+    "e1_dim": 1024,
+    "e10_dim": 768
+  },
+  "success": false
+}

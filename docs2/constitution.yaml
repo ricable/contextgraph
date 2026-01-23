@@ -1,13 +1,17 @@
-# Context Graph Constitution v6.1.0 (Fingerprint Architecture)
+# Context Graph Constitution v6.2.0 (Fingerprint Architecture + E10 Multiplicative Boost)
 # E1 Semantic Foundation | 12 Enhancement Layers | Emergent Topics | Native Hooks
 # ===============================================================================
 #
 # CORE PHILOSOPHY: The 13 embedders create FINGERPRINTS for memories.
 # E1 (V_meaning) is THE semantic foundation. Other embedders ENHANCE E1,
 # they don't compete with it. This is a foundation+enhancement model.
+#
+# v6.2.0 CHANGES: E10 now uses multiplicative boost (ARCH-28 to ARCH-33)
+# instead of linear blending. E10 ENHANCES E1 based on intent alignment,
+# it doesn't compete with E1 in weighted fusion. See mcp.intent_tools section.
 
 meta:
-  v: "6.1.0"
+  v: "6.2.0"
   name: "Ultimate Context Graph"
   desc: "13-embedding fingerprint system with E1 semantic foundation, enhanced by 12 specialized embedders for rich memory representation"
   paradigm: "E1-Foundation + Enhancement Layers for Semantic Fingerprinting"
@@ -93,6 +97,14 @@ arch_rules:
   ARCH-26: "Session filtering MUST use session_id from SourceMetadata for same-session retrieval"
   ARCH-27: "Temporal scale (micro/meso/macro/long/archival) determines decay half-life defaults"
 
+  # E10 Intent/Context Enhancement (Multiplicative Boost Model)
+  ARCH-28: "E10 MUST use multiplicative boost (not linear blending) to ENHANCE E1 - formula: E1 * (1 + boost)"
+  ARCH-29: "E10 boost strength MUST adapt to E1 quality: strong E1 (>0.8) = 5%, medium (0.4-0.8) = 10%, weak (<0.4) = 15%"
+  ARCH-30: "E10 intent alignment MUST be centered at 0.5: >0.5 = aligned (boost up), <0.5 = misaligned (reduce), =0.5 = neutral"
+  ARCH-31: "E10 weight MUST be 0.0 in intent_search/intent_enhanced weight profiles - E10 operates POST-retrieval only"
+  ARCH-32: "E10 uses E5-base-v2 with query:/passage: prefixes for natural asymmetry - no artificial direction modifiers needed"
+  ARCH-33: "E10 multiplier MUST be clamped to [0.8, 1.2] (±20% max adjustment) to prevent E10 from dominating E1"
+
 # ===============================================================================
 # CODING STANDARDS
 # ===============================================================================
@@ -158,6 +170,14 @@ forbidden:
   AP-77: "E5 Causal MUST NOT use symmetric cosine similarity - causal relationships are directional"
   AP-78: "E7 Code MUST NOT treat code queries and NL-about-code queries identically"
   AP-79: "Multi-space scoring MUST NOT use simple weighted sum - use Weighted RRF for rank preservation"
+
+  # E10 Intent/Context anti-patterns (CRITICAL - multiplicative boost model)
+  AP-80: "E10 MUST NOT use linear blending (e1_weight*e1 + e10_weight*e10) - this makes E10 COMPETE with E1"
+  AP-81: "E10 MUST NOT have non-zero weight in intent_search/intent_enhanced profiles - E10 operates POST-retrieval"
+  AP-82: "E10 MUST NOT use artificial direction modifiers (1.2/0.8) - E5-base-v2 handles asymmetry via prefixes"
+  AP-83: "E10 MUST NOT produce scores > 1.0 or < 0.0 - always clamp final enhanced score to [0.0, 1.0]"
+  AP-84: "E10 MUST NOT override E1 foundation - when E1=0, enhanced score MUST be 0 regardless of E10"
+  AP-85: "E10 boost MUST NOT exceed ±20% (multiplier 0.8-1.2) - E10 enhances E1, doesn't replace it"
 
   # High
   AP-11: "Check existing utils before creating helpers"
@@ -246,9 +266,13 @@ topic_system:
         - "E5 (V_causality): Adds WHY understanding - causal reasoning"
         - "E6 (V_selectivity): Adds KEYWORD precision - specific terms"
         - "E7 (V_correctness): Adds CODE intelligence - technical patterns"
-        - "E10 (V_multimodality): Adds INTENT understanding - cross-modal"
+        - "E10 (V_multimodality): Adds INTENT understanding via MULTIPLICATIVE BOOST (ARCH-28)"
         - "E12 (V_precision): Adds EXACT MATCH - token-level reranking"
         - "E13 (V_keyword_precision): Adds TERM EXPANSION - related keywords"
+      e10_note: |
+        E10 is unique among SEMANTIC_ENHANCERS: it uses multiplicative boost (ARCH-28)
+        rather than weighted fusion. E10 weight is 0.0 in intent profiles (ARCH-31).
+        E10 operates POST-RETRIEVAL to enhance E1 scores based on intent alignment.
 
     TEMPORAL_CONTEXT:
       embedders: [E2, E3, E4]
@@ -496,7 +520,7 @@ teleological:
           E5: { name: "V_causality", enhances: "WHY - causal relationships, reasoning chains" }
           E6: { name: "V_selectivity", enhances: "KEYWORDS - specific terms and jargon" }
           E7: { name: "V_correctness", enhances: "CODE - technical accuracy and patterns" }
-          E10: { name: "V_multimodality", enhances: "INTENT - cross-modal understanding" }
+          E10: { name: "V_multimodality", enhances: "INTENT - cross-modal understanding via multiplicative boost (ARCH-28)", model: "E5-base-v2", integration: "POST-RETRIEVAL boost, NOT weighted fusion (AP-80)" }
           E12: { name: "V_precision", enhances: "EXACT MATCH - token-level precision" }
           E13: { name: "V_keyword_precision", enhances: "TERM EXPANSION - related keywords" }
 
@@ -528,7 +552,7 @@ teleological:
     E7: { purpose: "V_correctness", role: "SEMANTIC_ENHANCER", desc: "Code/technical" }
     E8: { purpose: "V_connectivity", role: "RELATIONAL_ENHANCER", desc: "Graph structure" }
     E9: { purpose: "V_robustness", role: "STRUCTURAL_CONTEXT", desc: "Format patterns" }
-    E10: { purpose: "V_multimodality", role: "SEMANTIC_ENHANCER", desc: "Cross-modal intent" }
+    E10: { purpose: "V_multimodality", role: "SEMANTIC_ENHANCER", desc: "Cross-modal intent via multiplicative boost (ARCH-28 to ARCH-33)", model: "E5-base-v2", integration: "POST-RETRIEVAL" }
     E11: { purpose: "V_factuality", role: "RELATIONAL_ENHANCER", desc: "Entity facts" }
     E12: { purpose: "V_precision", role: "SEMANTIC_ENHANCER", desc: "Late interaction" }
     E13: { purpose: "V_keyword_precision", role: "SEMANTIC_ENHANCER", desc: "SPLADE expansion" }
@@ -775,6 +799,132 @@ mcp:
         rationale: "Temporal embedders measure TIME, not TOPIC"
         when: "Recent memories needed, session context"
 
+      intent_search:
+        strategy: "E1 retrieval + E10 multiplicative boost"
+        rationale: "E10 ENHANCES E1 based on intent alignment, doesn't compete"
+        when: "Intent-aware queries: 'what work had same goal?', 'find similar purpose'"
+
+  # -------------------------------------------------------------------------
+  # E10 INTENT TOOLS (Multiplicative Boost Architecture)
+  # -------------------------------------------------------------------------
+  # E10 (V_multimodality) uses E5-base-v2 for asymmetric query→document retrieval.
+  # Per ARCH-28 to ARCH-33, E10 ENHANCES E1 via multiplicative boost, NOT linear blending.
+  intent_tools:
+    tools:
+      - search_by_intent
+      - find_contextual_matches
+      - detect_intent_drift
+      - get_session_intent_history
+
+    architecture:
+      model: "E5-base-v2 (intfloat/e5-base-v2)"
+      asymmetry: "query:/passage: prefixes provide natural query→document asymmetry"
+      direction_modifiers: "1.0/1.0 (neutral) - E5-base-v2 training handles asymmetry"
+
+    # ---------------------------------------------------------------------------
+    # MULTIPLICATIVE BOOST MODEL (ARCH-28)
+    # ---------------------------------------------------------------------------
+    # OLD (Linear Blending - FORBIDDEN per AP-80):
+    #   blended_score = e1_weight * e1_sim + blend_weight * e10_sim
+    #   Problem: E10 COMPETES with E1 in the weighted sum
+    #
+    # NEW (Multiplicative Boost - REQUIRED per ARCH-28):
+    #   boost_strength = adaptive_strength(e1_sim)  # ARCH-29
+    #   intent_alignment = (e10_sim - 0.5) * 2.0    # ARCH-30: Range [-1, +1]
+    #   boost = clamp(boost_strength * intent_alignment, -0.2, 0.2)  # ARCH-33
+    #   enhanced_score = e1_sim * (1.0 + boost)     # E10 ENHANCES E1
+    #
+    # Key Properties:
+    # - E1=0 → enhanced=0 (E1 is THE foundation, AP-84)
+    # - E10=0.5 → no change (neutral intent)
+    # - E10>0.5 → boost E1 up (aligned intent)
+    # - E10<0.5 → reduce E1 (misaligned intent)
+    multiplicative_boost:
+      formula: "enhanced_score = E1 * (1 + boost)"
+      boost_formula: "boost = clamp(boost_strength * intent_alignment, -0.2, 0.2)"
+      intent_alignment_formula: "intent_alignment = (E10_sim - 0.5) * 2.0"
+
+      adaptive_boost_strength:
+        description: "ARCH-29: Boost strength adapts to E1 quality"
+        strong_e1:
+          condition: "E1 > 0.8"
+          strength: 0.05
+          rationale: "Light touch - E1 already found good matches, just refine"
+        medium_e1:
+          condition: "E1 in [0.4, 0.8]"
+          strength: 0.10
+          rationale: "Medium enhancement - E1 found decent matches, help distinguish"
+        weak_e1:
+          condition: "E1 < 0.4"
+          strength: 0.15
+          rationale: "Strong enhancement - E1 struggling, E10 can help broaden"
+
+      intent_alignment:
+        description: "ARCH-30: E10 similarity centered at 0.5"
+        neutral_point: 0.5
+        aligned: "E10 > 0.5 → positive alignment → boost E1 up"
+        misaligned: "E10 < 0.5 → negative alignment → reduce E1"
+        neutral: "E10 = 0.5 → no change to E1"
+        range: "[-1.0, +1.0] after transformation"
+
+      bounds:
+        description: "ARCH-33: Clamp to prevent E10 dominating E1"
+        min_boost: -0.20
+        max_boost: 0.20
+        min_multiplier: 0.80
+        max_multiplier: 1.20
+        final_score_range: "[0.0, 1.0]"
+
+    # ---------------------------------------------------------------------------
+    # INTENT BOOST CONFIG (Implementation)
+    # ---------------------------------------------------------------------------
+    intent_boost_config:
+      location: "crates/context-graph-mcp/src/handlers/tools/intent_dtos.rs"
+      struct: "IntentBoostConfig"
+      defaults:
+        strong_e1_boost: 0.05
+        medium_e1_boost: 0.10
+        weak_e1_boost: 0.15
+        boost_range: 0.20
+        neutral_point: 0.5
+        enabled: true
+      presets:
+        default: "Standard adaptive boost"
+        conservative: "Minimal E10 influence (0.02/0.05/0.08, range 0.10)"
+        aggressive: "Stronger E10 influence (0.10/0.15/0.25, range 0.30)"
+        disabled: "Passthrough E1 scores unchanged"
+
+    # ---------------------------------------------------------------------------
+    # WEIGHT PROFILE INTEGRATION (ARCH-31)
+    # ---------------------------------------------------------------------------
+    weight_profiles:
+      intent_search:
+        e10_weight: 0.0  # E10 operates via multiplicative boost, NOT weighted fusion
+        e1_weight: 0.55  # Boosted to compensate for E10 weight redistribution
+        rationale: "E10=0 in fusion prevents competition; multiplicative boost applied post-retrieval"
+
+      intent_enhanced:
+        e10_weight: 0.0  # Same as intent_search
+        e1_weight: 0.55  # Same as intent_search
+        boost_config: "IntentBoostConfig::aggressive()"
+        rationale: "Stronger E10 influence via aggressive multiplicative boost"
+
+    # ---------------------------------------------------------------------------
+    # E5-BASE-V2 ASYMMETRY (ARCH-32)
+    # ---------------------------------------------------------------------------
+    e5_base_v2_asymmetry:
+      description: "E5-base-v2 provides natural asymmetry via prefix-based training"
+      query_prefix: "query:"
+      passage_prefix: "passage:"
+      direction: "query → document (user input as query, memories as passage)"
+      artificial_modifiers: "NOT NEEDED (1.0/1.0 neutral)"
+      rationale: |
+        E5-base-v2 was trained with asymmetric prefixes:
+        - "query:" for search queries
+        - "passage:" for documents/passages
+        This provides natural query→document asymmetry without artificial modifiers.
+        Previously used 1.2/0.8 modifiers are now 1.0/1.0 (neutral).
+
 # ===============================================================================
 # 13-MODEL EMBEDDINGS (FINGERPRINT SYSTEM)
 # ===============================================================================
@@ -801,7 +951,7 @@ embeddings:
     E5_Causal: { dim: 768, type: dense, quant: "PQ-8", asymmetric: true, category: SEMANTIC_ENHANCER, topic_weight: 1.0, use: "WHY - causal reasoning", role: "Enhances E1 with causality" }
     E6_Sparse: { dim: "~30K 5%", type: sparse, category: SEMANTIC_ENHANCER, topic_weight: 1.0, use: "KEYWORDS - specific terms", role: "Stage 1 recall, enhances E1 precision" }
     E7_Code: { dim: 1536, type: dense, quant: "PQ-8", category: SEMANTIC_ENHANCER, topic_weight: 1.0, use: "CODE - technical patterns", role: "Enhances E1 for code queries" }
-    E10_Multimodal: { dim: 768, type: dense, quant: "PQ-8", category: SEMANTIC_ENHANCER, topic_weight: 1.0, use: "INTENT - cross-modal", role: "Enhances E1 with intent understanding" }
+    E10_Multimodal: { dim: 768, type: dense, quant: "PQ-8", category: SEMANTIC_ENHANCER, topic_weight: 1.0, use: "INTENT - cross-modal", role: "Enhances E1 via multiplicative boost (ARCH-28)", model: "E5-base-v2", asymmetric: true, integration: "POST-RETRIEVAL multiplicative boost, NOT weighted fusion" }
     E12_LateInteraction: { dim: "128D/tok", type: dense_per_token, category: SEMANTIC_ENHANCER, topic_weight: 1.0, use: "EXACT MATCH - token precision", role: "Stage 3 rerank, enhances E1 precision" }
     E13_SPLADE: { dim: "~30K sparse", type: sparse, category: SEMANTIC_ENHANCER, topic_weight: 1.0, use: "TERM EXPANSION - related keywords", role: "Stage 1 recall, expands E1 coverage" }
 

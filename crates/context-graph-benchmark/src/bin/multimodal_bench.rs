@@ -7,7 +7,7 @@
 //!
 //! - **Intent Detection**: Test intent vs context direction classification
 //! - **Context Matching**: Evaluate intent→context retrieval (MRR, P@K)
-//! - **Asymmetric Validation**: Verify 1.2/0.8 direction modifiers
+//! - **Asymmetric Validation**: Verify direction handling (E5-base-v2 provides natural asymmetry via prefixes)
 //! - **Ablation Study**: Compare E1+E10 vs E1 only vs full 13-space
 //! - **Blend Analysis**: Test `blendWithSemantic` parameter behavior
 //!
@@ -142,7 +142,7 @@ fn print_usage() {
 E10 Multimodal (Intent/Context) Embedder Benchmark
 
 Tests E10's dual intent/context embeddings for asymmetric similarity.
-Validates direction modifiers (1.2 for intent→context, 0.8 for context→intent).
+E5-base-v2 provides natural asymmetry via query:/passage: prefixes - neutral modifiers (1.0/1.0).
 
 Usage: multimodal-bench [OPTIONS]
 
@@ -160,7 +160,7 @@ Options:
 Benchmark Phases:
   1. Intent Detection    - Classify queries as intent vs context
   2. Context Matching    - Evaluate intent→context retrieval (MRR, P@K)
-  3. Asymmetric Valid.   - Verify 1.2/0.8 direction modifiers
+  3. Asymmetric Valid.   - Verify direction handling (E5-base-v2 provides natural asymmetry)
   4. Ablation Study      - Compare E1+E10 vs E1 only vs full 13-space
 "#
     );
@@ -354,7 +354,7 @@ fn print_phase_results(results: &E10MultimodalBenchmarkResults, verbose: bool) {
     println!("  Total queries: {}", asym.total_queries);
     println!("  Intent→Context modifier: {}", asym.intent_to_context_modifier);
     println!("  Context→Intent modifier: {}", asym.context_to_intent_modifier);
-    println!("  Observed ratio: {:.2} (expected 1.5)", asym.observed_asymmetry_ratio);
+    println!("  Observed ratio: {:.2} (expected 1.0 - E5-base-v2 handles asymmetry via prefixes)", asym.observed_asymmetry_ratio);
     println!("  Formula compliant: {}", if asym.formula_compliant { "YES" } else { "NO" });
 
     if verbose {
@@ -407,10 +407,10 @@ fn print_phase_results(results: &E10MultimodalBenchmarkResults, verbose: bool) {
 fn verify_formula_compliance(results: &E10MultimodalBenchmarkResults) -> bool {
     let asym = &results.metrics.asymmetric_retrieval;
 
-    // Constitution spec: intent→context=1.2, context→intent=0.8, ratio=1.5
-    let i2c_ok = (asym.intent_to_context_modifier - 1.2).abs() < 0.001;
-    let c2i_ok = (asym.context_to_intent_modifier - 0.8).abs() < 0.001;
-    let ratio_ok = (asym.observed_asymmetry_ratio - 1.5).abs() < 0.1;
+    // E5-base-v2 handles asymmetry via prefixes - neutral modifiers (1.0/1.0), ratio ~1.0
+    let i2c_ok = (asym.intent_to_context_modifier - 1.0).abs() < 0.001;
+    let c2i_ok = (asym.context_to_intent_modifier - 1.0).abs() < 0.001;
+    let ratio_ok = (asym.observed_asymmetry_ratio - 1.0).abs() < 0.1;
 
     i2c_ok && c2i_ok && ratio_ok
 }
@@ -486,9 +486,9 @@ fn print_summary(summary: &BenchmarkSummary) {
 
     // Asymmetry
     let asym_status = if summary.formula_compliant { "✓" } else { "✗" };
-    println!("{} Asymmetry ratio: {:.2} (target: 1.5 ±0.1)", asym_status, summary.asymmetry_ratio);
-    println!("  Intent→Context: {} (expected 1.2)", summary.intent_to_context_modifier);
-    println!("  Context→Intent: {} (expected 0.8)", summary.context_to_intent_modifier);
+    println!("{} Asymmetry ratio: {:.2} (target: 1.0 ±0.1 - E5-base-v2 handles asymmetry via prefixes)", asym_status, summary.asymmetry_ratio);
+    println!("  Intent→Context: {} (expected 1.0)", summary.intent_to_context_modifier);
+    println!("  Context→Intent: {} (expected 1.0)", summary.context_to_intent_modifier);
 
     // Ablation
     if let (Some(e1), Some(blend), Some(contrib)) = (

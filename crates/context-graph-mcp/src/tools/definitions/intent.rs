@@ -23,8 +23,10 @@ pub fn definitions() -> Vec<ToolDefinition> {
             "search_by_intent",
             "Find memories that match a query or goal using E10 (E5-base-v2) asymmetric retrieval. \
              Useful for \"what work had the same goal?\" queries. ENHANCES E1 semantic search \
-             with query→document matching via blendWithSemantic parameter. User query encoded \
-             as 'query:', memories as 'passage:'. Default blend of 0.1 means 90% E1 + 10% E10.",
+             with intent-based multiplicative boost (ARCH-17). E1 is THE semantic foundation; \
+             E10 modifies scores based on intent alignment (>0.5 = boost, <0.5 = reduce). \
+             Query encoded as 'query:', memories as 'passage:'. Boost adapts to E1 quality: \
+             strong E1 → light boost (refine), weak E1 → strong boost (broaden).",
             json!({
                 "type": "object",
                 "required": ["query"],
@@ -49,9 +51,9 @@ pub fn definitions() -> Vec<ToolDefinition> {
                     },
                     "blendWithSemantic": {
                         "type": "number",
-                        "description": "Blend weight for E10 vs E1 semantic (0-1, default: 0.1). \
-                                        0.0 = pure E1 semantic, 1.0 = pure E10. \
-                                        Default 0.1 means 90% E1 + 10% E10.",
+                        "description": "[LEGACY] Blend weight parameter kept for backward compatibility. \
+                                        Now uses multiplicative boost (ARCH-17) instead of linear blending. \
+                                        E10 enhances E1 based on intent alignment, not weighted sum.",
                         "default": 0.1,
                         "minimum": 0,
                         "maximum": 1
@@ -70,8 +72,9 @@ pub fn definitions() -> Vec<ToolDefinition> {
             "find_contextual_matches",
             "Find memories relevant to a given context or situation using E10 (E5-base-v2). \
              Use for \"what's relevant to this situation?\" queries. ENHANCES E1 semantic search \
-             with query→document matching (same direction as search_by_intent). \
-             Default blend of 0.1 means 90% E1 semantic + 10% E10.",
+             with intent-based multiplicative boost (ARCH-17). E1 is THE semantic foundation; \
+             E10 modifies scores based on contextual alignment. Same direction as search_by_intent \
+             (query→document). Boost adapts to E1 quality for optimal enhancement.",
             json!({
                 "type": "object",
                 "required": ["context"],
@@ -96,9 +99,9 @@ pub fn definitions() -> Vec<ToolDefinition> {
                     },
                     "blendWithSemantic": {
                         "type": "number",
-                        "description": "Blend weight for E10 vs E1 semantic (0-1, default: 0.1). \
-                                        0.0 = pure E1 semantic, 1.0 = pure E10. \
-                                        Default 0.1 means 90% E1 + 10% E10.",
+                        "description": "[LEGACY] Blend weight parameter kept for backward compatibility. \
+                                        Now uses multiplicative boost (ARCH-17) instead of linear blending. \
+                                        E10 enhances E1 based on contextual alignment, not weighted sum.",
                         "default": 0.1,
                         "minimum": 0,
                         "maximum": 1

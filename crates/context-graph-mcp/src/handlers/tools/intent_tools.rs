@@ -28,8 +28,9 @@ use crate::protocol::JsonRpcId;
 use crate::protocol::JsonRpcResponse;
 
 use super::intent_dtos::{
-    FindContextualMatchesRequest, FindContextualMatchesResponse, IntentSearchMetadata,
-    IntentSearchResult, SearchByIntentRequest, SearchByIntentResponse, SourceInfo,
+    FindContextualMatchesRequest, FindContextualMatchesResponse, IntentBoostConfig,
+    IntentSearchMetadata, IntentSearchResult, SearchByIntentRequest, SearchByIntentResponse,
+    SourceInfo,
 };
 
 use super::super::Handlers;
@@ -77,15 +78,17 @@ impl Handlers {
         let query = &request.query;
         let top_k = request.top_k;
         let min_score = request.min_score;
-        let blend_weight = request.blend_with_semantic;
-        let e1_weight = 1.0 - blend_weight;
+
+        // Use multiplicative boost (ARCH-17) instead of linear blending
+        // E10 ENHANCES E1, it doesn't compete with it
+        let intent_boost_config = IntentBoostConfig::default();
 
         info!(
             query_preview = %query.chars().take(50).collect::<String>(),
             top_k = top_k,
             min_score = min_score,
-            blend_weight = blend_weight,
-            "search_by_intent: Starting intent-aware search"
+            boost_mode = "multiplicative",
+            "search_by_intent: Starting intent-enhanced search (ARCH-17)"
         );
 
         // Step 1: Embed the intent query
@@ -125,7 +128,8 @@ impl Handlers {
             "search_by_intent: Evaluating candidates for blended scoring"
         );
 
-        // Step 3: Compute blended scores
+        // Step 3: Compute intent-enhanced scores using multiplicative boost (ARCH-17)
+        // E10 ENHANCES E1 - it doesn't compete via linear blending
         let query_e10_intent = query_embedding.get_e10_as_intent();
         let query_e1 = &query_embedding.e1_semantic;
 
@@ -136,18 +140,21 @@ impl Handlers {
             let cand_e1 = &candidate.fingerprint.semantic.e1_semantic;
             let cand_e10_context = candidate.fingerprint.semantic.get_e10_as_context();
 
-            // E1 cosine similarity
+            // E1 cosine similarity (THE semantic foundation per ARCH-12)
             let e1_sim = cosine_similarity(query_e1, cand_e1);
 
             // E10 asymmetric similarity (query→document direction per E5-base-v2)
-            // No artificial modifier - E5's prefix-based training provides natural asymmetry
             let e10_sim = cosine_similarity(query_e10_intent, cand_e10_context);
 
-            // Blend scores
-            let blended_score = e1_weight * e1_sim + blend_weight * e10_sim;
+            // Apply multiplicative boost (ARCH-17)
+            // E10 ENHANCES E1 based on intent alignment:
+            // - E10 > 0.5: Intent aligned → boost E1 up
+            // - E10 < 0.5: Intent misaligned → reduce E1
+            // - E10 ≈ 0.5: Neutral → no change
+            let enhanced_score = intent_boost_config.compute_enhanced_score(e1_sim, e10_sim);
 
-            if blended_score >= min_score {
-                scored_results.push((cand_id, blended_score, e1_sim, e10_sim, e10_sim));
+            if enhanced_score >= min_score {
+                scored_results.push((cand_id, enhanced_score, e1_sim, e10_sim, e10_sim));
             }
         }
 
@@ -216,8 +223,10 @@ impl Handlers {
             metadata: IntentSearchMetadata {
                 candidates_evaluated,
                 filtered_by_score: filtered_count,
-                blend_weight,
-                e1_weight,
+                // Multiplicative boost mode: E10 enhances E1, weights are not applicable
+                // Keeping fields for backward compatibility, but values reflect new approach
+                blend_weight: 0.0,  // Not used in multiplicative boost mode
+                e1_weight: 1.0,     // E1 is THE foundation (ARCH-12)
                 direction_modifier: 1.0, // No modifier - E5-base-v2 uses natural prefix asymmetry
             },
         };
@@ -280,15 +289,17 @@ impl Handlers {
         let context = &request.context;
         let top_k = request.top_k;
         let min_score = request.min_score;
-        let blend_weight = request.blend_with_semantic;
-        let e1_weight = 1.0 - blend_weight;
+
+        // Use multiplicative boost (ARCH-17) instead of linear blending
+        // E10 ENHANCES E1, it doesn't compete with it
+        let intent_boost_config = IntentBoostConfig::default();
 
         info!(
             context_preview = %context.chars().take(50).collect::<String>(),
             top_k = top_k,
             min_score = min_score,
-            blend_weight = blend_weight,
-            "find_contextual_matches: Starting context-aware search"
+            boost_mode = "multiplicative",
+            "find_contextual_matches: Starting context-enhanced search (ARCH-17)"
         );
 
         // Step 1: Embed the context query
@@ -327,9 +338,9 @@ impl Handlers {
             "find_contextual_matches: Evaluating candidates for blended scoring"
         );
 
-        // Step 3: Compute blended scores (query→document direction per E5-base-v2)
-        // FIXED: Use same direction as search_by_intent - user context is a "query"
-        // to find relevant stored "passages" (memories)
+        // Step 3: Compute intent-enhanced scores using multiplicative boost (ARCH-17)
+        // E10 ENHANCES E1 - it doesn't compete via linear blending
+        // User context is treated as a "query" to find relevant stored "passages" (memories)
         let query_e10_intent = query_embedding.get_e10_as_intent();
         let query_e1 = &query_embedding.e1_semantic;
 
@@ -340,18 +351,21 @@ impl Handlers {
             let cand_e1 = &candidate.fingerprint.semantic.e1_semantic;
             let cand_e10_context = candidate.fingerprint.semantic.get_e10_as_context();
 
-            // E1 cosine similarity
+            // E1 cosine similarity (THE semantic foundation per ARCH-12)
             let e1_sim = cosine_similarity(query_e1, cand_e1);
 
             // E10 asymmetric similarity (query→document direction per E5-base-v2)
-            // No artificial modifier - E5's prefix-based training provides natural asymmetry
             let e10_sim = cosine_similarity(query_e10_intent, cand_e10_context);
 
-            // Blend scores
-            let blended_score = e1_weight * e1_sim + blend_weight * e10_sim;
+            // Apply multiplicative boost (ARCH-17)
+            // E10 ENHANCES E1 based on intent alignment:
+            // - E10 > 0.5: Intent aligned → boost E1 up
+            // - E10 < 0.5: Intent misaligned → reduce E1
+            // - E10 ≈ 0.5: Neutral → no change
+            let enhanced_score = intent_boost_config.compute_enhanced_score(e1_sim, e10_sim);
 
-            if blended_score >= min_score {
-                scored_results.push((cand_id, blended_score, e1_sim, e10_sim, e10_sim));
+            if enhanced_score >= min_score {
+                scored_results.push((cand_id, enhanced_score, e1_sim, e10_sim, e10_sim));
             }
         }
 
@@ -417,8 +431,10 @@ impl Handlers {
             metadata: IntentSearchMetadata {
                 candidates_evaluated,
                 filtered_by_score: filtered_count,
-                blend_weight,
-                e1_weight,
+                // Multiplicative boost mode: E10 enhances E1, weights are not applicable
+                // Keeping fields for backward compatibility, but values reflect new approach
+                blend_weight: 0.0,  // Not used in multiplicative boost mode
+                e1_weight: 1.0,     // E1 is THE foundation (ARCH-12)
                 direction_modifier: 1.0, // No modifier - E5-base-v2 uses natural prefix asymmetry
             },
         };

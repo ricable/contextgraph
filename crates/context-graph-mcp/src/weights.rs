@@ -143,47 +143,51 @@ pub const WEIGHT_PROFILES: &[(&str, [f32; NUM_EMBEDDERS])] = &[
         ],
     ),
 
-    // Intent Search: "What was the goal?" queries - E1 primary, E10 enhances
+    // Intent Search: "What was the goal?" queries - E1 primary, E10 via multiplicative boost
     // Use for intent-aware retrieval: "what work had the same goal?",
     // "find memories with similar purpose", "what was trying to be accomplished?"
-    // E10 (E5-base-v2) provides query→document asymmetric enhancement
-    // Per E10 Optimization: Reduced from 0.25 to 0.10 based on benchmark findings
+    //
+    // ARCH-17 COMPLIANT: E10 is set to 0.0 in weighted fusion because E10 now operates
+    // via multiplicative boost POST-RETRIEVAL, not in initial candidate scoring.
+    // This prevents E10 from competing with E1 in fusion (it ENHANCES E1 instead).
     (
         "intent_search",
         [
-            0.50, // E1_Semantic (foundation per ARCH-12, boosted)
+            0.55, // E1_Semantic (foundation per ARCH-12, boosted - E10 weight redistributed)
             0.0,  // E2_Temporal_Recent - NOT for semantic search per AP-71
             0.0,  // E3_Temporal_Periodic - NOT for semantic search per AP-71
             0.0,  // E4_Temporal_Positional - NOT for semantic search per AP-71
-            0.10, // E5_Causal (intent often has causal structure)
+            0.12, // E5_Causal (intent often has causal structure)
             0.05, // E6_Sparse (keyword backup)
-            0.15, // E7_Code (code intent/purpose, boosted)
+            0.18, // E7_Code (code intent/purpose, boosted)
             0.05, // E8_Graph (relational)
             0.0,  // E9_HDC
-            0.10, // E10_Multimodal (ENHANCES E1, reduced from 0.25)
+            0.0,  // E10_Multimodal - NOW VIA MULTIPLICATIVE BOOST (ARCH-17)
             0.05, // E11_Entity (entities in intent)
             0.0,  // E12_Late_Interaction (Stage 3 rerank only per AP-73)
             0.0,  // E13_SPLADE (Stage 1 recall only per AP-74)
         ],
     ),
 
-    // Intent Enhanced: Stronger E10 weighting for explicit intent-aware queries
+    // Intent Enhanced: E1 primary foundation, E10 via stronger multiplicative boost
     // Use when intentMode != "none" in search_graph for asymmetric E10 reranking
-    // E10 weight 0.15 (vs 0.10 in intent_search) for stronger intent matching
-    // Per E10 Optimization: Reduced from 0.30 to 0.15 based on benchmark findings
+    //
+    // ARCH-17 COMPLIANT: E10 is set to 0.0 in weighted fusion because E10 now operates
+    // via multiplicative boost POST-RETRIEVAL with IntentBoostConfig::aggressive().
+    // E1 weight increased to maintain strong semantic foundation.
     (
         "intent_enhanced",
         [
-            0.45, // E1_Semantic (foundation per ARCH-12, boosted)
+            0.55, // E1_Semantic (foundation per ARCH-12, boosted - E10 weight redistributed)
             0.0,  // E2_Temporal_Recent - NOT for semantic search per AP-71
             0.0,  // E3_Temporal_Periodic - NOT for semantic search per AP-71
             0.0,  // E4_Temporal_Positional - NOT for semantic search per AP-71
-            0.10, // E5_Causal (intent often has causal structure)
+            0.12, // E5_Causal (intent often has causal structure)
             0.05, // E6_Sparse (keyword backup)
-            0.15, // E7_Code (code intent/purpose, boosted)
+            0.18, // E7_Code (code intent/purpose, boosted)
             0.05, // E8_Graph (relational)
             0.0,  // E9_HDC
-            0.15, // E10_Multimodal (ENHANCED - reduced from 0.30)
+            0.0,  // E10_Multimodal - NOW VIA MULTIPLICATIVE BOOST (ARCH-17)
             0.05, // E11_Entity (entities in intent)
             0.0,  // E12_Late_Interaction (Stage 3 rerank only per AP-73)
             0.0,  // E13_SPLADE (Stage 1 recall only per AP-74)
@@ -906,42 +910,53 @@ mod tests {
 
     #[test]
     fn test_intent_search_e10_weight() {
-        // E10 should be 0.10 in intent_search (reduced from 0.25 per E10 optimization)
+        // E10 should be 0.0 in intent_search - per ARCH-17, E10 now operates via
+        // multiplicative boost POST-RETRIEVAL, not in weighted fusion.
+        // This prevents E10 from competing with E1 (it ENHANCES E1 instead).
         let weights = get_weight_profile("intent_search").unwrap();
         assert!(
-            (weights[9] - 0.10).abs() < 0.001,
-            "E10 should be 0.10 in intent_search (got {})",
+            (weights[9] - 0.0).abs() < 0.001,
+            "E10 should be 0.0 in intent_search (ARCH-17 multiplicative boost). Got {}",
             weights[9]
         );
-        println!("[VERIFIED] intent_search has E10={:.2}", weights[9]);
+        println!("[VERIFIED] intent_search has E10={:.2} (multiplicative boost via IntentBoostConfig)", weights[9]);
     }
 
     #[test]
     fn test_intent_enhanced_e10_weight() {
-        // E10 should be 0.15 in intent_enhanced (reduced from 0.30 per E10 optimization)
+        // E10 should be 0.0 in intent_enhanced - per ARCH-17, E10 now operates via
+        // multiplicative boost POST-RETRIEVAL with IntentBoostConfig::aggressive().
         let weights = get_weight_profile("intent_enhanced").unwrap();
         assert!(
-            (weights[9] - 0.15).abs() < 0.001,
-            "E10 should be 0.15 in intent_enhanced (got {})",
+            (weights[9] - 0.0).abs() < 0.001,
+            "E10 should be 0.0 in intent_enhanced (ARCH-17 multiplicative boost). Got {}",
             weights[9]
         );
-        println!("[VERIFIED] intent_enhanced has E10={:.2}", weights[9]);
+        println!("[VERIFIED] intent_enhanced has E10={:.2} (multiplicative boost via IntentBoostConfig::aggressive())", weights[9]);
     }
 
     #[test]
-    fn test_intent_enhanced_stronger_than_intent_search() {
-        // intent_enhanced should have higher E10 weight than intent_search
+    fn test_intent_profiles_e1_boosted() {
+        // With E10 moved to multiplicative boost, E1 should be boosted in intent profiles
+        // to maintain strong semantic foundation (ARCH-12).
         let intent_search = get_weight_profile("intent_search").unwrap();
         let intent_enhanced = get_weight_profile("intent_enhanced").unwrap();
+        let semantic_search = get_weight_profile("semantic_search").unwrap();
+
+        // E1 in intent profiles should be >= E1 in semantic_search
         assert!(
-            intent_enhanced[9] > intent_search[9],
-            "intent_enhanced E10 ({}) should be > intent_search E10 ({})",
-            intent_enhanced[9],
-            intent_search[9]
+            intent_search[0] >= semantic_search[0],
+            "intent_search E1 ({}) should be >= semantic_search E1 ({})",
+            intent_search[0], semantic_search[0]
+        );
+        assert!(
+            intent_enhanced[0] >= semantic_search[0],
+            "intent_enhanced E1 ({}) should be >= semantic_search E1 ({})",
+            intent_enhanced[0], semantic_search[0]
         );
         println!(
-            "[VERIFIED] intent_enhanced E10={:.2} > intent_search E10={:.2}",
-            intent_enhanced[9], intent_search[9]
+            "[VERIFIED] Intent profiles have boosted E1: intent_search={:.2}, intent_enhanced={:.2}, semantic_search={:.2}",
+            intent_search[0], intent_enhanced[0], semantic_search[0]
         );
     }
 }

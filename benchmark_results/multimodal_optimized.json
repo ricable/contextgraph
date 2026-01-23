@@ -1,0 +1,248 @@
+{
+  "metadata": {
+    "timestamp": "2026-01-23T22:39:56.215485651+00:00",
+    "version": "0.1.0",
+    "seed": 42,
+    "max_samples": 1000,
+    "num_documents": 200,
+    "num_intent_queries": 50,
+    "num_context_queries": 50
+  },
+  "results": {
+    "metrics": {
+      "intent_detection": {
+        "total_queries": 100,
+        "correct_intent": 50,
+        "correct_context": 43,
+        "misclassified": 7,
+        "accuracy": 0.93,
+        "per_domain_accuracy": {
+          "infrastructure": 1.0,
+          "performance_optimization": 1.0,
+          "security": 1.0,
+          "bug_fixing": 1.0,
+          "feature_development": 0.46153846153846156,
+          "refactoring": 1.0,
+          "testing": 1.0,
+          "documentation": 1.0
+        },
+        "intent_precision": 0.8771929824561403,
+        "intent_recall": 1.0,
+        "intent_f1": 0.9345794392523363
+      },
+      "context_matching": {
+        "mrr": 0.14547349677612828,
+        "precision_at_k": {
+          "1": 0.07,
+          "10": 0.06399999999999995,
+          "20": 0.0895,
+          "5": 0.013999999999999999
+        },
+        "recall_at_k": {
+          "20": 0.5966666666666667,
+          "5": 0.02333333333333333,
+          "1": 0.02333333333333333,
+          "10": 0.21333333333333326
+        },
+        "ndcg_at_k": {
+          "5": 0.03284951082159296,
+          "20": 0.24724608239547433,
+          "1": 0.07,
+          "10": 0.1150095867808999
+        },
+        "total_queries": 100,
+        "hits_at_1": 7,
+        "hits_at_5": 7,
+        "hits_at_10": 41
+      },
+      "asymmetric_retrieval": {
+        "total_queries": 4,
+        "intent_to_context_wins": 0,
+        "context_to_intent_wins": 0,
+        "ties": 4,
+        "observed_asymmetry_ratio": 1.0,
+        "expected_asymmetry_ratio": 1.0,
+        "formula_compliant": true,
+        "intent_to_context_modifier": 1.0,
+        "context_to_intent_modifier": 1.0,
+        "same_direction_modifier": 1.0,
+        "e10_contribution_percentage": 0.0
+      },
+      "ablation": {
+        "e1_only_mrr": 0.1820466674708161,
+        "e10_only_mrr": 0.22677846577227379,
+        "e1_e10_blend_mrr": 0.1810466674708161,
+        "full_13_space_mrr": 0.1909276198517684,
+        "e10_contribution": -0.0010000000000000009,
+        "e10_contribution_percentage": -0.549309698382867,
+        "blend_analysis": [
+          {
+            "blend_value": 0.0,
+            "e1_weight": 1.0,
+            "e10_weight": 0.0,
+            "mrr": 0.1820466674708161,
+            "precision_at_5": 0.03600000000000001
+          },
+          {
+            "blend_value": 0.1,
+            "e1_weight": 0.9,
+            "e10_weight": 0.1,
+            "mrr": 0.1810466674708161,
+            "precision_at_5": 0.03600000000000001
+          },
+          {
+            "blend_value": 0.2,
+            "e1_weight": 0.8,
+            "e10_weight": 0.2,
+            "mrr": 0.17634428651843514,
+            "precision_at_5": 0.03600000000000001
+          },
+          {
+            "blend_value": 0.3,
+            "e1_weight": 0.7,
+            "e10_weight": 0.3,
+            "mrr": 0.17582051943584445,
+            "precision_at_5": 0.03600000000000001
+          },
+          {
+            "blend_value": 0.4,
+            "e1_weight": 0.6,
+            "e10_weight": 0.4,
+            "mrr": 0.1748278723770209,
+            "precision_at_5": 0.03600000000000001
+          },
+          {
+            "blend_value": 0.5,
+            "e1_weight": 0.5,
+            "e10_weight": 0.5,
+            "mrr": 0.18330009459924315,
+            "precision_at_5": 0.03600000000000001
+          },
+          {
+            "blend_value": 0.6,
+            "e1_weight": 0.4,
+            "e10_weight": 0.6,
+            "mrr": 0.1930778723770209,
+            "precision_at_5": 0.05000000000000002
+          },
+          {
+            "blend_value": 0.7,
+            "e1_weight": 0.30000000000000004,
+            "e10_weight": 0.7,
+            "mrr": 0.19844513243894038,
+            "precision_at_5": 0.06400000000000003
+          },
+          {
+            "blend_value": 0.8,
+            "e1_weight": 0.19999999999999996,
+            "e10_weight": 0.8,
+            "mrr": 0.20117652717652718,
+            "precision_at_5": 0.07800000000000004
+          },
+          {
+            "blend_value": 0.9,
+            "e1_weight": 0.09999999999999998,
+            "e10_weight": 0.9,
+            "mrr": 0.18829021134321466,
+            "precision_at_5": 0.07800000000000004
+          },
+          {
+            "blend_value": 1.0,
+            "e1_weight": 0.0,
+            "e10_weight": 1.0,
+            "mrr": 0.02250893777345572,
+            "precision_at_5": 0.0
+          }
+        ]
+      }
+    },
+    "timings": {
+      "total_ms": 395,
+      "dataset_generation_ms": 0,
+      "intent_detection_ms": 0,
+      "context_matching_ms": 19,
+      "asymmetric_validation_ms": 0,
+      "ablation_ms": 375
+    },
+    "config": {
+      "dataset": {
+        "num_documents": 200,
+        "num_intent_queries": 50,
+        "num_context_queries": 50,
+        "seed": 42,
+        "domains": [
+          "PerformanceOptimization",
+          "BugFixing",
+          "FeatureDevelopment",
+          "Refactoring",
+          "Testing",
+          "Documentation",
+          "Security",
+          "Infrastructure"
+        ],
+        "intent_context_ratio": 0.5
+      },
+      "run_intent_detection": true,
+      "run_context_matching": true,
+      "run_asymmetric_validation": true,
+      "run_ablation": true,
+      "k_values": [
+        1,
+        5,
+        10,
+        20
+      ],
+      "blend_values": [
+        0.0,
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        1.0
+      ]
+    },
+    "dataset_stats": {
+      "total_documents": 200,
+      "documents_per_domain": {
+        "security": 21,
+        "feature_development": 18,
+        "documentation": 33,
+        "refactoring": 27,
+        "performance_optimization": 23,
+        "bug_fixing": 27,
+        "infrastructure": 24,
+        "testing": 27
+      },
+      "intent_documents": 100,
+      "context_documents": 100,
+      "intent_queries": 50,
+      "context_queries": 50
+    }
+  },
+  "summary": {
+    "intent_detection_accuracy": 0.93,
+    "intent_precision": 0.8771929824561403,
+    "intent_recall": 1.0,
+    "mrr": 0.14547349677612828,
+    "precision_at_1": 0.07,
+    "precision_at_5": 0.013999999999999999,
+    "precision_at_10": 0.06399999999999995,
+    "ndcg_at_10": 0.1150095867808999,
+    "asymmetry_ratio": 1.0,
+    "intent_to_context_modifier": 1.0,
+    "context_to_intent_modifier": 1.0,
+    "formula_compliant": true,
+    "e1_only_mrr": 0.1820466674708161,
+    "e10_only_mrr": 0.22677846577227379,
+    "e1_e10_blend_mrr": 0.1810466674708161,
+    "e10_contribution_percentage": -0.549309698382867,
+    "optimal_blend_value": 0.8,
+    "total_duration_ms": 395,
+    "all_tests_passed": false
+  }
+}

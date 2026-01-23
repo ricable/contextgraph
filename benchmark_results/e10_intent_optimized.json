@@ -1,0 +1,72 @@
+{
+  "intent_context_pairs": {
+    "num_pairs": 100,
+    "mrr_e1_only": 0.75,
+    "mrr_e10_only": 0.765,
+    "mrr_e1_e10_blend": 0.735,
+    "e10_contribution_pct": -0.020000000000000018,
+    "e10_helped_rate": 0.0,
+    "per_topic_mrr": {
+      "testing": {
+        "count": 20,
+        "mrr_e1": 0.725,
+        "mrr_e10": 0.7,
+        "mrr_blend": 0.7
+      },
+      "database": {
+        "count": 30,
+        "mrr_e1": 0.7333333333333333,
+        "mrr_e10": 0.8,
+        "mrr_blend": 0.7166666666666667
+      },
+      "performance": {
+        "count": 20,
+        "mrr_e1": 0.725,
+        "mrr_e10": 0.725,
+        "mrr_blend": 0.725
+      },
+      "security": {
+        "count": 20,
+        "mrr_e1": 0.775,
+        "mrr_e10": 0.725,
+        "mrr_blend": 0.75
+      },
+      "architecture": {
+        "count": 10,
+        "mrr_e1": 0.85,
+        "mrr_e10": 0.95,
+        "mrr_blend": 0.85
+      }
+    }
+  },
+  "cross_doc_intent": {
+    "num_queries": 100,
+    "mrr_e1_only": 0.621666666666667,
+    "mrr_e10_intent": 0.6700000000000003,
+    "mrr_e1_e10_blend": 0.6466666666666672,
+    "e10_contribution_pct": 0.04021447721179644,
+    "recall_at_10": 1.0
+  },
+  "session_intent_drift": {
+    "num_sessions": 20,
+    "total_turns": 140,
+    "total_drifts": 32,
+    "drift_detection_accuracy": 0.26666666666666666,
+    "false_positive_rate": 1.0,
+    "false_negative_rate": 0.0,
+    "avg_sim_same_intent": -0.001332154547774487,
+    "avg_sim_intent_change": -0.0015386735140054952
+  },
+  "summary": {
+    "overall_e10_contribution_pct": 0.007290400972053629,
+    "avg_e1_only_mrr": 0.6858333333333335,
+    "avg_e10_enhanced_mrr": 0.6908333333333336,
+    "recommendation": "E10 contribution is limited in this benchmark. E1 remains sufficient for most queries."
+  },
+  "config": {
+    "num_queries": 100,
+    "top_k": 10,
+    "seed": 42,
+    "data_dir": "data/e10_benchmark"
+  }
+}

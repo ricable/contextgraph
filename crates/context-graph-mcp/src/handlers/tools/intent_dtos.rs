@@ -26,10 +26,180 @@ pub const MAX_INTENT_SEARCH_TOP_K: usize = 50;
 /// Default minimum score threshold for intent search results.
 pub const DEFAULT_MIN_INTENT_SCORE: f32 = 0.2;
 
-/// Default blend weight for E10 vs E1 semantic.
+/// Default blend weight for E10 vs E1 semantic (LEGACY - kept for backward compatibility).
 /// 0.1 means 90% E1 semantic + 10% E10 intent/context.
 /// Reduced from 0.3 based on benchmark findings showing E10 optimal at ~0.1.
+/// NOTE: New multiplicative boost approach supersedes linear blending.
 pub const DEFAULT_BLEND_WITH_SEMANTIC: f32 = 0.1;
+
+// ============================================================================
+// INTENT BOOST CONFIGURATION (ARCH-17 Compliant)
+// ============================================================================
+
+/// Configuration for E10 intent-based multiplicative boost.
+///
+/// Per ARCH-12 and ARCH-17: E1 is THE semantic foundation. E10 ENHANCES E1
+/// via multiplicative boost, not linear blending (which competes with E1).
+///
+/// # Philosophy
+///
+/// The multiplicative boost model treats E10 as a **modifier** that adjusts
+/// E1 scores up or down based on intent alignment:
+/// - E10 sim > 0.5: Intent aligned → boost E1 score up
+/// - E10 sim < 0.5: Intent misaligned → reduce E1 score
+/// - E10 sim ≈ 0.5: Neutral → no change to E1
+///
+/// # ARCH-17 Adaptive Boost
+///
+/// Boost strength adapts to E1 quality:
+/// - E1 > 0.8 (strong match): Light boost (refine results)
+/// - E1 ∈ [0.4, 0.8] (moderate): Medium boost (enhance results)
+/// - E1 < 0.4 (weak match): Strong boost (broaden results)
+///
+/// This ensures E10 helps most when E1 alone is insufficient.
+#[derive(Debug, Clone, Copy)]
+pub struct IntentBoostConfig {
+    /// Boost strength when E1 is strong (> 0.8). Default: 0.05.
+    /// Light touch - E1 already found good matches, just refine.
+    pub strong_e1_boost: f32,
+
+    /// Boost strength when E1 is moderate (0.4-0.8). Default: 0.10.
+    /// Medium enhancement - E1 found decent matches, help distinguish.
+    pub medium_e1_boost: f32,
+
+    /// Boost strength when E1 is weak (< 0.4). Default: 0.15.
+    /// Strong enhancement - E1 struggling, E10 can help broaden search.
+    pub weak_e1_boost: f32,
+
+    /// Maximum boost range (±). Default: 0.20.
+    /// Final multiplier clamped to [1.0 - boost_range, 1.0 + boost_range].
+    pub boost_range: f32,
+
+    /// Neutral point for E10 similarity. Default: 0.5.
+    /// E10 sim above this means intent aligned, below means misaligned.
+    pub neutral_point: f32,
+
+    /// Whether boost is enabled. Default: true.
+    /// If false, returns E1 score unchanged.
+    pub enabled: bool,
+}
+
+impl Default for IntentBoostConfig {
+    fn default() -> Self {
+        Self {
+            strong_e1_boost: 0.05,  // Light refinement for strong E1 matches
+            medium_e1_boost: 0.10,  // Medium enhancement for moderate E1 matches
+            weak_e1_boost: 0.15,    // Strong enhancement when E1 is struggling
+            boost_range: 0.20,      // Max ±20% adjustment
+            neutral_point: 0.5,     // E10 sim of 0.5 is neutral
+            enabled: true,
+        }
+    }
+}
+
+impl IntentBoostConfig {
+    /// Create a new config with custom boost strengths.
+    pub fn new(strong: f32, medium: f32, weak: f32) -> Self {
+        Self {
+            strong_e1_boost: strong,
+            medium_e1_boost: medium,
+            weak_e1_boost: weak,
+            ..Default::default()
+        }
+    }
+
+    /// Create a disabled config (passthrough E1 scores).
+    pub fn disabled() -> Self {
+        Self {
+            enabled: false,
+            ..Default::default()
+        }
+    }
+
+    /// Create a conservative config (minimal E10 influence).
+    pub fn conservative() -> Self {
+        Self {
+            strong_e1_boost: 0.02,
+            medium_e1_boost: 0.05,
+            weak_e1_boost: 0.08,
+            boost_range: 0.10,
+            ..Default::default()
+        }
+    }
+
+    /// Create an aggressive config (stronger E10 influence).
+    pub fn aggressive() -> Self {
+        Self {
+            strong_e1_boost: 0.10,
+            medium_e1_boost: 0.15,
+            weak_e1_boost: 0.25,
+            boost_range: 0.30,
+            ..Default::default()
+        }
+    }
+
+    /// Compute intent-enhanced score using multiplicative boost.
+    ///
+    /// # Algorithm
+    ///
+    /// 1. Determine boost strength based on E1 quality (ARCH-17)
+    /// 2. Compute intent alignment factor from E10 similarity
+    /// 3. Apply bounded multiplicative boost to E1 score
+    ///
+    /// # Arguments
+    ///
+    /// * `e1_sim` - E1 semantic similarity score (0.0-1.0)
+    /// * `e10_sim` - E10 intent similarity score (0.0-1.0)
+    ///
+    /// # Returns
+    ///
+    /// Intent-enhanced score = E1 * (1 + boost), clamped to [0.0, 1.0]
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let config = IntentBoostConfig::default();
+    ///
+    /// // Strong E1 match, aligned intent → slight boost
+    /// let score = config.compute_enhanced_score(0.85, 0.7);
+    /// assert!(score > 0.85); // Boosted up
+    ///
+    /// // Weak E1 match, misaligned intent → reduced
+    /// let score = config.compute_enhanced_score(0.3, 0.2);
+    /// assert!(score < 0.3); // Reduced
+    ///
+    /// // Neutral E10 → no change
+    /// let score = config.compute_enhanced_score(0.6, 0.5);
+    /// assert!((score - 0.6).abs() < 0.01);
+    /// ```
+    pub fn compute_enhanced_score(&self, e1_sim: f32, e10_sim: f32) -> f32 {
+        // If disabled, passthrough E1 score
+        if !self.enabled {
+            return e1_sim;
+        }
+
+        // 1. Determine boost strength based on E1 quality (ARCH-17)
+        let boost_strength = if e1_sim > 0.8 {
+            self.strong_e1_boost  // Refine strong matches
+        } else if e1_sim > 0.4 {
+            self.medium_e1_boost  // Enhance moderate matches
+        } else {
+            self.weak_e1_boost    // Broaden weak matches
+        };
+
+        // 2. Compute intent alignment factor: [-1, +1]
+        // E10 > neutral_point → positive (aligned)
+        // E10 < neutral_point → negative (misaligned)
+        let intent_alignment = (e10_sim - self.neutral_point) * 2.0;
+
+        // 3. Apply bounded multiplicative boost
+        let boost = (boost_strength * intent_alignment).clamp(-self.boost_range, self.boost_range);
+        let intent_multiplier = 1.0 + boost;
+
+        // 4. Final score = E1 * multiplier, clamped to valid range
+        (e1_sim * intent_multiplier).clamp(0.0, 1.0)
+    }
+}
 
 /// Intent→Context direction modifier (NEUTRAL).
 /// Set to 1.0 (no modification) - E5-base-v2's prefix-based training provides natural asymmetry.
@@ -541,5 +711,153 @@ mod tests {
 
         let invalid_c2i = DirectionModifiers::new(1.2, 0.2);
         assert!(invalid_c2i.validate().is_err());
+    }
+
+    // =========================================================================
+    // INTENT BOOST CONFIG TESTS (ARCH-17)
+    // =========================================================================
+
+    #[test]
+    fn test_intent_boost_config_default() {
+        let config = IntentBoostConfig::default();
+        assert!(config.enabled);
+        assert!((config.strong_e1_boost - 0.05).abs() < 0.001);
+        assert!((config.medium_e1_boost - 0.10).abs() < 0.001);
+        assert!((config.weak_e1_boost - 0.15).abs() < 0.001);
+        assert!((config.boost_range - 0.20).abs() < 0.001);
+        assert!((config.neutral_point - 0.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_intent_boost_neutral_e10_no_change() {
+        // E10 sim of 0.5 (neutral) should not change E1 score
+        let config = IntentBoostConfig::default();
+
+        let e1_sim = 0.6;
+        let e10_sim = 0.5;  // Neutral
+        let enhanced = config.compute_enhanced_score(e1_sim, e10_sim);
+
+        // Should be essentially unchanged
+        assert!((enhanced - e1_sim).abs() < 0.01,
+            "Neutral E10 should not change E1. Got {} expected ~{}", enhanced, e1_sim);
+    }
+
+    #[test]
+    fn test_intent_boost_aligned_intent_boosts_e1() {
+        // E10 sim > 0.5 (aligned) should boost E1 score
+        let config = IntentBoostConfig::default();
+
+        let e1_sim = 0.6;
+        let e10_sim = 0.8;  // Aligned intent
+        let enhanced = config.compute_enhanced_score(e1_sim, e10_sim);
+
+        // Should be boosted
+        assert!(enhanced > e1_sim,
+            "Aligned E10 should boost E1. Got {} expected > {}", enhanced, e1_sim);
+    }
+
+    #[test]
+    fn test_intent_boost_misaligned_intent_reduces_e1() {
+        // E10 sim < 0.5 (misaligned) should reduce E1 score
+        let config = IntentBoostConfig::default();
+
+        let e1_sim = 0.6;
+        let e10_sim = 0.2;  // Misaligned intent
+        let enhanced = config.compute_enhanced_score(e1_sim, e10_sim);
+
+        // Should be reduced
+        assert!(enhanced < e1_sim,
+            "Misaligned E10 should reduce E1. Got {} expected < {}", enhanced, e1_sim);
+    }
+
+    #[test]
+    fn test_intent_boost_arch17_adaptive_strength() {
+        // ARCH-17: Boost strength adapts to E1 quality
+        // The *relative* boost (multiplier) should be higher for weaker E1
+        let config = IntentBoostConfig::default();
+        let e10_sim = 0.8;  // Aligned intent
+
+        // Strong E1 (> 0.8) → light boost (0.05 boost_strength)
+        let strong_e1 = 0.85;
+        let strong_enhanced = config.compute_enhanced_score(strong_e1, e10_sim);
+        let strong_multiplier = strong_enhanced / strong_e1;
+
+        // Medium E1 (0.4-0.8) → medium boost (0.10 boost_strength)
+        let medium_e1 = 0.6;
+        let medium_enhanced = config.compute_enhanced_score(medium_e1, e10_sim);
+        let medium_multiplier = medium_enhanced / medium_e1;
+
+        // Weak E1 (< 0.4) → strong boost (0.15 boost_strength)
+        let weak_e1 = 0.3;
+        let weak_enhanced = config.compute_enhanced_score(weak_e1, e10_sim);
+        let weak_multiplier = weak_enhanced / weak_e1;
+
+        // Weak E1 should get higher RELATIVE boost (multiplier) than strong E1
+        // Because boost_strength is higher: 0.15 > 0.10 > 0.05
+        assert!(weak_multiplier > medium_multiplier,
+            "Weak E1 should get higher multiplier than medium. weak={:.4} medium={:.4}",
+            weak_multiplier, medium_multiplier);
+        assert!(medium_multiplier > strong_multiplier,
+            "Medium E1 should get higher multiplier than strong. medium={:.4} strong={:.4}",
+            medium_multiplier, strong_multiplier);
+
+        // Verify boost strengths are correctly applied:
+        // intent_alignment = (0.8 - 0.5) * 2 = 0.6
+        // expected multipliers: 1 + (boost_strength * 0.6)
+        let expected_strong_mult = 1.0 + 0.05 * 0.6;  // 1.03
+        let expected_medium_mult = 1.0 + 0.10 * 0.6;  // 1.06
+        let expected_weak_mult = 1.0 + 0.15 * 0.6;    // 1.09
+
+        assert!((strong_multiplier - expected_strong_mult).abs() < 0.001,
+            "Strong multiplier: got {:.4} expected {:.4}", strong_multiplier, expected_strong_mult);
+        assert!((medium_multiplier - expected_medium_mult).abs() < 0.001,
+            "Medium multiplier: got {:.4} expected {:.4}", medium_multiplier, expected_medium_mult);
+        assert!((weak_multiplier - expected_weak_mult).abs() < 0.001,
+            "Weak multiplier: got {:.4} expected {:.4}", weak_multiplier, expected_weak_mult);
+    }
+
+    #[test]
+    fn test_intent_boost_disabled_passthrough() {
+        // Disabled config should passthrough E1 unchanged
+        let config = IntentBoostConfig::disabled();
+
+        let e1_sim = 0.6;
+        let e10_sim = 0.9;  // Strong alignment (would normally boost)
+        let enhanced = config.compute_enhanced_score(e1_sim, e10_sim);
+
+        assert!((enhanced - e1_sim).abs() < 0.001,
+            "Disabled config should passthrough E1. Got {} expected {}", enhanced, e1_sim);
+    }
+
+    #[test]
+    fn test_intent_boost_clamped_to_valid_range() {
+        // Results should be clamped to [0.0, 1.0]
+        let config = IntentBoostConfig::aggressive();
+
+        // Very high E1 + strong alignment shouldn't exceed 1.0
+        let high_enhanced = config.compute_enhanced_score(0.95, 0.95);
+        assert!(high_enhanced <= 1.0, "Should be clamped to 1.0 max");
+
+        // Very low E1 + strong misalignment shouldn't go below 0.0
+        let low_enhanced = config.compute_enhanced_score(0.05, 0.05);
+        assert!(low_enhanced >= 0.0, "Should be clamped to 0.0 min");
+    }
+
+    #[test]
+    fn test_intent_boost_e1_foundation_principle() {
+        // Verify E1 is THE foundation - E10 only modifies, doesn't replace
+        let config = IntentBoostConfig::default();
+
+        // Even with perfect E10 alignment, E1=0 should stay 0
+        let zero_e1 = config.compute_enhanced_score(0.0, 1.0);
+        assert!((zero_e1 - 0.0).abs() < 0.001,
+            "E1=0 should stay 0 even with perfect E10. Got {}", zero_e1);
+
+        // E10 modifies E1, so result should be proportional to E1
+        let low_e1 = config.compute_enhanced_score(0.3, 0.8);
+        let high_e1 = config.compute_enhanced_score(0.9, 0.8);
+
+        assert!(high_e1 > low_e1,
+            "Higher E1 should result in higher enhanced score. high={} low={}", high_e1, low_e1);
     }
 }
