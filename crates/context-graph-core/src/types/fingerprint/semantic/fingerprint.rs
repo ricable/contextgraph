@@ -204,7 +204,25 @@ pub struct SemanticFingerprint {
     /// E9: HDC (projected from 10K-bit hyperdimensional) - 1024D dense embedding.
     pub e9_hdc: Vec<f32>,
 
-    /// E10: Multimodal (CLIP) - 768D dense embedding.
+    /// E10: Multimodal (CLIP/MPNet) - 768D dense embedding (as intent).
+    ///
+    /// This vector encodes the text as a potential intent in contextual relationships.
+    /// For asymmetric similarity: query_as_intent is compared against doc_as_context.
+    /// Example: "User wants to fix the bug" → captures the action/goal.
+    pub e10_multimodal_as_intent: Vec<f32>,
+
+    /// E10: Multimodal (CLIP/MPNet) - 768D dense embedding (as context).
+    ///
+    /// This vector encodes the text as providing context in relationships.
+    /// For asymmetric similarity: query_as_context is compared against doc_as_intent.
+    /// Example: "The database connection failed" → captures background context.
+    pub e10_multimodal_as_context: Vec<f32>,
+
+    /// E10: Multimodal - Legacy single vector (deprecated, kept for backward compatibility).
+    ///
+    /// New code should use `e10_multimodal_as_intent` and `e10_multimodal_as_context` instead.
+    /// This field is populated during deserialization of old fingerprints.
+    #[serde(default)]
     pub e10_multimodal: Vec<f32>,
 
     /// E11: Entity (MiniLM for facts) - 384D dense embedding.
@@ -246,7 +264,9 @@ impl SemanticFingerprint {
             e8_graph_as_target: vec![0.0; E8_DIM],
             e8_graph: Vec::new(), // Legacy field, empty by default
             e9_hdc: vec![0.0; E9_DIM],
-            e10_multimodal: vec![0.0; E10_DIM],
+            e10_multimodal_as_intent: vec![0.0; E10_DIM],
+            e10_multimodal_as_context: vec![0.0; E10_DIM],
+            e10_multimodal: Vec::new(), // Legacy field, empty by default
             e11_entity: vec![0.0; E11_DIM],
             e12_late_interaction: Vec::new(),
             e13_splade: SparseVector::empty(),
@@ -271,7 +291,7 @@ impl SemanticFingerprint {
             6 => Some(EmbeddingSlice::Dense(&self.e7_code)),
             7 => Some(EmbeddingSlice::Dense(self.e8_active_vector())),
             8 => Some(EmbeddingSlice::Dense(&self.e9_hdc)),
-            9 => Some(EmbeddingSlice::Dense(&self.e10_multimodal)),
+            9 => Some(EmbeddingSlice::Dense(self.e10_active_vector())),
             10 => Some(EmbeddingSlice::Dense(&self.e11_entity)),
             11 => Some(EmbeddingSlice::TokenLevel(&self.e12_late_interaction)),
             12 => Some(EmbeddingSlice::Sparse(&self.e13_splade)),
@@ -412,6 +432,90 @@ impl SemanticFingerprint {
             && self.e8_graph_as_target.is_empty()
     }
 
+    // =========================================================================
+    // E10 MULTIMODAL DUAL VECTOR METHODS (Following E5/E8 Pattern)
+    // =========================================================================
+
+    /// Get the active E10 multimodal vector for standard operations.
+    ///
+    /// Returns `e10_multimodal_as_intent` if populated, otherwise falls back to
+    /// the legacy `e10_multimodal` field for backward compatibility.
+    ///
+    /// This is the default E10 vector used for symmetric similarity comparisons
+    /// (when intent/context direction is unknown or not relevant).
+    #[inline]
+    pub fn e10_active_vector(&self) -> &[f32] {
+        if !self.e10_multimodal_as_intent.is_empty() {
+            &self.e10_multimodal_as_intent
+        } else {
+            &self.e10_multimodal
+        }
+    }
+
+    /// Get E10 multimodal embedding encoded as a potential intent.
+    ///
+    /// Use this for asymmetric similarity when the query represents an intent.
+    /// (e.g., "User wants to accomplish X")
+    #[inline]
+    pub fn get_e10_as_intent(&self) -> &[f32] {
+        if !self.e10_multimodal_as_intent.is_empty() {
+            &self.e10_multimodal_as_intent
+        } else {
+            &self.e10_multimodal
+        }
+    }
+
+    /// Get E10 multimodal embedding encoded as providing context.
+    ///
+    /// Use this for asymmetric similarity when the query represents context.
+    /// (e.g., "The background situation is Y")
+    #[inline]
+    pub fn get_e10_as_context(&self) -> &[f32] {
+        if !self.e10_multimodal_as_context.is_empty() {
+            &self.e10_multimodal_as_context
+        } else {
+            &self.e10_multimodal
+        }
+    }
+
+    /// Check if this fingerprint has asymmetric E10 multimodal vectors.
+    ///
+    /// Returns `true` if both `e10_multimodal_as_intent` and `e10_multimodal_as_context`
+    /// are populated, `false` if only the legacy `e10_multimodal` field is used.
+    #[inline]
+    pub fn has_asymmetric_e10(&self) -> bool {
+        !self.e10_multimodal_as_intent.is_empty() && !self.e10_multimodal_as_context.is_empty()
+    }
+
+    /// Migrate a legacy fingerprint to the new dual E10 format.
+    ///
+    /// If the fingerprint has only the legacy `e10_multimodal` field populated,
+    /// this method copies it to both `e10_multimodal_as_intent` and `e10_multimodal_as_context`.
+    ///
+    /// This is useful when loading old fingerprints that need to work with
+    /// asymmetric similarity computation.
+    pub fn migrate_legacy_e10(&mut self) {
+        if !self.e10_multimodal.is_empty()
+            && self.e10_multimodal_as_intent.is_empty()
+            && self.e10_multimodal_as_context.is_empty()
+        {
+            // Copy legacy E10 to both intent and context vectors
+            self.e10_multimodal_as_intent = self.e10_multimodal.clone();
+            self.e10_multimodal_as_context = self.e10_multimodal.clone();
+        }
+    }
+
+    /// Check if this fingerprint uses the legacy single E10 format.
+    ///
+    /// Returns `true` if the fingerprint has only `e10_multimodal` populated
+    /// and both `e10_multimodal_as_intent` and `e10_multimodal_as_context` are empty.
+    #[inline]
+    pub fn is_legacy_e10_format(&self) -> bool {
+        !self.e10_multimodal.is_empty()
+            && self.e10_multimodal_as_intent.is_empty()
+            && self.e10_multimodal_as_context.is_empty()
+    }
+
     /// Compute total storage size in bytes (heap allocations only).
     pub fn storage_size(&self) -> usize {
         let dense_size = (self.e1_semantic.len()
@@ -426,7 +530,9 @@ impl SemanticFingerprint {
             + self.e8_graph_as_target.len()
             + self.e8_graph.len() // Legacy field
             + self.e9_hdc.len()
-            + self.e10_multimodal.len()
+            + self.e10_multimodal_as_intent.len()
+            + self.e10_multimodal_as_context.len()
+            + self.e10_multimodal.len() // Legacy field
             + self.e11_entity.len())
             * std::mem::size_of::<f32>();
 
@@ -525,7 +631,7 @@ impl SemanticFingerprint {
             Embedder::Code => EmbeddingRef::Dense(&self.e7_code),
             Embedder::Emotional => EmbeddingRef::Dense(self.e8_active_vector()),
             Embedder::Hdc => EmbeddingRef::Dense(&self.e9_hdc),
-            Embedder::Multimodal => EmbeddingRef::Dense(&self.e10_multimodal),
+            Embedder::Multimodal => EmbeddingRef::Dense(self.e10_active_vector()),
             Embedder::Entity => EmbeddingRef::Dense(&self.e11_entity),
             Embedder::LateInteraction => EmbeddingRef::TokenLevel(&self.e12_late_interaction),
             Embedder::KeywordSplade => EmbeddingRef::Sparse(&self.e13_splade),
@@ -546,6 +652,10 @@ impl SemanticFingerprint {
     /// - Both e8_graph_as_source and e8_graph_as_target populated (new format)
     /// - Only e8_graph populated (legacy format)
     ///
+    /// For E10 Multimodal, accepts either:
+    /// - Both e10_multimodal_as_intent and e10_multimodal_as_context populated (new format)
+    /// - Only e10_multimodal populated (legacy format)
+    ///
     /// # Returns
     ///
     /// `true` if all dense embeddings have correct dimensions, `false` otherwise.
@@ -560,6 +670,11 @@ impl SemanticFingerprint {
             && self.e8_graph_as_target.len() == E8_DIM)
             || self.e8_graph.len() == E8_DIM;
 
+        // E10 check: either new dual vectors OR legacy single vector
+        let e10_complete = (self.e10_multimodal_as_intent.len() == E10_DIM
+            && self.e10_multimodal_as_context.len() == E10_DIM)
+            || self.e10_multimodal.len() == E10_DIM;
+
         self.e1_semantic.len() == E1_DIM
             && self.e2_temporal_recent.len() == E2_DIM
             && self.e3_temporal_periodic.len() == E3_DIM
@@ -568,7 +683,7 @@ impl SemanticFingerprint {
             && self.e7_code.len() == E7_DIM
             && e8_complete
             && self.e9_hdc.len() == E9_DIM
-            && self.e10_multimodal.len() == E10_DIM
+            && e10_complete
             && self.e11_entity.len() == E11_DIM
     }
 
@@ -644,7 +759,7 @@ impl SemanticFingerprint {
             self.e7_code.clone(),
             self.e8_active_vector().to_vec(), // Use active E8 vector
             self.e9_hdc.clone(),
-            self.e10_multimodal.clone(),
+            self.e10_active_vector().to_vec(), // Use active E10 vector
             self.e11_entity.clone(),
             e12_pooled,
             self.e13_splade.to_dense(E13_SPLADE_VOCAB),
@@ -700,6 +815,8 @@ impl PartialEq for SemanticFingerprint {
             && self.e8_graph_as_target == other.e8_graph_as_target
             && self.e8_graph == other.e8_graph
             && self.e9_hdc == other.e9_hdc
+            && self.e10_multimodal_as_intent == other.e10_multimodal_as_intent
+            && self.e10_multimodal_as_context == other.e10_multimodal_as_context
             && self.e10_multimodal == other.e10_multimodal
             && self.e11_entity == other.e11_entity
             && self.e12_late_interaction == other.e12_late_interaction

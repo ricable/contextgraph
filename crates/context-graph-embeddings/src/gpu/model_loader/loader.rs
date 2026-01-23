@@ -11,7 +11,7 @@ use super::batch_loader;
 use super::config::BertConfig;
 use super::embedding_loader::{load_embeddings, load_pooler};
 use super::error::ModelLoadError;
-use super::layer_loader::load_encoder_layer;
+use super::layer_loader::{load_encoder_layer, load_mpnet_encoder_layer};
 use super::weights::BertWeights;
 use crate::gpu::init_gpu;
 
@@ -188,9 +188,14 @@ impl GpuModelLoader {
         let embeddings = load_embeddings(&vb, &config, model_dir, prefix)?;
 
         // Load encoder layers
+        // Use MPNet-specific loader for MPNet models (different weight naming)
         let mut encoder_layers = Vec::with_capacity(config.num_hidden_layers);
         for layer_idx in 0..config.num_hidden_layers {
-            let layer = load_encoder_layer(&vb, &config, layer_idx, model_dir, prefix)?;
+            let layer = if config.is_mpnet() {
+                load_mpnet_encoder_layer(&vb, &config, layer_idx, model_dir, prefix)?
+            } else {
+                load_encoder_layer(&vb, &config, layer_idx, model_dir, prefix)?
+            };
             encoder_layers.push(layer);
         }
 

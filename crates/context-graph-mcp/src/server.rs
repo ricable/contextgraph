@@ -7,7 +7,7 @@
 //!
 //! NO BACKWARDS COMPATIBILITY with stubs. FAIL FAST with clear errors.
 
-use std::io::{self, BufRead, Write};
+// NOTE: std::io removed - using tokio::io for async I/O (AP-08 compliance)
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -400,29 +400,51 @@ impl McpServer {
     }
 
     /// Run the server, reading from stdin and writing to stdout.
+    ///
+    /// CRITICAL: Uses tokio async I/O to avoid blocking the runtime.
+    /// AP-08 compliance: No sync I/O in async context.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - stdin read fails (broken pipe, closed stream)
+    /// - stdout write fails (broken pipe, closed stream)
+    /// - JSON serialization fails (should never happen with valid responses)
     pub async fn run(&self) -> Result<()> {
-        let stdin = io::stdin();
-        let stdout = io::stdout();
-        let mut stdout = stdout.lock();
+        // CRITICAL: Use tokio async I/O, NOT std::io blocking I/O
+        // This prevents blocking the runtime and causing deadlocks
+        // when background tasks (like model loading) need to progress.
+        let stdin = tokio::io::stdin();
+        let stdout = tokio::io::stdout();
+        let mut reader = BufReader::new(stdin);
+        let mut writer = tokio::io::BufWriter::new(stdout);
+        let mut line = String::new();
 
         info!("Server ready, waiting for requests (TeleologicalMemoryStore mode)...");
 
-        for line in stdin.lock().lines() {
-            let line = match line {
-                Ok(l) => l,
-                Err(e) => {
-                    error!("Error reading stdin: {}", e);
-                    break;
-                }
-            };
+        loop {
+            line.clear();
 
-            if line.trim().is_empty() {
+            // Async read line - does NOT block the runtime
+            let bytes_read = reader.read_line(&mut line).await.map_err(|e| {
+                error!("FATAL: Failed to read from stdin: {}", e);
+                anyhow::anyhow!("stdin read error: {}", e)
+            })?;
+
+            // EOF - client closed connection
+            if bytes_read == 0 {
+                info!("stdin closed (EOF), shutting down...");
+                break;
+            }
+
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
                 continue;
             }
 
-            debug!("Received: {}", line);
+            debug!("Received: {}", trimmed);
 
-            let response = self.handle_request(&line).await;
+            let response = self.handle_request(trimmed).await;
 
             // Handle notifications (no response needed)
             if response.id.is_none() && response.result.is_none() && response.error.is_none() {
@@ -434,13 +456,16 @@ impl McpServer {
             debug!("Sending: {}", response_json);
 
             // MCP requires newline-delimited JSON on stdout
-            writeln!(stdout, "{}", response_json)?;
-            stdout.flush()?;
-
-            // Check for shutdown
-            if !*self.initialized.read().await {
-                // Not initialized yet, continue
-            }
+            // Use async write to avoid blocking
+            writer.write_all(response_json.as_bytes()).await.map_err(|e| {
+                error!("FATAL: Failed to write to stdout: {}", e);
+                anyhow::anyhow!("stdout write error: {}", e)
+            })?;
+            writer.write_all(b"\n").await?;
+            writer.flush().await.map_err(|e| {
+                error!("FATAL: Failed to flush stdout: {}", e);
+                anyhow::anyhow!("stdout flush error: {}", e)
+            })?;
         }
 
         // Gracefully shutdown background tasks

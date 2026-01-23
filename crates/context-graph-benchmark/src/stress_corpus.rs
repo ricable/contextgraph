@@ -586,59 +586,285 @@ pub fn build_e9_hdc_corpus() -> EmbedderStressConfig {
 
 /// Build E10 Multimodal stress test corpus.
 ///
-/// E10 captures cross-modal alignment between text and visual/intent concepts.
-/// E1 focuses on text semantics without visual understanding.
+/// E10 captures intent/context asymmetric relationships.
+/// - Intent: "What is this trying to accomplish?" (action-oriented)
+/// - Context: "What situation is this relevant to?" (situation-oriented)
+///
+/// E1 focuses on text semantics without understanding intent direction.
+/// E10 uses 1.2x boost for intent→context, 0.8x for context→intent.
 pub fn build_e10_multimodal_corpus() -> EmbedderStressConfig {
     EmbedderStressConfig {
         embedder: EmbedderIndex::E10Multimodal,
-        name: "E10 Multimodal",
-        description: "Cross-modal alignment for visual/intent concepts",
+        name: "E10 Multimodal (Intent/Context)",
+        description: "Intent/context asymmetric relationships with direction modifiers",
         corpus: vec![
+            // Performance optimization - same content, different intent
             StressCorpusEntry {
-                content: "The flowchart shows user registration with email verification. Arrows indicate the flow from signup form to confirmation email to account activation.".into(),
+                content: "Implemented caching for API responses to reduce latency. Added Redis cache layer with 5-minute TTL.".into(),
                 doc_id: 0,
-                e1_limitation: Some("Visual diagram description".into()),
-                metadata: None,
+                e1_limitation: Some("INTENT: Performance optimization goal".into()),
+                metadata: Some(serde_json::json!({
+                    "intent_direction": "intent",
+                    "domain": "performance"
+                })),
             },
             StressCorpusEntry {
-                content: "User registration requires email and password fields. The form validates input before submission.".into(),
+                content: "Implemented caching for API responses to reduce external API calls. Added Redis cache to minimize third-party charges.".into(),
                 doc_id: 1,
-                e1_limitation: Some("Text description without visual".into()),
-                metadata: None,
+                e1_limitation: Some("INTENT: Cost reduction goal".into()),
+                metadata: Some(serde_json::json!({
+                    "intent_direction": "intent",
+                    "domain": "cost_reduction"
+                })),
             },
             StressCorpusEntry {
-                content: "The diagram displays a circular workflow pattern where tasks cycle through planning, execution, and review phases.".into(),
+                content: "The API response times are too slow, causing user complaints. Dashboard shows p95 > 500ms.".into(),
                 doc_id: 2,
-                e1_limitation: Some("Different visual pattern".into()),
-                metadata: None,
+                e1_limitation: Some("CONTEXT: Performance problem situation".into()),
+                metadata: Some(serde_json::json!({
+                    "intent_direction": "context",
+                    "domain": "performance"
+                })),
             },
             StressCorpusEntry {
-                content: "The architecture diagram shows microservices connected through an API gateway. Each service has its own database.".into(),
+                content: "The monthly AWS bill exceeded budget due to excessive API Gateway calls. Cost breakdown shows 40% external API.".into(),
                 doc_id: 3,
-                e1_limitation: Some("Architecture visualization".into()),
-                metadata: None,
+                e1_limitation: Some("CONTEXT: Cost problem situation".into()),
+                metadata: Some(serde_json::json!({
+                    "intent_direction": "context",
+                    "domain": "cost_reduction"
+                })),
+            },
+
+            // Bug fixing domain
+            StressCorpusEntry {
+                content: "Fixed null pointer exception in user authentication by adding proper null checks before accessing session.".into(),
+                doc_id: 4,
+                e1_limitation: Some("INTENT: Bug fix action".into()),
+                metadata: Some(serde_json::json!({
+                    "intent_direction": "intent",
+                    "domain": "bugfix"
+                })),
             },
             StressCorpusEntry {
-                content: "Microservices communicate through APIs. Each service is independently deployable.".into(),
-                doc_id: 4,
-                e1_limitation: Some("Concept without visual".into()),
-                metadata: None,
+                content: "Users are getting logged out randomly. Error logs show NullPointerException in AuthService.validateSession().".into(),
+                doc_id: 5,
+                e1_limitation: Some("CONTEXT: Authentication bug situation".into()),
+                metadata: Some(serde_json::json!({
+                    "intent_direction": "context",
+                    "domain": "bugfix"
+                })),
+            },
+
+            // Refactoring domain
+            StressCorpusEntry {
+                content: "Refactored UserService to use dependency injection. Split monolithic class into Repository, Service, and Controller layers.".into(),
+                doc_id: 6,
+                e1_limitation: Some("INTENT: Code improvement action".into()),
+                metadata: Some(serde_json::json!({
+                    "intent_direction": "intent",
+                    "domain": "refactoring"
+                })),
+            },
+            StressCorpusEntry {
+                content: "The UserService class has grown to 2000 lines with mixed responsibilities. Unit testing is nearly impossible.".into(),
+                doc_id: 7,
+                e1_limitation: Some("CONTEXT: Code smell situation".into()),
+                metadata: Some(serde_json::json!({
+                    "intent_direction": "context",
+                    "domain": "refactoring"
+                })),
+            },
+
+            // Security domain
+            StressCorpusEntry {
+                content: "Implemented input sanitization and parameterized queries to prevent SQL injection attacks.".into(),
+                doc_id: 8,
+                e1_limitation: Some("INTENT: Security hardening action".into()),
+                metadata: Some(serde_json::json!({
+                    "intent_direction": "intent",
+                    "domain": "security"
+                })),
+            },
+            StressCorpusEntry {
+                content: "Security audit found SQL injection vulnerability in search endpoint. Attacker can dump entire user table.".into(),
+                doc_id: 9,
+                e1_limitation: Some("CONTEXT: Security vulnerability situation".into()),
+                metadata: Some(serde_json::json!({
+                    "intent_direction": "context",
+                    "domain": "security"
+                })),
+            },
+
+            // Documentation domain
+            StressCorpusEntry {
+                content: "Added comprehensive API documentation with OpenAPI spec. Included request/response examples and error codes.".into(),
+                doc_id: 10,
+                e1_limitation: Some("INTENT: Documentation improvement action".into()),
+                metadata: Some(serde_json::json!({
+                    "intent_direction": "intent",
+                    "domain": "documentation"
+                })),
+            },
+            StressCorpusEntry {
+                content: "New developers struggle to understand the API. No documentation exists, only tribal knowledge.".into(),
+                doc_id: 11,
+                e1_limitation: Some("CONTEXT: Documentation gap situation".into()),
+                metadata: Some(serde_json::json!({
+                    "intent_direction": "context",
+                    "domain": "documentation"
+                })),
+            },
+
+            // Testing domain
+            StressCorpusEntry {
+                content: "Increased test coverage from 40% to 85% by adding unit tests for all service methods and integration tests for API endpoints.".into(),
+                doc_id: 12,
+                e1_limitation: Some("INTENT: Testing improvement action".into()),
+                metadata: Some(serde_json::json!({
+                    "intent_direction": "intent",
+                    "domain": "testing"
+                })),
+            },
+            StressCorpusEntry {
+                content: "Production bugs keep recurring because there are almost no tests. Coverage report shows only 40% of critical paths tested.".into(),
+                doc_id: 13,
+                e1_limitation: Some("CONTEXT: Testing gap situation".into()),
+                metadata: Some(serde_json::json!({
+                    "intent_direction": "context",
+                    "domain": "testing"
+                })),
+            },
+
+            // Feature development domain
+            StressCorpusEntry {
+                content: "Implemented user notification system with email, SMS, and push notification channels. Added preference management.".into(),
+                doc_id: 14,
+                e1_limitation: Some("INTENT: Feature implementation action".into()),
+                metadata: Some(serde_json::json!({
+                    "intent_direction": "intent",
+                    "domain": "feature"
+                })),
+            },
+            StressCorpusEntry {
+                content: "Users are requesting notification features. Currently no way to alert users about important updates.".into(),
+                doc_id: 15,
+                e1_limitation: Some("CONTEXT: Feature request situation".into()),
+                metadata: Some(serde_json::json!({
+                    "intent_direction": "context",
+                    "domain": "feature"
+                })),
+            },
+
+            // Infrastructure domain
+            StressCorpusEntry {
+                content: "Deployed Kubernetes cluster with auto-scaling and load balancing. Set up CI/CD pipeline for automated deployments.".into(),
+                doc_id: 16,
+                e1_limitation: Some("INTENT: Infrastructure setup action".into()),
+                metadata: Some(serde_json::json!({
+                    "intent_direction": "intent",
+                    "domain": "infrastructure"
+                })),
+            },
+            StressCorpusEntry {
+                content: "Current deployment is manual and error-prone. Single server cannot handle traffic spikes during peak hours.".into(),
+                doc_id: 17,
+                e1_limitation: Some("CONTEXT: Infrastructure limitation situation".into()),
+                metadata: Some(serde_json::json!({
+                    "intent_direction": "context",
+                    "domain": "infrastructure"
+                })),
             },
         ],
         queries: vec![
+            // Intent queries (searching by goal/action)
             StressQuery {
-                query: "registration flow diagram".into(),
+                query: "find work focused on making the system faster".into(),
                 target_embedder: EmbedderIndex::E10Multimodal,
-                expected_top_docs: vec![0],
-                anti_expected_docs: vec![1],
-                e1_failure_reason: "E1 doesn't understand 'flow diagram' as visual concept".into(),
+                expected_top_docs: vec![0], // Caching for performance
+                anti_expected_docs: vec![1], // Caching for cost reduction (same action, different intent)
+                e1_failure_reason: "E1 sees both as caching implementations, misses intent difference".into(),
             },
             StressQuery {
-                query: "microservices architecture diagram".into(),
+                query: "what was done to fix authentication bugs".into(),
                 target_embedder: EmbedderIndex::E10Multimodal,
-                expected_top_docs: vec![3],
-                anti_expected_docs: vec![4],
-                e1_failure_reason: "E1 treats both as microservices text".into(),
+                expected_top_docs: vec![4], // NPE fix (intent/action)
+                anti_expected_docs: vec![5], // Bug report (context/situation)
+                e1_failure_reason: "E1 matches both as auth-related, misses intent vs context".into(),
+            },
+            StressQuery {
+                query: "find code improvement refactoring work".into(),
+                target_embedder: EmbedderIndex::E10Multimodal,
+                expected_top_docs: vec![6], // Refactoring action
+                anti_expected_docs: vec![7], // Code smell situation
+                e1_failure_reason: "E1 sees both as refactoring-related".into(),
+            },
+            StressQuery {
+                query: "what security hardening was implemented".into(),
+                target_embedder: EmbedderIndex::E10Multimodal,
+                expected_top_docs: vec![8], // SQL injection fix
+                anti_expected_docs: vec![9], // Security audit finding
+                e1_failure_reason: "E1 treats both as security-related equally".into(),
+            },
+            StressQuery {
+                query: "find testing improvements that were made".into(),
+                target_embedder: EmbedderIndex::E10Multimodal,
+                expected_top_docs: vec![12], // Test coverage increase
+                anti_expected_docs: vec![13], // Testing gap report
+                e1_failure_reason: "E1 matches all testing-related content".into(),
+            },
+
+            // Context queries (searching by situation)
+            StressQuery {
+                query: "slow API response times causing user issues".into(),
+                target_embedder: EmbedderIndex::E10Multimodal,
+                expected_top_docs: vec![2], // Performance problem context
+                anti_expected_docs: vec![0], // Caching implementation (intent)
+                e1_failure_reason: "E1 sees both as performance-related".into(),
+            },
+            StressQuery {
+                query: "code is messy and hard to test".into(),
+                target_embedder: EmbedderIndex::E10Multimodal,
+                expected_top_docs: vec![7], // Code smell context
+                anti_expected_docs: vec![6], // Refactoring action
+                e1_failure_reason: "E1 doesn't distinguish problem from solution".into(),
+            },
+            StressQuery {
+                query: "security vulnerability found in production".into(),
+                target_embedder: EmbedderIndex::E10Multimodal,
+                expected_top_docs: vec![9], // Security audit context
+                anti_expected_docs: vec![8], // Security fix intent
+                e1_failure_reason: "E1 matches all security content".into(),
+            },
+            StressQuery {
+                query: "new developers confused about how things work".into(),
+                target_embedder: EmbedderIndex::E10Multimodal,
+                expected_top_docs: vec![11], // Documentation gap context
+                anti_expected_docs: vec![10], // Documentation action
+                e1_failure_reason: "E1 sees both as documentation-related".into(),
+            },
+            StressQuery {
+                query: "users requesting new notification capabilities".into(),
+                target_embedder: EmbedderIndex::E10Multimodal,
+                expected_top_docs: vec![15], // Feature request context
+                anti_expected_docs: vec![14], // Feature implementation
+                e1_failure_reason: "E1 treats request and implementation the same".into(),
+            },
+
+            // Mixed intent/context queries
+            StressQuery {
+                query: "find what solved the random logout problem".into(),
+                target_embedder: EmbedderIndex::E10Multimodal,
+                expected_top_docs: vec![4], // NPE fix (solution intent)
+                anti_expected_docs: vec![5], // Bug report (problem context)
+                e1_failure_reason: "Query asks for solution (intent), E1 doesn't understand".into(),
+            },
+            StressQuery {
+                query: "what infrastructure improvements support scaling".into(),
+                target_embedder: EmbedderIndex::E10Multimodal,
+                expected_top_docs: vec![16], // K8s deployment (intent)
+                anti_expected_docs: vec![17], // Scaling problem (context)
+                e1_failure_reason: "E1 matches both as infrastructure-related".into(),
             },
         ],
     }

@@ -1,16 +1,27 @@
 //! Embedding layer weight loading for BERT models.
 //!
 //! Loads word, position, token_type embeddings and LayerNorm from safetensors.
+//!
+//! Note: token_type_embeddings is optional for models like MPNet that don't use them.
+//! If not present in the model file, a zeros tensor is created instead.
 
 use candle_nn::VarBuilder;
 use std::path::Path;
 
 use super::config::BertConfig;
 use super::error::ModelLoadError;
-use super::tensor_utils::get_tensor;
+use super::tensor_utils::{get_tensor, get_tensor_or_zeros};
 use super::weights::{EmbeddingWeights, PoolerWeights};
 
 /// Load embedding layer weights with optional model prefix.
+///
+/// # Token Type Embeddings
+///
+/// Some models like MPNet don't have token_type_embeddings. If not found in the
+/// model file, a zeros tensor is created. This works because:
+/// - MPNet always uses token_type_id=0 for all tokens
+/// - Looking up index 0 in a zeros tensor returns all zeros
+/// - Adding zeros to word+position embeddings has no effect
 pub fn load_embeddings(
     vb: &VarBuilder,
     config: &BertConfig,
@@ -32,6 +43,9 @@ pub fn load_embeddings(
         &model_path,
     )?;
 
+    // Get device from word_embeddings for creating optional tensors
+    let device = word_embeddings.device().clone();
+
     // Position embeddings: [max_position_embeddings, hidden_size]
     let position_embeddings = get_tensor(
         vb,
@@ -41,11 +55,13 @@ pub fn load_embeddings(
     )?;
 
     // Token type embeddings: [type_vocab_size, hidden_size]
-    let token_type_embeddings = get_tensor(
+    // OPTIONAL: MPNet and some other models don't have this.
+    // If not present, we create a zeros tensor (since token_type_id=0 always).
+    let token_type_embeddings = get_tensor_or_zeros(
         vb,
         &format!("{}.token_type_embeddings.weight", prefix),
         &[config.type_vocab_size, config.hidden_size],
-        &model_path,
+        &device,
     )?;
 
     // LayerNorm

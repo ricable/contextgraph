@@ -13,6 +13,8 @@
 pub mod causal;
 pub mod clustering;
 pub mod divergence;
+pub mod mcp_intent;
+pub mod multimodal;
 pub mod performance;
 pub mod retrieval;
 pub mod sparse;
@@ -21,6 +23,11 @@ pub mod temporal_realdata;
 pub mod validation;
 
 pub use causal::CausalMetrics;
+pub use multimodal::{
+    AsymmetricRetrievalMetrics, AsymmetricRetrievalResult, BlendAnalysisPoint,
+    ContextMatchingMetrics, ContextMatchingResult, E10AblationMetrics, E10MultimodalMetrics,
+    IntentDetectionMetrics, IntentDetectionResult,
+};
 pub use clustering::ClusteringMetrics;
 pub use divergence::DivergenceMetrics;
 pub use performance::PerformanceMetrics;
@@ -31,6 +38,14 @@ pub use sparse::{
 };
 pub use temporal::TemporalMetrics;
 pub use temporal_realdata::TemporalRealdataMetrics;
+pub use mcp_intent::{
+    AsymmetricPairResult, AsymmetricValidationMetrics, BlendSweepPoint as MCPBlendSweepPoint,
+    ConstitutionalComplianceMetrics, E10EnhancementMetrics, MCPIntentMetrics,
+    MCPToolMetrics, RuleComplianceResult, ToolMetrics as MCPToolMetric,
+    compute_mrr as mcp_compute_mrr, compute_ndcg_at_k as mcp_compute_ndcg,
+    compute_percentile as mcp_compute_percentile, compute_precision_at_k as mcp_compute_precision,
+    compute_recall_at_k as mcp_compute_recall,
+};
 pub use validation::{
     ValidationMetrics, ToolValidationMetrics, TestCaseResult,
     BoundaryTestConfig, BoundaryTestValue, sequence_tool_boundary_configs,

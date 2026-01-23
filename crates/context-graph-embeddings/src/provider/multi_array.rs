@@ -57,13 +57,13 @@ use context_graph_core::traits::{
     SparseEmbedder, TokenEmbedder,
 };
 use context_graph_core::types::fingerprint::{
-    SemanticFingerprint, SparseVector, E10_DIM, E11_DIM, E12_TOKEN_DIM, E1_DIM, E2_DIM, E3_DIM,
-    E4_DIM, E7_DIM, E8_DIM, E9_DIM, NUM_EMBEDDERS,
+    SemanticFingerprint, SparseVector, E11_DIM, E12_TOKEN_DIM, E1_DIM, E2_DIM, E3_DIM, E4_DIM,
+    E7_DIM, E9_DIM, NUM_EMBEDDERS,
 };
 
 use crate::config::GpuConfig;
 use crate::error::EmbeddingResult;
-use crate::models::pretrained::{CausalModel, GraphModel};
+use crate::models::pretrained::{CausalModel, ContextualModel, GraphModel};
 use crate::models::DefaultModelFactory;
 use crate::traits::{EmbeddingModel, ModelFactory, SingleModelConfig};
 use crate::types::{ModelId, ModelInput};
@@ -447,6 +447,72 @@ unsafe impl Send for GraphDualEmbedderAdapter {}
 unsafe impl Sync for GraphDualEmbedderAdapter {}
 
 // ============================================================================
+// CONTEXTUAL (E10) DUAL EMBEDDER ADAPTER - Asymmetric Intent/Context
+// ============================================================================
+
+/// Adapter for E10 ContextualModel that produces dual (intent, context) embeddings.
+///
+/// Following the E5 Causal and E8 Graph patterns (ARCH-15), this adapter enables
+/// asymmetric similarity for intent-context relationships where direction matters:
+/// - **Intent embedding**: "What is this text trying to accomplish?" (action-focused)
+/// - **Context embedding**: "What context does this establish?" (relation-focused)
+///
+/// Direction modifiers (per plan):
+/// - intent→context: 1.2x (query intent finds relevant context)
+/// - context→intent: 0.8x (dampened reverse direction)
+struct ContextualDualEmbedderAdapter {
+    /// Direct reference to ContextualModel (not wrapped in EmbeddingModel trait)
+    model: Arc<ContextualModel>,
+}
+
+impl ContextualDualEmbedderAdapter {
+    /// Create a new ContextualDualEmbedderAdapter.
+    ///
+    /// # Arguments
+    /// * `model` - ContextualModel instance (must be loaded before use)
+    fn new(model: ContextualModel) -> Self {
+        Self {
+            model: Arc::new(model),
+        }
+    }
+
+    /// Embed content as both intent and context roles.
+    ///
+    /// Returns (intent_vector, context_vector) where each is 768D.
+    /// The vectors are genuinely different due to learned projections.
+    ///
+    /// # Errors
+    /// - `CoreError::Internal` if model not initialized
+    /// - `CoreError::Embedding` if embedding fails
+    async fn embed_dual(&self, content: &str) -> CoreResult<(Vec<f32>, Vec<f32>)> {
+        if content.is_empty() {
+            return Err(CoreError::ValidationError {
+                field: "content".to_string(),
+                message: "Content cannot be empty".to_string(),
+            });
+        }
+
+        if !self.model.is_initialized() {
+            return Err(CoreError::Internal(
+                "ContextualModel not initialized for dual embedding".to_string(),
+            ));
+        }
+
+        self.model.embed_dual(content).await.map_err(|e| {
+            CoreError::Embedding(format!("E10 dual embedding failed: {}", e))
+        })
+    }
+
+    /// Check if the model is ready for embedding.
+    fn is_ready(&self) -> bool {
+        self.model.is_initialized()
+    }
+}
+
+unsafe impl Send for ContextualDualEmbedderAdapter {}
+unsafe impl Sync for ContextualDualEmbedderAdapter {}
+
+// ============================================================================
 // PRODUCTION MULTI-ARRAY PROVIDER
 // ============================================================================
 
@@ -497,8 +563,11 @@ pub struct ProductionMultiArrayProvider {
     e8_graph: Arc<GraphDualEmbedderAdapter>,
     /// E9: HDC embedder (hyperdimensional, 1024D projected)
     e9_hdc: Arc<dyn SingleEmbedder>,
-    /// E10: Multimodal embedder (CLIP, 768D)
-    e10_multimodal: Arc<dyn SingleEmbedder>,
+    /// E10: Contextual embedder (MPNet, 768D) - DUAL embedder for asymmetric similarity
+    ///
+    /// Per E10 Upgrade: Uses ContextualDualEmbedderAdapter to produce genuinely different
+    /// vectors for intent vs context roles.
+    e10_contextual: Arc<ContextualDualEmbedderAdapter>,
     /// E11: Entity embedder (MiniLM, 384D)
     e11_entity: Arc<dyn SingleEmbedder>,
     /// E12: Late-Interaction embedder (ColBERT, 128D per token)
@@ -557,7 +626,11 @@ impl ProductionMultiArrayProvider {
         // E8: Create GraphModel directly for dual embedding support (E8 Upgrade)
         let e8_graph_model = GraphModel::new(&models_dir.join("graph"), config.clone())?;
         let e9_model = factory.create_model(ModelId::Hdc, &config)?;
-        let e10_model = factory.create_model(ModelId::Multimodal, &config)?;
+
+        // E10: Create ContextualModel directly for dual embedding support (E10 Upgrade)
+        let e10_contextual_model =
+            ContextualModel::new(&models_dir.join("contextual"), config.clone())?;
+
         let e11_model = factory.create_model(ModelId::Entity, &config)?;
         let e12_model = factory.create_model(ModelId::LateInteraction, &config)?;
         let e13_model = factory.create_model(ModelId::Splade, &config)?;
@@ -575,7 +648,7 @@ impl ProductionMultiArrayProvider {
         e7_model.load().await?;
         e8_graph_model.load().await?; // E8 loaded directly for dual embedding
         e9_model.load().await?;
-        e10_model.load().await?;
+        e10_contextual_model.load().await?; // E10 loaded directly for dual embedding
         e11_model.load().await?;
         e12_model.load().await?;
         e13_model.load().await?;
@@ -618,11 +691,11 @@ impl ProductionMultiArrayProvider {
             Arc::new(GraphDualEmbedderAdapter::new(e8_graph_model));
         let e9_hdc: Arc<dyn SingleEmbedder> =
             Arc::new(DenseEmbedderAdapter::new(e9_model, ModelId::Hdc, E9_DIM));
-        let e10_multimodal: Arc<dyn SingleEmbedder> = Arc::new(DenseEmbedderAdapter::new(
-            e10_model,
-            ModelId::Multimodal,
-            E10_DIM,
-        ));
+
+        // E10: Use ContextualDualEmbedderAdapter for asymmetric embeddings (E10 Upgrade)
+        let e10_contextual: Arc<ContextualDualEmbedderAdapter> =
+            Arc::new(ContextualDualEmbedderAdapter::new(e10_contextual_model));
+
         let e11_entity: Arc<dyn SingleEmbedder> = Arc::new(DenseEmbedderAdapter::new(
             e11_model,
             ModelId::Entity,
@@ -661,7 +734,7 @@ impl ProductionMultiArrayProvider {
             e7_code,
             e8_graph,
             e9_hdc,
-            e10_multimodal,
+            e10_contextual,
             e11_entity,
             e12_late_interaction,
             e13_splade,
@@ -731,7 +804,7 @@ impl MultiArrayEmbeddingProvider for ProductionMultiArrayProvider {
         let e7 = Arc::clone(&self.e7_code);
         let e8 = Arc::clone(&self.e8_graph);
         let e9 = Arc::clone(&self.e9_hdc);
-        let e10 = Arc::clone(&self.e10_multimodal);
+        let e10 = Arc::clone(&self.e10_contextual);
         let e11 = Arc::clone(&self.e11_entity);
         let e12 = Arc::clone(&self.e12_late_interaction);
         let e13 = Arc::clone(&self.e13_splade);
@@ -790,9 +863,9 @@ impl MultiArrayEmbeddingProvider for ProductionMultiArrayProvider {
                 let c = content_owned.clone();
                 async move { e9.embed(&c).await }
             }),
-            Self::timed_embed("E10_Multimodal", {
+            Self::timed_embed("E10_Contextual_Dual", {
                 let c = content_owned.clone();
-                async move { e10.embed(&c).await }
+                async move { e10.embed_dual(&c).await }
             }),
             Self::timed_embed("E11_Entity", {
                 let c = content_owned.clone();
@@ -824,14 +897,17 @@ impl MultiArrayEmbeddingProvider for ProductionMultiArrayProvider {
         let (e8_source_vec, e8_target_vec) = r8?;
 
         let e9_vec = r9?;
-        let e10_vec = r10?;
+
+        // E10: embed_dual returns (intent_vec, context_vec) for asymmetric similarity (E10 Upgrade)
+        let (e10_intent_vec, e10_context_vec) = r10?;
+
         let e11_vec = r11?;
         let e12_tokens = r12?;
         let e13_sparse = r13?;
 
         let total_latency = start.elapsed();
 
-        // Construct fingerprint with asymmetric E5 and E8 vectors
+        // Construct fingerprint with asymmetric E5, E8, and E10 vectors
         let fingerprint = SemanticFingerprint {
             e1_semantic: e1_vec,
             e2_temporal_recent: e2_vec,
@@ -846,7 +922,10 @@ impl MultiArrayEmbeddingProvider for ProductionMultiArrayProvider {
             e8_graph_as_target: e8_target_vec,
             e8_graph: Vec::new(), // Empty - using new dual format
             e9_hdc: e9_vec,
-            e10_multimodal: e10_vec,
+            // E10: Using new dual format (E10 Upgrade)
+            e10_multimodal_as_intent: e10_intent_vec,
+            e10_multimodal_as_context: e10_context_vec,
+            e10_multimodal: Vec::new(), // Empty - using new dual format
             e11_entity: e11_vec,
             e12_late_interaction: e12_tokens,
             e13_splade: e13_sparse,
@@ -901,7 +980,7 @@ impl MultiArrayEmbeddingProvider for ProductionMultiArrayProvider {
         let e7 = Arc::clone(&self.e7_code);
         let e8 = Arc::clone(&self.e8_graph);
         let e9 = Arc::clone(&self.e9_hdc);
-        let e10 = Arc::clone(&self.e10_multimodal);
+        let e10 = Arc::clone(&self.e10_contextual);
         let e11 = Arc::clone(&self.e11_entity);
         let e12 = Arc::clone(&self.e12_late_interaction);
         let e13 = Arc::clone(&self.e13_splade);
@@ -965,9 +1044,9 @@ impl MultiArrayEmbeddingProvider for ProductionMultiArrayProvider {
                 let c = content_owned.clone();
                 async move { e9.embed(&c).await }
             }),
-            Self::timed_embed("E10_Multimodal", {
+            Self::timed_embed("E10_Contextual_Dual", {
                 let c = content_owned.clone();
-                async move { e10.embed(&c).await }
+                async move { e10.embed_dual(&c).await }
             }),
             Self::timed_embed("E11_Entity", {
                 let c = content_owned.clone();
@@ -999,14 +1078,17 @@ impl MultiArrayEmbeddingProvider for ProductionMultiArrayProvider {
         let (e8_source_vec, e8_target_vec) = r8?;
 
         let e9_vec = r9?;
-        let e10_vec = r10?;
+
+        // E10: embed_dual returns (intent_vec, context_vec) for asymmetric similarity (E10 Upgrade)
+        let (e10_intent_vec, e10_context_vec) = r10?;
+
         let e11_vec = r11?;
         let e12_tokens = r12?;
         let e13_sparse = r13?;
 
         let total_latency = start.elapsed();
 
-        // Construct fingerprint with asymmetric E5 and E8 vectors
+        // Construct fingerprint with asymmetric E5, E8, and E10 vectors
         let fingerprint = SemanticFingerprint {
             e1_semantic: e1_vec,
             e2_temporal_recent: e2_vec,
@@ -1021,7 +1103,10 @@ impl MultiArrayEmbeddingProvider for ProductionMultiArrayProvider {
             e8_graph_as_target: e8_target_vec,
             e8_graph: Vec::new(), // Empty - using new dual format
             e9_hdc: e9_vec,
-            e10_multimodal: e10_vec,
+            // E10: Using new dual format (E10 Upgrade)
+            e10_multimodal_as_intent: e10_intent_vec,
+            e10_multimodal_as_context: e10_context_vec,
+            e10_multimodal: Vec::new(), // Empty - using new dual format
             e11_entity: e11_vec,
             e12_late_interaction: e12_tokens,
             e13_splade: e13_sparse,
@@ -1086,7 +1171,7 @@ impl MultiArrayEmbeddingProvider for ProductionMultiArrayProvider {
             && self.e7_code.is_ready()
             && self.e8_graph.is_ready()
             && self.e9_hdc.is_ready()
-            && self.e10_multimodal.is_ready()
+            && self.e10_contextual.is_ready()
             && self.e11_entity.is_ready()
             && self.e12_late_interaction.is_ready()
             && self.e13_splade.is_ready()
@@ -1104,7 +1189,7 @@ impl MultiArrayEmbeddingProvider for ProductionMultiArrayProvider {
             self.e7_code.is_ready(),
             self.e8_graph.is_ready(),
             self.e9_hdc.is_ready(),
-            self.e10_multimodal.is_ready(),
+            self.e10_contextual.is_ready(),
             self.e11_entity.is_ready(),
             self.e12_late_interaction.is_ready(),
             self.e13_splade.is_ready(),

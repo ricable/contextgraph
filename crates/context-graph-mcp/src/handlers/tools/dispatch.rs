@@ -118,6 +118,12 @@ impl Handlers {
             tool_names::SEARCH_CONNECTIONS => self.call_search_connections(id, arguments).await,
             tool_names::GET_GRAPH_PATH => self.call_get_graph_path(id, arguments).await,
 
+            // ========== INTENT TOOLS (E10 Intent/Context Upgrade) ==========
+            tool_names::SEARCH_BY_INTENT => self.call_search_by_intent(id, arguments).await,
+            tool_names::FIND_CONTEXTUAL_MATCHES => {
+                self.call_find_contextual_matches(id, arguments).await
+            }
+
             // Unknown tool
             _ => JsonRpcResponse::error(
                 id,

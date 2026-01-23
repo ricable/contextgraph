@@ -14,6 +14,7 @@
 
 mod causal;
 mod code;
+mod contextual;
 mod entity;
 mod graph;
 mod late_interaction;
@@ -24,6 +25,14 @@ mod sparse;
 pub use causal::{
     CausalModel, CAUSAL_DIMENSION, CAUSAL_LATENCY_BUDGET_MS, CAUSAL_MAX_TOKENS,
     DEFAULT_ATTENTION_WINDOW,
+};
+pub use contextual::{
+    context_pooling_weights, detect_context_markers, intent_pooling_weights,
+    ContextMarkerResult, ContextProjectionWeights, ContextType, ContextualModel,
+    CONTEXTUAL_DIMENSION, CONTEXTUAL_HIDDEN_SIZE, CONTEXTUAL_INTERMEDIATE_SIZE,
+    CONTEXTUAL_LATENCY_BUDGET_MS, CONTEXTUAL_LAYER_NORM_EPS, CONTEXTUAL_MAX_TOKENS,
+    CONTEXTUAL_MODEL_NAME, CONTEXTUAL_NUM_HEADS, CONTEXTUAL_NUM_LAYERS, CONTEXTUAL_VOCAB_SIZE,
+    CONTEXT_PROJECTION_SEED,
 };
 pub use code::{
     CodeModel, CODE_LATENCY_BUDGET_MS, CODE_MAX_TOKENS, CODE_MODEL_NAME, CODE_NATIVE_DIMENSION,

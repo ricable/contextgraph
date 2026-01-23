@@ -598,7 +598,8 @@ pub fn quantize_fingerprint(
     // For E5, we quantize the active vector (cause vector takes precedence over legacy)
     let e5_causal = quantize_pq8(fp.e5_active_vector(), E5_DIM / 32, Embedder::Causal)?; // 24 subvectors
     let e7_code = quantize_pq8(&fp.e7_code, E7_DIM / 32, Embedder::Code)?; // 48 subvectors
-    let e10_multimodal = quantize_pq8(&fp.e10_multimodal, E10_DIM / 32, Embedder::Multimodal)?; // 24 subvectors
+    // For E10, we quantize the active vector (intent vector takes precedence over legacy)
+    let e10_multimodal = quantize_pq8(fp.e10_active_vector(), E10_DIM / 32, Embedder::Multimodal)?; // 24 subvectors
 
     // Float8 quantization for temporal and relational embeddings
     let e2_temporal_recent =
@@ -607,7 +608,8 @@ pub fn quantize_fingerprint(
         quantize_float8_slice(&fp.e3_temporal_periodic, Embedder::TemporalPeriodic)?;
     let e4_temporal_positional =
         quantize_float8_slice(&fp.e4_temporal_positional, Embedder::TemporalPositional)?;
-    let e8_graph = quantize_float8_slice(&fp.e8_graph, Embedder::Emotional)?;
+    // For E8, we quantize the active vector (source vector takes precedence over legacy)
+    let e8_graph = quantize_float8_slice(fp.e8_active_vector(), Embedder::Emotional)?;
     let e9_hdc = quantize_float8_slice(&fp.e9_hdc, Embedder::Hdc)?;
     let e11_entity = quantize_float8_slice(&fp.e11_entity, Embedder::Entity)?;
 
@@ -702,7 +704,11 @@ pub fn dequantize_fingerprint(
         e8_graph_as_target: e8_graph,
         e8_graph: Vec::new(), // Using new dual format
         e9_hdc,
-        e10_multimodal,
+        // E10: Using new dual format after dequantization
+        // (quantization loses dual distinction, reconstruct symmetrically when loaded)
+        e10_multimodal_as_intent: e10_multimodal.clone(),
+        e10_multimodal_as_context: e10_multimodal,
+        e10_multimodal: Vec::new(), // Using new dual format
         e11_entity,
         e12_late_interaction,
         e13_splade,
@@ -717,12 +723,12 @@ fn validate_fingerprint_dimensions(
     check_dim(fp.e2_temporal_recent.len(), E2_DIM, Embedder::TemporalRecent)?;
     check_dim(fp.e3_temporal_periodic.len(), E3_DIM, Embedder::TemporalPeriodic)?;
     check_dim(fp.e4_temporal_positional.len(), E4_DIM, Embedder::TemporalPositional)?;
-    // Use active vector for E5 validation (handles both new and legacy formats)
+    // Use active vectors for E5, E8, E10 validation (handles both new and legacy formats)
     check_dim(fp.e5_active_vector().len(), E5_DIM, Embedder::Causal)?;
     check_dim(fp.e7_code.len(), E7_DIM, Embedder::Code)?;
-    check_dim(fp.e8_graph.len(), E8_DIM, Embedder::Emotional)?;
+    check_dim(fp.e8_active_vector().len(), E8_DIM, Embedder::Emotional)?;
     check_dim(fp.e9_hdc.len(), E9_DIM, Embedder::Hdc)?;
-    check_dim(fp.e10_multimodal.len(), E10_DIM, Embedder::Multimodal)?;
+    check_dim(fp.e10_active_vector().len(), E10_DIM, Embedder::Multimodal)?;
     check_dim(fp.e11_entity.len(), E11_DIM, Embedder::Entity)?;
 
     // Validate E12 token dimensions (NaN/Infinity checked during quantization)
@@ -768,13 +774,21 @@ mod tests {
         for (i, v) in fp.e7_code.iter_mut().enumerate() {
             *v = (i as f32 / 1536.0) * 2.0 - 1.0;
         }
-        for (i, v) in fp.e8_graph.iter_mut().enumerate() {
+        // E8 now uses dual vectors for asymmetric graph similarity
+        for (i, v) in fp.e8_graph_as_source.iter_mut().enumerate() {
+            *v = (i as f32 / 384.0) * 2.0 - 1.0;
+        }
+        for (i, v) in fp.e8_graph_as_target.iter_mut().enumerate() {
             *v = (i as f32 / 384.0) * 2.0 - 1.0;
         }
         for (i, v) in fp.e9_hdc.iter_mut().enumerate() {
             *v = (i as f32 / 1024.0) * 2.0 - 1.0;
         }
-        for (i, v) in fp.e10_multimodal.iter_mut().enumerate() {
+        // E10 now uses dual vectors for asymmetric intent/context similarity
+        for (i, v) in fp.e10_multimodal_as_intent.iter_mut().enumerate() {
+            *v = (i as f32 / 768.0) * 2.0 - 1.0;
+        }
+        for (i, v) in fp.e10_multimodal_as_context.iter_mut().enumerate() {
             *v = (i as f32 / 768.0) * 2.0 - 1.0;
         }
         for (i, v) in fp.e11_entity.iter_mut().enumerate() {
@@ -1034,7 +1048,8 @@ mod tests {
         let recovered = dequantize_fingerprint(&qfp).expect("dequantization failed");
 
         // Check Float8 embeddings (E2, E3, E4, E8, E9, E11)
-        let pairs = [
+        // E8 now uses dual vectors - use active_vector() accessor
+        let pairs: [(&str, &[f32], &[f32]); 6] = [
             ("E2", &fp.e2_temporal_recent, &recovered.e2_temporal_recent),
             (
                 "E3",
@@ -1046,7 +1061,7 @@ mod tests {
                 &fp.e4_temporal_positional,
                 &recovered.e4_temporal_positional,
             ),
-            ("E8", &fp.e8_graph, &recovered.e8_graph),
+            ("E8", fp.e8_active_vector(), recovered.e8_active_vector()),
             ("E9", &fp.e9_hdc, &recovered.e9_hdc),
             ("E11", &fp.e11_entity, &recovered.e11_entity),
         ];
@@ -1075,12 +1090,12 @@ mod tests {
 
         // Check PQ-8 embeddings (E1, E5, E7, E10)
         // Note: PQ-8 with mean-based approximation has higher error
-        // E5 now uses dual vectors for asymmetric causal similarity
+        // E5 and E10 now use dual vectors for asymmetric similarity
         let pairs: [(&str, &[f32], &[f32]); 4] = [
             ("E1", &fp.e1_semantic, &recovered.e1_semantic),
             ("E5", fp.e5_active_vector(), recovered.e5_active_vector()),
             ("E7", &fp.e7_code, &recovered.e7_code),
-            ("E10", &fp.e10_multimodal, &recovered.e10_multimodal),
+            ("E10", fp.e10_active_vector(), recovered.e10_active_vector()),
         ];
 
         for (name, original, recovered) in pairs {

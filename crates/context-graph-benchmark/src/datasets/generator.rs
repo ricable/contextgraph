@@ -188,7 +188,9 @@ impl DatasetGenerator {
             e8_graph_as_target: embeddings.e8,
             e8_graph: Vec::new(), // Empty - using new dual format
             e9_hdc: embeddings.e9,
-            e10_multimodal: embeddings.e10,
+            e10_multimodal_as_intent: embeddings.e10.clone(),
+            e10_multimodal_as_context: embeddings.e10,
+            e10_multimodal: Vec::new(), // Empty - using new dual format
             e11_entity: embeddings.e11,
             e12_late_interaction: self.generate_late_interaction(self.config.tokens_e12),
             e13_splade: self.generate_sparse(E13_SPLADE_VOCAB, self.config.sparse_entries_e13),
@@ -360,9 +362,15 @@ mod tests {
             assert_eq!(fp.e5_causal_as_effect.len(), E5_DIM);
             assert!(fp.e5_causal.is_empty(), "Legacy e5_causal should be empty");
             assert_eq!(fp.e7_code.len(), E7_DIM);
-            assert_eq!(fp.e8_graph.len(), E8_DIM);
+            // E8 uses dual vectors (source + target) for asymmetric graph similarity
+            assert_eq!(fp.e8_graph_as_source.len(), E8_DIM);
+            assert_eq!(fp.e8_graph_as_target.len(), E8_DIM);
+            assert!(fp.e8_graph.is_empty(), "Legacy e8_graph should be empty");
             assert_eq!(fp.e9_hdc.len(), E9_DIM);
-            assert_eq!(fp.e10_multimodal.len(), E10_DIM);
+            // E10 uses dual vectors (intent + context) for asymmetric multimodal similarity
+            assert_eq!(fp.e10_multimodal_as_intent.len(), E10_DIM);
+            assert_eq!(fp.e10_multimodal_as_context.len(), E10_DIM);
+            assert!(fp.e10_multimodal.is_empty(), "Legacy e10_multimodal should be empty");
             assert_eq!(fp.e11_entity.len(), E11_DIM);
         }
     }

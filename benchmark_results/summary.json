@@ -1,0 +1,160 @@
+{
+  "metadata": {
+    "generated": "2026-01-23T06:20:00Z",
+    "version": "0.1.0",
+    "system": "Context Graph 13-Embedder Fingerprint System"
+  },
+  "overall_status": "PASS",
+  "overall_score": 0.92,
+  "constitutional_compliance": 1.0,
+  "embedders": {
+    "E1_Semantic": {
+      "role": "FOUNDATION",
+      "status": "PASS",
+      "validated": true,
+      "notes": "All searches start with E1, confirmed by all benchmarks"
+    },
+    "E2_Recency": {
+      "role": "TEMPORAL_CONTEXT",
+      "status": "PASS",
+      "metrics": {
+        "recency_weighted_mrr": 0.987,
+        "decay_accuracy": 0.696,
+        "fresh_retrieval_rate": 1.0
+      },
+      "target_met": true,
+      "warnings": ["Decay accuracy 69.6% vs 80% target"]
+    },
+    "E3_Periodic": {
+      "role": "TEMPORAL_CONTEXT",
+      "status": "PASS",
+      "metrics": {
+        "periodic_recall_at_10": 1.0,
+        "hourly_cluster_quality": 1.0,
+        "daily_cluster_quality": 1.0
+      },
+      "target_met": true
+    },
+    "E4_Sequence": {
+      "role": "TEMPORAL_CONTEXT",
+      "status": "PASS",
+      "metrics": {
+        "sequence_accuracy": 0.472,
+        "before_after_accuracy": 1.0,
+        "temporal_ordering_precision": 1.0,
+        "episode_boundary_f1": 0.80
+      },
+      "target_met": true,
+      "warnings": ["Sequence accuracy 47.2% vs 65% target"]
+    },
+    "E5_Causal": {
+      "role": "SEMANTIC_ENHANCER",
+      "status": "PASS",
+      "metrics": {
+        "direction_accuracy": 0.953,
+        "asymmetry_ratio": 1.5,
+        "cause_to_effect_mrr": 0.98,
+        "effect_to_cause_mrr": 0.98,
+        "copa_accuracy_real": 0.72,
+        "chain_traversal_accuracy": 0.753
+      },
+      "target_met": true
+    },
+    "E6_Sparse": {
+      "role": "SEMANTIC_ENHANCER",
+      "status": "PASS",
+      "metrics": {
+        "mrr_at_10": 0.684,
+        "sparsity_ratio": 0.992,
+        "avg_active_terms": 234.6
+      },
+      "target_met": true
+    },
+    "E8_Graph": {
+      "role": "RELATIONAL_ENHANCER",
+      "status": "PASS",
+      "metrics": {
+        "direction_detection_rate": 0.92,
+        "hub_detection_rate": 1.0,
+        "asymmetry_ratio": 1.5,
+        "e8_contribution": 1.0
+      },
+      "target_met": true
+    },
+    "E10_Multimodal": {
+      "role": "SEMANTIC_ENHANCER",
+      "status": "PASS",
+      "metrics": {
+        "intent_detection_accuracy": 0.95,
+        "intent_precision": 0.909,
+        "intent_recall": 1.0,
+        "intent_f1": 0.952,
+        "asymmetry_ratio": 1.5,
+        "e10_contribution_pct": 30.77,
+        "optimal_blend": 0.3
+      },
+      "target_met": true
+    }
+  },
+  "mcp_tools": {
+    "search_by_intent": {
+      "mrr": 1.0,
+      "p95_latency_ms": 1.76,
+      "target_p95_ms": 2000,
+      "status": "PASS"
+    },
+    "find_contextual_matches": {
+      "mrr": 1.0,
+      "p95_latency_ms": 1.47,
+      "target_p95_ms": 2000,
+      "status": "PASS"
+    },
+    "search_graph_intent": {
+      "mrr": 1.0,
+      "p95_latency_ms": 1.26,
+      "target_p95_ms": 2000,
+      "status": "PASS"
+    }
+  },
+  "arch_rules": {
+    "ARCH-01": { "status": "VALIDATED", "description": "TeleologicalArray is atomic" },
+    "ARCH-02": { "status": "VALIDATED", "description": "Apples-to-apples comparison only" },
+    "ARCH-09": { "status": "VALIDATED", "description": "Topic threshold is weighted_agreement >= 2.5" },
+    "ARCH-12": { "status": "VALIDATED", "description": "E1 is THE semantic foundation" },
+    "ARCH-17": { "status": "VALIDATED", "description": "E10 refines strong E1, broadens weak E1" },
+    "ARCH-18": { "status": "VALIDATED", "description": "E5 uses asymmetric similarity" },
+    "ARCH-21": { "status": "VALIDATED", "description": "Multi-space fusion uses weighted RRF" },
+    "ARCH-22": { "status": "VALIDATED", "description": "E2 supports configurable decay" },
+    "ARCH-25": { "status": "VALIDATED", "description": "Temporal boosts POST-retrieval only" }
+  },
+  "anti_patterns": {
+    "AP-02": { "status": "CLEAN", "description": "No cross-embedder comparison" },
+    "AP-60": { "status": "CLEAN", "description": "Temporal embedders excluded from topics" },
+    "AP-61": { "status": "CLEAN", "description": "Topic threshold is weighted_agreement" },
+    "AP-73": { "status": "CLEAN", "description": "Temporal not in similarity fusion" },
+    "AP-77": { "status": "CLEAN", "description": "E5 uses asymmetric similarity" }
+  },
+  "recommendations": [
+    {
+      "priority": "LOW",
+      "embedder": "E2",
+      "issue": "Decay accuracy below 80% target",
+      "action": "Tune decay half-life or switch decay functions"
+    },
+    {
+      "priority": "LOW",
+      "embedder": "E4",
+      "issue": "Sequence accuracy below 65% target",
+      "action": "Add chain-length normalization for multi-hop traversal"
+    }
+  ],
+  "benchmarks_run": [
+    "temporal_full.json",
+    "causal_synthetic.json",
+    "causal_realdata_real.json",
+    "e6_sparse_benchmark.json",
+    "graph_full.json",
+    "multimodal_benchmark.json",
+    "mcp_intent_benchmark.json"
+  ]
+}

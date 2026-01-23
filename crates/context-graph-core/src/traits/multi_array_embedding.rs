@@ -882,9 +882,15 @@ mod tests {
         assert!(fp.e5_causal.is_empty()); // Legacy field empty in new format
         assert!(fp.e6_sparse.is_empty()); // Sparse starts empty
         assert_eq!(fp.e7_code.len(), 1536);
-        assert_eq!(fp.e8_graph.len(), 384);
+        // E8 now uses dual vectors for asymmetric graph similarity
+        assert_eq!(fp.e8_graph_as_source.len(), 384);
+        assert_eq!(fp.e8_graph_as_target.len(), 384);
+        assert!(fp.e8_graph.is_empty()); // Legacy field empty in new format
         assert_eq!(fp.e9_hdc.len(), 1024); // HDC projected
-        assert_eq!(fp.e10_multimodal.len(), 768);
+        // E10 now uses dual vectors for asymmetric intent/context similarity
+        assert_eq!(fp.e10_multimodal_as_intent.len(), 768);
+        assert_eq!(fp.e10_multimodal_as_context.len(), 768);
+        assert!(fp.e10_multimodal.is_empty()); // Legacy field empty in new format
         assert_eq!(fp.e11_entity.len(), 384);
         assert!(fp.e12_late_interaction.is_empty()); // Token-level starts empty
         assert!(fp.e13_splade.is_empty()); // Sparse starts empty

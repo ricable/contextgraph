@@ -53,3 +53,7 @@ pub const GET_CAUSAL_CHAIN: &str = "get_causal_chain";
 // ========== GRAPH TOOLS (E8 Upgrade - Phase 4) ==========
 pub const SEARCH_CONNECTIONS: &str = "search_connections";
 pub const GET_GRAPH_PATH: &str = "get_graph_path";
+
+// ========== INTENT TOOLS (E10 Intent/Context Upgrade) ==========
+pub const SEARCH_BY_INTENT: &str = "search_by_intent";
+pub const FIND_CONTEXTUAL_MATCHES: &str = "find_contextual_matches";

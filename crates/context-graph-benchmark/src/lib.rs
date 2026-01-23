@@ -56,6 +56,7 @@ pub mod runners;
 pub mod scaling;
 pub mod stress_corpus;
 pub mod util;
+pub mod validation;
 
 // Re-export key types for convenience
 pub use config::{BenchmarkConfig, TierConfig};

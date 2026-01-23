@@ -209,6 +209,8 @@ fn embedder_to_name(embedder: EmbedderIndex) -> &'static str {
         EmbedderIndex::E8Graph => "E8_Graph",
         EmbedderIndex::E9HDC => "E9_HDC",
         EmbedderIndex::E10Multimodal => "E10_Multimodal",
+        EmbedderIndex::E10MultimodalIntent => "E10_Multimodal_Intent",
+        EmbedderIndex::E10MultimodalContext => "E10_Multimodal_Context",
         EmbedderIndex::E11Entity => "E11_Entity",
         EmbedderIndex::E12LateInteraction => "E12_Late_Interaction",
         EmbedderIndex::E13Splade => "E13_SPLADE",

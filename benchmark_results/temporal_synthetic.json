@@ -1,0 +1,181 @@
+{
+  "metrics": {
+    "recency": {
+      "freshness_precision_at": {
+        "1": 1.0,
+        "10": 1.0,
+        "5": 1.0,
+        "20": 1.0
+      },
+      "recency_weighted_mrr": 0.9782028558432098,
+      "decay_accuracy": 0.6939187666557187,
+      "avg_position_improvement": 0.0,
+      "fresh_retrieval_rate_at": {
+        "1": 1.0,
+        "10": 1.0,
+        "5": 1.0,
+        "20": 1.0
+      }
+    },
+    "periodic": {
+      "periodic_recall_at": {
+        "20": 1.0,
+        "5": 1.0,
+        "1": 1.0,
+        "10": 1.0
+      },
+      "hourly_cluster_quality": 1.0,
+      "daily_cluster_quality": 1.0,
+      "pattern_detection_precision": 0.0,
+      "pattern_detection_recall": 0.0
+    },
+    "sequence": {
+      "sequence_accuracy": 0.45378794585642007,
+      "temporal_ordering_precision": 1.0,
+      "episode_boundary_f1": 0.7727272727272727,
+      "before_after_accuracy": 1.0,
+      "avg_sequence_distance_error": 0.0
+    },
+    "composite": {
+      "overall_temporal_score": 0.8314670295728329,
+      "improvement_over_baseline": 1.7715567652427766,
+      "feature_contributions": {
+        "e2_recency": 0.8994567723339995,
+        "e3_periodic": 0.7,
+        "e4_sequence": 0.7906818383023806
+      }
+    },
+    "query_count": 99
+  },
+  "ablation": {
+    "baseline_score": 0.3,
+    "e2_only_score": 0.8994567723339995,
+    "e3_only_score": 0.7,
+    "e4_only_score": 0.7906818383023806,
+    "full_score": 0.8314670295728329,
+    "improvements": {
+      "full": 1.7715567652427766,
+      "e4_sequence": 1.6356061276746021,
+      "e2_recency": 1.9981892411133315,
+      "e3_periodic": 1.3333333333333333
+    }
+  },
+  "timings": {
+    "total_ms": 12,
+    "dataset_generation_ms": 0,
+    "recency_benchmark_ms": 0,
+    "periodic_benchmark_ms": 0,
+    "sequence_benchmark_ms": 0,
+    "ablation_ms": 7
+  },
+  "config": {
+    "dataset": {
+      "num_memories": 500,
+      "num_queries": 100,
+      "time_span_days": 30,
+      "base_timestamp": null,
+      "seed": 42,
+      "recency_config": {
+        "distribution": "exponential",
+        "decay_rate": 2.0,
+        "num_clusters": 5,
+        "fresh_fraction": 0.2,
+        "fresh_threshold_hours": 24
+      },
+      "periodic_config": {
+        "peak_hours": [
+          9,
+          10,
+          11,
+          14,
+          15,
+          16
+        ],
+        "peak_days": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "concentration": 3.0,
+        "enable_weekly": true,
+        "enable_daily": true
+      },
+      "sequence_config": {
+        "num_chains": 50,
+        "avg_chain_length": 10,
+        "length_variance": 5,
+        "avg_gap_minutes": 5,
+        "session_gap_hours": 4
+      }
+    },
+    "recency": {
+      "decay_half_life_ms": 86400000,
+      "fresh_threshold_ms": 86400000,
+      "test_decay_functions": [
+        "linear",
+        "exponential",
+        "step"
+      ]
+    },
+    "periodic": {
+      "test_hours": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23
+      ],
+      "test_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    "sequence": {
+      "boundary_tolerance": 2,
+      "test_directions": [
+        "before",
+        "after",
+        "both"
+      ]
+    },
+    "run_ablation": true,
+    "k_values": [
+      1,
+      5,
+      10,
+      20
+    ]
+  },
+  "dataset_stats": {
+    "total_memories": 500,
+    "total_queries": 99,
+    "chain_count": 34,
+    "episode_boundaries": 54
+  }
+}

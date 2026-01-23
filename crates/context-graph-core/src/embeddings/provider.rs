@@ -259,7 +259,10 @@ impl StubMultiArrayProvider {
             e8_graph_as_target: e8_vec,
             e8_graph: Vec::new(), // Empty - using new dual format
             e9_hdc: e9_vec,
-            e10_multimodal: e10_vec,
+            // E10: Using new dual format for asymmetric intent/context similarity
+            e10_multimodal_as_intent: e10_vec.clone(),
+            e10_multimodal_as_context: e10_vec,
+            e10_multimodal: Vec::new(), // Empty - using new dual format
             e11_entity: e11_vec,
             e12_late_interaction: e12_tokens,
             e13_splade: e13_sparse,
@@ -506,9 +509,15 @@ mod tests {
         // E6 is sparse - check nnz instead
         assert!(fp.e6_sparse.nnz() > 0, "E6 should have active indices");
         assert_eq!(fp.e7_code.len(), 1536, "E7 should be 1536D");
-        assert_eq!(fp.e8_graph.len(), 384, "E8 should be 384D");
+        // E8 now uses dual vectors for asymmetric graph similarity
+        assert_eq!(fp.e8_graph_as_source.len(), 384, "E8 source should be 384D");
+        assert_eq!(fp.e8_graph_as_target.len(), 384, "E8 target should be 384D");
+        assert!(fp.e8_graph.is_empty(), "E8 legacy should be empty in new format");
         assert_eq!(fp.e9_hdc.len(), 1024, "E9 should be 1024D");
-        assert_eq!(fp.e10_multimodal.len(), 768, "E10 should be 768D");
+        // E10 now uses dual vectors for asymmetric intent/context similarity
+        assert_eq!(fp.e10_multimodal_as_intent.len(), 768, "E10 intent should be 768D");
+        assert_eq!(fp.e10_multimodal_as_context.len(), 768, "E10 context should be 768D");
+        assert!(fp.e10_multimodal.is_empty(), "E10 legacy should be empty in new format");
         assert_eq!(fp.e11_entity.len(), 384, "E11 should be 384D");
         // E12 should have tokens
         assert!(!fp.e12_late_interaction.is_empty(), "E12 should have tokens");

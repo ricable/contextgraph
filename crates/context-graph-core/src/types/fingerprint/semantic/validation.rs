@@ -269,14 +269,38 @@ impl SemanticFingerprint {
         Ok(())
     }
 
-    /// Validate E8 graph/emotional embedding (384D dense).
+    /// Validate E8 graph/emotional embeddings (384D dense for each).
+    ///
+    /// Accepts either:
+    /// - New format: both e8_graph_as_source and e8_graph_as_target have 384D
+    /// - Legacy format: only e8_graph has 384D (as_source/as_target are empty)
     fn validate_e8(&self) -> Result<(), ValidationError> {
-        if self.e8_graph.len() != E8_DIM {
-            return Err(ValidationError::DimensionMismatch {
-                embedder: Embedder::Emotional,
-                expected: E8_DIM,
-                actual: self.e8_graph.len(),
-            });
+        // New format: dual vectors populated
+        if !self.e8_graph_as_source.is_empty() || !self.e8_graph_as_target.is_empty() {
+            // If either is non-empty, both must be correct
+            if self.e8_graph_as_source.len() != E8_DIM {
+                return Err(ValidationError::DimensionMismatch {
+                    embedder: Embedder::Emotional,
+                    expected: E8_DIM,
+                    actual: self.e8_graph_as_source.len(),
+                });
+            }
+            if self.e8_graph_as_target.len() != E8_DIM {
+                return Err(ValidationError::DimensionMismatch {
+                    embedder: Embedder::Emotional,
+                    expected: E8_DIM,
+                    actual: self.e8_graph_as_target.len(),
+                });
+            }
+        } else {
+            // Legacy format: only e8_graph populated
+            if self.e8_graph.len() != E8_DIM {
+                return Err(ValidationError::DimensionMismatch {
+                    embedder: Embedder::Emotional,
+                    expected: E8_DIM,
+                    actual: self.e8_graph.len(),
+                });
+            }
         }
         Ok(())
     }
@@ -293,14 +317,38 @@ impl SemanticFingerprint {
         Ok(())
     }
 
-    /// Validate E10 multimodal embedding (768D dense).
+    /// Validate E10 multimodal embeddings (768D dense for each).
+    ///
+    /// Accepts either:
+    /// - New format: both e10_multimodal_as_intent and e10_multimodal_as_context have 768D
+    /// - Legacy format: only e10_multimodal has 768D (as_intent/as_context are empty)
     fn validate_e10(&self) -> Result<(), ValidationError> {
-        if self.e10_multimodal.len() != E10_DIM {
-            return Err(ValidationError::DimensionMismatch {
-                embedder: Embedder::Multimodal,
-                expected: E10_DIM,
-                actual: self.e10_multimodal.len(),
-            });
+        // New format: dual vectors populated
+        if !self.e10_multimodal_as_intent.is_empty() || !self.e10_multimodal_as_context.is_empty() {
+            // If either is non-empty, both must be correct
+            if self.e10_multimodal_as_intent.len() != E10_DIM {
+                return Err(ValidationError::DimensionMismatch {
+                    embedder: Embedder::Multimodal,
+                    expected: E10_DIM,
+                    actual: self.e10_multimodal_as_intent.len(),
+                });
+            }
+            if self.e10_multimodal_as_context.len() != E10_DIM {
+                return Err(ValidationError::DimensionMismatch {
+                    embedder: Embedder::Multimodal,
+                    expected: E10_DIM,
+                    actual: self.e10_multimodal_as_context.len(),
+                });
+            }
+        } else {
+            // Legacy format: only e10_multimodal populated
+            if self.e10_multimodal.len() != E10_DIM {
+                return Err(ValidationError::DimensionMismatch {
+                    embedder: Embedder::Multimodal,
+                    expected: E10_DIM,
+                    actual: self.e10_multimodal.len(),
+                });
+            }
         }
         Ok(())
     }

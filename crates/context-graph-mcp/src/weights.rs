@@ -143,6 +143,30 @@ pub const WEIGHT_PROFILES: &[(&str, [f32; NUM_EMBEDDERS])] = &[
         ],
     ),
 
+    // Intent Search: "What was the goal?" queries - E10 primary, E1 secondary
+    // Use for intent-aware retrieval: "what work had the same goal?",
+    // "find memories with similar purpose", "what was trying to be accomplished?"
+    // E10 (V_multimodality) captures cross-modal intent alignment
+    // Per E10 Upgrade: Enables intent-aware search directly via search_graph
+    (
+        "intent_search",
+        [
+            0.40, // E1_Semantic (still foundation per ARCH-12)
+            0.0,  // E2_Temporal_Recent - NOT for semantic search per AP-71
+            0.0,  // E3_Temporal_Periodic - NOT for semantic search per AP-71
+            0.0,  // E4_Temporal_Positional - NOT for semantic search per AP-71
+            0.10, // E5_Causal (intent often has causal structure)
+            0.05, // E6_Sparse (keyword backup)
+            0.10, // E7_Code (code intent/purpose)
+            0.05, // E8_Graph (relational)
+            0.0,  // E9_HDC
+            0.25, // E10_Multimodal (PRIMARY - intent/context awareness)
+            0.05, // E11_Entity (entities in intent)
+            0.0,  // E12_Late_Interaction (Stage 3 rerank only per AP-73)
+            0.0,  // E13_SPLADE (Stage 1 recall only per AP-74)
+        ],
+    ),
+
     // =========================================================================
     // SPECIAL PROFILES
     // =========================================================================

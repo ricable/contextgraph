@@ -94,9 +94,15 @@ impl RocksDbTeleologicalStore {
                 panic!("FAIL FAST: E6 is sparse - use inverted index, not HNSW")
             }
             EmbedderIndex::E7Code => &semantic.e7_code,
-            EmbedderIndex::E8Graph => &semantic.e8_graph,
+            EmbedderIndex::E8Graph => semantic.e8_active_vector(),
             EmbedderIndex::E9HDC => &semantic.e9_hdc,
-            EmbedderIndex::E10Multimodal => &semantic.e10_multimodal,
+            // E10 legacy - uses active vector (whichever is populated)
+            EmbedderIndex::E10Multimodal => semantic.e10_active_vector(),
+            // E10 asymmetric indexes (ARCH-15, AP-77)
+            // Intent index stores intent vectors - queried when seeking contexts
+            EmbedderIndex::E10MultimodalIntent => semantic.get_e10_as_intent(),
+            // Context index stores context vectors - queried when seeking intents
+            EmbedderIndex::E10MultimodalContext => semantic.get_e10_as_context(),
             EmbedderIndex::E11Entity => &semantic.e11_entity,
             EmbedderIndex::E12LateInteraction => {
                 panic!("FAIL FAST: E12 is late-interaction - use MaxSim, not HNSW")

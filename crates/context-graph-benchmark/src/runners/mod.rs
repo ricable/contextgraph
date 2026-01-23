@@ -6,17 +6,25 @@
 pub mod causal;
 pub mod comparative;
 pub mod failfast;
+pub mod graph_realdata;
+pub mod mcp_intent;
+pub mod multimodal;
 pub mod retrieval;
 pub mod scaling;
 pub mod sparse;
 pub mod temporal;
 pub mod temporal_realdata;
 pub mod topic;
+pub mod unified_realdata;
 
 pub use causal::{
     CausalBenchmarkConfig, CausalBenchmarkResults, CausalBenchmarkRunner,
     CausalAblationResults, CausalBenchmarkTimings, CausalDatasetStats,
     DirectionBenchmarkSettings, AsymmetricBenchmarkSettings, ReasoningBenchmarkSettings,
+};
+pub use multimodal::{
+    E10BenchmarkTimings, E10MultimodalBenchmarkConfig, E10MultimodalBenchmarkResults,
+    E10MultimodalBenchmarkRunner,
 };
 pub use comparative::{BenchmarkHarness, BenchmarkResults, ComparativeResults};
 pub use retrieval::RetrievalRunner;
@@ -46,6 +54,10 @@ pub use temporal::{
 pub use temporal_realdata::{
     TemporalRealdataBenchmarkConfig, TemporalRealdataBenchmarkResults, TemporalRealdataBenchmarkRunner,
     TimestampBaselineResults, TemporalBenchmarkTimings, TemporalDatasetStats,
+};
+pub use mcp_intent::{
+    MCPIntentBenchmarkConfig, MCPIntentBenchmarkResults, MCPIntentBenchmarkRunner,
+    MCPIntentTimings,
 };
 pub use topic::TopicRunner;
 pub use failfast::{

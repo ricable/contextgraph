@@ -7,11 +7,13 @@ use super::distance::DistanceMetric;
 
 /// Embedder index enum matching constitution.yaml embedder list.
 ///
-/// 16 variants total:
+/// 18 variants total:
 /// - E1-E13: Core embedders (13)
 /// - E1Matryoshka128: E1 truncated to 128D for Stage 2 fast filtering
 /// - E5CausalCause: E5 cause vector for asymmetric retrieval (ARCH-15)
 /// - E5CausalEffect: E5 effect vector for asymmetric retrieval (ARCH-15)
+/// - E10MultimodalIntent: E10 intent vector for asymmetric retrieval (ARCH-15)
+/// - E10MultimodalContext: E10 context vector for asymmetric retrieval (ARCH-15)
 ///
 /// # Non-HNSW Embedders
 /// - E6Sparse: Inverted index (legacy sparse slot)
@@ -24,7 +26,13 @@ use super::distance::DistanceMetric;
 /// - Cause-seeking queries search E5CausalEffect index using query.e5_as_cause
 /// - Effect-seeking queries search E5CausalCause index using query.e5_as_effect
 ///
-/// This ensures complementary vectors are compared (cause→effect, effect→cause).
+/// # Asymmetric E10 Indexes (ARCH-15, AP-77)
+///
+/// E10MultimodalIntent and E10MultimodalContext enable direction-aware retrieval:
+/// - Intent-seeking queries search E10MultimodalContext index using query.e10_as_intent
+/// - Context-seeking queries search E10MultimodalIntent index using query.e10_as_context
+///
+/// This ensures complementary vectors are compared (cause→effect, intent→context).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum EmbedderIndex {
     /// E1: 1024D semantic (e5-large-v2, Matryoshka-capable)
@@ -55,7 +63,14 @@ pub enum EmbedderIndex {
     /// E9: 1024D HDC (projected from 10K-bit)
     E9HDC,
     /// E10: 768D multimodal (CLIP)
+    /// Legacy index using active vector - prefer E10MultimodalIntent/E10MultimodalContext
     E10Multimodal,
+    /// E10 Multimodal Intent: 768D intent vector (ARCH-15)
+    /// Search this index when query seeks context/answers (what context satisfies intent X?)
+    E10MultimodalIntent,
+    /// E10 Multimodal Context: 768D context vector (ARCH-15)
+    /// Search this index when query seeks intents/goals (what intent does context Y serve?)
+    E10MultimodalContext,
     /// E11: 384D entity (MiniLM)
     E11Entity,
     /// E12: 128D per-token ColBERT (MaxSim, NOT HNSW)
@@ -104,6 +119,8 @@ impl EmbedderIndex {
     /// - E1Matryoshka128: Special fast-filter variant
     /// - E5CausalCause: Asymmetric index (not part of core 13-array)
     /// - E5CausalEffect: Asymmetric index (not part of core 13-array)
+    /// - E10MultimodalIntent: Asymmetric index (not part of core 13-array)
+    /// - E10MultimodalContext: Asymmetric index (not part of core 13-array)
     pub fn to_index(&self) -> Option<usize> {
         match self {
             Self::E1Semantic => Some(0),
@@ -123,6 +140,8 @@ impl EmbedderIndex {
             Self::E1Matryoshka128 => None,
             Self::E5CausalCause => None,
             Self::E5CausalEffect => None,
+            Self::E10MultimodalIntent => None,
+            Self::E10MultimodalContext => None,
         }
     }
 
@@ -152,11 +171,13 @@ impl EmbedderIndex {
 
     /// Get all HNSW-capable embedder indexes.
     ///
-    /// Returns 13 entries (excludes E6, E12, E13):
+    /// Returns 15 entries (excludes E6, E12, E13):
     /// - 10 dense embedders (E1-E5, E7-E11)
     /// - E1Matryoshka128 (Stage 2 fast filter)
     /// - E5CausalCause (asymmetric cause index, ARCH-15)
     /// - E5CausalEffect (asymmetric effect index, ARCH-15)
+    /// - E10MultimodalIntent (asymmetric intent index, ARCH-15)
+    /// - E10MultimodalContext (asymmetric context index, ARCH-15)
     pub fn all_hnsw() -> Vec<Self> {
         vec![
             Self::E1Semantic,
@@ -171,6 +192,8 @@ impl EmbedderIndex {
             Self::E8Graph,
             Self::E9HDC,
             Self::E10Multimodal,
+            Self::E10MultimodalIntent,
+            Self::E10MultimodalContext,
             Self::E11Entity,
         ]
     }
@@ -186,13 +209,15 @@ impl EmbedderIndex {
             Self::E3TemporalPeriodic => Some(E3_DIM),
             Self::E4TemporalPositional => Some(E4_DIM),
             Self::E5Causal => Some(E5_DIM),
-            Self::E5CausalCause => Some(E5_DIM),   // 768D cause vector
-            Self::E5CausalEffect => Some(E5_DIM), // 768D effect vector
-            Self::E6Sparse => None,               // Inverted index
+            Self::E5CausalCause => Some(E5_DIM),       // 768D cause vector
+            Self::E5CausalEffect => Some(E5_DIM),     // 768D effect vector
+            Self::E6Sparse => None,                   // Inverted index
             Self::E7Code => Some(E7_DIM),
             Self::E8Graph => Some(E8_DIM),
             Self::E9HDC => Some(E9_DIM),
             Self::E10Multimodal => Some(E10_DIM),
+            Self::E10MultimodalIntent => Some(E10_DIM),   // 768D intent vector
+            Self::E10MultimodalContext => Some(E10_DIM), // 768D context vector
             Self::E11Entity => Some(E11_DIM),
             Self::E12LateInteraction => None, // Token-level
             Self::E13Splade => None,          // Inverted index
@@ -201,10 +226,15 @@ impl EmbedderIndex {
 
     /// Get the recommended distance metric for this embedder.
     ///
-    /// E5 variants use AsymmetricCosine per ARCH-15, AP-77.
+    /// E5 and E10 variants use AsymmetricCosine per ARCH-15, AP-77.
     pub fn recommended_metric(&self) -> Option<DistanceMetric> {
         match self {
+            // E5 asymmetric: causal relationships are directional
             Self::E5Causal | Self::E5CausalCause | Self::E5CausalEffect => {
+                Some(DistanceMetric::AsymmetricCosine)
+            }
+            // E10 asymmetric: intent/context relationships are directional
+            Self::E10Multimodal | Self::E10MultimodalIntent | Self::E10MultimodalContext => {
                 Some(DistanceMetric::AsymmetricCosine)
             }
             Self::E6Sparse | Self::E13Splade => None, // Inverted index
@@ -264,13 +294,16 @@ mod tests {
     }
 
     #[test]
-    fn test_all_hnsw_count_is_13() {
-        // 11 original + 2 E5 asymmetric = 13 HNSW indexes
+    fn test_all_hnsw_count_is_15() {
+        // 11 original + 2 E5 asymmetric + 2 E10 asymmetric = 15 HNSW indexes
         let hnsw_embedders = EmbedderIndex::all_hnsw();
-        assert_eq!(hnsw_embedders.len(), 13);
+        assert_eq!(hnsw_embedders.len(), 15);
         // Verify E5 asymmetric indexes are included
         assert!(hnsw_embedders.contains(&EmbedderIndex::E5CausalCause));
         assert!(hnsw_embedders.contains(&EmbedderIndex::E5CausalEffect));
+        // Verify E10 asymmetric indexes are included
+        assert!(hnsw_embedders.contains(&EmbedderIndex::E10MultimodalIntent));
+        assert!(hnsw_embedders.contains(&EmbedderIndex::E10MultimodalContext));
     }
 
     #[test]
@@ -280,6 +313,9 @@ mod tests {
         // E5 asymmetric indexes are not part of core 13-array
         assert_eq!(EmbedderIndex::E5CausalCause.to_index(), None);
         assert_eq!(EmbedderIndex::E5CausalEffect.to_index(), None);
+        // E10 asymmetric indexes are not part of core 13-array
+        assert_eq!(EmbedderIndex::E10MultimodalIntent.to_index(), None);
+        assert_eq!(EmbedderIndex::E10MultimodalContext.to_index(), None);
     }
 
     #[test]
@@ -311,5 +347,40 @@ mod tests {
             EmbedderIndex::E5CausalEffect.recommended_metric(),
             Some(DistanceMetric::AsymmetricCosine)
         );
+    }
+
+    #[test]
+    fn test_e10_asymmetric_dimensions() {
+        // Both E10 asymmetric indexes have 768D (same as E10Multimodal)
+        assert_eq!(EmbedderIndex::E10MultimodalIntent.dimension(), Some(E10_DIM));
+        assert_eq!(EmbedderIndex::E10MultimodalContext.dimension(), Some(E10_DIM));
+        assert_eq!(EmbedderIndex::E10Multimodal.dimension(), Some(E10_DIM));
+    }
+
+    #[test]
+    fn test_e10_asymmetric_metric() {
+        // All E10 variants use AsymmetricCosine per ARCH-15, AP-77
+        assert_eq!(
+            EmbedderIndex::E10Multimodal.recommended_metric(),
+            Some(DistanceMetric::AsymmetricCosine)
+        );
+        assert_eq!(
+            EmbedderIndex::E10MultimodalIntent.recommended_metric(),
+            Some(DistanceMetric::AsymmetricCosine)
+        );
+        assert_eq!(
+            EmbedderIndex::E10MultimodalContext.recommended_metric(),
+            Some(DistanceMetric::AsymmetricCosine)
+        );
+    }
+
+    #[test]
+    fn test_e10_asymmetric_uses_hnsw() {
+        // E10 asymmetric indexes use HNSW (ARCH-15)
+        assert!(EmbedderIndex::E10MultimodalIntent.uses_hnsw());
+        assert!(EmbedderIndex::E10MultimodalContext.uses_hnsw());
+        // Verify they don't use inverted index
+        assert!(!EmbedderIndex::E10MultimodalIntent.uses_inverted_index());
+        assert!(!EmbedderIndex::E10MultimodalContext.uses_inverted_index());
     }
 }

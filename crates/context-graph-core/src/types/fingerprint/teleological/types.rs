@@ -58,6 +58,10 @@ pub struct TeleologicalFingerprint {
     /// - Typical size: ~235 active terms (~1.4KB)
     /// - Used for: inverted index recall, exact term matching, tie-breaking
     /// - NOT used for: semantic similarity (use projected dense in `semantic`)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ///
+    /// NOTE: We use #[serde(default)] but NOT skip_serializing_if because bincode
+    /// uses a fixed format and doesn't support field skipping. All fields must
+    /// be serialized for bincode compatibility.
+    #[serde(default)]
     pub e6_sparse: Option<SparseVector>,
 }

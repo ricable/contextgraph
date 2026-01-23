@@ -615,7 +615,9 @@ mod tests {
             e8_graph_as_target: vec![offset; get_dimension(Embedder::Emotional)],
             e8_graph: Vec::new(), // Legacy field, empty by default
             e9_hdc: vec![offset; get_dimension(Embedder::Hdc)],
-            e10_multimodal: vec![offset; get_dimension(Embedder::Multimodal)],
+            e10_multimodal_as_intent: vec![offset; get_dimension(Embedder::Multimodal)],
+            e10_multimodal_as_context: vec![offset; get_dimension(Embedder::Multimodal)],
+            e10_multimodal: Vec::new(), // Legacy field, empty by default
             e11_entity: vec![offset; get_dimension(Embedder::Entity)],
             e12_late_interaction: vec![vec![offset; 128]; 10],
             e13_splade: SparseVector::empty(),

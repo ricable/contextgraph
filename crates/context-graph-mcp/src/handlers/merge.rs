@@ -553,6 +553,22 @@ impl Handlers {
             .flat_map(|f| f.semantic.e12_late_interaction.clone())
             .collect();
 
+        // E10: Compute dual vectors using same averaging approach
+        let e10_multimodal_as_intent = Self::average_dense_slices(
+            fingerprints
+                .iter()
+                .map(|f| f.semantic.get_e10_as_intent())
+                .filter(|v| !v.is_empty())
+                .collect(),
+        );
+        let e10_multimodal_as_context = Self::average_dense_slices(
+            fingerprints
+                .iter()
+                .map(|f| f.semantic.get_e10_as_context())
+                .filter(|v| !v.is_empty())
+                .collect(),
+        );
+
         SemanticFingerprint {
             e1_semantic,
             e2_temporal_recent,
@@ -567,7 +583,9 @@ impl Handlers {
             e8_graph_as_source,
             e8_graph_as_target,
             e9_hdc,
-            e10_multimodal,
+            e10_multimodal_as_intent,
+            e10_multimodal_as_context,
+            e10_multimodal, // Keep for backwards compatibility
             e11_entity,
             e12_late_interaction,
             e13_splade,
@@ -683,6 +701,22 @@ impl Handlers {
             Vec::new()
         };
 
+        // E10: Compute dual vectors using same intersection approach
+        let e10_multimodal_as_intent = Self::intersection_dense_slices(
+            fingerprints
+                .iter()
+                .map(|f| f.semantic.get_e10_as_intent())
+                .filter(|v| !v.is_empty())
+                .collect(),
+        );
+        let e10_multimodal_as_context = Self::intersection_dense_slices(
+            fingerprints
+                .iter()
+                .map(|f| f.semantic.get_e10_as_context())
+                .filter(|v| !v.is_empty())
+                .collect(),
+        );
+
         SemanticFingerprint {
             e1_semantic,
             e2_temporal_recent,
@@ -697,7 +731,9 @@ impl Handlers {
             e8_graph_as_source,
             e8_graph_as_target,
             e9_hdc,
-            e10_multimodal,
+            e10_multimodal_as_intent,
+            e10_multimodal_as_context,
+            e10_multimodal, // Keep for backwards compatibility
             e11_entity,
             e12_late_interaction,
             e13_splade,
@@ -825,6 +861,24 @@ impl Handlers {
             .e12_late_interaction
             .clone();
 
+        // E10: Compute dual vectors using same weighted average approach
+        let e10_multimodal_as_intent = Self::weighted_average_dense_slices(
+            fingerprints
+                .iter()
+                .map(|f| f.semantic.get_e10_as_intent())
+                .filter(|v| !v.is_empty())
+                .collect(),
+            &weights,
+        );
+        let e10_multimodal_as_context = Self::weighted_average_dense_slices(
+            fingerprints
+                .iter()
+                .map(|f| f.semantic.get_e10_as_context())
+                .filter(|v| !v.is_empty())
+                .collect(),
+            &weights,
+        );
+
         SemanticFingerprint {
             e1_semantic,
             e2_temporal_recent,
@@ -839,7 +893,9 @@ impl Handlers {
             e8_graph_as_source,
             e8_graph_as_target,
             e9_hdc,
-            e10_multimodal,
+            e10_multimodal_as_intent,
+            e10_multimodal_as_context,
+            e10_multimodal, // Keep for backwards compatibility
             e11_entity,
             e12_late_interaction,
             e13_splade,

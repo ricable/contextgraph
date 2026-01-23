@@ -261,14 +261,31 @@ fn get_embedder_vector(fp: &SemanticFingerprint, embedder: EmbedderIndex) -> Opt
         EmbedderIndex::E2TemporalRecent => Some(&fp.e2_temporal_recent),
         EmbedderIndex::E3TemporalPeriodic => Some(&fp.e3_temporal_periodic),
         EmbedderIndex::E4TemporalPositional => Some(&fp.e4_temporal_positional),
-        EmbedderIndex::E5Causal => Some(&fp.e5_causal),
+        EmbedderIndex::E5Causal => {
+            // Legacy: use active vector (cause) as default for backwards compatibility
+            let cause = fp.get_e5_as_cause();
+            if !cause.is_empty() { Some(cause) } else { None }
+        }
         // E5 asymmetric indexes (ARCH-15)
         EmbedderIndex::E5CausalCause => Some(fp.get_e5_as_cause()),
         EmbedderIndex::E5CausalEffect => Some(fp.get_e5_as_effect()),
         EmbedderIndex::E7Code => Some(&fp.e7_code),
-        EmbedderIndex::E8Graph => Some(&fp.e8_graph),
+        EmbedderIndex::E8Graph => {
+            // Legacy: use active vector (source) as default for backwards compatibility
+            let source = fp.get_e8_as_source();
+            if !source.is_empty() { Some(source) } else { None }
+        }
         EmbedderIndex::E9HDC => Some(&fp.e9_hdc),
-        EmbedderIndex::E10Multimodal => Some(&fp.e10_multimodal),
+        EmbedderIndex::E10Multimodal => {
+            // Legacy: use intent vector as default for backwards compatibility
+            // CRITICAL FIX: fp.e10_multimodal is intentionally empty (Vec::new())
+            // Must use the dual vectors via get_e10_as_intent()
+            let intent = fp.get_e10_as_intent();
+            if !intent.is_empty() { Some(intent) } else { None }
+        }
+        // E10 asymmetric indexes (ARCH-15)
+        EmbedderIndex::E10MultimodalIntent => Some(fp.get_e10_as_intent()),
+        EmbedderIndex::E10MultimodalContext => Some(fp.get_e10_as_context()),
         EmbedderIndex::E11Entity => Some(&fp.e11_entity),
         // Sparse embedders need special handling
         EmbedderIndex::E6Sparse | EmbedderIndex::E12LateInteraction | EmbedderIndex::E13Splade => None,

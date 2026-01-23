@@ -160,14 +160,14 @@ impl MultiSpaceIndexManager for HnswMultiSpaceIndex {
         // E7-E11
         self.add_vector(EmbedderIndex::E7Code, memory_id, &fingerprint.e7_code)
             .await?;
-        self.add_vector(EmbedderIndex::E8Graph, memory_id, &fingerprint.e8_graph)
+        self.add_vector(EmbedderIndex::E8Graph, memory_id, fingerprint.e8_active_vector())
             .await?;
         self.add_vector(EmbedderIndex::E9HDC, memory_id, &fingerprint.e9_hdc)
             .await?;
         self.add_vector(
             EmbedderIndex::E10Multimodal,
             memory_id,
-            &fingerprint.e10_multimodal,
+            fingerprint.e10_active_vector(),
         )
         .await?;
         self.add_vector(EmbedderIndex::E11Entity, memory_id, &fingerprint.e11_entity)

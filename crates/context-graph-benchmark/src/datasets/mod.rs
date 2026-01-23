@@ -6,12 +6,18 @@
 pub mod causal;
 pub mod generator;
 pub mod ground_truth;
+pub mod mcp_intent;
+pub mod multimodal;
 pub mod sparse;
 pub mod temporal;
 pub mod temporal_sessions;
 pub mod topic_clusters;
 
 pub use causal::{CausalBenchmarkDataset, CausalDatasetConfig, CausalDatasetGenerator, CausalDomain};
+pub use multimodal::{
+    E10DatasetStats, E10MultimodalBenchmarkDataset, E10MultimodalDatasetConfig,
+    E10MultimodalDatasetGenerator, IntentDirection, IntentDocument, IntentDomain, IntentQuery,
+};
 pub use generator::{DatasetGenerator, GeneratorConfig};
 pub use ground_truth::GroundTruth;
 pub use sparse::{
@@ -22,6 +28,11 @@ pub use temporal::{TemporalBenchmarkDataset, TemporalDatasetConfig, TemporalData
 pub use temporal_sessions::{
     BoundaryQuery, ChainQuery, DirectionQuery, SequenceDirection, SequenceGroundTruth,
     SessionChunk, SessionGenerator, SessionGeneratorConfig, TemporalSession,
+};
+pub use mcp_intent::{
+    AsymmetricPair, ContextToolQuery, E10Behavior, E1Strength, E1StrengthQuery,
+    IntentMemory, IntentToolQuery, MCPIntentBenchmarkDataset, MCPIntentDatasetConfig,
+    MCPIntentDatasetGenerator, MCPIntentDatasetStats,
 };
 pub use topic_clusters::{TopicCluster, TopicGenerator};
 
