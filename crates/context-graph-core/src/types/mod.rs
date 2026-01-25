@@ -1,5 +1,6 @@
 //! Core domain types for the Context Graph system.
 
+pub mod code_entity;
 pub mod file_index;
 pub mod fingerprint;
 mod graph_edge;
@@ -8,6 +9,9 @@ mod pulse;
 mod source_metadata;
 mod utl;
 
+pub use code_entity::{
+    CodeEntity, CodeEntityType, CodeFileIndexEntry, CodeLanguage, CodeStats, Visibility,
+};
 pub use file_index::{FileIndexEntry, FileWatcherStats};
 pub use fingerprint::{
     // SemanticFingerprint and embedding types

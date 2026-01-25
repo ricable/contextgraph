@@ -799,3 +799,220 @@ pub fn get_all_teleological_cf_descriptors(cache: &Cache) -> Vec<ColumnFamilyDes
     descriptors.extend(get_quantized_embedder_cf_descriptors(cache));
     descriptors
 }
+
+// =============================================================================
+// CODE EMBEDDING COLUMN FAMILIES (Separate code-specific storage)
+// =============================================================================
+// These column families store code entities and embeddings separately from
+// regular text content. Code uses E7 (Qodo-Embed) as primary embedder and
+// AST-based chunking instead of word-based chunking.
+// =============================================================================
+
+/// Column family for code entity storage.
+///
+/// Stores code entities (functions, structs, traits, etc.) extracted via AST parsing.
+/// Each entity contains metadata like language, signature, parent type, line numbers.
+///
+/// Key: UUID (16 bytes) → Value: CodeEntity serialized via bincode (~500-5000 bytes)
+///
+/// # Storage Details
+/// - LZ4 compression (code text compresses well)
+/// - Bloom filter for fast UUID lookups
+/// - Point lookups by entity ID
+pub const CF_CODE_ENTITIES: &str = "code_entities";
+
+/// Column family for code E7 embeddings (1536D).
+///
+/// Stores E7 (Qodo-Embed-1-1.5B) embeddings for code entities.
+/// E7 is the PRIMARY embedder for code, unlike text which uses E1.
+///
+/// Key: UUID (16 bytes) → Value: Vec<f32> (1536 × 4 = 6144 bytes)
+///
+/// # Storage Details
+/// - LZ4 compression (float arrays compress moderately)
+/// - Bloom filter for fast lookups
+/// - Each embedding is exactly 6144 bytes
+pub const CF_CODE_E7_EMBEDDINGS: &str = "code_e7_embeddings";
+
+/// Column family for code file index.
+///
+/// Maps file paths to code entity IDs for efficient file-level operations.
+/// Used for cleanup when files are deleted/modified.
+///
+/// Key: file_path bytes (UTF-8) → Value: CodeFileIndexEntry serialized via bincode
+///
+/// # Storage Details
+/// - LZ4 compression (paths and UUID lists compress well)
+/// - Bloom filter for fast path existence checks
+/// - Prefix iteration for path-based queries
+pub const CF_CODE_FILE_INDEX: &str = "code_file_index";
+
+/// Column family for code entity name index.
+///
+/// Secondary index for searching entities by name (function name, struct name, etc.).
+/// Enables fast "find function named X" queries.
+///
+/// Key: entity_name bytes (UTF-8) → Value: Vec<Uuid> serialized via bincode
+///
+/// # Storage Details
+/// - LZ4 compression
+/// - Prefix scan support for partial name matching
+pub const CF_CODE_NAME_INDEX: &str = "code_name_index";
+
+/// Column family for code signature index.
+///
+/// Secondary index for searching by function signature hash.
+/// Enables "find functions with this signature pattern" queries.
+///
+/// Key: signature_hash (32 bytes SHA256) → Value: Vec<Uuid> serialized via bincode
+///
+/// # Storage Details
+/// - No compression (hash keys are random, don't compress)
+/// - Bloom filter for fast lookups
+pub const CF_CODE_SIGNATURE_INDEX: &str = "code_signature_index";
+
+/// All code column family names (5 total).
+pub const CODE_CFS: &[&str] = &[
+    CF_CODE_ENTITIES,
+    CF_CODE_E7_EMBEDDINGS,
+    CF_CODE_FILE_INDEX,
+    CF_CODE_NAME_INDEX,
+    CF_CODE_SIGNATURE_INDEX,
+];
+
+/// Total count of code CFs.
+pub const CODE_CF_COUNT: usize = 5;
+
+/// Options for code entity storage (~500-5000 bytes per entity).
+///
+/// # Configuration
+/// - 8KB block size (fits multiple entities per block)
+/// - LZ4 compression (code text compresses ~50%)
+/// - Bloom filter for fast UUID lookups
+/// - 16-byte prefix extractor for UUID keys
+pub fn code_entities_cf_options(cache: &Cache) -> Options {
+    let mut block_opts = BlockBasedOptions::default();
+    block_opts.set_block_cache(cache);
+    block_opts.set_block_size(8 * 1024); // 8KB blocks
+    block_opts.set_bloom_filter(10.0, false);
+    block_opts.set_cache_index_and_filter_blocks(true);
+
+    let mut opts = Options::default();
+    opts.set_block_based_table_factory(&block_opts);
+    opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
+    opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(16)); // UUID prefix
+    opts.optimize_for_point_lookup(64); // 64MB hint
+    opts.create_if_missing(true);
+    opts
+}
+
+/// Options for code E7 embedding storage (6144 bytes per embedding).
+///
+/// # Configuration
+/// - 8KB block size (fits 1 embedding per block with overhead)
+/// - LZ4 compression (modest compression for floats)
+/// - Bloom filter for fast lookups
+/// - 16-byte prefix extractor for UUID keys
+pub fn code_e7_embeddings_cf_options(cache: &Cache) -> Options {
+    let mut block_opts = BlockBasedOptions::default();
+    block_opts.set_block_cache(cache);
+    block_opts.set_block_size(8 * 1024); // 8KB for 6144-byte embeddings
+    block_opts.set_bloom_filter(10.0, false);
+    block_opts.set_cache_index_and_filter_blocks(true);
+
+    let mut opts = Options::default();
+    opts.set_block_based_table_factory(&block_opts);
+    opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
+    opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(16)); // UUID prefix
+    opts.optimize_for_point_lookup(128); // 128MB hint for embeddings
+    opts.create_if_missing(true);
+    opts
+}
+
+/// Options for code file index storage.
+///
+/// # Configuration
+/// - LZ4 compression (paths and UUID lists compress well)
+/// - Bloom filter for fast path existence checks
+pub fn code_file_index_cf_options(cache: &Cache) -> Options {
+    let mut block_opts = BlockBasedOptions::default();
+    block_opts.set_block_cache(cache);
+    block_opts.set_bloom_filter(10.0, false);
+    block_opts.set_cache_index_and_filter_blocks(true);
+
+    let mut opts = Options::default();
+    opts.set_block_based_table_factory(&block_opts);
+    opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
+    opts.create_if_missing(true);
+    opts
+}
+
+/// Options for code name index storage.
+///
+/// # Configuration
+/// - LZ4 compression
+/// - No bloom filter (prefix scans need full iteration)
+pub fn code_name_index_cf_options(cache: &Cache) -> Options {
+    let mut block_opts = BlockBasedOptions::default();
+    block_opts.set_block_cache(cache);
+    block_opts.set_cache_index_and_filter_blocks(true);
+
+    let mut opts = Options::default();
+    opts.set_block_based_table_factory(&block_opts);
+    opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
+    opts.create_if_missing(true);
+    opts
+}
+
+/// Options for code signature index storage.
+///
+/// # Configuration
+/// - No compression (hash keys don't compress)
+/// - Bloom filter for fast lookups
+pub fn code_signature_index_cf_options(cache: &Cache) -> Options {
+    let mut block_opts = BlockBasedOptions::default();
+    block_opts.set_block_cache(cache);
+    block_opts.set_bloom_filter(10.0, false);
+    block_opts.set_cache_index_and_filter_blocks(true);
+
+    let mut opts = Options::default();
+    opts.set_block_based_table_factory(&block_opts);
+    opts.set_compression_type(rocksdb::DBCompressionType::None);
+    opts.optimize_for_point_lookup(32); // 32MB hint
+    opts.create_if_missing(true);
+    opts
+}
+
+/// Get all 5 code column family descriptors.
+///
+/// These CFs store code entities and embeddings separately from regular content.
+///
+/// # Arguments
+/// * `cache` - Shared block cache
+///
+/// # Returns
+/// Vector of 5 `ColumnFamilyDescriptor`s for code storage.
+pub fn get_code_cf_descriptors(cache: &Cache) -> Vec<ColumnFamilyDescriptor> {
+    vec![
+        ColumnFamilyDescriptor::new(CF_CODE_ENTITIES, code_entities_cf_options(cache)),
+        ColumnFamilyDescriptor::new(CF_CODE_E7_EMBEDDINGS, code_e7_embeddings_cf_options(cache)),
+        ColumnFamilyDescriptor::new(CF_CODE_FILE_INDEX, code_file_index_cf_options(cache)),
+        ColumnFamilyDescriptor::new(CF_CODE_NAME_INDEX, code_name_index_cf_options(cache)),
+        ColumnFamilyDescriptor::new(CF_CODE_SIGNATURE_INDEX, code_signature_index_cf_options(cache)),
+    ]
+}
+
+/// Get ALL column family descriptors (teleological + embedder + code).
+///
+/// Returns 33 descriptors total: 15 teleological + 13 quantized embedder + 5 code.
+///
+/// # Arguments
+/// * `cache` - Shared block cache (recommended: 256MB via `Cache::new_lru_cache`)
+///
+/// # Returns
+/// Vector of 33 `ColumnFamilyDescriptor`s.
+pub fn get_all_cf_descriptors(cache: &Cache) -> Vec<ColumnFamilyDescriptor> {
+    let mut descriptors = get_all_teleological_cf_descriptors(cache);
+    descriptors.extend(get_code_cf_descriptors(cache));
+    descriptors
+}

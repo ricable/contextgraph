@@ -15,8 +15,9 @@ CLAUDE.md
 claude-flow
 
 # Coordination/memory state (ephemeral)
-coordination/
-memory/
+# Note: /memory/ at root only - don't ignore src/memory/ source code
+/coordination/
+/memory/
 
 # Database files
 *.db

@@ -15,19 +15,22 @@
 //! - `teleological`: TeleologicalFingerprint storage extensions
 //! - `serialization`: Bincode serialization utilities
 //! - `indexes`: Secondary index operations (tags, temporal, sources)
+//! - `code`: Code entity and E7 embedding storage (separate from text)
 //!
-//! # Column Families (32 total per PRD v6)
+//! # Column Families (37 total per PRD v6)
 //!
 //! Base (8): nodes, edges, embeddings, metadata, temporal, tags, sources, system
-//! Teleological (11): fingerprints, topic_profiles, e13_splade_inverted, e1_matryoshka_128,
-//!                    synergy_matrix, teleological_profiles, teleological_vectors
+//! Teleological (15): fingerprints, topic_profiles, e13_splade_inverted, e1_matryoshka_128,
+//!                    synergy_matrix, teleological_profiles, teleological_vectors, etc.
 //! Quantized Embedder (13): emb_0..emb_12
+//! Code (5): code_entities, code_e7_embeddings, code_file_index, code_name_index, code_signature_index
 //!
 //! # Constitution Reference
 //! - db.dev: sqlite (ghost phase), db.prod: postgres16+
 //! - db.vector: faiss_gpu (separate from RocksDB node storage)
 //! - SEC-06: Soft delete 30-day recovery
 
+pub mod code;
 pub mod column_families;
 pub mod indexes;
 pub mod memex;
@@ -167,3 +170,16 @@ pub use teleological::{
     TELEOLOGICAL_VERSION,
 };
 
+// Re-export code storage types (CODE-001)
+pub use code::{CodeStorageError, CodeStorageResult, CodeStore, E7_CODE_DIM};
+
+// Re-export code column family constants
+pub use teleological::column_families::{
+    get_code_cf_descriptors, CF_CODE_ENTITIES, CF_CODE_E7_EMBEDDINGS, CF_CODE_FILE_INDEX,
+    CF_CODE_NAME_INDEX, CF_CODE_SIGNATURE_INDEX, CODE_CFS, CODE_CF_COUNT,
+};
+
+// Re-export code entity types from core
+pub use context_graph_core::types::{
+    CodeEntity, CodeEntityType, CodeFileIndexEntry, CodeLanguage, CodeStats, Visibility,
+};
