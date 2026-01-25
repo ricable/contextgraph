@@ -67,7 +67,7 @@ fn create_test_fingerprint_with_seed(seed: u64) -> TeleologicalFingerprint {
         e10_multimodal_as_intent: generate_vec(768, seed + 9), // 768D (as intent)
         e10_multimodal_as_context: generate_vec(768, seed + 13), // 768D (as context)
         e10_multimodal: Vec::new(),                            // Legacy field, empty
-        e11_entity: generate_vec(384, seed + 10),              // 384D
+        e11_entity: generate_vec(768, seed + 10),              // 768D (KEPLER)
         e12_late_interaction: generate_late_interaction(seed + 11), // Vec<Vec<f32>>
         e13_splade: generate_sparse(seed + 12),              // Sparse
     };

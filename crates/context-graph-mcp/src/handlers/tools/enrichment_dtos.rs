@@ -572,6 +572,11 @@ pub struct EnrichmentSummary {
     /// Breakdown of time spent in each phase.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub time_breakdown: Option<TimeBreakdown>,
+
+    /// Whether E9 HDC fallback was triggered due to weak E1 results.
+    /// Trigger condition: E1 top score < 0.4 (per remaining_embedder_integration_plan.md).
+    #[serde(default)]
+    pub hdc_fallback_used: bool,
 }
 
 /// Timing breakdown for the enrichment pipeline phases.
@@ -605,6 +610,7 @@ impl EnrichmentSummary {
             unique_discoveries: 0,
             enrichment_time_ms: search_time_ms,
             time_breakdown: None,
+            hdc_fallback_used: false,
         }
     }
 
@@ -626,6 +632,30 @@ impl EnrichmentSummary {
             unique_discoveries,
             enrichment_time_ms,
             time_breakdown,
+            hdc_fallback_used: false,
+        }
+    }
+
+    /// Create a full summary with HDC fallback flag.
+    pub fn new_with_fallback(
+        mode: EnrichmentMode,
+        detected_types: Vec<QueryType>,
+        embedders_used: Vec<EmbedderId>,
+        blind_spots_found: usize,
+        unique_discoveries: usize,
+        enrichment_time_ms: u64,
+        time_breakdown: Option<TimeBreakdown>,
+        hdc_fallback_used: bool,
+    ) -> Self {
+        Self {
+            mode,
+            detected_types,
+            embedders_used,
+            blind_spots_found,
+            unique_discoveries,
+            enrichment_time_ms,
+            time_breakdown,
+            hdc_fallback_used,
         }
     }
 

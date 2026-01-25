@@ -285,13 +285,15 @@ async fn test_e2e_core_tools_workflow() {
     );
 
     // STEP 4: search_graph - Search for related memories
+    // Use enrichMode: "off" to get legacy response format with fingerprintId and similarity
     println!("\n--- STEP 4: search_graph ---");
     let search_params = json!({
         "name": "search_graph",
         "arguments": {
             "query": "async programming in Rust",
             "topK": 10,
-            "includeContent": true
+            "includeContent": true,
+            "enrichMode": "off"
         }
     });
     let search_request = make_request(

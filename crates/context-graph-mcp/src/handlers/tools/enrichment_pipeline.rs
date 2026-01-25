@@ -60,6 +60,10 @@ const ENHANCER_BLIND_SPOT_THRESHOLD: f32 = 0.5;
 /// Minimum similarity threshold for considering a result "found" by an embedder.
 const EMBEDDER_FOUND_THRESHOLD: f32 = 0.2;
 
+/// E1 weak threshold for triggering E9 HDC fallback.
+/// Per remaining_embedder_integration_plan.md: trigger when e1_top_score < 0.4.
+const E1_WEAK_THRESHOLD: f32 = 0.4;
+
 // =============================================================================
 // ENRICHMENT PIPELINE
 // =============================================================================
@@ -121,19 +125,39 @@ impl EnrichmentPipeline {
             "Phase 1: E1 foundation search complete"
         );
 
+        // Phase 1.5: E9 HDC Fallback Detection
+        // Per remaining_embedder_integration_plan.md: trigger when e1_top_score < 0.4
+        let e1_top_score = e1_results.first().map(|r| r.similarity).unwrap_or(0.0);
+        let hdc_fallback_needed = e1_top_score < E1_WEAK_THRESHOLD;
+
+        if hdc_fallback_needed {
+            info!(
+                e1_top_score = e1_top_score,
+                threshold = E1_WEAK_THRESHOLD,
+                "E1 results weak, E9 HDC fallback triggered"
+            );
+        }
+
         // Phase 2: Parallel Enhancer Searches
+        // If E9 HDC fallback is needed, include E9 in the enhancer list
+        let mut effective_embedders = config.selected_embedders.clone();
+        if hdc_fallback_needed && !effective_embedders.contains(&EmbedderId::E9) {
+            effective_embedders.push(EmbedderId::E9);
+        }
+
         let enhancer_start = Instant::now();
         let enhancer_results = self
             .run_parallel_enhancer_searches(
                 query_fingerprint,
-                &config.selected_embedders,
+                &effective_embedders,
                 &base_options,
             )
             .await?;
         let enhancer_time = enhancer_start.elapsed().as_millis() as u64;
 
         debug!(
-            embedder_count = config.selected_embedders.len(),
+            embedder_count = effective_embedders.len(),
+            hdc_fallback = hdc_fallback_needed,
             time_ms = enhancer_time,
             "Phase 2: Parallel enhancer searches complete"
         );
@@ -143,7 +167,7 @@ impl EnrichmentPipeline {
         let fused_results = self.compute_weighted_rrf(
             &e1_results,
             &enhancer_results,
-            &config.selected_embedders,
+            &effective_embedders,
             base_options.top_k,
         );
         let rrf_time = rrf_start.elapsed().as_millis() as u64;
@@ -160,7 +184,7 @@ impl EnrichmentPipeline {
             &fused_results,
             &e1_results,
             &enhancer_results,
-            &config.selected_embedders,
+            &effective_embedders,
         );
         let agreement_time = agreement_start.elapsed().as_millis() as u64;
 
@@ -171,7 +195,7 @@ impl EnrichmentPipeline {
                 &mut enriched_results,
                 &e1_results,
                 &enhancer_results,
-                &config.selected_embedders,
+                &effective_embedders,
             )
         } else {
             0
@@ -192,9 +216,9 @@ impl EnrichmentPipeline {
         // Build summary
         let total_time = start.elapsed().as_millis() as u64;
         let mut embedders_used = vec![EmbedderId::E1];
-        embedders_used.extend(config.selected_embedders.clone());
+        embedders_used.extend(effective_embedders.clone());
 
-        let summary = EnrichmentSummary::new(
+        let summary = EnrichmentSummary::new_with_fallback(
             config.mode,
             config.detected_types.clone(),
             embedders_used,
@@ -208,6 +232,7 @@ impl EnrichmentPipeline {
                 agreement_ms: agreement_time,
                 blind_spot_ms: blind_spot_time,
             }),
+            hdc_fallback_needed,
         );
 
         info!(
@@ -216,6 +241,7 @@ impl EnrichmentPipeline {
             result_count = enriched_results.len(),
             blind_spots = blind_spots_found,
             unique_discoveries = unique_discoveries,
+            hdc_fallback = hdc_fallback_needed,
             total_time_ms = total_time,
             "Enrichment pipeline complete"
         );

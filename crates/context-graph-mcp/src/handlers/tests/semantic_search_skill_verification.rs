@@ -45,14 +45,15 @@ async fn test_basic_search_response_structure() {
     );
     handlers.dispatch(inject_request).await;
 
-    // Basic search
+    // Basic search - use enrichMode: "off" for legacy response format
     let search_request = make_request(
         "tools/call",
         Some(JsonRpcId::Number(2)),
         Some(json!({
             "name": "search_graph",
             "arguments": {
-                "query": "authentication JWT"
+                "query": "authentication JWT",
+                "enrichMode": "off"
             }
         })),
     );
@@ -141,7 +142,7 @@ async fn test_topk_parameter_limits_results() {
         handlers.dispatch(inject_request).await;
     }
 
-    // Search with topK=2
+    // Search with topK=2 - use enrichMode: "off" for legacy response format
     let search_request = make_request(
         "tools/call",
         Some(JsonRpcId::Number(100)),
@@ -149,7 +150,8 @@ async fn test_topk_parameter_limits_results() {
             "name": "search_graph",
             "arguments": {
                 "query": "test content topK",
-                "topK": 2
+                "topK": 2,
+                "enrichMode": "off"
             }
         })),
     );
@@ -198,7 +200,7 @@ async fn test_include_content_returns_text() {
     );
     handlers.dispatch(inject_request).await;
 
-    // Search WITH includeContent=true
+    // Search WITH includeContent=true - use enrichMode: "off" for legacy format
     let search_request = make_request(
         "tools/call",
         Some(JsonRpcId::Number(2)),
@@ -206,7 +208,8 @@ async fn test_include_content_returns_text() {
             "name": "search_graph",
             "arguments": {
                 "query": "XYZ789 unique content",
-                "includeContent": true
+                "includeContent": true,
+                "enrichMode": "off"
             }
         })),
     );
@@ -262,14 +265,15 @@ async fn test_default_omits_content() {
     );
     handlers.dispatch(inject_request).await;
 
-    // Search WITHOUT includeContent (should default to false)
+    // Search WITHOUT includeContent (should default to false) - use enrichMode: "off"
     let search_request = make_request(
         "tools/call",
         Some(JsonRpcId::Number(2)),
         Some(json!({
             "name": "search_graph",
             "arguments": {
-                "query": "content default results"
+                "query": "content default results",
+                "enrichMode": "off"
             }
         })),
     );
@@ -380,7 +384,7 @@ async fn test_high_min_similarity_filters_all() {
     );
     handlers.dispatch(inject_request).await;
 
-    // Search with minSimilarity=0.99 (unlikely to match)
+    // Search with minSimilarity=0.99 (unlikely to match) - use enrichMode: "off"
     let search_request = make_request(
         "tools/call",
         Some(JsonRpcId::Number(2)),
@@ -388,7 +392,8 @@ async fn test_high_min_similarity_filters_all() {
             "name": "search_graph",
             "arguments": {
                 "query": "completely unrelated query",
-                "minSimilarity": 0.99
+                "minSimilarity": 0.99,
+                "enrichMode": "off"
             }
         })),
     );
@@ -418,14 +423,15 @@ async fn test_empty_graph_returns_empty_results() {
 
     let handlers = create_test_handlers();
 
-    // Search without storing anything first
+    // Search without storing anything first - use enrichMode: "off" for legacy format
     let search_request = make_request(
         "tools/call",
         Some(JsonRpcId::Number(1)),
         Some(json!({
             "name": "search_graph",
             "arguments": {
-                "query": "anything"
+                "query": "anything",
+                "enrichMode": "off"
             }
         })),
     );
@@ -479,14 +485,15 @@ async fn test_unicode_query_handled() {
     );
     handlers.dispatch(inject_request).await;
 
-    // Search with unicode query
+    // Search with unicode query - use enrichMode: "off" for legacy format
     let search_request = make_request(
         "tools/call",
         Some(JsonRpcId::Number(2)),
         Some(json!({
             "name": "search_graph",
             "arguments": {
-                "query": "日本語 emoji 🎉"
+                "query": "日本語 emoji 🎉",
+                "enrichMode": "off"
             }
         })),
     );
@@ -530,7 +537,7 @@ async fn test_max_topk_handled() {
     );
     handlers.dispatch(inject_request).await;
 
-    // Search with max topK=100
+    // Search with max topK=100 - use enrichMode: "off" for legacy format
     let search_request = make_request(
         "tools/call",
         Some(JsonRpcId::Number(2)),
@@ -538,7 +545,8 @@ async fn test_max_topk_handled() {
             "name": "search_graph",
             "arguments": {
                 "query": "content test",
-                "topK": 100
+                "topK": 100,
+                "enrichMode": "off"
             }
         })),
     );
@@ -578,7 +586,7 @@ async fn test_modality_filter() {
     );
     handlers.dispatch(inject_request).await;
 
-    // Search with modality filter
+    // Search with modality filter - use enrichMode: "off" for legacy format
     let search_request = make_request(
         "tools/call",
         Some(JsonRpcId::Number(2)),
@@ -586,7 +594,8 @@ async fn test_modality_filter() {
             "name": "search_graph",
             "arguments": {
                 "query": "main println",
-                "modality": "code"
+                "modality": "code",
+                "enrichMode": "off"
             }
         })),
     );
@@ -632,14 +641,15 @@ async fn test_cognitive_pulse_in_response() {
     );
     handlers.dispatch(inject_request).await;
 
-    // Search
+    // Search - use enrichMode: "off" for legacy format
     let search_request = make_request(
         "tools/call",
         Some(JsonRpcId::Number(2)),
         Some(json!({
             "name": "search_graph",
             "arguments": {
-                "query": "cognitive pulse test"
+                "query": "cognitive pulse test",
+                "enrichMode": "off"
             }
         })),
     );

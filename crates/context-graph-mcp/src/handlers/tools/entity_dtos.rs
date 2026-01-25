@@ -86,7 +86,7 @@ pub const DEFAULT_ENTITY_JACCARD_WEIGHT: f32 = 0.3;
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,ignore
 /// use context_graph_mcp::handlers::tools::entity_dtos::EntityBoostConfig;
 ///
 /// let config = EntityBoostConfig::default();

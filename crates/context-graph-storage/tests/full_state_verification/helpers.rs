@@ -59,7 +59,7 @@ pub fn generate_real_semantic_fingerprint() -> SemanticFingerprint {
         e10_multimodal_as_intent: generate_real_unit_vector(768),
         e10_multimodal_as_context: generate_real_unit_vector(768),
         e10_multimodal: Vec::new(), // Legacy field, empty by default
-        e11_entity: generate_real_unit_vector(384),
+        e11_entity: generate_real_unit_vector(768), // E11_DIM = 768 (KEPLER)
         e12_late_interaction: vec![generate_real_unit_vector(128); 16],
         e13_splade: generate_real_sparse_vector(500),
     }

@@ -259,13 +259,20 @@ async fn test_inject_context_produces_all_13_embeddings_with_gpu() {
     );
     assert_eq!(e7_dim, E7_DIM, "E7 must be {}D", E7_DIM);
 
-    // E8: Graph (384D)
-    let e8_dim = stored_fp.semantic.e8_graph.len();
+    // E8: Graph (384D) - uses dual vectors for asymmetric similarity
+    let e8_source_dim = stored_fp.semantic.e8_graph_as_source.len();
+    let e8_target_dim = stored_fp.semantic.e8_graph_as_target.len();
     println!(
-        "  E8  (Graph):            {} dims (expected {})",
-        e8_dim, E8_DIM
+        "  E8  (Graph source):     {} dims (expected {})",
+        e8_source_dim, E8_DIM
     );
-    assert_eq!(e8_dim, E8_DIM, "E8 must be {}D", E8_DIM);
+    println!(
+        "  E8  (Graph target):     {} dims (expected {})",
+        e8_target_dim, E8_DIM
+    );
+    assert_eq!(e8_source_dim, E8_DIM, "E8 source must be {}D", E8_DIM);
+    assert_eq!(e8_target_dim, E8_DIM, "E8 target must be {}D", E8_DIM);
+    assert!(stored_fp.semantic.e8_graph.is_empty(), "Legacy e8_graph should be empty");
 
     // E9: HDC (1024D projected)
     let e9_dim = stored_fp.semantic.e9_hdc.len();
@@ -275,13 +282,20 @@ async fn test_inject_context_produces_all_13_embeddings_with_gpu() {
     );
     assert_eq!(e9_dim, E9_DIM, "E9 must be {}D", E9_DIM);
 
-    // E10: Multimodal (768D)
-    let e10_dim = stored_fp.semantic.e10_multimodal.len();
+    // E10: Multimodal (768D) - uses dual vectors for asymmetric similarity
+    let e10_intent_dim = stored_fp.semantic.e10_multimodal_as_intent.len();
+    let e10_context_dim = stored_fp.semantic.e10_multimodal_as_context.len();
     println!(
-        "  E10 (Multimodal):       {} dims (expected {})",
-        e10_dim, E10_DIM
+        "  E10 (Multimodal intent): {} dims (expected {})",
+        e10_intent_dim, E10_DIM
     );
-    assert_eq!(e10_dim, E10_DIM, "E10 must be {}D", E10_DIM);
+    println!(
+        "  E10 (Multimodal context):{} dims (expected {})",
+        e10_context_dim, E10_DIM
+    );
+    assert_eq!(e10_intent_dim, E10_DIM, "E10 intent must be {}D", E10_DIM);
+    assert_eq!(e10_context_dim, E10_DIM, "E10 context must be {}D", E10_DIM);
+    assert!(stored_fp.semantic.e10_multimodal.is_empty(), "Legacy e10_multimodal should be empty");
 
     // E11: Entity (384D)
     let e11_dim = stored_fp.semantic.e11_entity.len();
@@ -400,23 +414,37 @@ async fn test_gpu_embeddings_are_nonzero() {
     );
     assert!(e7_nonzero, "E7 (Code) MUST have non-zero values");
 
-    // E8: Graph - structural embedding
-    let e8_nonzero = has_nonzero_values(&stored_fp.semantic.e8_graph);
-    let e8_norm = l2_norm(&stored_fp.semantic.e8_graph);
+    // E8: Graph - structural embedding (uses dual vectors)
+    let e8_source_nonzero = has_nonzero_values(&stored_fp.semantic.e8_graph_as_source);
+    let e8_target_nonzero = has_nonzero_values(&stored_fp.semantic.e8_graph_as_target);
+    let e8_source_norm = l2_norm(&stored_fp.semantic.e8_graph_as_source);
+    let e8_target_norm = l2_norm(&stored_fp.semantic.e8_graph_as_target);
     println!(
-        "  E8  (Graph):       non-zero={}, L2 norm={:.6}",
-        e8_nonzero, e8_norm
+        "  E8  (Graph src):   non-zero={}, L2 norm={:.6}",
+        e8_source_nonzero, e8_source_norm
     );
-    assert!(e8_nonzero, "E8 (Graph) MUST have non-zero values");
+    println!(
+        "  E8  (Graph tgt):   non-zero={}, L2 norm={:.6}",
+        e8_target_nonzero, e8_target_norm
+    );
+    assert!(e8_source_nonzero, "E8 (Graph source) MUST have non-zero values");
+    assert!(e8_target_nonzero, "E8 (Graph target) MUST have non-zero values");
 
-    // E10: Multimodal - intent embedding
-    let e10_nonzero = has_nonzero_values(&stored_fp.semantic.e10_multimodal);
-    let e10_norm = l2_norm(&stored_fp.semantic.e10_multimodal);
+    // E10: Multimodal - intent embedding (uses dual vectors)
+    let e10_intent_nonzero = has_nonzero_values(&stored_fp.semantic.e10_multimodal_as_intent);
+    let e10_context_nonzero = has_nonzero_values(&stored_fp.semantic.e10_multimodal_as_context);
+    let e10_intent_norm = l2_norm(&stored_fp.semantic.e10_multimodal_as_intent);
+    let e10_context_norm = l2_norm(&stored_fp.semantic.e10_multimodal_as_context);
     println!(
-        "  E10 (Multimodal):  non-zero={}, L2 norm={:.6}",
-        e10_nonzero, e10_norm
+        "  E10 (Intent):      non-zero={}, L2 norm={:.6}",
+        e10_intent_nonzero, e10_intent_norm
     );
-    assert!(e10_nonzero, "E10 (Multimodal) MUST have non-zero values");
+    println!(
+        "  E10 (Context):     non-zero={}, L2 norm={:.6}",
+        e10_context_nonzero, e10_context_norm
+    );
+    assert!(e10_intent_nonzero, "E10 (Intent) MUST have non-zero values");
+    assert!(e10_context_nonzero, "E10 (Context) MUST have non-zero values");
 
     // E11: Entity - entity embedding
     let e11_nonzero = has_nonzero_values(&stored_fp.semantic.e11_entity);
@@ -427,7 +455,7 @@ async fn test_gpu_embeddings_are_nonzero() {
     );
     assert!(e11_nonzero, "E11 (Entity) MUST have non-zero values");
 
-    // Count non-zero dense embeddings
+    // Count non-zero dense embeddings (uses dual vectors for E5, E8, E10)
     let dense_embeddings = [
         ("E1", &stored_fp.semantic.e1_semantic),
         ("E2", &stored_fp.semantic.e2_temporal_recent),
@@ -436,9 +464,11 @@ async fn test_gpu_embeddings_are_nonzero() {
         ("E5 cause", &stored_fp.semantic.e5_causal_as_cause),
         ("E5 effect", &stored_fp.semantic.e5_causal_as_effect),
         ("E7", &stored_fp.semantic.e7_code),
-        ("E8", &stored_fp.semantic.e8_graph),
+        ("E8 src", &stored_fp.semantic.e8_graph_as_source),
+        ("E8 tgt", &stored_fp.semantic.e8_graph_as_target),
         ("E9", &stored_fp.semantic.e9_hdc),
-        ("E10", &stored_fp.semantic.e10_multimodal),
+        ("E10 intent", &stored_fp.semantic.e10_multimodal_as_intent),
+        ("E10 context", &stored_fp.semantic.e10_multimodal_as_context),
         ("E11", &stored_fp.semantic.e11_entity),
     ];
 
@@ -453,10 +483,10 @@ async fn test_gpu_embeddings_are_nonzero() {
         dense_embeddings.len()
     );
 
-    // At minimum, semantic embeddings (E1, E5 cause, E5 effect, E7, E8, E10, E11) must be non-zero
+    // At minimum, semantic embeddings must be non-zero (now including dual vectors for E8, E10)
     assert!(
-        nonzero_count >= 7,
-        "At least 7 semantic embeddings must be non-zero. Got {}. Likely stub data!",
+        nonzero_count >= 9,
+        "At least 9 semantic embeddings must be non-zero. Got {}. Likely stub data!",
         nonzero_count
     );
 
@@ -516,13 +546,15 @@ async fn test_search_graph_returns_real_similarity_scores() {
     );
 
     // Search for "Rust memory safety" - should match first two highly
+    // Use enrichMode: "off" to get legacy response format with fingerprintId and similarity
     println!("\nSearching for: \"Rust memory safety and ownership\"");
     let search_request = make_tools_call_request(
         "search_graph",
         100,
         json!({
             "query": "Rust memory safety and ownership",
-            "topK": 10
+            "topK": 10,
+            "enrichMode": "off"
         }),
     );
 
