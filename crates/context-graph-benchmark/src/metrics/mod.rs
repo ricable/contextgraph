@@ -16,6 +16,8 @@ pub mod clustering;
 pub mod divergence;
 pub mod e1_semantic;
 pub mod e4_hybrid_session;
+pub mod e7_code;
+pub mod e7_iou;
 pub mod e11_entity;
 pub mod mcp_intent;
 pub mod multimodal;
@@ -59,6 +61,15 @@ pub use e11_entity::{
     EntityTypeMetrics, ExtractionMetrics, LatencyStats, RetrievalApproachComparison,
     ScoreDistribution, TransEMetrics, thresholds as e11_thresholds,
     compute_mrr as e11_compute_mrr, compute_ndcg_at_k as e11_compute_ndcg,
+};
+pub use e7_code::{
+    E7BenchmarkMetrics, E7GroundTruth, E7QueryResult, E7QueryType, E7QueryTypeMetrics,
+    e7_unique_finds, e1_unique_finds, mrr as e7_mrr, ndcg_at_k as e7_ndcg,
+    precision_at_k as e7_precision, recall_at_k as e7_recall,
+};
+pub use e7_iou::{
+    CodeToken, IoUMetrics, IoUResult, TokenType,
+    compute_iou_at_k, compute_iou_result, compute_token_iou, extract_token_strings, tokenize_code,
 };
 
 /// Combined metrics for a single benchmark run.

@@ -14,7 +14,29 @@
 #   - 170 SMs with Green Contexts: Isolated inference partitions
 #   - CUDA Tile: Portable, auto-optimized kernels
 
-# CORE PHILOSOPHY: 13 embedders = 13 unique perspectives on every memory
+# ═══════════════════════════════════════════════════════════════
+# CORE PHILOSOPHY: ALL EMBEDDERS ARE SIGNAL
+# ═══════════════════════════════════════════════════════════════
+#
+# FUNDAMENTAL PRINCIPLE: Every embedder provides SIGNAL, never noise.
+# Each of the 13 embedders captures a unique dimension of meaning that
+# E1 (semantic) alone cannot see. No embedder output is noise - each is
+# a carefully tuned lens on the knowledge graph.
+#
+# WHY THIS MATTERS:
+# - E1 treats code as natural language → E7 treats it as structured signal
+# - E1 loses causal direction → E5 preserves cause→effect as signal
+# - E1 dilutes exact terms → E6 preserves keyword precision as signal
+# - E1 misses entity relationships → E11 encodes "Diesel=ORM" as signal
+#
+# PARAMETER TUNING = SIGNAL DEFINITION:
+# Each embedder's parameters are tuned to define what its signal MEANS:
+#   - Blend weights: How strongly this signal influences final ranking
+#   - Similarity thresholds: What constitutes meaningful signal vs. weak
+#   - Boost factors: How to amplify signal in specific contexts
+#   - Topic weights: How much this signal contributes to topic detection
+#
+# 13 embedders = 13 unique perspectives on every memory
 # Each finds what OTHERS MISS. Combined = superior answers.
 #
 # Example: Query "What databases work with Rust?"
@@ -22,6 +44,12 @@
 # - E11 finds: "Diesel" (knows Diesel IS a database ORM - E1 missed this)
 # - E7 finds: code using sqlx, diesel crates
 # - Combined: Better answer than any single embedder
+#
+# THE SIGNAL, NOT NOISE PRINCIPLE:
+# When E1 misses something that E7 or E11 finds, that's not because E1
+# was wrong - it's because E7/E11 captured ADDITIONAL signal that E1
+# cannot encode in its representation space. All embedders contribute
+# valid signal; the question is which signal matters for this query.
 
 # ═══════════════════════════════════════════════════════════════
 # EMBEDDERS (13 Perspectives) - ALL GPU-RESIDENT
@@ -56,6 +84,125 @@ embedders:
   E9: { name: V_robustness, dim: 1024, finds: "Noise-robust structure", gpu: "warm-loaded" }
 
 # ═══════════════════════════════════════════════════════════════
+# EMBEDDER SIGNAL DEFINITIONS (Parameter Tuning)
+# ═══════════════════════════════════════════════════════════════
+# Each embedder's signal has specific meaning defined by tunable parameters.
+# These parameters are NOT arbitrary - they define what each signal REPRESENTS.
+
+signal_definitions:
+  # E1: SEMANTIC FOUNDATION
+  E1_semantic:
+    signal_meaning: "Dense semantic similarity - the foundation for all retrieval"
+    role: "Foundation layer - all retrieval starts here"
+    tunable_params:
+      similarity_threshold: { high: 0.75, low: 0.30, description: "What constitutes meaningful semantic match" }
+      matryoshka_dim: { values: [256, 512, 1024], description: "Precision vs speed tradeoff" }
+    when_strong: "Query has clear semantic content that matches stored memories"
+    when_weak: "Query involves code syntax, entity names, or causal relationships"
+
+  # E5: CAUSAL SIGNAL
+  E5_causal:
+    signal_meaning: "Cause→effect direction - asymmetric relationships E1 loses"
+    role: "Enhancer for 'why' and 'what caused' queries"
+    tunable_params:
+      direction_modifier: { cause_to_effect: 1.2, effect_to_cause: 0.8, description: "Asymmetric boost for causal direction" }
+      similarity_threshold: { high: 0.70, low: 0.25, description: "Causal relationship strength" }
+    when_strong: "Query asks 'why did X happen?' or 'what caused Y?'"
+    when_weak: "Query is descriptive or definitional, no causal chain"
+
+  # E6: KEYWORD SIGNAL
+  E6_keyword:
+    signal_meaning: "Exact term matches - precision E1 dilutes through averaging"
+    role: "Enhancer for exact terminology, jargon, error codes"
+    tunable_params:
+      blend_weight: { default: 0.3, range: [0.1, 0.5], description: "How much keyword precision influences ranking" }
+      jaccard_threshold: { high: 0.60, low: 0.20, description: "Minimum keyword overlap" }
+    when_strong: "Query contains quoted terms, error codes, specific jargon"
+    when_weak: "Query is conceptual or paraphrased"
+
+  # E7: CODE SIGNAL
+  E7_code:
+    signal_meaning: "Code structure and patterns - what E1 treats as noise is signal"
+    role: "Enhancer for code queries, function signatures, implementations"
+    tunable_params:
+      blend_weight: { default: 0.4, range: [0.2, 0.6], description: "Code signal influence on ranking" }
+      similarity_threshold: { high: 0.80, low: 0.35, description: "Code pattern match strength" }
+      language_detection: { auto: true, description: "Auto-detect programming language from query" }
+    when_strong: "Query contains code syntax (::, ->, fn, impl, async)"
+    when_weak: "Query is natural language description without code"
+    benchmark_validated: "+69% improvement for signature searches, +29% for pattern searches"
+
+  # E8: GRAPH STRUCTURE SIGNAL
+  E8_graph:
+    signal_meaning: "Structural relationships - imports, dependencies, connections"
+    role: "Enhancer for 'what uses X?' or 'what does Y depend on?' queries"
+    tunable_params:
+      direction_modifier: { source_to_target: 1.2, target_to_source: 0.8, description: "Asymmetric for graph direction" }
+      similarity_threshold: { high: 0.65, description: "Connection strength" }
+    when_strong: "Query asks about imports, dependencies, or structural relationships"
+    when_weak: "Query is about content, not structure"
+
+  # E9: NOISE-ROBUST SIGNAL
+  E9_robustness:
+    signal_meaning: "Structural patterns robust to typos and variations"
+    role: "Backup signal when E1 fails due to typos or misspellings"
+    tunable_params:
+      hamming_threshold: { high: 0.70, description: "Structure match despite noise" }
+    when_strong: "Query has typos, variations, or noise"
+    when_weak: "Query is clean, well-formed text"
+
+  # E10: INTENT SIGNAL
+  E10_intent:
+    signal_meaning: "Goal alignment - same purpose expressed differently"
+    role: "Enhancer via multiplicative boost on E1 (NOT replacement)"
+    tunable_params:
+      boost_strong_e1: { value: 0.05, description: "5% boost when E1 > 0.8 (refine)" }
+      boost_medium_e1: { value: 0.10, description: "10% boost when E1 0.4-0.8" }
+      boost_weak_e1: { value: 0.15, description: "15% boost when E1 < 0.4 (broaden)" }
+      multiplier_clamp: { min: 0.8, max: 1.2, description: "Never override E1 completely" }
+    when_strong: "Query describes a goal or purpose, might use different words than stored memories"
+    when_weak: "Query is exact match, no intent interpretation needed"
+
+  # E11: ENTITY KNOWLEDGE SIGNAL
+  E11_entity:
+    signal_meaning: "Entity relationships - 'Diesel' = database ORM for Rust"
+    role: "Enhancer for named entity queries, technical terms with known relationships"
+    tunable_params:
+      transe_score_threshold: { valid: "> -2.0", uncertain: "-2.0 to -5.0", description: "TransE distance for relation validity" }
+      jaccard_boost: { exact_match: 1.3, description: "Boost for exact entity matches" }
+    when_strong: "Query contains named entities (frameworks, libraries, tools)"
+    when_weak: "Query is conceptual without specific entity names"
+
+  # E12: PRECISION SIGNAL (RERANKING ONLY)
+  E12_precision:
+    signal_meaning: "Token-level exact phrase matches - MaxSim reranking"
+    role: "Final stage reranking ONLY (per AP-74)"
+    tunable_params:
+      maxsim_threshold: { high: 0.70, low: 0.30, description: "Phrase match precision" }
+    when_strong: "Need to distinguish between very similar candidates"
+    forbidden: "NEVER use for initial retrieval (AP-74)"
+
+  # E13: TERM EXPANSION SIGNAL (STAGE 1 ONLY)
+  E13_expansion:
+    signal_meaning: "Term expansion - fast→quick, db→database"
+    role: "Stage 1 recall ONLY - cast wide net (per AP-75)"
+    tunable_params:
+      splade_threshold: { high: 0.60, low: 0.20, description: "Term expansion match" }
+      recall_candidates: { default: 10000, description: "Number of candidates for pipeline" }
+    when_strong: "Need to find synonyms, abbreviations, related terms"
+    forbidden: "NEVER use for final ranking (AP-75)"
+
+  # E2-E4: TEMPORAL SIGNALS (POST-RETRIEVAL ONLY)
+  E2_E3_E4_temporal:
+    signal_meaning: "Temporal context - recency, periodicity, sequence"
+    role: "POST-RETRIEVAL badges only (per ARCH-25, AP-73)"
+    tunable_params:
+      recency_boost: { under_1h: 1.3, under_1d: 1.2, under_7d: 1.1, description: "Post-retrieval recency weight" }
+    when_used: "After retrieval, to add temporal context badges"
+    forbidden: "NEVER in similarity fusion or initial retrieval"
+    topic_weight: 0.0  # ALWAYS - temporal proximity ≠ semantic relationship
+
+# ═══════════════════════════════════════════════════════════════
 # ARCHITECTURAL RULES (MUST follow)
 # ═══════════════════════════════════════════════════════════════
 arch_rules:
@@ -68,6 +215,13 @@ arch_rules:
   ARCH-GPU-06: "Batch operations preferred - minimize kernel launches"
   ARCH-GPU-07: "Green Contexts partition SMs: 70% inference, 30% indexing"
   ARCH-GPU-08: "CUDA streams for async embedding + indexing overlap"
+
+  # Signal Philosophy (FUNDAMENTAL)
+  ARCH-SIGNAL-01: "ALL 13 embedders provide SIGNAL, never noise - each captures unique dimensions of meaning"
+  ARCH-SIGNAL-02: "What E1 misses is ADDITIONAL signal, not noise - E7/E11/E5 capture what E1 cannot encode"
+  ARCH-SIGNAL-03: "Parameter tuning defines signal MEANING - blend weights, thresholds, boosts define each embedder's role"
+  ARCH-SIGNAL-04: "Combined signal > any single embedder - multi-perspective retrieval is always superior"
+  ARCH-SIGNAL-05: "Enhancers complement E1, never compete - E10 boosts E1, doesn't replace it"
 
   # Core
   ARCH-01: "TeleologicalArray is atomic - all 13 embeddings or nothing"

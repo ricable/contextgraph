@@ -43,18 +43,45 @@ This is a **GPU-first system**. All compute-intensive operations use GPU over CP
 
 ---
 
-## 1. CORE PHILOSOPHY
+## 1. CORE PHILOSOPHY: ALL EMBEDDERS ARE SIGNAL
+
+### 1.1 The Signal, Not Noise Principle
+
+**FUNDAMENTAL**: Every embedder provides SIGNAL, never noise. Each of the 13 embedders captures a unique dimension of meaning that E1 (semantic) alone cannot see.
+
+| Embedder | What E1 Sees as Noise | What It Actually Is |
+|----------|----------------------|---------------------|
+| E7 | Code syntax (`::", `->`, `fn`) | **Structured code signal** - patterns, signatures |
+| E5 | Word order in causal statements | **Directional signal** - cause→effect preserved |
+| E6 | Exact term repetition | **Precision signal** - keyword matches matter |
+| E11 | Entity names without context | **Knowledge signal** - "Diesel" = database ORM |
+| E10 | Different words, same meaning | **Intent signal** - goal alignment |
+
+**When E1 misses something that E7 or E11 finds, that's not because E1 was wrong - it's because E7/E11 captured ADDITIONAL signal that E1 cannot encode in its representation space.**
+
+### 1.2 Parameter Tuning = Signal Definition
+
+Each embedder's parameters are tuned to define what its signal MEANS:
+
+| Parameter Type | Purpose | Example |
+|---------------|---------|---------|
+| **Blend weights** | How strongly this signal influences final ranking | E7 blend=0.4 means 40% code signal |
+| **Similarity thresholds** | What constitutes meaningful signal vs. weak | E7 high=0.80 for strong code match |
+| **Boost factors** | How to amplify signal in specific contexts | E10 boosts 15% when E1 is weak |
+| **Topic weights** | How much this signal contributes to topic detection | E7=1.0, E2=0.0 (temporal excluded) |
+
+### 1.3 Combined Signal > Single Embedder
 
 Each embedder finds what OTHERS MISS. Combined = superior answers.
 
 **Example Query**: "What databases work with Rust?"
-| Embedder | Finds | Why Others Missed It |
-|----------|-------|---------------------|
-| E1 | Memories containing "database" or "Rust" | Semantic match only |
-| E11 | Memories about "Diesel" | Knows Diesel IS a database ORM |
-| E7 | Code using `sqlx`, `diesel` crates | Recognizes code patterns |
-| E5 | "Migration that broke production" | Understands causal chain |
-| **Combined** | All of the above | Better answer than any single embedder |
+| Embedder | Finds | Signal Type |
+|----------|-------|-------------|
+| E1 | Memories containing "database" or "Rust" | Semantic signal |
+| E11 | Memories about "Diesel" | Entity knowledge signal (knows Diesel IS a database ORM) |
+| E7 | Code using `sqlx`, `diesel` crates | Code pattern signal |
+| E5 | "Migration that broke production" | Causal signal |
+| **Combined** | All of the above | Multi-perspective signal = superior answer |
 
 **Key Principle**: Temporal proximity ≠ semantic relationship. Working on 3 unrelated tasks in the same hour creates temporal clusters, NOT topics.
 
@@ -97,6 +124,56 @@ Each embedder finds what OTHERS MISS. Combined = superior answers.
 | E13 | ~30K sparse | Jaccard | GPU Stage 1 recall ONLY |
 
 **All 13 embedders are warm-loaded into GPU VRAM at MCP server startup. No cold-loading, no CPU fallback.**
+
+### 2.3 Signal Definitions and Tunable Parameters
+
+Each embedder's signal has specific meaning defined by tunable parameters. These are NOT arbitrary - they define what each signal REPRESENTS.
+
+#### E7 Code Signal (Benchmark Validated)
+| Parameter | Value | Signal Meaning |
+|-----------|-------|----------------|
+| `blend_weight` | 0.4 (default) | 40% code signal in final ranking |
+| `similarity_threshold.high` | 0.80 | Strong code pattern match |
+| `similarity_threshold.low` | 0.35 | Weak but present code signal |
+| `language_detection` | auto | Detect Rust/Python/TS from query |
+
+**Benchmark Results**: +69% improvement for signature searches, +29% for pattern searches, +19.2% overall MRR improvement over pure E1.
+
+#### E10 Intent Signal (Multiplicative Boost)
+| E1 Strength | Boost | Rationale |
+|-------------|-------|-----------|
+| Strong (>0.8) | 5% | E1 is confident, E10 refines |
+| Medium (0.4-0.8) | 10% | Balanced enhancement |
+| Weak (<0.4) | 15% | E1 uncertain, E10 broadens search |
+| Multiplier clamp | [0.8, 1.2] | Never override E1 completely |
+
+**Signal meaning**: Same goal expressed differently. E10 boosts memories with aligned intent even when words differ.
+
+#### E5 Causal Signal (Asymmetric)
+| Direction | Modifier | Signal Meaning |
+|-----------|----------|----------------|
+| cause→effect | 1.2x | "What did X cause?" gets boost |
+| effect→cause | 0.8x | "What caused X?" dampened appropriately |
+
+**Signal meaning**: Preserves causal direction that E1 loses through symmetric cosine similarity.
+
+#### E11 Entity Knowledge Signal (KEPLER TransE)
+| Parameter | Value | Signal Meaning |
+|-----------|-------|----------------|
+| `transe_score > -2.0` | Valid relation | High confidence entity relationship |
+| `transe_score -2.0 to -5.0` | Uncertain | Possible but unconfirmed relation |
+| `exact_match_boost` | 1.3x | Exact entity name match bonus |
+
+**Signal meaning**: "Diesel" = database ORM for Rust. Entity relationships E1 cannot encode.
+
+#### E2-E4 Temporal Signal (POST-RETRIEVAL ONLY)
+| Parameter | Value | Usage |
+|-----------|-------|-------|
+| `recency_boost.under_1h` | 1.3x | Very recent, post-retrieval only |
+| `recency_boost.under_1d` | 1.2x | Same-day, post-retrieval only |
+| `topic_weight` | 0.0 | **NEVER** contributes to topic detection |
+
+**Signal meaning**: Temporal context badges applied AFTER retrieval. Temporal proximity ≠ semantic relationship.
 
 ---
 
@@ -407,6 +484,15 @@ Response includes:
 ---
 
 ## 11. ARCHITECTURAL RULES
+
+### Signal Philosophy Rules (FUNDAMENTAL)
+| Rule | Description |
+|------|-------------|
+| ARCH-SIGNAL-01 | ALL 13 embedders provide SIGNAL, never noise - each captures unique dimensions of meaning |
+| ARCH-SIGNAL-02 | What E1 misses is ADDITIONAL signal, not noise - E7/E11/E5 capture what E1 cannot encode |
+| ARCH-SIGNAL-03 | Parameter tuning defines signal MEANING - blend weights, thresholds, boosts define each embedder's role |
+| ARCH-SIGNAL-04 | Combined signal > any single embedder - multi-perspective retrieval is always superior |
+| ARCH-SIGNAL-05 | Enhancers complement E1, never compete - E10 boosts E1, doesn't replace it |
 
 ### GPU-First Rules (Mandatory)
 | Rule | Description |

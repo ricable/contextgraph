@@ -1,10 +1,10 @@
 # context-graph-core
 
-Core domain types, traits, and business logic for the Context Graph bio-nervous knowledge system.
+Core domain types, traits, and business logic for the Context Graph knowledge system.
 
 ## Overview
 
-This crate provides the foundational types for the Ultimate Context Graph - a 4-layer bio-nervous memory system based on the Unified Theory of Learning (UTL). It implements the Marblestone architecture for neural-inspired knowledge organization.
+This crate provides the foundational types for the Ultimate Context Graph - a 13-embedder memory system based on the Unified Theory of Learning (UTL). It implements the Marblestone architecture for neural-inspired knowledge organization.
 
 ## Features
 
@@ -49,8 +49,7 @@ context-graph-core/
 │   ├── graph_edge/     # GraphEdge, EdgeId
 │   ├── fingerprint/    # TeleologicalFingerprint, SemanticFingerprint, TopicProfile
 │   ├── pulse.rs        # CognitivePulse, SuggestedAction
-│   ├── utl.rs          # UtlMetrics, EmotionalState
-│   └── nervous.rs      # LayerId, NervousSystemState
+│   └── utl.rs          # UtlMetrics, EmotionalState
 ├── marblestone/        # Marblestone architecture types
 │   ├── domain.rs       # Domain enum (Code, Legal, Medical, etc.)
 │   ├── edge_type.rs    # EdgeType enum (Semantic, Temporal, Causal, Hierarchical)
@@ -96,7 +95,7 @@ let modulated = edge.get_modulated_weight();
 
 ### CognitivePulse
 
-Meta-cognitive state with 7 fields:
+Meta-cognitive state with 6 fields:
 - entropy [0, 1]: Uncertainty/novelty level
 - coherence [0, 1]: Integration/understanding
 - suggested_action: Ready, Continue, Explore, Consolidate, Prune, Stabilize, Review

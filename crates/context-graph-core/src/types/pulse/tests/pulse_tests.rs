@@ -2,7 +2,6 @@
 
 use chrono::Utc;
 
-use crate::types::nervous::LayerId;
 use crate::types::pulse::{CognitivePulse, SuggestedAction};
 use crate::types::utl::{EmotionalState, UtlMetrics};
 
@@ -14,7 +13,6 @@ fn test_pulse_default() {
     assert_eq!(pulse.coherence_delta, 0.0);
     assert_eq!(pulse.emotional_weight, 1.0);
     assert_eq!(pulse.suggested_action, SuggestedAction::Continue);
-    assert!(pulse.source_layer.is_none());
     // Timestamp should be recent (within last second)
     let now = Utc::now();
     let diff = now.signed_duration_since(pulse.timestamp);
@@ -29,14 +27,12 @@ fn test_pulse_new_with_all_fields() {
         0.1,
         1.2,
         SuggestedAction::Explore,
-        Some(LayerId::Learning),
     );
     assert_eq!(pulse.entropy, 0.5);
     assert_eq!(pulse.coherence, 0.7);
     assert_eq!(pulse.coherence_delta, 0.1);
     assert_eq!(pulse.emotional_weight, 1.2);
     assert_eq!(pulse.suggested_action, SuggestedAction::Explore);
-    assert_eq!(pulse.source_layer, Some(LayerId::Learning));
 }
 
 #[test]
@@ -51,14 +47,13 @@ fn test_pulse_computed_from_metrics() {
         alignment: 0.9,
     };
 
-    let pulse = CognitivePulse::computed(&metrics, Some(LayerId::Coherence));
+    let pulse = CognitivePulse::computed(&metrics);
 
     assert_eq!(pulse.entropy, 0.3);
     assert_eq!(pulse.coherence, 0.8);
     assert_eq!(pulse.coherence_delta, 0.15);
     assert_eq!(pulse.emotional_weight, 1.3);
     assert_eq!(pulse.suggested_action, SuggestedAction::Ready); // low entropy, high coherence
-    assert_eq!(pulse.source_layer, Some(LayerId::Coherence));
 }
 
 #[test]
@@ -69,18 +64,15 @@ fn test_pulse_from_values() {
     assert_eq!(pulse.coherence_delta, 0.0);
     assert_eq!(pulse.emotional_weight, 1.0);
     assert_eq!(pulse.suggested_action, SuggestedAction::Stabilize);
-    assert!(pulse.source_layer.is_none());
 }
 
 #[test]
 fn test_pulse_with_emotion() {
-    let pulse =
-        CognitivePulse::with_emotion(0.5, 0.6, EmotionalState::Focused, Some(LayerId::Memory));
+    let pulse = CognitivePulse::with_emotion(0.5, 0.6, EmotionalState::Focused);
     assert_eq!(pulse.entropy, 0.5);
     assert_eq!(pulse.coherence, 0.6);
     assert_eq!(pulse.coherence_delta, 0.0);
     assert_eq!(pulse.emotional_weight, 1.3); // Focused weight
-    assert_eq!(pulse.source_layer, Some(LayerId::Memory));
 }
 
 #[test]
@@ -112,7 +104,6 @@ fn test_pulse_clamps_values() {
         2.0,  // should clamp to 1.0
         3.0,  // should clamp to 2.0
         SuggestedAction::Continue,
-        None,
     );
     assert_eq!(pulse.entropy, 1.0);
     assert_eq!(pulse.coherence, 0.0);
@@ -128,7 +119,6 @@ fn test_pulse_clamps_negative_coherence_delta() {
         -2.0, // should clamp to -1.0
         1.0,
         SuggestedAction::Continue,
-        None,
     );
     assert_eq!(pulse.coherence_delta, -1.0);
 }
@@ -151,7 +141,6 @@ fn test_pulse_serde_roundtrip() {
         0.1,
         1.2,
         SuggestedAction::Explore,
-        Some(LayerId::Learning),
     );
 
     let json = serde_json::to_string(&pulse).unwrap();
@@ -162,21 +151,19 @@ fn test_pulse_serde_roundtrip() {
     assert_eq!(pulse.coherence_delta, parsed.coherence_delta);
     assert_eq!(pulse.emotional_weight, parsed.emotional_weight);
     assert_eq!(pulse.suggested_action, parsed.suggested_action);
-    assert_eq!(pulse.source_layer, parsed.source_layer);
     assert_eq!(pulse.timestamp, parsed.timestamp);
 }
 
 #[test]
-fn test_pulse_all_seven_fields_present() {
+fn test_pulse_all_six_fields_present() {
     let pulse = CognitivePulse::default();
 
-    // Verify all 7 fields exist and have valid values
+    // Verify all 6 fields exist and have valid values
     let _entropy: f32 = pulse.entropy;
     let _coherence: f32 = pulse.coherence;
     let _coherence_delta: f32 = pulse.coherence_delta;
     let _emotional_weight: f32 = pulse.emotional_weight;
     let _suggested_action: SuggestedAction = pulse.suggested_action;
-    let _source_layer: Option<LayerId> = pulse.source_layer;
     let _timestamp: chrono::DateTime<Utc> = pulse.timestamp;
 
     // All fields are valid
@@ -198,12 +185,11 @@ fn test_computed_derives_all_fields_from_metrics() {
         alignment: 0.95,
     };
 
-    let pulse = CognitivePulse::computed(&metrics, Some(LayerId::Sensing));
+    let pulse = CognitivePulse::computed(&metrics);
 
     // Verify derived values
     assert_eq!(pulse.entropy, metrics.entropy);
     assert_eq!(pulse.coherence, metrics.coherence);
     assert_eq!(pulse.coherence_delta, metrics.coherence_change);
     assert_eq!(pulse.emotional_weight, metrics.emotional_weight);
-    assert_eq!(pulse.source_layer, Some(LayerId::Sensing));
 }

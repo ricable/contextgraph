@@ -1,6 +1,5 @@
 //! Tests for CognitivePulse update() and blend() methods.
 
-use crate::types::nervous::LayerId;
 use crate::types::pulse::{CognitivePulse, SuggestedAction};
 
 // =======================================================================
@@ -128,7 +127,6 @@ fn test_blend_interpolates_all_numeric_fields() {
         0.1,
         1.0,
         SuggestedAction::Ready,
-        Some(LayerId::Sensing),
     );
     let pulse2 = CognitivePulse::new(
         0.8,
@@ -136,7 +134,6 @@ fn test_blend_interpolates_all_numeric_fields() {
         -0.1,
         1.4,
         SuggestedAction::Explore,
-        Some(LayerId::Coherence),
     );
 
     let blended = pulse1.blend(&pulse2, 0.5);
@@ -145,34 +142,6 @@ fn test_blend_interpolates_all_numeric_fields() {
     assert_eq!(blended.coherence, 0.5);
     assert_eq!(blended.coherence_delta, 0.0); // (0.1 + -0.1) / 2
     assert_eq!(blended.emotional_weight, 1.2); // (1.0 + 1.4) / 2
-}
-
-#[test]
-fn test_blend_source_layer_threshold() {
-    let pulse1 = CognitivePulse::new(
-        0.5,
-        0.5,
-        0.0,
-        1.0,
-        SuggestedAction::Continue,
-        Some(LayerId::Sensing),
-    );
-    let pulse2 = CognitivePulse::new(
-        0.5,
-        0.5,
-        0.0,
-        1.0,
-        SuggestedAction::Continue,
-        Some(LayerId::Coherence),
-    );
-
-    // t < 0.5 -> use self's source_layer
-    let blended = pulse1.blend(&pulse2, 0.49);
-    assert_eq!(blended.source_layer, Some(LayerId::Sensing));
-
-    // t >= 0.5 -> use other's source_layer
-    let blended = pulse1.blend(&pulse2, 0.5);
-    assert_eq!(blended.source_layer, Some(LayerId::Coherence));
 }
 
 #[test]

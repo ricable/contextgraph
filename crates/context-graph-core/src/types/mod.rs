@@ -4,7 +4,6 @@ pub mod file_index;
 pub mod fingerprint;
 mod graph_edge;
 mod memory_node;
-mod nervous;
 mod pulse;
 mod source_metadata;
 mod utl;
@@ -35,7 +34,6 @@ pub use fingerprint::{
 };
 pub use graph_edge::*;
 pub use memory_node::*;
-pub use nervous::*;
 pub use pulse::*;
 pub use source_metadata::{SourceMetadata, SourceType};
 pub use utl::*;

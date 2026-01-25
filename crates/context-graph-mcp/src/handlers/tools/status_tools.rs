@@ -17,7 +17,6 @@ impl Handlers {
     /// Returns comprehensive system status including:
     /// - Fingerprint count from TeleologicalMemoryStore
     /// - Live UTL metrics from UtlProcessor (NOT hardcoded)
-    /// - 4-layer bio-nervous system status
     /// - `_cognitive_pulse` with live system state
     ///
     /// # Constitution References

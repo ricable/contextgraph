@@ -387,7 +387,7 @@ async fn manual_fsv_edge_case_memetic_status() {
 
     println!("   layers: {}", data["layers"]);
 
-    // Verify layer statuses from StubLayerStatusProvider (4-layer system - all active)
+    // Verify layer statuses from StubLayerStatusProvider (all layers active)
     let layers = &data["layers"];
     assert_eq!(
         layers["perception"].as_str().unwrap(),

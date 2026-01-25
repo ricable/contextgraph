@@ -81,7 +81,7 @@ async fn test_task_emb_024_layer_status_provider_honest_statuses() {
         serde_json::from_str(content).expect("Content should be valid JSON");
 
     // VERIFY: Expected statuses per StubLayerStatusProvider
-    // All 4 layers are "active" (have working implementations)
+    // All layers are "active" (have working implementations)
     let layers = &data["layers"];
     assert_eq!(
         layers["perception"].as_str().unwrap(),

@@ -1,5 +1,5 @@
 # Context Graph - Workspace Manifest
-# Bio-Nervous Context Graph with 5-layer neural architecture implementing UTL
+# 13-Embedder Context Graph implementing UTL (Unified Theory of Learning)
 
 [workspace]
 resolver = "2"

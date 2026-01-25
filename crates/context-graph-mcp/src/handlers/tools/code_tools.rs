@@ -25,8 +25,8 @@ use crate::protocol::JsonRpcId;
 use crate::protocol::JsonRpcResponse;
 
 use super::code_dtos::{
-    CodeSearchMetadata, CodeSearchResult, CodeSourceInfo, DetectedLanguageInfo, SearchCodeRequest,
-    SearchCodeResponse,
+    CodeSearchMetadata, CodeSearchMode, CodeSearchResult, CodeSourceInfo, DetectedLanguageInfo,
+    SearchCodeRequest, SearchCodeResponse,
 };
 
 use super::super::Handlers;
@@ -77,17 +77,25 @@ impl Handlers {
         let min_score = request.min_score;
         let e7_blend = request.blend_with_semantic;
         let e1_weight = 1.0 - e7_blend;
+        let search_mode = request.search_mode;
+        let language_hint = request.language_hint.clone();
 
-        // Detect programming language from query
-        let detected_language = detect_language(query);
+        // Detect programming language from query (merge with hint if provided)
+        let mut detected_language = detect_language(query);
+        if let Some(ref hint) = language_hint {
+            // Language hint overrides detection if provided
+            detected_language.primary_language = Some(hint.clone());
+            detected_language.confidence = 1.0;
+        }
 
         info!(
             query_preview = %query.chars().take(50).collect::<String>(),
             top_k = top_k,
             min_score = min_score,
+            search_mode = %search_mode,
             e7_blend = e7_blend,
             detected_language = ?detected_language.primary_language,
-            "search_code: Starting code-enhanced search"
+            "search_code: Starting code search"
         );
 
         // Step 1: Embed the code query
@@ -127,7 +135,7 @@ impl Handlers {
             "search_code: Evaluating candidates for code scoring"
         );
 
-        // Step 3: Compute code-enhanced scores
+        // Step 3: Compute code-enhanced scores based on search mode
         let query_e7 = &query_embedding.e7_code;
         let query_e1 = &query_embedding.e1_semantic;
 
@@ -144,12 +152,30 @@ impl Handlers {
             // E7 cosine similarity (code-specific understanding)
             let e7_sim = cosine_similarity(query_e7, cand_e7);
 
-            // Blend scores: (1-blend)*E1 + blend*E7
-            // E7 enhances E1 for code-specific queries
-            let blended_score = e1_weight * e1_sim + e7_blend * e7_sim;
+            // Compute final score based on search mode
+            let final_score = match search_mode {
+                CodeSearchMode::Hybrid => {
+                    // Blend scores: (1-blend)*E1 + blend*E7
+                    e1_weight * e1_sim + e7_blend * e7_sim
+                }
+                CodeSearchMode::E7Only => {
+                    // Pure E7 code search
+                    e7_sim
+                }
+                CodeSearchMode::E1WithE7Rerank => {
+                    // Use E1 as primary with E7 as tiebreaker/booster
+                    // E7 provides a small boost (10%) when it agrees with E1
+                    e1_sim + 0.1 * e7_sim
+                }
+                CodeSearchMode::Pipeline => {
+                    // For full pipeline, use weighted combination
+                    // E1 foundation with strong E7 enhancement
+                    0.6 * e1_sim + 0.4 * e7_sim
+                }
+            };
 
-            if blended_score >= min_score {
-                scored_results.push((cand_id, blended_score, e1_sim, e7_sim));
+            if final_score >= min_score {
+                scored_results.push((cand_id, final_score, e1_sim, e7_sim));
             }
         }
 
@@ -218,8 +244,10 @@ impl Handlers {
             metadata: CodeSearchMetadata {
                 candidates_evaluated,
                 filtered_by_score: filtered_count,
+                search_mode,
                 e7_blend_weight: e7_blend,
                 e1_weight,
+                language_hint,
                 detected_language,
             },
         };

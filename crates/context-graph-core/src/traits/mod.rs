@@ -8,7 +8,6 @@
 //! - [`TeleologicalMemoryStore`]: Storage for teleological fingerprints (TASK-F008)
 //! - [`MultiArrayEmbeddingProvider`]: 13-embedding generation (TASK-F007)
 //! - [`GraphIndex`]: Graph traversal and indexing
-//! - [`NervousLayer`]: Nervous system layer processing
 //! - [`UtlProcessor`]: Unified Theory of Learning operations
 //!
 //! # REMOVED (Phase 1 Cleanup)
@@ -20,7 +19,6 @@
 // Use multi_array_embedding::MultiArrayEmbeddingProvider instead
 mod graph_index;
 mod multi_array_embedding;
-mod nervous_layer;
 mod teleological_memory_store;
 mod utl_processor;
 
@@ -39,9 +37,6 @@ pub use multi_array_embedding::{
     EmbeddingMetadata, MultiArrayEmbeddingOutput, MultiArrayEmbeddingProvider, SingleEmbedder,
     SparseEmbedder, TokenEmbedder,
 };
-
-// Nervous system layer trait
-pub use nervous_layer::NervousLayer;
 
 // Teleological memory store trait - TASK-F008
 pub use teleological_memory_store::{

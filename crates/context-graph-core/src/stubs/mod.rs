@@ -54,8 +54,6 @@
 #[cfg(any(test, feature = "test-utils"))]
 mod graph_index;
 #[cfg(any(test, feature = "test-utils"))]
-mod layers;
-#[cfg(any(test, feature = "test-utils"))]
 mod multi_array_stub;
 #[cfg(any(test, feature = "test-utils"))]
 mod teleological_store_stub;
@@ -71,10 +69,6 @@ mod utl_stub;
 // Graph index stub - TEST ONLY
 #[cfg(any(test, feature = "test-utils"))]
 pub use graph_index::InMemoryGraphIndex;
-
-// Nervous layer stubs - TEST ONLY
-#[cfg(any(test, feature = "test-utils"))]
-pub use layers::{StubCoherenceLayer, StubLearningLayer, StubMemoryLayer, StubSensingLayer};
 
 // Multi-array embedding stub (TASK-F007) - TEST ONLY
 #[cfg(any(test, feature = "test-utils"))]

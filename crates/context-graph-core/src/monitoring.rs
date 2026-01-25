@@ -156,7 +156,7 @@ pub type MonitorResult<T> = Result<T, SystemMonitorError>;
 // Layer Status Types
 // ============================================================================
 
-/// Status of a single layer in the 4-layer bio-nervous architecture.
+/// Status of a single layer in the system architecture.
 ///
 /// Represents the REAL implementation status of each layer.
 /// No layer should report "active" unless it has a working implementation.
@@ -373,8 +373,8 @@ pub struct HealthMetrics {
 /// Trait for providing REAL layer status information.
 ///
 /// This trait reports the actual implementation status of each layer
-/// in the 4-layer bio-nervous architecture. Implementations MUST report
-/// honest status - a layer is only "active" if it has real functionality.
+/// in the system architecture. Implementations MUST report honest status -
+/// a layer is only "active" if it has real functionality.
 ///
 /// # Thread Safety
 ///
@@ -382,11 +382,11 @@ pub struct HealthMetrics {
 ///
 /// # Layers
 ///
-/// The 4-layer architecture consists of:
-/// 1. **Perception (L1_Sensing)** - Multi-modal input processing with PII scrubbing
-/// 2. **Memory (L3_Memory)** - Teleological memory with 13-embedding semantic fingerprints
-/// 3. **Action (L4_Learning)** - UTL-driven weight optimization with consolidation triggers
-/// 4. **Meta (L5_Coherence)** - Per-space clustering coordination and Global Workspace broadcast
+/// The system architecture consists of:
+/// - **Perception (L1_Sensing)** - Multi-modal input processing with PII scrubbing
+/// - **Memory (L3_Memory)** - Teleological memory with 13-embedding semantic fingerprints
+/// - **Action (L4_Learning)** - UTL-driven weight optimization with consolidation triggers
+/// - **Meta (L5_Coherence)** - Per-space clustering coordination and Global Workspace broadcast
 #[async_trait]
 pub trait LayerStatusProvider: Send + Sync + 'static {
     /// Get the status of the perception layer (L1_Sensing).
@@ -504,7 +504,7 @@ impl SystemMonitor for StubSystemMonitor {
     }
 }
 
-/// Production layer status provider per Constitution 4-Layer Bio-Nervous System.
+/// Production layer status provider per Constitution layer architecture.
 ///
 /// Per constitution.yaml:
 /// - L1_Sensing: 13-model embed, PII scrub, adversarial detect (<5ms) - ACTIVE

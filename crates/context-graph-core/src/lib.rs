@@ -12,7 +12,7 @@
 //!
 //! This crate defines:
 //! - Domain types (`TeleologicalFingerprint`, `SemanticFingerprint`, `TopicProfile`, etc.)
-//! - Core traits (`TeleologicalMemoryStore`, `MultiArrayEmbeddingProvider`, `NervousLayer`, etc.)
+//! - Core traits (`TeleologicalMemoryStore`, `MultiArrayEmbeddingProvider`, etc.)
 //! - Error types and result aliases
 //! - Configuration structures
 //! - Teleological services (retrieval, fusion, comparison)
@@ -42,7 +42,6 @@ pub mod graph;
 pub mod injection;
 pub mod gwt;
 pub mod index;
-pub mod layers;
 pub mod marblestone;
 pub mod memory;
 pub mod monitoring;

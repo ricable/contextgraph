@@ -55,6 +55,7 @@ pub mod reports;
 pub mod runners;
 pub mod scaling;
 pub mod stress_corpus;
+pub mod tuning;
 pub mod util;
 pub mod validation;
 

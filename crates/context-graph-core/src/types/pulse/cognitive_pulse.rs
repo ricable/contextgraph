@@ -3,7 +3,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::types::nervous::LayerId;
 use crate::types::utl::{EmotionalState, UtlMetrics};
 
 use super::action::SuggestedAction;
@@ -13,11 +12,10 @@ use super::action::SuggestedAction;
 /// Provides meta-cognitive state information to help agents
 /// understand system state and decide on next actions.
 ///
-/// The 7-field structure captures:
+/// The 6-field structure captures:
 /// - Core metrics: entropy, coherence, coherence_delta
 /// - Emotional context: emotional_weight (from EmotionalState)
 /// - Action guidance: suggested_action
-/// - Source tracking: source_layer
 /// - Temporal context: timestamp
 ///
 /// # Example Response
@@ -29,7 +27,6 @@ use super::action::SuggestedAction;
 ///   "coherence_delta": 0.05,
 ///   "emotional_weight": 1.2,
 ///   "suggested_action": "continue",
-///   "source_layer": "learning",
 ///   "timestamp": "2025-01-01T12:00:00Z"
 /// }
 /// ```
@@ -54,9 +51,6 @@ pub struct CognitivePulse {
     /// Suggested action based on current state
     pub suggested_action: SuggestedAction,
 
-    /// Source layer that generated this pulse (None if computed globally)
-    pub source_layer: Option<LayerId>,
-
     /// UTC timestamp when this pulse was created
     pub timestamp: DateTime<Utc>,
 }
@@ -69,14 +63,13 @@ impl Default for CognitivePulse {
             coherence_delta: 0.0,
             emotional_weight: 1.0,
             suggested_action: SuggestedAction::Continue,
-            source_layer: None,
             timestamp: Utc::now(),
         }
     }
 }
 
 impl CognitivePulse {
-    /// Create a new pulse with explicit values for all 7 fields.
+    /// Create a new pulse with explicit values for all 6 fields.
     ///
     /// Values are clamped to valid ranges:
     /// - entropy: [0.0, 1.0]
@@ -89,7 +82,6 @@ impl CognitivePulse {
         coherence_delta: f32,
         emotional_weight: f32,
         suggested_action: SuggestedAction,
-        source_layer: Option<LayerId>,
     ) -> Self {
         let entropy = entropy.clamp(0.0, 1.0);
         let coherence = coherence.clamp(0.0, 1.0);
@@ -102,22 +94,20 @@ impl CognitivePulse {
             coherence_delta,
             emotional_weight,
             suggested_action,
-            source_layer,
             timestamp: Utc::now(),
         }
     }
 
-    /// Create a new pulse computed from UTL metrics and source layer.
+    /// Create a new pulse computed from UTL metrics.
     ///
-    /// Derives all 7 fields from the provided metrics:
+    /// Derives all 6 fields from the provided metrics:
     /// - entropy: from metrics.entropy
     /// - coherence: from metrics.coherence
     /// - coherence_delta: from metrics.coherence_change
     /// - emotional_weight: from metrics.emotional_weight
     /// - suggested_action: computed from entropy/coherence
-    /// - source_layer: from the provided layer parameter
     /// - timestamp: current UTC time
-    pub fn computed(metrics: &UtlMetrics, source_layer: Option<LayerId>) -> Self {
+    pub fn computed(metrics: &UtlMetrics) -> Self {
         let entropy = metrics.entropy.clamp(0.0, 1.0);
         let coherence = metrics.coherence.clamp(0.0, 1.0);
         let coherence_delta = metrics.coherence_change.clamp(-1.0, 1.0);
@@ -130,7 +120,6 @@ impl CognitivePulse {
             coherence_delta,
             emotional_weight,
             suggested_action,
-            source_layer,
             timestamp: Utc::now(),
         }
     }
@@ -140,7 +129,6 @@ impl CognitivePulse {
     /// Uses default values for other fields:
     /// - coherence_delta: 0.0
     /// - emotional_weight: 1.0
-    /// - source_layer: None
     /// - suggested_action: computed from entropy/coherence
     pub fn from_values(entropy: f32, coherence: f32) -> Self {
         let entropy = entropy.clamp(0.0, 1.0);
@@ -153,7 +141,6 @@ impl CognitivePulse {
             coherence_delta: 0.0,
             emotional_weight: 1.0,
             suggested_action,
-            source_layer: None,
             timestamp: Utc::now(),
         }
     }
@@ -235,14 +222,6 @@ impl CognitivePulse {
         let coherence_delta = lerp(self.coherence_delta, other.coherence_delta);
         let emotional_weight = lerp(self.emotional_weight, other.emotional_weight);
 
-        // For non-interpolatable fields, use threshold-based selection
-        // t < 0.5 -> use self, t >= 0.5 -> use other
-        let source_layer = if t < 0.5 {
-            self.source_layer
-        } else {
-            other.source_layer
-        };
-
         // Compute new action from blended values
         let suggested_action = Self::compute_action(entropy, coherence);
 
@@ -252,7 +231,6 @@ impl CognitivePulse {
             coherence_delta,
             emotional_weight,
             suggested_action,
-            source_layer,
             timestamp: Utc::now(),
         }
     }
@@ -264,7 +242,6 @@ impl CognitivePulse {
         entropy: f32,
         coherence: f32,
         emotional_state: EmotionalState,
-        source_layer: Option<LayerId>,
     ) -> Self {
         let entropy = entropy.clamp(0.0, 1.0);
         let coherence = coherence.clamp(0.0, 1.0);
@@ -277,7 +254,6 @@ impl CognitivePulse {
             coherence_delta: 0.0,
             emotional_weight,
             suggested_action,
-            source_layer,
             timestamp: Utc::now(),
         }
     }

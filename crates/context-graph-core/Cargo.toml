@@ -31,6 +31,12 @@ regex = "1.10"
 # SHA256 hashing for file content hashing (TASK-P1-004: TextChunker)
 sha2 = "0.10"
 
+# tree-sitter for AST-based code chunking (E7 Fine-Tuning Plan Phase 1)
+# Uses cAST methodology: divide-and-combine with ~500 char target chunks
+# Using 0.23 versions for ABI compatibility
+tree-sitter = "0.23"
+tree-sitter-rust = "0.23"
+
 # Real HNSW implementation - NO FALLBACKS
 hnsw_rs = "0.3"
 
@@ -83,3 +89,7 @@ path = "examples/cognitive_pulse.rs"
 name = "nvml_verify"
 path = "examples/nvml_verify.rs"
 required-features = ["nvml"]
+
+[[example]]
+name = "tree_sitter_test"
+path = "examples/tree_sitter_test.rs"

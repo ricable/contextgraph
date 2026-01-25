@@ -59,7 +59,7 @@ pub enum CoreError {
     #[error("UTL computation error: {0}")]
     UtlError(String),
 
-    /// Error during nervous system layer processing.
+    /// Error during layer processing.
     #[error("Layer processing error in {layer}: {message}")]
     LayerError { layer: String, message: String },
 

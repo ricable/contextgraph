@@ -7,12 +7,14 @@
 //! # Constitution Compliance
 //!
 //! - ARCH-12: E1 is the semantic foundation, E7 enhances with code understanding
+//! - ARCH-13: Supports multiple strategies: E1Only, MultiSpace, Pipeline
 //! - E7 finds: "Code patterns, function signatures" that E1 misses by "Treating code as NL"
 //! - Use E7 for: "Code queries (implementations, functions)"
 //! - FAIL FAST: All errors propagate immediately with logging
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use std::fmt;
 
 // ============================================================================
 // CONSTANTS
@@ -31,6 +33,78 @@ pub const DEFAULT_MIN_CODE_SCORE: f32 = 0.2;
 /// 0.4 means 60% E1 semantic + 40% E7 code.
 /// E7 needs significant weight for code-specific queries.
 pub const DEFAULT_CODE_BLEND: f32 = 0.4;
+
+// ============================================================================
+// CODE SEARCH MODE
+// ============================================================================
+
+/// Code search mode for controlling E1/E7 strategy.
+///
+/// Per ARCH-13, multiple strategies are supported:
+/// - E1Only/Hybrid: E1 semantic with optional E7 blending (default)
+/// - E7Only: Pure E7 code search (for heavily code-specific queries)
+/// - E1WithE7Rerank: E1 retrieval with E7 reranking
+/// - Pipeline: Full E13→E1→E12 pipeline with E7 enhancement
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CodeSearchMode {
+    /// Blend E1 semantic and E7 code scores (current default behavior).
+    /// Uses weight: (1-blend)*E1 + blend*E7
+    #[default]
+    Hybrid,
+
+    /// E7 code search only (for heavily code-specific queries).
+    /// Best for: function signatures, impl blocks, struct/enum definitions.
+    E7Only,
+
+    /// E1 semantic retrieval with E7 reranking.
+    /// Uses E1 for initial retrieval, then E7 to rerank top candidates.
+    /// Best for: natural language queries about code functionality.
+    E1WithE7Rerank,
+
+    /// Full pipeline: E13 sparse recall → E1 dense → E7 code → E12 rerank.
+    /// Maximum precision but higher latency.
+    /// Best for: precise code search with exact term matching.
+    Pipeline,
+}
+
+impl fmt::Display for CodeSearchMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CodeSearchMode::Hybrid => write!(f, "hybrid"),
+            CodeSearchMode::E7Only => write!(f, "e7_only"),
+            CodeSearchMode::E1WithE7Rerank => write!(f, "e1_with_e7_rerank"),
+            CodeSearchMode::Pipeline => write!(f, "pipeline"),
+        }
+    }
+}
+
+impl CodeSearchMode {
+    /// Parse from string representation.
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "hybrid" | "default" => Some(Self::Hybrid),
+            "e7only" | "e7_only" | "e7" => Some(Self::E7Only),
+            "e1withe7rerank" | "e1_with_e7_rerank" | "rerank" => Some(Self::E1WithE7Rerank),
+            "pipeline" | "full" => Some(Self::Pipeline),
+            _ => None,
+        }
+    }
+
+    /// Get description for the mode.
+    pub fn description(&self) -> &'static str {
+        match self {
+            CodeSearchMode::Hybrid => "Blend E1 semantic and E7 code scores",
+            CodeSearchMode::E7Only => "Pure E7 code search for code-specific queries",
+            CodeSearchMode::E1WithE7Rerank => "E1 retrieval with E7 reranking",
+            CodeSearchMode::Pipeline => "Full E13→E1→E7→E12 pipeline for maximum precision",
+        }
+    }
+}
+
+fn default_search_mode() -> CodeSearchMode {
+    CodeSearchMode::Hybrid
+}
 
 // ============================================================================
 // DETECTED LANGUAGE
@@ -63,7 +137,10 @@ pub struct DetectedLanguageInfo {
 ///   "topK": 10,
 ///   "minScore": 0.2,
 ///   "blendWithSemantic": 0.4,
-///   "includeContent": true
+///   "searchMode": "hybrid",
+///   "languageHint": "rust",
+///   "includeContent": true,
+///   "includeAstContext": false
 /// }
 /// ```
 #[derive(Debug, Clone, Deserialize)]
@@ -82,12 +159,31 @@ pub struct SearchCodeRequest {
 
     /// Blend weight for E7 code vs E1 semantic (0-1, default: 0.4).
     /// 0.0 = pure E1 semantic, 1.0 = pure E7 code.
+    /// Only used in Hybrid mode.
     #[serde(rename = "blendWithSemantic", default = "default_blend")]
     pub blend_with_semantic: f32,
+
+    /// Search mode controlling E1/E7 strategy (default: "hybrid").
+    /// - "hybrid": Blend E1 and E7 scores
+    /// - "e7Only": Pure E7 code search
+    /// - "e1WithE7Rerank": E1 retrieval with E7 reranking
+    /// - "pipeline": Full E13→E1→E7→E12 pipeline
+    #[serde(rename = "searchMode", default = "default_search_mode")]
+    pub search_mode: CodeSearchMode,
+
+    /// Optional language hint to boost language-specific results.
+    /// Supports: rust, python, javascript, typescript, go, java, cpp, sql
+    #[serde(rename = "languageHint", default)]
+    pub language_hint: Option<String>,
 
     /// Whether to include full content text in results (default: false).
     #[serde(rename = "includeContent", default)]
     pub include_content: bool,
+
+    /// Whether to include AST context (scope chain, entity type) if available.
+    /// Only affects chunks created by AST chunker.
+    #[serde(rename = "includeAstContext", default)]
+    pub include_ast_context: bool,
 }
 
 fn default_top_k() -> usize {
@@ -109,7 +205,10 @@ impl Default for SearchCodeRequest {
             top_k: DEFAULT_CODE_SEARCH_TOP_K,
             min_score: DEFAULT_MIN_CODE_SCORE,
             blend_with_semantic: DEFAULT_CODE_BLEND,
+            search_mode: CodeSearchMode::Hybrid,
+            language_hint: None,
             include_content: false,
+            include_ast_context: false,
         }
     }
 }
@@ -223,13 +322,21 @@ pub struct CodeSearchMetadata {
     #[serde(rename = "filteredByScore")]
     pub filtered_by_score: usize,
 
-    /// E7 blend weight used.
+    /// Search mode used.
+    #[serde(rename = "searchMode")]
+    pub search_mode: CodeSearchMode,
+
+    /// E7 blend weight used (only for Hybrid mode).
     #[serde(rename = "e7BlendWeight")]
     pub e7_blend_weight: f32,
 
-    /// E1 weight (1.0 - e7BlendWeight).
+    /// E1 weight (1.0 - e7BlendWeight, only for Hybrid mode).
     #[serde(rename = "e1Weight")]
     pub e1_weight: f32,
+
+    /// Language hint provided (if any).
+    #[serde(skip_serializing_if = "Option::is_none", rename = "languageHint")]
+    pub language_hint: Option<String>,
 
     /// Detected language info from query.
     #[serde(rename = "detectedLanguage")]

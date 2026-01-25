@@ -105,7 +105,7 @@ fn main() {
 
     // Example 7: Pulse with emotional state
     println!("--- Example 7: Emotional State ---");
-    let focused = CognitivePulse::with_emotion(0.4, 0.7, EmotionalState::Focused, None);
+    let focused = CognitivePulse::with_emotion(0.4, 0.7, EmotionalState::Focused);
     println!("Pulse with Focused emotional state:");
     println!("  Entropy: {:.2}", focused.entropy);
     println!("  Coherence: {:.2}", focused.coherence);

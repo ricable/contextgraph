@@ -1,6 +1,6 @@
 # context-graph-storage
 
-RocksDB-based storage layer for the Context Graph bio-nervous knowledge system.
+RocksDB-based storage layer for the Context Graph knowledge system.
 
 ## Overview
 
