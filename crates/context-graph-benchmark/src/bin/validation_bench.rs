@@ -293,9 +293,8 @@ async fn run_validation_benchmark(
     test_failfast: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use context_graph_core::monitoring::{LayerStatusProvider, StubLayerStatusProvider};
-    use context_graph_core::traits::{TeleologicalMemoryStore, UtlProcessor};
+    use context_graph_core::traits::TeleologicalMemoryStore;
     use context_graph_embeddings::{get_warm_provider, initialize_global_warm_provider};
-    use context_graph_mcp::adapters::UtlProcessorAdapter;
     use context_graph_mcp::handlers::Handlers;
     use context_graph_mcp::protocol::{JsonRpcId, JsonRpcRequest};
     use context_graph_storage::teleological::RocksDbTeleologicalStore;
@@ -319,14 +318,11 @@ async fn run_validation_benchmark(
     let rocksdb_store = RocksDbTeleologicalStore::open(&db_path)?;
     let teleological_store: Arc<dyn TeleologicalMemoryStore> = Arc::new(rocksdb_store);
 
-    // Create UTL processor
-    let utl_processor: Arc<dyn UtlProcessor> = Arc::new(UtlProcessorAdapter::with_defaults());
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
     // Create MCP handlers
     let handlers = Handlers::with_defaults(
         teleological_store.clone(),
-        utl_processor,
         multi_array_provider.clone(),
         layer_status_provider,
     );

@@ -21,7 +21,6 @@ context-graph-core = { path = "../context-graph-core" }
 context-graph-cuda = { path = "../context-graph-cuda" }
 context-graph-embeddings = { path = "../context-graph-embeddings" }
 context-graph-storage = { path = "../context-graph-storage" }
-context-graph-utl = { path = "../context-graph-utl" }
 
 # Async runtime
 tokio = { workspace = true }

@@ -71,37 +71,6 @@ async fn test_tools_call_inject_context_valid() {
     );
 }
 
-#[tokio::test]
-async fn test_tools_call_inject_context_returns_utl_metrics() {
-    let handlers = create_test_handlers();
-    let params = json!({
-        "name": "inject_context",
-        "arguments": {
-            "content": "Learning about MCP protocols",
-            "rationale": "Understanding API standards"
-        }
-    });
-    let request = make_request("tools/call", Some(JsonRpcId::Number(1)), Some(params));
-
-    let response = handlers.dispatch(request).await;
-    let result = response.result.expect("tools/call must return a result");
-    let content = result.get("content").unwrap().as_array().unwrap();
-    let text = content[0].get("text").unwrap().as_str().unwrap();
-    let parsed_text: serde_json::Value = serde_json::from_str(text).unwrap();
-
-    // Verify UTL metrics are present
-    let utl = parsed_text
-        .get("utl")
-        .expect("Response must contain utl object");
-    assert!(
-        utl.get("learningScore").is_some(),
-        "utl must contain learningScore"
-    );
-    assert!(utl.get("entropy").is_some(), "utl must contain entropy");
-    assert!(utl.get("coherence").is_some(), "utl must contain coherence");
-    assert!(utl.get("surprise").is_some(), "utl must contain surprise");
-}
-
 // =========================================================================
 // get_memetic_status Tool Tests
 // =========================================================================
@@ -130,151 +99,16 @@ async fn test_tools_call_get_memetic_status() {
 
     // TASK-S001: Verify expected fields using TeleologicalMemoryStore terminology
     assert!(
-        parsed_text.get("phase").is_some(),
-        "Response must contain phase"
-    );
-    assert!(
         parsed_text.get("fingerprintCount").is_some(),
         "Response must contain fingerprintCount"
     );
     assert!(
-        parsed_text.get("utl").is_some(),
-        "Response must contain utl"
+        parsed_text.get("embedderCount").is_some(),
+        "Response must contain embedderCount"
     );
     assert!(
         parsed_text.get("layers").is_some(),
         "Response must contain layers"
-    );
-}
-
-// =============================================================================
-// get_memetic_status Tests (M05-T27)
-// =============================================================================
-
-#[tokio::test]
-async fn test_get_memetic_status_utl_values_in_valid_range() {
-    let handlers = create_test_handlers();
-    let request = make_request(
-        "tools/call",
-        Some(JsonRpcId::Number(1)),
-        Some(json!({
-            "name": "get_memetic_status",
-            "arguments": {}
-        })),
-    );
-
-    let response = handlers.dispatch(request).await;
-    assert!(
-        response.error.is_none(),
-        "get_memetic_status should not error"
-    );
-
-    let result = response.result.expect("Must have result");
-    let content = result.get("content").expect("Must have content array");
-    let text = content[0]
-        .get("text")
-        .expect("First content must have text");
-    let data: serde_json::Value =
-        serde_json::from_str(text.as_str().unwrap()).expect("text must be valid JSON");
-
-    let utl = data.get("utl").expect("Response must have utl field");
-
-    // Verify ranges per constitution.yaml:154-157
-    let entropy = utl["entropy"].as_f64().expect("entropy must be f64");
-    let coherence = utl["coherence"].as_f64().expect("coherence must be f64");
-    let learning_score = utl["learningScore"]
-        .as_f64()
-        .expect("learningScore must be f64");
-
-    assert!(
-        (0.0..=1.0).contains(&entropy),
-        "entropy {} not in [0,1]",
-        entropy
-    );
-    assert!(
-        (0.0..=1.0).contains(&coherence),
-        "coherence {} not in [0,1]",
-        coherence
-    );
-    assert!(
-        (0.0..=1.0).contains(&learning_score),
-        "learningScore {} not in [0,1]",
-        learning_score
-    );
-}
-
-#[tokio::test]
-async fn test_get_memetic_status_not_hardcoded() {
-    // The old stub returned: entropy=0.5, coherence=0.8, learningScore=0.65
-    // StubUtlProcessor returns: entropy=0.0, coherence=0.0, learning_score=0.0
-    // This test verifies we're NOT returning the old hardcoded values
-
-    let handlers = create_test_handlers();
-    let request = make_request(
-        "tools/call",
-        Some(JsonRpcId::Number(1)),
-        Some(json!({
-            "name": "get_memetic_status",
-            "arguments": {}
-        })),
-    );
-
-    let response = handlers.dispatch(request).await;
-    let result = response.result.expect("Must have result");
-    let content = result.get("content").expect("Must have content");
-    let text = content[0].get("text").expect("Must have text");
-    let data: serde_json::Value = serde_json::from_str(text.as_str().unwrap()).unwrap();
-
-    let utl = data.get("utl").expect("Must have utl");
-
-    // If these exact values appear, we're still using hardcoded stubs
-    let entropy = utl["entropy"].as_f64().unwrap();
-    let coherence = utl["coherence"].as_f64().unwrap();
-    let learning_score = utl["learningScore"].as_f64().unwrap();
-
-    // StubUtlProcessor returns all zeros initially
-    // The OLD hardcoded stub returned 0.5, 0.8, 0.65
-    let is_old_hardcoded = (entropy - 0.5).abs() < 0.001
-        && (coherence - 0.8).abs() < 0.001
-        && (learning_score - 0.65).abs() < 0.001;
-
-    assert!(
-        !is_old_hardcoded,
-        "Values appear to be old hardcoded stub (0.5, 0.8, 0.65). \
-         Implementation should use self.utl_processor.get_status()"
-    );
-}
-
-#[tokio::test]
-async fn test_get_memetic_status_consolidation_phase_valid() {
-    let handlers = create_test_handlers();
-    let request = make_request(
-        "tools/call",
-        Some(JsonRpcId::Number(1)),
-        Some(json!({
-            "name": "get_memetic_status",
-            "arguments": {}
-        })),
-    );
-
-    let response = handlers.dispatch(request).await;
-    let result = response.result.expect("Must have result");
-    let content = result.get("content").expect("Must have content");
-    let text = content[0].get("text").expect("Must have text");
-    let data: serde_json::Value = serde_json::from_str(text.as_str().unwrap()).unwrap();
-
-    let utl = data.get("utl").expect("Must have utl");
-    let phase = utl["consolidationPhase"]
-        .as_str()
-        .expect("consolidationPhase must be string");
-
-    // Per constitution.yaml:211-213 (dream phases)
-    let valid_phases = ["NREM", "REM", "Wake"];
-    assert!(
-        valid_phases.contains(&phase),
-        "Invalid consolidation phase: '{}'. Must be one of {:?}",
-        phase,
-        valid_phases
     );
 }
 

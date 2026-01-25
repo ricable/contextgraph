@@ -46,7 +46,7 @@ impl Handlers {
             Ok(r) => r,
             Err(e) => {
                 error!(error = %e, "forget_concept: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid params: {}", e));
+                return self.tool_error(id, &format!("Invalid params: {}", e));
             }
         };
 
@@ -56,7 +56,7 @@ impl Handlers {
             Err(validation_error) => {
                 error!(error = %validation_error, "forget_concept: Validation failed");
                 return self
-                    .tool_error_with_pulse(id, &format!("Invalid params: {}", validation_error));
+                    .tool_error(id, &format!("Invalid params: {}", validation_error));
             }
         };
 
@@ -75,7 +75,7 @@ impl Handlers {
             }
             Err(e) => {
                 error!(error = %e, node_id = %node_id, "forget_concept: Failed to check memory existence");
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!("Storage error: Failed to check memory: {}", e),
                 );
@@ -99,7 +99,7 @@ impl Handlers {
                     ForgetConceptResponse::hard_deleted(node_id)
                 };
 
-                self.tool_result_with_pulse(
+                self.tool_result(
                     id,
                     serde_json::to_value(response).expect("ForgetConceptResponse should serialize"),
                 )
@@ -118,7 +118,7 @@ impl Handlers {
             }
             Err(e) => {
                 error!(error = %e, node_id = %node_id, "forget_concept: Delete operation failed");
-                self.tool_error_with_pulse(id, &format!("Storage error: Delete failed: {}", e))
+                self.tool_error(id, &format!("Storage error: Delete failed: {}", e))
             }
         }
     }
@@ -154,7 +154,7 @@ impl Handlers {
             Ok(r) => r,
             Err(e) => {
                 error!(error = %e, "boost_importance: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid params: {}", e));
+                return self.tool_error(id, &format!("Invalid params: {}", e));
             }
         };
 
@@ -165,7 +165,7 @@ impl Handlers {
             Err(validation_error) => {
                 error!(error = %validation_error, "boost_importance: Validation failed");
                 return self
-                    .tool_error_with_pulse(id, &format!("Invalid params: {}", validation_error));
+                    .tool_error(id, &format!("Invalid params: {}", validation_error));
             }
         };
 
@@ -184,7 +184,7 @@ impl Handlers {
             }
             Err(e) => {
                 error!(error = %e, node_id = %node_id, "boost_importance: Failed to retrieve memory");
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!("Storage error: Failed to retrieve memory: {}", e),
                 );
@@ -226,7 +226,7 @@ impl Handlers {
                 // Build response using DTO factory method
                 let response = BoostImportanceResponse::new(node_id, old_importance, request.delta);
 
-                self.tool_result_with_pulse(
+                self.tool_result(
                     id,
                     serde_json::to_value(response)
                         .expect("BoostImportanceResponse should serialize"),
@@ -246,7 +246,7 @@ impl Handlers {
             }
             Err(e) => {
                 error!(error = %e, node_id = %node_id, "boost_importance: Update operation failed");
-                self.tool_error_with_pulse(id, &format!("Storage error: Update failed: {}", e))
+                self.tool_error(id, &format!("Storage error: Update failed: {}", e))
             }
         }
     }

@@ -242,7 +242,7 @@ impl Handlers {
                     output.merged_id,
                     output.reversal_hash
                 );
-                self.tool_result_with_pulse(id, json!(output))
+                self.tool_result(id, json!(output))
             }
             Err(e) => {
                 error!("merge_concepts FAILED: {}", e);

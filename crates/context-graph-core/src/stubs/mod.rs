@@ -50,21 +50,15 @@
 //! Attempting to use stubs in production will result in a compile error.
 
 // AP-007: All stub modules are test-only or test-utils feature
-// NOTE: embedding_stub.rs has been DELETED - use multi_array_stub instead
 #[cfg(any(test, feature = "test-utils"))]
 mod graph_index;
 #[cfg(any(test, feature = "test-utils"))]
 mod multi_array_stub;
 #[cfg(any(test, feature = "test-utils"))]
 mod teleological_store_stub;
-#[cfg(any(test, feature = "test-utils"))]
-mod utl_stub;
 
 // AP-007: All stub exports are gated to test-only or test-utils builds
 // Production code CANNOT import these - compile error if attempted
-
-// NOTE: StubEmbeddingProvider has been DELETED - backwards compat cleanup
-// Use StubMultiArrayProvider for 13-embedding generation
 
 // Graph index stub - TEST ONLY
 #[cfg(any(test, feature = "test-utils"))]
@@ -77,7 +71,3 @@ pub use multi_array_stub::StubMultiArrayProvider;
 // Teleological memory store stub (TASK-F008) - TEST ONLY
 #[cfg(any(test, feature = "test-utils"))]
 pub use teleological_store_stub::InMemoryTeleologicalStore;
-
-// UTL processor stub - TEST ONLY
-#[cfg(any(test, feature = "test-utils"))]
-pub use utl_stub::StubUtlProcessor;

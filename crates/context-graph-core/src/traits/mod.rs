@@ -8,25 +8,13 @@
 //! - [`TeleologicalMemoryStore`]: Storage for teleological fingerprints (TASK-F008)
 //! - [`MultiArrayEmbeddingProvider`]: 13-embedding generation (TASK-F007)
 //! - [`GraphIndex`]: Graph traversal and indexing
-//! - [`UtlProcessor`]: Unified Theory of Learning operations
-//!
-//! # REMOVED (Phase 1 Cleanup)
-//!
-//! - `EmbeddingProvider`: Deprecated single-embedding trait has been DELETED.
-//!   Use `MultiArrayEmbeddingProvider` for 13-embedding SemanticFingerprint generation.
 
-// NOTE: embedding_provider.rs has been DELETED - backwards compat cleanup
-// Use multi_array_embedding::MultiArrayEmbeddingProvider instead
 mod graph_index;
 mod multi_array_embedding;
 mod teleological_memory_store;
-mod utl_processor;
 
 #[cfg(test)]
 mod teleological_memory_store_tests;
-
-// NOTE: EmbeddingProvider has been DELETED - backwards compat cleanup
-// Use MultiArrayEmbeddingProvider for 13-embedding SemanticFingerprint generation
 
 // Graph index trait
 pub use graph_index::GraphIndex;
@@ -53,6 +41,3 @@ pub use teleological_memory_store::{
 
 // E10 Intent Gate options (Phase 4)
 pub use teleological_memory_store::IntentDirection;
-
-// UTL processor trait
-pub use utl_processor::UtlProcessor;

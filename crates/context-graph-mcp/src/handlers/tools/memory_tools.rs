@@ -44,7 +44,7 @@ use context_graph_core::causal::asymmetric::{
 use context_graph_core::teleological::matrix_search::embedder_names;
 use context_graph_core::traits::{EmbeddingMetadata, SearchStrategy, TeleologicalSearchOptions};
 use context_graph_core::types::fingerprint::{SemanticFingerprint, TeleologicalFingerprint, NUM_EMBEDDERS};
-use context_graph_core::types::{SourceMetadata, SourceType, UtlContext};
+use context_graph_core::types::{SourceMetadata, SourceType};
 
 use crate::weights::get_weight_profile;
 
@@ -186,8 +186,8 @@ impl Handlers {
     ///
     /// TASK-S001: Updated to use TeleologicalMemoryStore with 13-embedding fingerprint.
     ///
-    /// Injects context into the memory graph with UTL metrics computation.
-    /// Response includes `_cognitive_pulse` with live system state.
+    /// Injects context into the memory graph. Generates all 13 embeddings for the content
+    /// and stores the resulting TeleologicalFingerprint.
     pub(crate) async fn call_inject_context(
         &self,
         id: Option<JsonRpcId>,
@@ -195,8 +195,8 @@ impl Handlers {
     ) -> JsonRpcResponse {
         let content = match args.get("content").and_then(|v| v.as_str()) {
             Some(c) if !c.is_empty() => c.to_string(),
-            Some(_) => return self.tool_error_with_pulse(id, "Content cannot be empty"),
-            None => return self.tool_error_with_pulse(id, "Missing 'content' parameter"),
+            Some(_) => return self.tool_error(id, "Content cannot be empty"),
+            None => return self.tool_error(id, "Missing 'content' parameter"),
         };
 
         let rationale = args.get("rationale").and_then(|v| v.as_str()).unwrap_or("");
@@ -207,7 +207,7 @@ impl Handlers {
                 min_required = MIN_RATIONALE_LEN,
                 "inject_context: rationale validation FAILED - empty or missing"
             );
-            return self.tool_error_with_pulse(id, "rationale is REQUIRED (min 1 char)");
+            return self.tool_error(id, "rationale is REQUIRED (min 1 char)");
         }
         if rationale.len() > MAX_RATIONALE_LEN {
             error!(
@@ -215,7 +215,7 @@ impl Handlers {
                 max_allowed = MAX_RATIONALE_LEN,
                 "inject_context: rationale validation FAILED - exceeds maximum"
             );
-            return self.tool_error_with_pulse(
+            return self.tool_error(
                 id,
                 &format!(
                     "rationale must be at most {} characters, got {}",
@@ -252,7 +252,7 @@ impl Handlers {
             "inject_context: Using session sequence for E4 embedding"
         );
 
-        // STEP 1: Generate all 13 embeddings FIRST (needed for UTL reference lookup)
+        // Generate all 13 embeddings
         // E4-FIX: Use embed_all_with_metadata to pass sequence number to E4
         let embedding_output = match self
             .multi_array_provider
@@ -262,63 +262,7 @@ impl Handlers {
             Ok(output) => output,
             Err(e) => {
                 error!(error = %e, "inject_context: Multi-array embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Embedding failed: {}", e));
-            }
-        };
-
-        // STEP 2: Search for similar recent memories to populate reference_embeddings
-        // This enables proper surprise/entropy calculation (not always 1.0)
-        let reference_embeddings = {
-            let search_options = TeleologicalSearchOptions {
-                top_k: 10, // Get top 10 similar memories for context
-                ..Default::default()
-            };
-            match self
-                .teleological_store
-                .search_semantic(&embedding_output.fingerprint, search_options)
-                .await
-            {
-                Ok(results) => {
-                    // Extract E1 semantic embeddings from results for apples-to-apples comparison
-                    // Per ARCH-02: Only compare same embedder space
-                    results
-                        .into_iter()
-                        .filter_map(|r| {
-                            // Skip if this is somehow the same content (should be impossible since not stored yet)
-                            Some(r.fingerprint.semantic.e1_semantic.clone())
-                        })
-                        .collect::<Vec<_>>()
-                }
-                Err(e) => {
-                    // Non-fatal: log warning but continue with empty reference (max surprise)
-                    warn!(
-                        error = %e,
-                        "inject_context: Failed to search for reference embeddings. \
-                         UTL will compute maximum surprise (entropy=1.0)."
-                    );
-                    Vec::new()
-                }
-            }
-        };
-
-        // STEP 3: Build UTL context with reference embeddings for proper surprise calculation
-        let context = UtlContext {
-            reference_embeddings: if reference_embeddings.is_empty() {
-                None
-            } else {
-                Some(reference_embeddings)
-            },
-            // Use E1 semantic embedding for goal alignment computation
-            input_embedding: Some(embedding_output.fingerprint.e1_semantic.clone()),
-            ..Default::default()
-        };
-
-        // STEP 4: Compute UTL metrics with proper context
-        let metrics = match self.utl_processor.compute_metrics(&content, &context).await {
-            Ok(m) => m,
-            Err(e) => {
-                error!(error = %e, "inject_context: UTL processing FAILED");
-                return self.tool_error_with_pulse(id, &format!("UTL processing failed: {}", e));
+                return self.tool_error(id, &format!("Embedding failed: {}", e));
             }
         };
 
@@ -343,7 +287,7 @@ impl Handlers {
         // Store in TeleologicalMemoryStore
         if let Err(e) = self.teleological_store.store(fingerprint).await {
             error!(error = %e, "inject_context: Storage FAILED");
-            return self.tool_error_with_pulse(id, &format!("Storage failed: {}", e));
+            return self.tool_error(id, &format!("Storage failed: {}", e));
         }
 
         // TASK-FIX-CLUSTERING: Insert into cluster_manager for topic detection
@@ -428,19 +372,13 @@ impl Handlers {
             );
         }
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             json!({
                 "fingerprintId": fingerprint_id.to_string(),
                 "rationale": rationale,
                 "embedderCount": NUM_EMBEDDERS,
-                "embeddingLatencyMs": embedding_output.total_latency.as_millis(),
-                "utl": {
-                    "learningScore": metrics.learning_score,
-                    "entropy": metrics.entropy,
-                    "coherence": metrics.coherence,
-                    "surprise": metrics.surprise
-                }
+                "embeddingLatencyMs": embedding_output.total_latency.as_millis()
             }),
         )
     }
@@ -449,8 +387,8 @@ impl Handlers {
     ///
     /// TASK-S001: Updated to use TeleologicalMemoryStore with 13-embedding fingerprint.
     ///
-    /// Stores content in the memory graph.
-    /// Response includes `_cognitive_pulse` with live system state.
+    /// Stores content in the memory graph. Generates all 13 embeddings for the content
+    /// and stores the resulting TeleologicalFingerprint.
     pub(crate) async fn call_store_memory(
         &self,
         id: Option<JsonRpcId>,
@@ -458,8 +396,8 @@ impl Handlers {
     ) -> JsonRpcResponse {
         let content = match args.get("content").and_then(|v| v.as_str()) {
             Some(c) if !c.is_empty() => c.to_string(),
-            Some(_) => return self.tool_error_with_pulse(id, "Content cannot be empty"),
-            None => return self.tool_error_with_pulse(id, "Missing 'content' parameter"),
+            Some(_) => return self.tool_error(id, "Content cannot be empty"),
+            None => return self.tool_error(id, "Missing 'content' parameter"),
         };
 
         let importance = args
@@ -499,7 +437,7 @@ impl Handlers {
             Ok(output) => output,
             Err(e) => {
                 error!(error = %e, "store_memory: Multi-array embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Embedding failed: {}", e));
+                return self.tool_error(id, &format!("Embedding failed: {}", e));
             }
         };
 
@@ -604,7 +542,7 @@ impl Handlers {
                     );
                 }
 
-                self.tool_result_with_pulse(
+                self.tool_result(
                     id,
                     json!({
                         "fingerprintId": fingerprint_id.to_string(),
@@ -615,7 +553,7 @@ impl Handlers {
             }
             Err(e) => {
                 error!(error = %e, "store_memory: Storage FAILED");
-                self.tool_error_with_pulse(id, &format!("Storage failed: {}", e))
+                self.tool_error(id, &format!("Storage failed: {}", e))
             }
         }
     }
@@ -624,8 +562,7 @@ impl Handlers {
     ///
     /// TASK-S001: Updated to use TeleologicalMemoryStore search_semantic.
     ///
-    /// Searches the memory graph for matching content.
-    /// Response includes `_cognitive_pulse` with live system state.
+    /// Searches the memory graph for matching content using all 13 embedding spaces.
     pub(crate) async fn call_search_graph(
         &self,
         id: Option<JsonRpcId>,
@@ -633,8 +570,8 @@ impl Handlers {
     ) -> JsonRpcResponse {
         let query = match args.get("query").and_then(|v| v.as_str()) {
             Some(q) if !q.is_empty() => q,
-            Some(_) => return self.tool_error_with_pulse(id, "Query cannot be empty"),
-            None => return self.tool_error_with_pulse(id, "Missing 'query' parameter"),
+            Some(_) => return self.tool_error(id, "Query cannot be empty"),
+            None => return self.tool_error(id, "Missing 'query' parameter"),
         };
 
         let raw_top_k = args.get("topK").and_then(|v| v.as_u64());
@@ -645,7 +582,7 @@ impl Handlers {
                     min_allowed = MIN_TOP_K,
                     "search_graph: topK validation FAILED - below minimum"
                 );
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!("topK must be at least {}, got {}", MIN_TOP_K, k),
                 );
@@ -656,7 +593,7 @@ impl Handlers {
                     max_allowed = MAX_TOP_K,
                     "search_graph: topK validation FAILED - exceeds maximum"
                 );
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!("topK must be at most {}, got {}", MAX_TOP_K, k),
                 );
@@ -1131,7 +1068,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "search_graph: Query embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Query embedding failed: {}", e));
+                return self.tool_error(id, &format!("Query embedding failed: {}", e));
             }
         };
 
@@ -1166,18 +1103,18 @@ impl Handlers {
                         Ok(json) => json,
                         Err(e) => {
                             error!(error = %e, "search_graph: Enriched response serialization FAILED");
-                            return self.tool_error_with_pulse(
+                            return self.tool_error(
                                 id,
                                 &format!("Response serialization failed: {}", e),
                             );
                         }
                     };
 
-                    return self.tool_result_with_pulse(id, response_json);
+                    return self.tool_result(id, response_json);
                 }
                 Err(e) => {
                     error!(error = %e, "search_graph: Enrichment pipeline FAILED");
-                    return self.tool_error_with_pulse(id, &format!("Enrichment failed: {}", e));
+                    return self.tool_error(id, &format!("Enrichment failed: {}", e));
                 }
             }
         }
@@ -1395,11 +1332,11 @@ impl Handlers {
                     response["effectiveProfile"] = json!(profile);
                 }
 
-                self.tool_result_with_pulse(id, response)
+                self.tool_result(id, response)
             }
             Err(e) => {
                 error!(error = %e, "search_graph: Search FAILED");
-                self.tool_error_with_pulse(id, &format!("Search failed: {}", e))
+                self.tool_error(id, &format!("Search failed: {}", e))
             }
         }
     }

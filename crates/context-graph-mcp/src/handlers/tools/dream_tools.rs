@@ -5,7 +5,9 @@ use std::time::Instant;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use context_graph_core::dream::{DreamController, DreamCycleConfig, DreamState as CoreDreamState, WakeReason};
+use context_graph_core::dream::{
+    DreamController, DreamCycleConfig, DreamState as CoreDreamState, WakeReason,
+};
 
 use crate::protocol::{error_codes, JsonRpcId, JsonRpcResponse};
 
@@ -17,7 +19,6 @@ use super::dream_dtos::{
 
 impl Handlers {
     /// Execute NREM/REM dream consolidation cycle.
-    /// Constitution AP-70: Dream triggers MUST use entropy > 0.7 AND churn > 0.5
     pub(crate) async fn call_trigger_dream(
         &self,
         id: Option<JsonRpcId>,
@@ -44,31 +45,6 @@ impl Handlers {
             skip_rem = request.skip_rem,
             "trigger_dream: starting dream cycle"
         );
-
-        // Get current UTL metrics for pre-dream state
-        let utl_status = self.utl_processor.get_status();
-        let pre_entropy = utl_status
-            .get("entropy")
-            .and_then(|v| v.as_f64())
-            .map(|v| v as f32)
-            .unwrap_or(0.5);
-        let pre_coherence = utl_status
-            .get("coherence")
-            .and_then(|v| v.as_f64())
-            .map(|v| v as f32)
-            .unwrap_or(0.5);
-
-        // Check if dream is recommended based on Constitution AP-70
-        // Note: We should check churn as well, but that requires topic stability metrics
-        // For now, we check entropy and log a warning if conditions aren't met
-        let dream_recommended = pre_entropy > 0.7;
-        if !dream_recommended {
-            warn!(
-                dream_id = %dream_id,
-                entropy = pre_entropy,
-                "trigger_dream: entropy < 0.7, dream may not be optimal (AP-70)"
-            );
-        }
 
         // Handle dry run mode
         if request.dry_run {
@@ -109,38 +85,21 @@ impl Handlers {
                 report: Some(DreamReport {
                     total_duration_ms: 0,
                     wake_reason: None,
-                    pre_entropy,
-                    post_entropy: None,
-                    pre_coherence,
-                    post_coherence: None,
-                    dream_recommended,
-                    recommendations: vec![
-                        "Dry run completed - no changes made".to_string(),
-                        if dream_recommended {
-                            "Dream is recommended based on entropy > 0.7".to_string()
-                        } else {
-                            "Consider waiting for entropy > 0.7 before dreaming".to_string()
-                        },
-                    ],
+                    recommendations: vec!["Dry run completed - no changes made".to_string()],
                 }),
                 dry_run: true,
             };
 
-            return self.tool_result_with_pulse(id, serde_json::to_value(&response).unwrap());
+            return self.tool_result(id, serde_json::to_value(&response).unwrap());
         }
 
         // Execute actual dream cycle
         let mut controller = DreamController::new();
 
-        // Note: In production, we would inject a real MemoryProvider here
-        // controller.set_memory_provider(memory_provider);
-
         let start_time = Instant::now();
 
         // Handle non-blocking mode
         if !request.blocking {
-            // Return immediately with queued status
-            // In a real implementation, we would spawn a background task
             warn!(
                 dream_id = %dream_id,
                 "trigger_dream: non-blocking mode not fully implemented - running synchronously"
@@ -149,7 +108,7 @@ impl Handlers {
 
         // Validate phase selection
         if request.skip_nrem && request.skip_rem {
-            return self.tool_error_with_pulse(
+            return self.tool_error(
                 id,
                 "Cannot skip both NREM and REM phases - at least one must run",
             );
@@ -190,17 +149,6 @@ impl Handlers {
                     }
                 };
 
-                // Get post-dream UTL metrics
-                let post_utl_status = self.utl_processor.get_status();
-                let post_entropy = post_utl_status
-                    .get("entropy")
-                    .and_then(|v| v.as_f64())
-                    .map(|v| v as f32);
-                let post_coherence = post_utl_status
-                    .get("coherence")
-                    .and_then(|v| v.as_f64())
-                    .map(|v| v as f32);
-
                 // Generate recommendations
                 let mut recommendations = Vec::new();
                 if core_report.completed {
@@ -240,11 +188,6 @@ impl Handlers {
                         } else {
                             Some(core_report.wake_reason.to_string())
                         },
-                        pre_entropy,
-                        post_entropy,
-                        pre_coherence,
-                        post_coherence,
-                        dream_recommended,
                         recommendations,
                     }),
                     dry_run: false,
@@ -257,7 +200,7 @@ impl Handlers {
                     "trigger_dream: cycle completed"
                 );
 
-                self.tool_result_with_pulse(id, serde_json::to_value(&response).unwrap())
+                self.tool_result(id, serde_json::to_value(&response).unwrap())
             }
             Err(e) => {
                 error!(
@@ -274,11 +217,6 @@ impl Handlers {
                     report: Some(DreamReport {
                         total_duration_ms,
                         wake_reason: Some(format!("Error: {}", e)),
-                        pre_entropy,
-                        post_entropy: None,
-                        pre_coherence,
-                        post_coherence: None,
-                        dream_recommended,
                         recommendations: vec![
                             format!("Dream cycle failed: {}", e),
                             "Check system logs for details".to_string(),
@@ -287,7 +225,7 @@ impl Handlers {
                     dry_run: false,
                 };
 
-                self.tool_result_with_pulse(id, serde_json::to_value(&response).unwrap())
+                self.tool_result(id, serde_json::to_value(&response).unwrap())
             }
         }
     }
@@ -354,6 +292,6 @@ impl Handlers {
             partial_results: None,
         };
 
-        self.tool_result_with_pulse(id, serde_json::to_value(&response).unwrap())
+        self.tool_result(id, serde_json::to_value(&response).unwrap())
     }
 }

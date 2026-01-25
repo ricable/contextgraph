@@ -2,8 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use context_graph_core::types::CognitivePulse;
-
 /// JSON-RPC 2.0 request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonRpcRequest {
@@ -24,9 +22,6 @@ pub struct JsonRpcResponse {
     pub result: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<JsonRpcError>,
-    /// Cognitive Pulse header (Context Graph extension).
-    #[serde(rename = "X-Cognitive-Pulse", skip_serializing_if = "Option::is_none")]
-    pub cognitive_pulse: Option<CognitivePulse>,
 }
 
 /// JSON-RPC ID (can be string, number, or null).
@@ -54,7 +49,6 @@ impl JsonRpcResponse {
             id,
             result: Some(result),
             error: None,
-            cognitive_pulse: None,
         }
     }
 
@@ -69,7 +63,6 @@ impl JsonRpcResponse {
                 message: message.into(),
                 data: None,
             }),
-            cognitive_pulse: None,
         }
     }
 }

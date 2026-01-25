@@ -212,15 +212,6 @@ async fn test_e2e_core_tools_workflow() {
         .expect("fingerprintId must be string");
     println!("Stored memory 1: {}", fingerprint_id1);
 
-    // Verify UTL metrics
-    let utl = inject_data.get("utl").expect("Must have utl");
-    let learning_score = utl
-        .get("learningScore")
-        .expect("Must have learningScore")
-        .as_f64()
-        .expect("learningScore must be f64");
-    println!("Learning score: {:.4}", learning_score);
-
     // STEP 2: store_memory - Store second memory
     println!("\n--- STEP 2: store_memory ---");
     let store_params = json!({

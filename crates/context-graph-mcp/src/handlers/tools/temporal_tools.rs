@@ -40,12 +40,12 @@ impl Handlers {
             Ok(p) => p,
             Err(e) => {
                 error!(error = %e, "search_recent: Parameter parsing FAILED");
-                return self.tool_error_with_pulse(id, &format!("Invalid parameters: {}", e));
+                return self.tool_error(id, &format!("Invalid parameters: {}", e));
             }
         };
 
         if params.query.is_empty() {
-            return self.tool_error_with_pulse(id, "Query cannot be empty");
+            return self.tool_error(id, "Query cannot be empty");
         }
 
         // Clamp temporal weight
@@ -66,7 +66,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "search_recent: Query embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Query embedding failed: {}", e));
+                return self.tool_error(id, &format!("Query embedding failed: {}", e));
             }
         };
 
@@ -86,12 +86,12 @@ impl Handlers {
             Ok(r) => r,
             Err(e) => {
                 error!(error = %e, "search_recent: Search FAILED");
-                return self.tool_error_with_pulse(id, &format!("Search failed: {}", e));
+                return self.tool_error(id, &format!("Search failed: {}", e));
             }
         };
 
         if results.is_empty() {
-            return self.tool_result_with_pulse(
+            return self.tool_result(
                 id,
                 serde_json::to_value(SearchRecentResponse {
                     query: params.query,
@@ -167,10 +167,10 @@ impl Handlers {
         };
 
         match serde_json::to_value(&response) {
-            Ok(json) => self.tool_result_with_pulse(id, json),
+            Ok(json) => self.tool_result(id, json),
             Err(e) => {
                 error!(error = %e, "search_recent: Response serialization FAILED");
-                self.tool_error_with_pulse(id, &format!("Response serialization failed: {}", e))
+                self.tool_error(id, &format!("Response serialization failed: {}", e))
             }
         }
     }
@@ -189,12 +189,12 @@ impl Handlers {
             Ok(p) => p,
             Err(e) => {
                 error!(error = %e, "search_periodic: Parameter parsing FAILED");
-                return self.tool_error_with_pulse(id, &format!("Invalid parameters: {}", e));
+                return self.tool_error(id, &format!("Invalid parameters: {}", e));
             }
         };
 
         if params.query.is_empty() {
-            return self.tool_error_with_pulse(id, "Query cannot be empty");
+            return self.tool_error(id, "Query cannot be empty");
         }
 
         // Validate hour if provided
@@ -204,7 +204,7 @@ impl Handlers {
                     hour = hour,
                     "search_periodic: targetHour validation FAILED - must be 0-23"
                 );
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!("targetHour must be 0-23, got {}", hour),
                 );
@@ -218,7 +218,7 @@ impl Handlers {
                     dow = dow,
                     "search_periodic: targetDayOfWeek validation FAILED - must be 0-6"
                 );
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!("targetDayOfWeek must be 0-6 (Sun-Sat), got {}", dow),
                 );
@@ -256,7 +256,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "search_periodic: Query embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Query embedding failed: {}", e));
+                return self.tool_error(id, &format!("Query embedding failed: {}", e));
             }
         };
 
@@ -276,12 +276,12 @@ impl Handlers {
             Ok(r) => r,
             Err(e) => {
                 error!(error = %e, "search_periodic: Search FAILED");
-                return self.tool_error_with_pulse(id, &format!("Search failed: {}", e));
+                return self.tool_error(id, &format!("Search failed: {}", e));
             }
         };
 
         if results.is_empty() {
-            return self.tool_result_with_pulse(
+            return self.tool_result(
                 id,
                 serde_json::to_value(SearchPeriodicResponse {
                     query: params.query,
@@ -380,10 +380,10 @@ impl Handlers {
         };
 
         match serde_json::to_value(&response) {
-            Ok(json) => self.tool_result_with_pulse(id, json),
+            Ok(json) => self.tool_result(id, json),
             Err(e) => {
                 error!(error = %e, "search_periodic: Response serialization FAILED");
-                self.tool_error_with_pulse(id, &format!("Response serialization failed: {}", e))
+                self.tool_error(id, &format!("Response serialization failed: {}", e))
             }
         }
     }

@@ -99,16 +99,6 @@ fn topic_to_summary(topic: &Topic) -> TopicSummary {
     }
 }
 
-/// Extract entropy from UTL processor status.
-///
-/// TASK-INTEG-TOPIC: Helper to get entropy from get_status() JSON.
-fn extract_entropy_from_status(status: &serde_json::Value) -> f32 {
-    status
-        .get("entropy")
-        .and_then(|v| v.as_f64())
-        .map(|f| f as f32)
-        .unwrap_or(0.0)
-}
 
 /// Compute phase breakdown from topics.
 ///
@@ -170,7 +160,7 @@ impl Handlers {
             Ok(r) => r,
             Err(e) => {
                 error!(error = %e, "get_topic_portfolio: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid params: {}", e));
+                return self.tool_error(id, &format!("Invalid params: {}", e));
             }
         };
 
@@ -178,7 +168,7 @@ impl Handlers {
         if let Err(validation_error) = request.validate() {
             error!(error = %validation_error, "get_topic_portfolio: Validation failed");
             return self
-                .tool_error_with_pulse(id, &format!("Invalid params: {}", validation_error));
+                .tool_error(id, &format!("Invalid params: {}", validation_error));
         }
 
         // Get memory count to determine tier
@@ -186,7 +176,7 @@ impl Handlers {
             Ok(c) => c,
             Err(e) => {
                 error!(error = %e, "get_topic_portfolio: Failed to get memory count");
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!("Storage error: Failed to get memory count: {}", e),
                 );
@@ -206,7 +196,7 @@ impl Handlers {
         if tier == 0 {
             debug!("get_topic_portfolio: Tier 0 - returning empty portfolio");
             let response = TopicPortfolioResponse::empty_tier_0();
-            return self.tool_result_with_pulse(
+            return self.tool_result(
                 id,
                 serde_json::to_value(response).expect("TopicPortfolioResponse should serialize"),
             );
@@ -224,13 +214,10 @@ impl Handlers {
         // Get stability metrics from stability_tracker
         let stability_tracker = self.stability_tracker.read();
         let churn_rate = stability_tracker.current_churn();
-        // Extract entropy from UTL processor status
-        let utl_status = self.utl_processor.get_status();
-        let entropy = extract_entropy_from_status(&utl_status);
 
         let response = TopicPortfolioResponse {
             topics,
-            stability: StabilityMetricsSummary::new(churn_rate, entropy),
+            stability: StabilityMetricsSummary::new(churn_rate, 0.0),
             total_topics,
             tier,
         };
@@ -239,13 +226,12 @@ impl Handlers {
             tier = tier,
             total_topics = response.total_topics,
             churn_rate = churn_rate,
-            entropy = entropy,
             is_stable = response.stability.is_stable,
             "get_topic_portfolio: Returning portfolio with {} topics",
             total_topics
         );
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             serde_json::to_value(response).expect("TopicPortfolioResponse should serialize"),
         )
@@ -279,7 +265,7 @@ impl Handlers {
             Ok(r) => r,
             Err(e) => {
                 error!(error = %e, "get_topic_stability: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid params: {}", e));
+                return self.tool_error(id, &format!("Invalid params: {}", e));
             }
         };
 
@@ -287,7 +273,7 @@ impl Handlers {
         if let Err(validation_error) = request.validate() {
             error!(error = %validation_error, "get_topic_stability: Validation failed");
             return self
-                .tool_error_with_pulse(id, &format!("Invalid params: {}", validation_error));
+                .tool_error(id, &format!("Invalid params: {}", validation_error));
         }
 
         debug!(
@@ -300,11 +286,11 @@ impl Handlers {
         let churn_rate = stability_tracker.current_churn();
         let average_churn = stability_tracker.average_churn(request.hours as i64);
 
-        // Extract entropy from UTL processor status
-        let utl_status = self.utl_processor.get_status();
-        let entropy = extract_entropy_from_status(&utl_status);
+        // Entropy is no longer tracked via UTL processor
+        let entropy = 0.0_f32;
 
         // Per AP-70: Dream recommended when entropy > 0.7 AND churn > 0.5
+        // Since entropy is no longer tracked, this will be false unless churn alone triggers it
         let dream_recommended = TopicStabilityResponse::should_recommend_dream(entropy, churn_rate);
         let high_churn_warning = TopicStabilityResponse::is_high_churn(churn_rate);
 
@@ -331,7 +317,7 @@ impl Handlers {
             "get_topic_stability: Returning stability response"
         );
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             serde_json::to_value(response).expect("TopicStabilityResponse should serialize"),
         )
@@ -366,7 +352,7 @@ impl Handlers {
             Ok(r) => r,
             Err(e) => {
                 error!(error = %e, "detect_topics: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid params: {}", e));
+                return self.tool_error(id, &format!("Invalid params: {}", e));
             }
         };
 
@@ -377,7 +363,7 @@ impl Handlers {
             Ok(c) => c,
             Err(e) => {
                 error!(error = %e, "detect_topics: Failed to get memory count");
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!("Storage error: Failed to get memory count: {}", e),
                 );
@@ -415,7 +401,7 @@ impl Handlers {
             Ok(fps) => fps,
             Err(e) => {
                 error!(error = %e, "detect_topics: Failed to scan fingerprints from storage");
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!("Storage error: Failed to scan fingerprints: {}", e),
                 );
@@ -499,14 +485,14 @@ impl Handlers {
                     )),
                 };
 
-                self.tool_result_with_pulse(
+                self.tool_result(
                     id,
                     serde_json::to_value(response).expect("DetectTopicsResponse should serialize"),
                 )
             }
             Err(e) => {
                 error!(error = %e, "detect_topics: Reclustering failed");
-                self.tool_error_with_pulse(id, &format!("Clustering error: {}", e))
+                self.tool_error(id, &format!("Clustering error: {}", e))
             }
         }
     }
@@ -541,7 +527,7 @@ impl Handlers {
             Ok(r) => r,
             Err(e) => {
                 error!(error = %e, "get_divergence_alerts: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid params: {}", e));
+                return self.tool_error(id, &format!("Invalid params: {}", e));
             }
         };
 
@@ -549,7 +535,7 @@ impl Handlers {
         if let Err(validation_error) = request.validate() {
             error!(error = %validation_error, "get_divergence_alerts: Validation failed");
             return self
-                .tool_error_with_pulse(id, &format!("Invalid params: {}", validation_error));
+                .tool_error(id, &format!("Invalid params: {}", validation_error));
         }
 
         let lookback_hours = request.lookback_hours as i64;
@@ -569,7 +555,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "get_divergence_alerts: Failed to generate query embedding");
-                return self.tool_error_with_pulse(id, &format!("Embedding error: {}", e));
+                return self.tool_error(id, &format!("Embedding error: {}", e));
             }
         };
 
@@ -585,7 +571,7 @@ impl Handlers {
             Ok(results) => results,
             Err(e) => {
                 error!(error = %e, "get_divergence_alerts: Failed to search memories");
-                return self.tool_error_with_pulse(id, &format!("Search error: {}", e));
+                return self.tool_error(id, &format!("Search error: {}", e));
             }
         };
 
@@ -604,7 +590,7 @@ impl Handlers {
                 "get_divergence_alerts: Insufficient memories for divergence detection"
             );
             let response = DivergenceAlertsResponse::no_alerts();
-            return self.tool_result_with_pulse(
+            return self.tool_result(
                 id,
                 serde_json::to_value(response).expect("DivergenceAlertsResponse should serialize"),
             );
@@ -639,7 +625,7 @@ impl Handlers {
             Ok(results) => results,
             Err(e) => {
                 error!(error = %e, "get_divergence_alerts: Failed to search for comparisons");
-                return self.tool_error_with_pulse(id, &format!("Search error: {}", e));
+                return self.tool_error(id, &format!("Search error: {}", e));
             }
         };
 
@@ -691,7 +677,7 @@ impl Handlers {
             response.severity
         );
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             serde_json::to_value(response).expect("DivergenceAlertsResponse should serialize"),
         )

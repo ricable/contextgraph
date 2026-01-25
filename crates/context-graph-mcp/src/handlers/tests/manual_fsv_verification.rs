@@ -28,15 +28,11 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use context_graph_core::monitoring::{LayerStatusProvider, StubLayerStatusProvider};
-use context_graph_core::stubs::{
-    InMemoryTeleologicalStore, StubMultiArrayProvider, StubUtlProcessor,
-};
+use context_graph_core::stubs::{InMemoryTeleologicalStore, StubMultiArrayProvider};
 
 // NOTE: create_test_hierarchy was removed along with context_graph_core::purpose module.
-// GoalHierarchy is no longer used - Handlers::with_defaults now takes 4 args.
-use context_graph_core::traits::{
-    MultiArrayEmbeddingProvider, TeleologicalMemoryStore, UtlProcessor,
-};
+// GoalHierarchy is no longer used - Handlers::with_defaults now takes 3 args.
+use context_graph_core::traits::{MultiArrayEmbeddingProvider, TeleologicalMemoryStore};
 
 use crate::handlers::Handlers;
 use crate::protocol::{JsonRpcId, JsonRpcRequest};
@@ -94,12 +90,11 @@ async fn manual_fsv_memory_store_physical_verification() {
 
     // Create shared store - THIS IS THE SOURCE OF TRUTH
     let store: Arc<dyn TeleologicalMemoryStore> = Arc::new(InMemoryTeleologicalStore::new());
-    let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
     let multi_array: Arc<dyn MultiArrayEmbeddingProvider> = Arc::new(StubMultiArrayProvider::new());
     let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 4 args
-    let handlers = Handlers::with_defaults(store.clone(), utl_processor, multi_array, layer_status);
+    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 3 args
+    let handlers = Handlers::with_defaults(store.clone(), multi_array, layer_status);
 
     // =========================================================================
     // BEFORE STATE - DIRECT INSPECTION OF SOURCE OF TRUTH
@@ -246,12 +241,11 @@ async fn manual_fsv_edge_case_empty_content() {
     println!("================================================================================\n");
 
     let store: Arc<dyn TeleologicalMemoryStore> = Arc::new(InMemoryTeleologicalStore::new());
-    let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
     let multi_array: Arc<dyn MultiArrayEmbeddingProvider> = Arc::new(StubMultiArrayProvider::new());
     let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 4 args
-    let handlers = Handlers::with_defaults(store.clone(), utl_processor, multi_array, layer_status);
+    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 3 args
+    let handlers = Handlers::with_defaults(store.clone(), multi_array, layer_status);
 
     // BEFORE STATE
     println!("📊 BEFORE STATE:");
@@ -302,12 +296,11 @@ async fn manual_fsv_edge_case_search_empty_store() {
     println!("================================================================================\n");
 
     let store: Arc<dyn TeleologicalMemoryStore> = Arc::new(InMemoryTeleologicalStore::new());
-    let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
     let multi_array: Arc<dyn MultiArrayEmbeddingProvider> = Arc::new(StubMultiArrayProvider::new());
     let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 4 args
-    let handlers = Handlers::with_defaults(store.clone(), utl_processor, multi_array, layer_status);
+    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 3 args
+    let handlers = Handlers::with_defaults(store.clone(), multi_array, layer_status);
 
     // BEFORE STATE - Verify empty
     println!("📊 BEFORE STATE:");
@@ -354,12 +347,11 @@ async fn manual_fsv_edge_case_memetic_status() {
     println!("================================================================================\n");
 
     let store: Arc<dyn TeleologicalMemoryStore> = Arc::new(InMemoryTeleologicalStore::new());
-    let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
     let multi_array: Arc<dyn MultiArrayEmbeddingProvider> = Arc::new(StubMultiArrayProvider::new());
     let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 4 args
-    let handlers = Handlers::with_defaults(store.clone(), utl_processor, multi_array, layer_status);
+    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 3 args
+    let handlers = Handlers::with_defaults(store.clone(), multi_array, layer_status);
 
     // EXECUTE
     println!("📝 EXECUTE: tools/call -> get_memetic_status");

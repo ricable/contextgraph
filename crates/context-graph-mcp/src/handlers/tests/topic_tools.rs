@@ -480,38 +480,6 @@ async fn test_get_divergence_alerts_over_max_lookback_rejected() {
 // =========================================================================
 
 #[tokio::test]
-async fn test_topic_tools_return_cognitive_pulse() {
-    let handlers = create_test_handlers();
-
-    // Test get_topic_portfolio returns _cognitive_pulse
-    let params = json!({
-        "name": "get_topic_portfolio",
-        "arguments": {}
-    });
-    let request = make_request("tools/call", Some(JsonRpcId::Number(1)), Some(params));
-    let response = handlers.dispatch(request).await;
-    let result = response.result.expect("Must have result");
-
-    assert!(
-        result.get("_cognitive_pulse").is_some(),
-        "get_topic_portfolio must include _cognitive_pulse"
-    );
-
-    let pulse = result.get("_cognitive_pulse").unwrap();
-    assert!(pulse.get("entropy").is_some(), "pulse must have entropy");
-    assert!(
-        pulse.get("coherence").is_some(),
-        "pulse must have coherence"
-    );
-    assert!(
-        pulse.get("learning_score").is_some(),
-        "pulse must have learning_score"
-    );
-
-    println!("[PASS] Topic tools include _cognitive_pulse in response");
-}
-
-#[tokio::test]
 async fn test_topic_portfolio_response_structure() {
     let handlers = create_test_handlers();
     let params = json!({

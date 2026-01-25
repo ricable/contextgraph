@@ -39,7 +39,6 @@
 //! } // _tempdir dropped here, cleaning up the database
 //! ```
 
-mod cognitive_pulse;
 mod content_storage_verification;
 mod curation_tools_fsv;
 mod dream_tools_integration;
@@ -65,12 +64,8 @@ use std::sync::Arc;
 use tempfile::TempDir;
 
 use context_graph_core::monitoring::{LayerStatusProvider, StubLayerStatusProvider};
-use context_graph_core::stubs::{
-    InMemoryTeleologicalStore, StubMultiArrayProvider, StubUtlProcessor,
-};
-use context_graph_core::traits::{
-    MultiArrayEmbeddingProvider, TeleologicalMemoryStore, UtlProcessor,
-};
+use context_graph_core::stubs::{InMemoryTeleologicalStore, StubMultiArrayProvider};
+use context_graph_core::traits::{MultiArrayEmbeddingProvider, TeleologicalMemoryStore};
 use context_graph_storage::teleological::RocksDbTeleologicalStore;
 
 // TASK-EMB-016: Import global warm provider for FSV tests (feature-gated)
@@ -211,7 +206,6 @@ async fn get_warm_loaded_provider() -> Arc<dyn MultiArrayEmbeddingProvider> {
         .clone()
 }
 
-use crate::adapters::UtlProcessorAdapter;
 use crate::handlers::Handlers;
 use crate::protocol::{JsonRpcId, JsonRpcRequest};
 
@@ -276,17 +270,15 @@ pub(crate) fn extract_mcp_tool_data(result: &serde_json::Value) -> serde_json::V
 /// NO legacy MemoryStore support.
 ///
 /// Note: GoalHierarchy was removed along with the purpose module. Handlers::with_defaults
-/// now takes 4 arguments instead of 5.
+/// now takes 3 arguments.
 pub(crate) fn create_test_handlers() -> Handlers {
     let teleological_store: Arc<dyn TeleologicalMemoryStore> =
         Arc::new(InMemoryTeleologicalStore::new());
-    let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
     let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
         Arc::new(StubMultiArrayProvider::new());
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
     Handlers::with_defaults(
         teleological_store,
-        utl_processor,
         multi_array_provider,
         layer_status_provider,
     )
@@ -309,10 +301,8 @@ pub(crate) fn create_test_handlers() -> Handlers {
 /// # Components
 ///
 /// - **Storage**: RocksDbTeleologicalStore (17 column families, real persistence)
-/// - **UTL**: UtlProcessorAdapter with defaults (real UTL computation)
 /// - **Embeddings**: StubMultiArrayProvider (until GPU embedding ready - FAIL FAST on embed ops)
 /// - **Alignment**: DefaultAlignmentCalculator (real cosine similarity)
-/// - **Goals**: Test hierarchy with strategic goals
 ///
 /// # HNSW Initialization
 ///
@@ -350,9 +340,6 @@ pub(crate) async fn create_test_handlers_with_rocksdb() -> (Handlers, TempDir) {
 
     let teleological_store: Arc<dyn TeleologicalMemoryStore> = Arc::new(rocksdb_store);
 
-    // Use real UTL processor adapter for live computation
-    let utl_processor: Arc<dyn UtlProcessor> = Arc::new(UtlProcessorAdapter::with_defaults());
-
     // Still use StubMultiArrayProvider until GPU embedding is ready
     // This will FAIL FAST on actual embedding operations - tests must not rely on embeddings
     let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
@@ -361,10 +348,8 @@ pub(crate) async fn create_test_handlers_with_rocksdb() -> (Handlers, TempDir) {
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
     // TASK-INTEG-TOPIC: Use with_defaults for automatic clustering component creation
-    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 4 args
     let handlers = Handlers::with_defaults(
         teleological_store,
-        utl_processor,
         multi_array_provider,
         layer_status_provider,
     );
@@ -416,9 +401,6 @@ pub(crate) async fn create_test_handlers_with_rocksdb_store_access(
 
     let teleological_store: Arc<dyn TeleologicalMemoryStore> = Arc::new(rocksdb_store);
 
-    // Use real UTL processor adapter for live computation
-    let utl_processor: Arc<dyn UtlProcessor> = Arc::new(UtlProcessorAdapter::with_defaults());
-
     // Still use StubMultiArrayProvider until GPU embedding is ready
     // This will FAIL FAST on actual embedding operations - tests must not rely on embeddings
     let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
@@ -428,7 +410,6 @@ pub(crate) async fn create_test_handlers_with_rocksdb_store_access(
 
     let handlers = Handlers::with_defaults(
         Arc::clone(&teleological_store),
-        utl_processor,
         multi_array_provider,
         layer_status_provider,
     );
@@ -500,9 +481,6 @@ pub(crate) async fn create_test_handlers_with_real_embeddings() -> (Handlers, Te
 
     let teleological_store: Arc<dyn TeleologicalMemoryStore> = Arc::new(rocksdb_store);
 
-    // Use real UTL processor adapter for live computation
-    let utl_processor: Arc<dyn UtlProcessor> = Arc::new(UtlProcessorAdapter::with_defaults());
-
     // TASK-WARM-LOAD: Use WARM-LOADED embedding provider from global cache
     // RTX 5090 32GB - models loaded ONCE, shared across all tests
     // This prevents CUDA OOM when tests run in parallel
@@ -512,7 +490,6 @@ pub(crate) async fn create_test_handlers_with_real_embeddings() -> (Handlers, Te
 
     let handlers = Handlers::with_defaults(
         teleological_store,
-        utl_processor,
         multi_array_provider,
         layer_status_provider,
     );
@@ -547,9 +524,6 @@ pub(crate) async fn create_test_handlers_with_real_embeddings_store_access(
 
     let teleological_store: Arc<dyn TeleologicalMemoryStore> = Arc::new(rocksdb_store);
 
-    // Use real UTL processor adapter
-    let utl_processor: Arc<dyn UtlProcessor> = Arc::new(UtlProcessorAdapter::with_defaults());
-
     // TASK-WARM-LOAD: Use WARM-LOADED embedding provider from global cache
     // RTX 5090 32GB - models loaded ONCE, shared across all tests
     let multi_array_provider = get_warm_loaded_provider().await;
@@ -558,7 +532,6 @@ pub(crate) async fn create_test_handlers_with_real_embeddings_store_access(
 
     let handlers = Handlers::with_defaults(
         Arc::clone(&teleological_store),
-        utl_processor,
         multi_array_provider,
         layer_status_provider,
     );

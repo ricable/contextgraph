@@ -1,5 +1,5 @@
 # Context Graph - Workspace Manifest
-# 13-Embedder Context Graph implementing UTL (Unified Theory of Learning)
+# 13-Embedder Context Graph for semantic memory retrieval
 
 [workspace]
 resolver = "2"
@@ -10,7 +10,6 @@ members = [
     "crates/context-graph-embeddings",
     "crates/context-graph-storage",
     "crates/context-graph-graph",
-    "crates/context-graph-utl",
     "crates/context-graph-cli",
     "crates/context-graph-benchmark",
 ]

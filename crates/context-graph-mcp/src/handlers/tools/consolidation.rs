@@ -186,7 +186,7 @@ impl Handlers {
             Ok(p) => p,
             Err(e) => {
                 error!(error = %e, "trigger_consolidation: Failed to parse parameters");
-                return self.tool_error_with_pulse(id, &format!("Invalid parameters: {}", e));
+                return self.tool_error(id, &format!("Invalid parameters: {}", e));
             }
         };
 
@@ -197,7 +197,7 @@ impl Handlers {
                 strategy = %params.strategy,
                 "trigger_consolidation: Invalid strategy"
             );
-            return self.tool_error_with_pulse(
+            return self.tool_error(
                 id,
                 &format!(
                     "Invalid strategy '{}'. Valid strategies: similarity, temporal, semantic",
@@ -233,7 +233,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "trigger_consolidation: Failed to generate broad query embedding");
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!("Embedding error: Failed to generate query: {}", e),
                 );
@@ -252,7 +252,7 @@ impl Handlers {
                     max_memories = params.max_memories,
                     "trigger_consolidation: Store access failed"
                 );
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!("Store error: Failed to list fingerprints: {}", e),
                 );
@@ -395,7 +395,7 @@ impl Handlers {
             "trigger_consolidation: Analysis complete"
         );
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             json!({
                 "consolidation_result": consolidation_result,

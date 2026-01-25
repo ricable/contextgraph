@@ -165,17 +165,6 @@ pub struct DreamReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wake_reason: Option<String>,
 
-    pub pre_entropy: f32,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub post_entropy: Option<f32>,
-
-    pub pre_coherence: f32,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub post_coherence: Option<f32>,
-
-    pub dream_recommended: bool,
     pub recommendations: Vec<String>,
 }
 

@@ -872,7 +872,6 @@ dependencies = [
  "context-graph-cuda",
  "context-graph-embeddings",
  "context-graph-storage",
- "context-graph-utl",
  "futures",
  "glob",
  "hex",
@@ -918,23 +917,6 @@ dependencies = [
  "tokio",
  "tracing",
  "usearch",
- "uuid",
-]
-
-[[package]]
-name = "context-graph-utl"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "context-graph-core",
- "criterion",
- "rand 0.8.5",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
  "uuid",
 ]
 

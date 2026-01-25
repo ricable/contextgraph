@@ -64,13 +64,13 @@ impl Handlers {
             Ok(req) => req,
             Err(e) => {
                 error!(error = %e, "search_by_keywords: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid request: {}", e));
+                return self.tool_error(id, &format!("Invalid request: {}", e));
             }
         };
 
         if let Err(e) = request.validate() {
             error!(error = %e, "search_by_keywords: Validation failed");
-            return self.tool_error_with_pulse(id, &e);
+            return self.tool_error(id, &e);
         }
 
         let query = &request.query;
@@ -93,7 +93,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "search_by_keywords: Query embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Query embedding failed: {}", e));
+                return self.tool_error(id, &format!("Query embedding failed: {}", e));
             }
         };
 
@@ -124,7 +124,7 @@ impl Handlers {
             Ok(results) => results,
             Err(e) => {
                 error!(error = %e, "search_by_keywords: Candidate search FAILED");
-                return self.tool_error_with_pulse(id, &format!("Search failed: {}", e));
+                return self.tool_error(id, &format!("Search failed: {}", e));
             }
         };
 
@@ -260,7 +260,7 @@ impl Handlers {
             "search_by_keywords: Completed keyword-enhanced search"
         );
 
-        self.tool_result_with_pulse(id, serde_json::to_value(response).unwrap_or_else(|_| json!({})))
+        self.tool_result(id, serde_json::to_value(response).unwrap_or_else(|_| json!({})))
     }
 }
 

@@ -66,13 +66,13 @@ impl Handlers {
             Ok(req) => req,
             Err(e) => {
                 error!(error = %e, "search_connections: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid request: {}", e));
+                return self.tool_error(id, &format!("Invalid request: {}", e));
             }
         };
 
         if let Err(e) = request.validate() {
             error!(error = %e, "search_connections: Validation failed");
-            return self.tool_error_with_pulse(id, &e);
+            return self.tool_error(id, &e);
         }
 
         let query = &request.query;
@@ -93,7 +93,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "search_connections: Query embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Query embedding failed: {}", e));
+                return self.tool_error(id, &format!("Query embedding failed: {}", e));
             }
         };
 
@@ -114,7 +114,7 @@ impl Handlers {
             Ok(results) => results,
             Err(e) => {
                 error!(error = %e, "search_connections: Candidate search FAILED");
-                return self.tool_error_with_pulse(id, &format!("Search failed: {}", e));
+                return self.tool_error(id, &format!("Search failed: {}", e));
             }
         };
 
@@ -257,7 +257,7 @@ impl Handlers {
             "search_connections: Completed connection search"
         );
 
-        self.tool_result_with_pulse(id, serde_json::to_value(response).unwrap_or_else(|_| json!({})))
+        self.tool_result(id, serde_json::to_value(response).unwrap_or_else(|_| json!({})))
     }
 
     /// get_graph_path tool implementation.
@@ -289,7 +289,7 @@ impl Handlers {
             Ok(req) => req,
             Err(e) => {
                 error!(error = %e, "get_graph_path: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid request: {}", e));
+                return self.tool_error(id, &format!("Invalid request: {}", e));
             }
         };
 
@@ -297,7 +297,7 @@ impl Handlers {
             Ok(uuid) => uuid,
             Err(e) => {
                 error!(error = %e, "get_graph_path: Validation failed");
-                return self.tool_error_with_pulse(id, &e);
+                return self.tool_error(id, &e);
             }
         };
 
@@ -323,14 +323,14 @@ impl Handlers {
             Ok(Some(fp)) => fp,
             Ok(None) => {
                 error!(anchor_id = %anchor_uuid, "get_graph_path: Anchor not found");
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!("Anchor memory not found: {}", anchor_uuid),
                 );
             }
             Err(e) => {
                 error!(error = %e, "get_graph_path: Failed to get anchor");
-                return self.tool_error_with_pulse(id, &format!("Failed to get anchor: {}", e));
+                return self.tool_error(id, &format!("Failed to get anchor: {}", e));
             }
         };
 
@@ -489,7 +489,7 @@ impl Handlers {
             "get_graph_path: Completed path traversal"
         );
 
-        self.tool_result_with_pulse(id, serde_json::to_value(response).unwrap_or_else(|_| json!({})))
+        self.tool_result(id, serde_json::to_value(response).unwrap_or_else(|_| json!({})))
     }
 }
 

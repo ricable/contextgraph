@@ -154,51 +154,7 @@ async fn test_trigger_dream_invalid_params() {
     assert!(response.error.is_some());
 }
 
-#[tokio::test]
-async fn test_trigger_dream_ap70_entropy_check() {
-    let handlers = create_test_handlers();
+// NOTE: test_trigger_dream_ap70_entropy_check was removed during UTL removal.
+// AP-70 entropy checking is now handled by the topic stability system.
+// See get_topic_stability for the current dream recommendation logic.
 
-    let response = handlers
-        .call_trigger_dream(
-            Some(crate::protocol::JsonRpcId::Number(8)),
-            json!({ "dry_run": true }),
-        )
-        .await;
-
-    let result = response.result.unwrap();
-    let content = result.get("content").unwrap().as_array().unwrap();
-    let text_content = content[0].get("text").unwrap().as_str().unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(text_content).unwrap();
-
-    let report = parsed.get("report").unwrap();
-    assert!(report.get("pre_entropy").is_some());
-    assert!(report.get("dream_recommended").is_some());
-
-    let pre_entropy = report.get("pre_entropy").unwrap().as_f64().unwrap();
-    let dream_recommended = report.get("dream_recommended").unwrap().as_bool().unwrap();
-
-    // Verify AP-70: dream_recommended should be true only if entropy > 0.7
-    if pre_entropy > 0.7 {
-        assert!(dream_recommended);
-    } else {
-        assert!(!dream_recommended);
-    }
-}
-
-#[tokio::test]
-async fn test_dream_tools_include_cognitive_pulse() {
-    let handlers = create_test_handlers();
-
-    let response = handlers
-        .call_trigger_dream(
-            Some(crate::protocol::JsonRpcId::Number(9)),
-            json!({ "dry_run": true }),
-        )
-        .await;
-    assert!(response.result.unwrap().get("_cognitive_pulse").is_some());
-
-    let response = handlers
-        .call_get_dream_status(Some(crate::protocol::JsonRpcId::Number(10)), json!({}))
-        .await;
-    assert!(response.result.unwrap().get("_cognitive_pulse").is_some());
-}

@@ -69,13 +69,13 @@ impl Handlers {
             Ok(req) => req,
             Err(e) => {
                 error!(error = %e, "search_code: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid request: {}", e));
+                return self.tool_error(id, &format!("Invalid request: {}", e));
             }
         };
 
         if let Err(e) = request.validate() {
             error!(error = %e, "search_code: Validation failed");
-            return self.tool_error_with_pulse(id, &e);
+            return self.tool_error(id, &e);
         }
 
         let query = &request.query;
@@ -109,7 +109,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "search_code: Query embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Query embedding failed: {}", e));
+                return self.tool_error(id, &format!("Query embedding failed: {}", e));
             }
         };
 
@@ -131,7 +131,7 @@ impl Handlers {
             Ok(results) => results,
             Err(e) => {
                 error!(error = %e, "search_code: Candidate search FAILED");
-                return self.tool_error_with_pulse(id, &format!("Search failed: {}", e));
+                return self.tool_error(id, &format!("Search failed: {}", e));
             }
         };
 
@@ -276,7 +276,7 @@ impl Handlers {
             "search_code: Completed code-enhanced search"
         );
 
-        self.tool_result_with_pulse(id, serde_json::to_value(response).unwrap_or_else(|_| json!({})))
+        self.tool_result(id, serde_json::to_value(response).unwrap_or_else(|_| json!({})))
     }
 
     /// Search CodeStore for code entities using full 13-embedder fingerprint.

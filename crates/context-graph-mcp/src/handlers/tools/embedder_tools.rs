@@ -67,20 +67,20 @@ impl Handlers {
             Ok(req) => req,
             Err(e) => {
                 error!(error = %e, "search_by_embedder: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid request: {}", e));
+                return self.tool_error(id, &format!("Invalid request: {}", e));
             }
         };
 
         if let Err(e) = request.validate() {
             error!(error = %e, "search_by_embedder: Validation failed");
-            return self.tool_error_with_pulse(id, &e);
+            return self.tool_error(id, &e);
         }
 
         let embedder_id = match request.embedder_id() {
             Some(eid) => eid,
             None => {
                 error!(embedder = %request.embedder, "search_by_embedder: Invalid embedder");
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!("Invalid embedder: {}", request.embedder),
                 );
@@ -102,7 +102,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "search_by_embedder: Query embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Query embedding failed: {}", e));
+                return self.tool_error(id, &format!("Query embedding failed: {}", e));
             }
         };
 
@@ -125,7 +125,7 @@ impl Handlers {
                     "search_by_embedder: Search in {} space FAILED",
                     embedder_id.name()
                 );
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!(
                         "Search in {} space failed: {}",
@@ -208,7 +208,7 @@ impl Handlers {
             "search_by_embedder: Completed embedder-first search"
         );
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             serde_json::to_value(response).unwrap_or_else(|_| json!({})),
         )
@@ -241,20 +241,20 @@ impl Handlers {
             Ok(req) => req,
             Err(e) => {
                 error!(error = %e, "get_embedder_clusters: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid request: {}", e));
+                return self.tool_error(id, &format!("Invalid request: {}", e));
             }
         };
 
         if let Err(e) = request.validate() {
             error!(error = %e, "get_embedder_clusters: Validation failed");
-            return self.tool_error_with_pulse(id, &e);
+            return self.tool_error(id, &e);
         }
 
         let embedder_id = match request.embedder_id() {
             Some(eid) => eid,
             None => {
                 error!(embedder = %request.embedder, "get_embedder_clusters: Invalid embedder");
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!("Invalid embedder: {}", request.embedder),
                 );
@@ -281,7 +281,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "get_embedder_clusters: Sample embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Embedding failed: {}", e));
+                return self.tool_error(id, &format!("Embedding failed: {}", e));
             }
         };
 
@@ -297,7 +297,7 @@ impl Handlers {
             Ok(results) => results,
             Err(e) => {
                 error!(error = %e, "get_embedder_clusters: Memory scan FAILED");
-                return self.tool_error_with_pulse(id, &format!("Memory scan failed: {}", e));
+                return self.tool_error(id, &format!("Memory scan failed: {}", e));
             }
         };
 
@@ -375,7 +375,7 @@ impl Handlers {
             "get_embedder_clusters: Completed cluster exploration"
         );
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             serde_json::to_value(response).unwrap_or_else(|_| json!({})),
         )
@@ -403,13 +403,13 @@ impl Handlers {
             Ok(req) => req,
             Err(e) => {
                 error!(error = %e, "compare_embedder_views: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid request: {}", e));
+                return self.tool_error(id, &format!("Invalid request: {}", e));
             }
         };
 
         if let Err(e) = request.validate() {
             error!(error = %e, "compare_embedder_views: Validation failed");
-            return self.tool_error_with_pulse(id, &e);
+            return self.tool_error(id, &e);
         }
 
         let embedder_ids = request.embedder_ids();
@@ -426,7 +426,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "compare_embedder_views: Query embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Query embedding failed: {}", e));
+                return self.tool_error(id, &format!("Query embedding failed: {}", e));
             }
         };
 
@@ -565,7 +565,7 @@ impl Handlers {
             "compare_embedder_views: Completed embedder comparison"
         );
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             serde_json::to_value(response).unwrap_or_else(|_| json!({})),
         )
@@ -589,7 +589,7 @@ impl Handlers {
 
         if let Err(e) = request.validate() {
             error!(error = %e, "list_embedder_indexes: Validation failed");
-            return self.tool_error_with_pulse(id, &e);
+            return self.tool_error(id, &e);
         }
 
         info!("list_embedder_indexes: Listing all 13 embedder indexes");
@@ -600,7 +600,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "list_embedder_indexes: Sample embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Embedding failed: {}", e));
+                return self.tool_error(id, &format!("Embedding failed: {}", e));
             }
         };
 
@@ -707,7 +707,7 @@ impl Handlers {
             "list_embedder_indexes: Listed all embedder indexes"
         );
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             serde_json::to_value(response).unwrap_or_else(|_| json!({})),
         )

@@ -540,7 +540,7 @@ impl LayerStatusProvider for StubLayerStatusProvider {
     }
 
     async fn action_status(&self) -> MonitorResult<LayerStatus> {
-        // L4_Learning: UtlProcessorAdapter is working
+        // L4_Learning: Action layer is active
         Ok(LayerStatus::Active)
     }
 

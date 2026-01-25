@@ -125,7 +125,7 @@ impl Handlers {
             Ok(r) => r,
             Err(e) => {
                 error!(error = %e, "list_watched_files: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid params: {}", e));
+                return self.tool_error(id, &format!("Invalid params: {}", e));
             }
         };
 
@@ -134,7 +134,7 @@ impl Handlers {
             Ok(entries) => entries,
             Err(e) => {
                 error!(error = %e, "list_watched_files: Failed to list indexed files");
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!("Storage error: Failed to list files: {}", e),
                 );
@@ -147,7 +147,7 @@ impl Handlers {
                 Ok(p) => Some(p),
                 Err(e) => {
                     error!(error = %e, pattern = filter, "list_watched_files: Invalid glob pattern");
-                    return self.tool_error_with_pulse(
+                    return self.tool_error(
                         id,
                         &format!("Invalid glob pattern '{}': {}", filter, e),
                     );
@@ -194,7 +194,7 @@ impl Handlers {
             }
         );
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             serde_json::to_value(response).expect("ListWatchedFilesResponse should serialize"),
         )
@@ -220,7 +220,7 @@ impl Handlers {
             Ok(s) => s,
             Err(e) => {
                 error!(error = %e, "get_file_watcher_stats: Failed to get stats");
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!("Storage error: Failed to get stats: {}", e),
                 );
@@ -240,7 +240,7 @@ impl Handlers {
             response.total_files, response.total_chunks
         );
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             serde_json::to_value(response).expect("GetFileWatcherStatsResponse should serialize"),
         )
@@ -271,14 +271,14 @@ impl Handlers {
             Ok(r) => r,
             Err(e) => {
                 error!(error = %e, "delete_file_content: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid params: {}", e));
+                return self.tool_error(id, &format!("Invalid params: {}", e));
             }
         };
 
         // Validate file_path is not empty
         if request.file_path.trim().is_empty() {
             error!("delete_file_content: Empty file_path provided");
-            return self.tool_error_with_pulse(id, "file_path cannot be empty");
+            return self.tool_error(id, "file_path cannot be empty");
         }
 
         // Get fingerprints for the file
@@ -290,7 +290,7 @@ impl Handlers {
             Ok(ids) => ids,
             Err(e) => {
                 error!(error = %e, file_path = %request.file_path, "delete_file_content: Failed to get fingerprints");
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!("Storage error: Failed to get fingerprints: {}", e),
                 );
@@ -302,7 +302,7 @@ impl Handlers {
                 file_path = %request.file_path,
                 "delete_file_content: No fingerprints found for file"
             );
-            return self.tool_result_with_pulse(
+            return self.tool_result(
                 id,
                 json!({
                     "file_path": request.file_path,
@@ -341,7 +341,7 @@ impl Handlers {
                         fingerprint_id = %fp_id,
                         "delete_file_content: Failed to delete fingerprint"
                     );
-                    return self.tool_error_with_pulse(
+                    return self.tool_error(
                         id,
                         &format!("Storage error: Failed to delete fingerprint {}: {}", fp_id, e),
                     );
@@ -390,7 +390,7 @@ impl Handlers {
             message,
         };
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             serde_json::to_value(response).expect("DeleteFileContentResponse should serialize"),
         )
@@ -419,7 +419,7 @@ impl Handlers {
             Ok(r) => r,
             Err(e) => {
                 error!(error = %e, "reconcile_files: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid params: {}", e));
+                return self.tool_error(id, &format!("Invalid params: {}", e));
             }
         };
 
@@ -428,7 +428,7 @@ impl Handlers {
             Ok(entries) => entries,
             Err(e) => {
                 error!(error = %e, "reconcile_files: Failed to list indexed files");
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!("Storage error: Failed to list files: {}", e),
                 );
@@ -515,7 +515,7 @@ impl Handlers {
             dry_run: request.dry_run,
         };
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             serde_json::to_value(response).expect("ReconcileFilesResponse should serialize"),
         )

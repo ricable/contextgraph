@@ -14,12 +14,8 @@ use std::sync::Arc;
 use serde_json::json;
 
 use context_graph_core::monitoring::{LayerStatusProvider, StubLayerStatusProvider};
-use context_graph_core::stubs::{
-    InMemoryTeleologicalStore, StubMultiArrayProvider, StubUtlProcessor,
-};
-use context_graph_core::traits::{
-    MultiArrayEmbeddingProvider, TeleologicalMemoryStore, UtlProcessor,
-};
+use context_graph_core::stubs::{InMemoryTeleologicalStore, StubMultiArrayProvider};
+use context_graph_core::traits::{MultiArrayEmbeddingProvider, TeleologicalMemoryStore};
 
 use crate::handlers::Handlers;
 use crate::protocol::{JsonRpcId, JsonRpcRequest};
@@ -27,11 +23,10 @@ use crate::protocol::{JsonRpcId, JsonRpcRequest};
 /// Create test handlers using Handlers::with_defaults (which uses StubLayerStatusProvider).
 fn create_handlers_with_stub_monitors() -> Handlers {
     let store: Arc<dyn TeleologicalMemoryStore> = Arc::new(InMemoryTeleologicalStore::new());
-    let utl_processor: Arc<dyn UtlProcessor> = Arc::new(StubUtlProcessor::new());
     let multi_array: Arc<dyn MultiArrayEmbeddingProvider> = Arc::new(StubMultiArrayProvider::new());
     let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
-    Handlers::with_defaults(store, utl_processor, multi_array, layer_status)
+    Handlers::with_defaults(store, multi_array, layer_status)
 }
 
 fn make_request(method: &str, params: serde_json::Value) -> JsonRpcRequest {
@@ -102,43 +97,6 @@ async fn test_task_emb_024_layer_status_provider_honest_statuses() {
         layers["meta"].as_str().unwrap(),
         "active",
         "meta should be active"
-    );
-}
-
-// ============================================================================
-// No Hardcoded Values Verification
-// ============================================================================
-
-/// Verify that no hardcoded metric values appear in responses.
-#[tokio::test]
-async fn test_task_emb_024_no_hardcoded_values_8500_097_0015() {
-    let handlers = create_handlers_with_stub_monitors();
-
-    // Call health_metrics
-    let request = make_request("meta_utl/health_metrics", json!({}));
-    let response = handlers.dispatch(request).await;
-
-    // Convert entire response to string for inspection
-    let response_str = serde_json::to_string(&response).unwrap();
-
-    // VERIFY: No hardcoded values in response
-    assert!(
-        !response_str.contains("8500"),
-        "Should not contain hardcoded 8500"
-    );
-    assert!(
-        !response_str.contains("0.97"),
-        "Should not contain hardcoded 0.97"
-    );
-    assert!(
-        !response_str.contains("0.015"),
-        "Should not contain hardcoded 0.015"
-    );
-
-    // Should be an error response
-    assert!(
-        response.error.is_some(),
-        "Should be error, not success with fake values"
     );
 }
 

@@ -267,13 +267,13 @@ impl Handlers {
             Ok(req) => req,
             Err(e) => {
                 error!(error = %e, "extract_entities: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid request: {}", e));
+                return self.tool_error(id, &format!("Invalid request: {}", e));
             }
         };
 
         if let Err(e) = request.validate() {
             error!(error = %e, "extract_entities: Validation failed");
-            return self.tool_error_with_pulse(id, &e);
+            return self.tool_error(id, &e);
         }
 
         let text = &request.text;
@@ -359,7 +359,7 @@ impl Handlers {
             "extract_entities: Completed entity extraction"
         );
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             serde_json::to_value(response).unwrap_or_else(|_| json!({})),
         )
@@ -414,13 +414,13 @@ impl Handlers {
             Ok(req) => req,
             Err(e) => {
                 error!(error = %e, "search_by_entities: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid request: {}", e));
+                return self.tool_error(id, &format!("Invalid request: {}", e));
             }
         };
 
         if let Err(e) = request.validate() {
             error!(error = %e, "search_by_entities: Validation failed");
-            return self.tool_error_with_pulse(id, &e);
+            return self.tool_error(id, &e);
         }
 
         let entities = &request.entities;
@@ -461,7 +461,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "search_by_entities: Query embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Query embedding failed: {}", e));
+                return self.tool_error(id, &format!("Query embedding failed: {}", e));
             }
         };
 
@@ -483,7 +483,7 @@ impl Handlers {
             Ok(results) => results,
             Err(e) => {
                 error!(error = %e, "search_by_entities: E1 search FAILED");
-                return self.tool_error_with_pulse(id, &format!("E1 search failed: {}", e));
+                return self.tool_error(id, &format!("E1 search failed: {}", e));
             }
         };
 
@@ -517,7 +517,7 @@ impl Handlers {
                      E11 (KEPLER) is required for entity-aware search. \
                      Check: 1) KEPLER model loaded, 2) E11 index initialized, 3) GPU available"
                 );
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!(
                         "E11 entity search failed: {}. E11 is required for search_by_entities - no fallback.",
@@ -575,7 +575,7 @@ impl Handlers {
             Ok(c) => c,
             Err(e) => {
                 error!(error = %e, "search_by_entities: Content retrieval FAILED");
-                return self.tool_error_with_pulse(id, &format!("Content retrieval failed: {}", e));
+                return self.tool_error(id, &format!("Content retrieval failed: {}", e));
             }
         };
 
@@ -699,7 +699,7 @@ impl Handlers {
             "search_by_entities: Completed entity-aware search"
         );
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             serde_json::to_value(response).unwrap_or_else(|_| json!({})),
         )
@@ -738,13 +738,13 @@ impl Handlers {
             Ok(req) => req,
             Err(e) => {
                 error!(error = %e, "infer_relationship: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid request: {}", e));
+                return self.tool_error(id, &format!("Invalid request: {}", e));
             }
         };
 
         if let Err(e) = request.validate() {
             error!(error = %e, "infer_relationship: Validation failed");
-            return self.tool_error_with_pulse(id, &e);
+            return self.tool_error(id, &e);
         }
 
         let head_entity = &request.head_entity;
@@ -777,7 +777,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "infer_relationship: Head embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Head embedding failed: {}", e));
+                return self.tool_error(id, &format!("Head embedding failed: {}", e));
             }
         };
 
@@ -785,7 +785,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "infer_relationship: Tail embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Tail embedding failed: {}", e));
+                return self.tool_error(id, &format!("Tail embedding failed: {}", e));
             }
         };
 
@@ -884,7 +884,7 @@ impl Handlers {
             "infer_relationship: Completed TransE inference"
         );
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             serde_json::to_value(response).unwrap_or_else(|_| json!({})),
         )
@@ -918,13 +918,13 @@ impl Handlers {
             Ok(req) => req,
             Err(e) => {
                 error!(error = %e, "find_related_entities: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid request: {}", e));
+                return self.tool_error(id, &format!("Invalid request: {}", e));
             }
         };
 
         if let Err(e) = request.validate() {
             error!(error = %e, "find_related_entities: Validation failed");
-            return self.tool_error_with_pulse(id, &e);
+            return self.tool_error(id, &e);
         }
 
         let entity = &request.entity;
@@ -947,7 +947,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "find_related_entities: Entity embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Entity embedding failed: {}", e));
+                return self.tool_error(id, &format!("Entity embedding failed: {}", e));
             }
         };
 
@@ -955,7 +955,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "find_related_entities: Relation embedding FAILED");
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!("Relation embedding failed: {}", e),
                 );
@@ -991,7 +991,7 @@ impl Handlers {
                 Err(e) => {
                     error!(error = %e, "find_related_entities: Query embedding FAILED");
                     return self
-                        .tool_error_with_pulse(id, &format!("Query embedding failed: {}", e));
+                        .tool_error(id, &format!("Query embedding failed: {}", e));
                 }
             };
 
@@ -1008,7 +1008,7 @@ impl Handlers {
                 Ok(results) => results,
                 Err(e) => {
                     error!(error = %e, "find_related_entities: Candidate search FAILED");
-                    return self.tool_error_with_pulse(id, &format!("Search failed: {}", e));
+                    return self.tool_error(id, &format!("Search failed: {}", e));
                 }
             };
 
@@ -1019,7 +1019,7 @@ impl Handlers {
                 Err(e) => {
                     error!(error = %e, "find_related_entities: Content retrieval FAILED");
                     return self
-                        .tool_error_with_pulse(id, &format!("Content retrieval failed: {}", e));
+                        .tool_error(id, &format!("Content retrieval failed: {}", e));
                 }
             };
 
@@ -1130,7 +1130,7 @@ impl Handlers {
             "find_related_entities: Completed TransE entity prediction"
         );
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             serde_json::to_value(response).unwrap_or_else(|_| json!({})),
         )
@@ -1163,13 +1163,13 @@ impl Handlers {
             Ok(req) => req,
             Err(e) => {
                 error!(error = %e, "validate_knowledge: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid request: {}", e));
+                return self.tool_error(id, &format!("Invalid request: {}", e));
             }
         };
 
         if let Err(e) = request.validate() {
             error!(error = %e, "validate_knowledge: Validation failed");
-            return self.tool_error_with_pulse(id, &e);
+            return self.tool_error(id, &e);
         }
 
         let subject = &request.subject;
@@ -1202,7 +1202,7 @@ impl Handlers {
             Err(e) => {
                 error!(error = %e, "validate_knowledge: Subject embedding FAILED");
                 return self
-                    .tool_error_with_pulse(id, &format!("Subject embedding failed: {}", e));
+                    .tool_error(id, &format!("Subject embedding failed: {}", e));
             }
         };
 
@@ -1211,7 +1211,7 @@ impl Handlers {
             Err(e) => {
                 error!(error = %e, "validate_knowledge: Predicate embedding FAILED");
                 return self
-                    .tool_error_with_pulse(id, &format!("Predicate embedding failed: {}", e));
+                    .tool_error(id, &format!("Predicate embedding failed: {}", e));
             }
         };
 
@@ -1220,7 +1220,7 @@ impl Handlers {
             Err(e) => {
                 error!(error = %e, "validate_knowledge: Object embedding FAILED");
                 return self
-                    .tool_error_with_pulse(id, &format!("Object embedding failed: {}", e));
+                    .tool_error(id, &format!("Object embedding failed: {}", e));
             }
         };
 
@@ -1355,7 +1355,7 @@ impl Handlers {
             "validate_knowledge: Completed TransE validation"
         );
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             serde_json::to_value(response).unwrap_or_else(|_| json!({})),
         )
@@ -1393,13 +1393,13 @@ impl Handlers {
             Ok(req) => req,
             Err(e) => {
                 error!(error = %e, "get_entity_graph: Failed to parse request");
-                return self.tool_error_with_pulse(id, &format!("Invalid request: {}", e));
+                return self.tool_error(id, &format!("Invalid request: {}", e));
             }
         };
 
         if let Err(e) = request.validate() {
             error!(error = %e, "get_entity_graph: Validation failed");
-            return self.tool_error_with_pulse(id, &e);
+            return self.tool_error(id, &e);
         }
 
         let max_nodes = request.max_nodes;
@@ -1426,7 +1426,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "get_entity_graph: Query embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Query embedding failed: {}", e));
+                return self.tool_error(id, &format!("Query embedding failed: {}", e));
             }
         };
 
@@ -1444,7 +1444,7 @@ impl Handlers {
             Ok(results) => results,
             Err(e) => {
                 error!(error = %e, "get_entity_graph: Memory search FAILED");
-                return self.tool_error_with_pulse(id, &format!("Memory search failed: {}", e));
+                return self.tool_error(id, &format!("Memory search failed: {}", e));
             }
         };
 
@@ -1452,7 +1452,7 @@ impl Handlers {
 
         if memories.is_empty() {
             info!("get_entity_graph: No memories found to scan");
-            return self.tool_result_with_pulse(
+            return self.tool_result(
                 id,
                 serde_json::to_value(GetEntityGraphResponse {
                     nodes: vec![],
@@ -1471,7 +1471,7 @@ impl Handlers {
             Err(e) => {
                 error!(error = %e, "get_entity_graph: Content retrieval FAILED");
                 return self
-                    .tool_error_with_pulse(id, &format!("Content retrieval failed: {}", e));
+                    .tool_error(id, &format!("Content retrieval failed: {}", e));
             }
         };
 
@@ -1635,7 +1635,7 @@ impl Handlers {
             "get_entity_graph: Completed entity graph construction"
         );
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             serde_json::to_value(response).unwrap_or_else(|_| json!({})),
         )

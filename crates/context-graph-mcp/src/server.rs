@@ -2,7 +2,7 @@
 //!
 //! TASK-S001: Updated to use TeleologicalMemoryStore and MultiArrayEmbeddingProvider.
 //! TASK-S003: Added GoalAlignmentCalculator and GoalHierarchy for purpose operations.
-//! TASK-S004: Replaced stubs with REAL implementations (RocksDB, UTL adapter).
+//! TASK-S004: Replaced stubs with REAL implementations (RocksDB storage).
 //! TASK-INTEG-018: Added TCP transport support with concurrent client handling.
 //!
 //! NO BACKWARDS COMPATIBILITY with stubs. FAIL FAST with clear errors.
@@ -52,9 +52,7 @@ use context_graph_core::memory::watcher::GitFileWatcher;
 use context_graph_core::memory::{MemoryCaptureService, MultiArrayEmbeddingAdapter};
 use context_graph_core::memory::store::MemoryStore;
 use context_graph_core::memory::{CodeCaptureService, CodeFileWatcher};
-use context_graph_core::traits::{
-    MultiArrayEmbeddingProvider, TeleologicalMemoryStore, UtlProcessor,
-};
+use context_graph_core::traits::{MultiArrayEmbeddingProvider, TeleologicalMemoryStore};
 
 // Code watcher dependencies
 use crate::adapters::CodeStoreAdapter;
@@ -68,7 +66,7 @@ use context_graph_embeddings::{
 };
 
 // REAL implementations - NO STUBS
-use crate::adapters::{LazyMultiArrayProvider, UtlProcessorAdapter};
+use crate::adapters::LazyMultiArrayProvider;
 use context_graph_storage::teleological::RocksDbTeleologicalStore;
 
 use crate::handlers::Handlers;
@@ -93,7 +91,6 @@ pub struct McpServer {
     config: Config,
     /// Teleological memory store - stores TeleologicalFingerprint with 13 embeddings.
     teleological_store: Arc<dyn TeleologicalMemoryStore>,
-    utl_processor: Arc<dyn UtlProcessor>,
     /// Multi-array embedding provider - generates all 13 embeddings.
     /// Wrapped in RwLock<Option<...>> for lazy loading - None while models are loading.
     multi_array_provider: Arc<RwLock<Option<Arc<dyn MultiArrayEmbeddingProvider>>>>,
@@ -122,7 +119,7 @@ impl McpServer {
     /// Create a new MCP server with the given configuration.
     ///
     /// TASK-S001: Creates TeleologicalMemoryStore and MultiArrayEmbeddingProvider.
-    /// TASK-S004: Uses REAL implementations - RocksDbTeleologicalStore, UtlProcessorAdapter.
+    /// TASK-S004: Uses REAL implementations - RocksDbTeleologicalStore.
     /// TASK-EMB-WARMUP: When `warm_first` is true, blocks until all 13 embedding models
     /// are loaded into VRAM before returning. This ensures embedding operations are
     /// available immediately when the server starts accepting requests.
@@ -170,13 +167,7 @@ impl McpServer {
         let teleological_store: Arc<dyn TeleologicalMemoryStore> = Arc::new(rocksdb_store);
 
         // ==========================================================================
-        // 2. Create REAL UTL processor (6-component computation)
-        // ==========================================================================
-        let utl_processor: Arc<dyn UtlProcessor> = Arc::new(UtlProcessorAdapter::with_defaults());
-        info!("Created UtlProcessorAdapter (REAL 6-component UTL computation: deltaS, deltaC, wE, phi, lambda, magnitude)");
-
-        // ==========================================================================
-        // 3. REAL MultiArrayEmbeddingProvider - 13 GPU-accelerated embedders
+        // 2. REAL MultiArrayEmbeddingProvider - 13 GPU-accelerated embedders
         // ==========================================================================
         // TASK-EMB-016: Use global warm provider singleton
         // TASK-EMB-WARMUP: Support blocking and background warmup modes
@@ -372,13 +363,13 @@ impl McpServer {
             ));
 
         // ==========================================================================
-        // 4. Create Handlers (PRD v6 Section 10 - 14 tools)
+        // 3. Create Handlers (PRD v6 Section 10 - 14 tools)
         // ==========================================================================
         let layer_status_provider: Arc<dyn context_graph_core::monitoring::LayerStatusProvider> =
             Arc::new(context_graph_core::monitoring::StubLayerStatusProvider::new());
 
         // ==========================================================================
-        // 4a. E7-WIRING: Optional Code Pipeline Initialization
+        // 3a. E7-WIRING: Optional Code Pipeline Initialization
         // ==========================================================================
         // The code pipeline provides AST-aware code search using E7 embeddings.
         // When enabled, search_code can return both:
@@ -412,7 +403,6 @@ impl McpServer {
         // TASK-INTEG-TOPIC: Use with_defaults to automatically create clustering components
         let handlers = Handlers::with_defaults(
             Arc::clone(&teleological_store),
-            Arc::clone(&utl_processor),
             lazy_provider,
             layer_status_provider,
         );
@@ -433,7 +423,6 @@ impl McpServer {
         Ok(Self {
             config,
             teleological_store,
-            utl_processor,
             multi_array_provider,
             models_loading,
             models_failed,

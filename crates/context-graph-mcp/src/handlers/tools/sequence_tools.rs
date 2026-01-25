@@ -109,7 +109,7 @@ impl Handlers {
             Ok(v) => v as u32,
             Err(msg) => {
                 error!(error = %msg, "get_conversation_context: windowSize validation FAILED");
-                return self.tool_error_with_pulse(id, &msg);
+                return self.tool_error(id, &msg);
             }
         };
 
@@ -168,7 +168,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "get_conversation_context: Query embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Query embedding failed: {}", e));
+                return self.tool_error(id, &format!("Query embedding failed: {}", e));
             }
         };
 
@@ -180,7 +180,7 @@ impl Handlers {
             Ok(r) => r,
             Err(e) => {
                 error!(error = %e, "get_conversation_context: Search FAILED");
-                return self.tool_error_with_pulse(id, &format!("Search failed: {}", e));
+                return self.tool_error(id, &format!("Search failed: {}", e));
             }
         };
 
@@ -196,7 +196,7 @@ impl Handlers {
                 Ok(c) => c,
                 Err(e) => {
                     error!(error = %e, "get_conversation_context: Content retrieval FAILED");
-                    return self.tool_error_with_pulse(id, &format!("Content retrieval failed: {}", e));
+                    return self.tool_error(id, &format!("Content retrieval failed: {}", e));
                 }
             }
         } else {
@@ -209,7 +209,7 @@ impl Handlers {
                 Ok(m) => m,
                 Err(e) => {
                     error!(error = %e, "get_conversation_context: Source metadata retrieval FAILED");
-                    return self.tool_error_with_pulse(id, &format!("Source metadata retrieval failed: {}", e));
+                    return self.tool_error(id, &format!("Source metadata retrieval failed: {}", e));
                 }
             }
         } else {
@@ -250,7 +250,7 @@ impl Handlers {
             })
             .collect();
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             json!({
                 "results": results_json,
@@ -279,7 +279,7 @@ impl Handlers {
 
         let session_id = match session_id {
             Some(sid) => sid,
-            None => return self.tool_error_with_pulse(id, "No session ID available"),
+            None => return self.tool_error(id, "No session ID available"),
         };
 
         // Parse and validate limit (FAIL FAST)
@@ -287,7 +287,7 @@ impl Handlers {
             Ok(v) => v as usize,
             Err(msg) => {
                 error!(error = %msg, "get_session_timeline: limit validation FAILED");
-                return self.tool_error_with_pulse(id, &msg);
+                return self.tool_error(id, &msg);
             }
         };
         let offset = args
@@ -318,7 +318,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "get_session_timeline: Query embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Query embedding failed: {}", e));
+                return self.tool_error(id, &format!("Query embedding failed: {}", e));
             }
         };
 
@@ -330,7 +330,7 @@ impl Handlers {
             Ok(r) => r,
             Err(e) => {
                 error!(error = %e, "get_session_timeline: Search FAILED");
-                return self.tool_error_with_pulse(id, &format!("Search failed: {}", e));
+                return self.tool_error(id, &format!("Search failed: {}", e));
             }
         };
 
@@ -346,7 +346,7 @@ impl Handlers {
                 Ok(c) => c,
                 Err(e) => {
                     error!(error = %e, "get_session_timeline: Content retrieval FAILED");
-                    return self.tool_error_with_pulse(id, &format!("Content retrieval failed: {}", e));
+                    return self.tool_error(id, &format!("Content retrieval failed: {}", e));
                 }
             }
         } else {
@@ -359,7 +359,7 @@ impl Handlers {
                 Ok(m) => m,
                 Err(e) => {
                     error!(error = %e, "get_session_timeline: Source metadata retrieval FAILED");
-                    return self.tool_error_with_pulse(id, &format!("Source metadata retrieval failed: {}", e));
+                    return self.tool_error(id, &format!("Source metadata retrieval failed: {}", e));
                 }
             }
         } else {
@@ -403,7 +403,7 @@ impl Handlers {
             .map(|(_, entry)| entry)
             .collect();
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             json!({
                 "sessionId": session_id,
@@ -428,9 +428,9 @@ impl Handlers {
         let anchor_id = match args.get("anchorId").and_then(|v| v.as_str()) {
             Some(id_str) => match uuid::Uuid::parse_str(id_str) {
                 Ok(uuid) => uuid,
-                Err(_) => return self.tool_error_with_pulse(id, "Invalid anchorId UUID format"),
+                Err(_) => return self.tool_error(id, "Invalid anchorId UUID format"),
             },
-            None => return self.tool_error_with_pulse(id, "Missing required 'anchorId' parameter"),
+            None => return self.tool_error(id, "Missing required 'anchorId' parameter"),
         };
 
         // FAIL FAST: Verify anchor exists in storage
@@ -440,14 +440,14 @@ impl Handlers {
             }
             Ok(None) => {
                 error!(anchor_id = %anchor_id, "traverse_memory_chain: Anchor not found");
-                return self.tool_error_with_pulse(
+                return self.tool_error(
                     id,
                     &format!("Anchor memory {} not found in storage", anchor_id)
                 );
             }
             Err(e) => {
                 error!(error = %e, anchor_id = %anchor_id, "traverse_memory_chain: Anchor verification FAILED");
-                return self.tool_error_with_pulse(id, &format!("Failed to verify anchor: {}", e));
+                return self.tool_error(id, &format!("Failed to verify anchor: {}", e));
             }
         }
 
@@ -467,7 +467,7 @@ impl Handlers {
             Ok(v) => v as u32,
             Err(msg) => {
                 error!(error = %msg, "traverse_memory_chain: hops validation FAILED");
-                return self.tool_error_with_pulse(id, &msg);
+                return self.tool_error(id, &msg);
             }
         };
 
@@ -509,7 +509,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "traverse_memory_chain: Query embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Query embedding failed: {}", e));
+                return self.tool_error(id, &format!("Query embedding failed: {}", e));
             }
         };
 
@@ -521,7 +521,7 @@ impl Handlers {
             Ok(r) => r,
             Err(e) => {
                 error!(error = %e, "traverse_memory_chain: Search FAILED");
-                return self.tool_error_with_pulse(id, &format!("Search failed: {}", e));
+                return self.tool_error(id, &format!("Search failed: {}", e));
             }
         };
 
@@ -540,7 +540,7 @@ impl Handlers {
                 Ok(c) => c,
                 Err(e) => {
                     error!(error = %e, "traverse_memory_chain: Content retrieval FAILED");
-                    return self.tool_error_with_pulse(id, &format!("Content retrieval failed: {}", e));
+                    return self.tool_error(id, &format!("Content retrieval failed: {}", e));
                 }
             }
         } else {
@@ -553,7 +553,7 @@ impl Handlers {
                 Ok(m) => m,
                 Err(e) => {
                     error!(error = %e, "traverse_memory_chain: Source metadata retrieval FAILED");
-                    return self.tool_error_with_pulse(id, &format!("Source metadata retrieval failed: {}", e));
+                    return self.tool_error(id, &format!("Source metadata retrieval failed: {}", e));
                 }
             }
         } else {
@@ -593,7 +593,7 @@ impl Handlers {
             })
             .collect();
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             json!({
                 "anchorId": anchor_id.to_string(),
@@ -622,7 +622,7 @@ impl Handlers {
 
         let session_id = match session_id {
             Some(sid) => sid,
-            None => return self.tool_error_with_pulse(id, "No session ID available"),
+            None => return self.tool_error(id, "No session ID available"),
         };
 
         // Parse beforeSequence
@@ -657,7 +657,7 @@ impl Handlers {
             Ok(output) => output.fingerprint,
             Err(e) => {
                 error!(error = %e, "compare_session_states: Query embedding FAILED");
-                return self.tool_error_with_pulse(id, &format!("Query embedding failed: {}", e));
+                return self.tool_error(id, &format!("Query embedding failed: {}", e));
             }
         };
 
@@ -669,7 +669,7 @@ impl Handlers {
             Ok(r) => r,
             Err(e) => {
                 error!(error = %e, "compare_session_states: Search FAILED");
-                return self.tool_error_with_pulse(id, &format!("Search failed: {}", e));
+                return self.tool_error(id, &format!("Search failed: {}", e));
             }
         };
 
@@ -680,7 +680,7 @@ impl Handlers {
                 Ok(m) => m,
                 Err(e) => {
                     error!(error = %e, "compare_session_states: Source metadata retrieval FAILED");
-                    return self.tool_error_with_pulse(id, &format!("Source metadata retrieval failed: {}", e));
+                    return self.tool_error(id, &format!("Source metadata retrieval failed: {}", e));
                 }
             }
         } else {
@@ -708,7 +708,7 @@ impl Handlers {
             }
         }
 
-        self.tool_result_with_pulse(
+        self.tool_result(
             id,
             json!({
                 "sessionId": session_id,

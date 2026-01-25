@@ -84,12 +84,11 @@ pub fn definitions() -> Vec<ToolDefinition> {
                 "required": ["content"]
             }),
         ),
-        // get_memetic_status - get UTL metrics and system state
+        // get_memetic_status - get system state and metrics
         ToolDefinition::new(
             "get_memetic_status",
-            "Get current system status with LIVE UTL metrics from the UtlProcessor: \
-             entropy (novelty), coherence (understanding), learning score (magnitude), \
-             consolidation phase, and suggested action. Also returns node count.",
+            "Get current system status including fingerprint count, number of embedders (13), \
+             storage backend and size, and layer status from LayerStatusProvider.",
             json!({
                 "type": "object",
                 "properties": {},

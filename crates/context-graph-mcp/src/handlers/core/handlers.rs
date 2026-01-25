@@ -16,9 +16,7 @@ use tracing::{info, warn};
 use context_graph_core::clustering::{MultiSpaceClusterManager, TopicStabilityTracker};
 use context_graph_core::memory::{CodeEmbeddingProvider, CodeStorage};
 use context_graph_core::monitoring::LayerStatusProvider;
-use context_graph_core::traits::{
-    MultiArrayEmbeddingProvider, TeleologicalMemoryStore, UtlProcessor,
-};
+use context_graph_core::traits::{MultiArrayEmbeddingProvider, TeleologicalMemoryStore};
 
 use crate::protocol::{JsonRpcId, JsonRpcResponse};
 
@@ -32,9 +30,6 @@ use crate::protocol::{JsonRpcId, JsonRpcResponse};
 pub struct Handlers {
     /// Teleological memory store - stores TeleologicalFingerprint with 13 embeddings.
     pub(in crate::handlers) teleological_store: Arc<dyn TeleologicalMemoryStore>,
-
-    /// UTL processor for computing learning metrics.
-    pub(in crate::handlers) utl_processor: Arc<dyn UtlProcessor>,
 
     /// Multi-array embedding provider - generates all 13 embeddings per content.
     pub(in crate::handlers) multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider>,
@@ -79,7 +74,6 @@ impl Handlers {
     ///
     /// # Arguments
     /// * `teleological_store` - Store for TeleologicalFingerprint
-    /// * `utl_processor` - UTL processor for learning metrics
     /// * `multi_array_provider` - 13-embedding generator
     /// * `layer_status_provider` - Provider for layer status information
     /// * `cluster_manager` - Multi-space cluster manager for topic detection
@@ -87,7 +81,6 @@ impl Handlers {
     #[allow(dead_code)]
     pub fn with_all(
         teleological_store: Arc<dyn TeleologicalMemoryStore>,
-        utl_processor: Arc<dyn UtlProcessor>,
         multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider>,
         layer_status_provider: Arc<dyn LayerStatusProvider>,
         cluster_manager: Arc<RwLock<MultiSpaceClusterManager>>,
@@ -95,7 +88,6 @@ impl Handlers {
     ) -> Self {
         Self {
             teleological_store,
-            utl_processor,
             multi_array_provider,
             layer_status_provider,
             cluster_manager,
@@ -115,7 +107,6 @@ impl Handlers {
     ///
     /// # Arguments
     /// * `teleological_store` - Store for TeleologicalFingerprint
-    /// * `utl_processor` - UTL processor for learning metrics
     /// * `multi_array_provider` - 13-embedding generator
     /// * `layer_status_provider` - Provider for layer status information
     /// * `cluster_manager` - Multi-space cluster manager for topic detection
@@ -125,7 +116,6 @@ impl Handlers {
     #[allow(dead_code)]
     pub fn with_code_pipeline(
         teleological_store: Arc<dyn TeleologicalMemoryStore>,
-        utl_processor: Arc<dyn UtlProcessor>,
         multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider>,
         layer_status_provider: Arc<dyn LayerStatusProvider>,
         cluster_manager: Arc<RwLock<MultiSpaceClusterManager>>,
@@ -135,7 +125,6 @@ impl Handlers {
     ) -> Self {
         Self {
             teleological_store,
-            utl_processor,
             multi_array_provider,
             layer_status_provider,
             cluster_manager,
@@ -151,11 +140,8 @@ impl Handlers {
     ///
     /// This is a convenience constructor that creates default cluster manager
     /// and stability tracker. Use `with_all` for full control over dependencies.
-    ///
-    /// TASK-INTEG-TOPIC: Added for backwards compatibility during integration.
     pub fn with_defaults(
         teleological_store: Arc<dyn TeleologicalMemoryStore>,
-        utl_processor: Arc<dyn UtlProcessor>,
         multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider>,
         layer_status_provider: Arc<dyn LayerStatusProvider>,
     ) -> Self {
@@ -168,7 +154,6 @@ impl Handlers {
 
         Self {
             teleological_store,
-            utl_processor,
             multi_array_provider,
             layer_status_provider,
             cluster_manager: Arc::new(RwLock::new(cluster_manager)),
@@ -375,30 +360,22 @@ impl Handlers {
     /// Returns error if storage operations fail.
     pub async fn persist_topic_portfolio(&self) -> Result<usize, context_graph_core::error::CoreError> {
         // Extract all data from locks BEFORE any async operations
-        let (session_id, portfolio, churn_rate, entropy) = {
+        let (session_id, portfolio, churn_rate) = {
             // Get stability metrics from tracker
             let stability_tracker = self.stability_tracker.read();
             let churn_rate = stability_tracker.current_churn();
-            // Lock is released at end of block
-
-            // Get entropy from UTL processor (synchronous)
-            let utl_status = self.utl_processor.get_status();
-            let entropy = utl_status
-                .get("entropy")
-                .and_then(|v| v.as_f64())
-                .map(|f| f as f32)
-                .unwrap_or(0.0);
+            // Entropy is no longer tracked via UTL processor
+            let entropy = 0.0_f32;
 
             // Export portfolio from cluster manager
             let cluster_manager = self.cluster_manager.read();
             let session_id = format!("session-{}", chrono::Utc::now().timestamp_millis());
             let portfolio = cluster_manager.export_portfolio(&session_id, churn_rate, entropy);
-            // Lock is released at end of block
 
-            (session_id, portfolio, churn_rate, entropy)
+            (session_id, portfolio, churn_rate)
         };
 
-        let topic_count = portfolio.topic_count();
+        let topic_count = portfolio.topics.len();
 
         // Now all locks are released - safe to await
         self.teleological_store
@@ -409,7 +386,6 @@ impl Handlers {
             session_id = %session_id,
             topic_count = topic_count,
             churn_rate = churn_rate,
-            entropy = entropy,
             "Topic portfolio persisted to storage"
         );
 

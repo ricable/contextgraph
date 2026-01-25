@@ -30,22 +30,6 @@ async fn test_initialize_returns_protocol_version_2024_11_05() {
 }
 
 #[tokio::test]
-async fn test_initialize_has_no_cognitive_pulse_extension() {
-    let handlers = create_test_handlers();
-    let request = make_request("initialize", Some(JsonRpcId::Number(1)), None);
-
-    let response = handlers.dispatch(request).await;
-
-    // CRITICAL: The initialize response MUST NOT include cognitive_pulse
-    // Claude Code's MCP client rejects responses with extension fields during handshake
-    // The X-Cognitive-Pulse extension is ONLY for tool call responses, not lifecycle methods
-    assert!(
-        response.cognitive_pulse.is_none(),
-        "Initialize response must NOT include cognitive_pulse - breaks Claude Code MCP connection"
-    );
-}
-
-#[tokio::test]
 async fn test_initialized_notification_no_response_needed() {
     let handlers = create_test_handlers();
     // Notifications have no ID
