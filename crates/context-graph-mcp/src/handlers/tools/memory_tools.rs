@@ -1519,58 +1519,8 @@ fn expand_causal_query(query: &str, direction: CausalDirection) -> String {
 /// Per research: 10-20% contribution provides precision boost without dominating.
 const COLBERT_WEIGHT: f32 = 0.15;
 
-/// Compute ColBERT MaxSim score between query and document token embeddings.
-///
-/// MaxSim is the sum of maximum similarities per query token:
-/// ```text
-/// MaxSim(Q, D) = Σ_q max_d cos(q, d)
-/// ```
-///
-/// # Arguments
-/// * `query_tokens` - Query token embeddings (128D per token)
-/// * `doc_tokens` - Document token embeddings (128D per token)
-///
-/// # Returns
-/// Normalized MaxSim score in [0.0, 1.0]
-fn compute_colbert_maxsim(query_tokens: &[Vec<f32>], doc_tokens: &[Vec<f32>]) -> f32 {
-    if query_tokens.is_empty() || doc_tokens.is_empty() {
-        return 0.0;
-    }
-
-    let mut total_score = 0.0;
-
-    for query_token in query_tokens {
-        let mut max_sim = f32::NEG_INFINITY;
-
-        for doc_token in doc_tokens {
-            // Compute cosine similarity between tokens
-            let dot: f32 = query_token.iter().zip(doc_token.iter()).map(|(a, b)| a * b).sum();
-            let norm_q: f32 = query_token.iter().map(|x| x * x).sum::<f32>().sqrt();
-            let norm_d: f32 = doc_token.iter().map(|x| x * x).sum::<f32>().sqrt();
-
-            let sim = if norm_q > f32::EPSILON && norm_d > f32::EPSILON {
-                dot / (norm_q * norm_d)
-            } else {
-                0.0
-            };
-
-            if sim > max_sim {
-                max_sim = sim;
-            }
-        }
-
-        // Add max similarity for this query token
-        if max_sim > f32::NEG_INFINITY {
-            total_score += max_sim;
-        }
-    }
-
-    // Normalize by number of query tokens
-    let normalized = total_score / query_tokens.len() as f32;
-
-    // Clamp to [0.0, 1.0]
-    normalized.clamp(0.0, 1.0)
-}
+// Import SIMD-optimized MaxSim from storage crate (TASK-STORAGE-P2-001)
+use context_graph_storage::compute_maxsim_direct;
 
 /// Apply ColBERT late interaction reranking to search results.
 ///
@@ -1616,8 +1566,8 @@ fn apply_colbert_reranking(
             continue;
         }
 
-        // Compute MaxSim score
-        let maxsim_score = compute_colbert_maxsim(query_tokens, doc_tokens);
+        // Compute MaxSim score using SIMD-optimized implementation from storage crate
+        let maxsim_score = compute_maxsim_direct(query_tokens, doc_tokens);
 
         // Blend ColBERT score with existing similarity
         // Formula: new_sim = (1 - colbert_weight) × old_sim + colbert_weight × maxsim
@@ -2026,7 +1976,9 @@ mod tests {
     // COLBERT MAXSIM TESTS
     // =========================================================================
 
-    use super::{compute_colbert_maxsim, COLBERT_WEIGHT};
+    use super::COLBERT_WEIGHT;
+    // Import SIMD-optimized MaxSim from storage crate
+    use context_graph_storage::compute_maxsim_direct;
 
     #[test]
     fn test_colbert_maxsim_identical_tokens() {
@@ -2040,7 +1992,7 @@ mod tests {
             vec![0.0, 1.0, 0.0],
         ];
 
-        let score = compute_colbert_maxsim(&query_tokens, &doc_tokens);
+        let score = compute_maxsim_direct(&query_tokens, &doc_tokens);
         assert!((score - 1.0).abs() < 0.01, "Identical tokens should give ~1.0, got {}", score);
         println!("[VERIFIED] ColBERT MaxSim with identical tokens = {}", score);
     }
@@ -2055,7 +2007,7 @@ mod tests {
             vec![0.0, 1.0, 0.0],
         ];
 
-        let score = compute_colbert_maxsim(&query_tokens, &doc_tokens);
+        let score = compute_maxsim_direct(&query_tokens, &doc_tokens);
         assert!(score.abs() < 0.01, "Orthogonal tokens should give ~0.0, got {}", score);
         println!("[VERIFIED] ColBERT MaxSim with orthogonal tokens = {}", score);
     }
@@ -2072,7 +2024,7 @@ mod tests {
             vec![0.0, 1.0, 0.0],  // Doesn't match any query token
         ];
 
-        let score = compute_colbert_maxsim(&query_tokens, &doc_tokens);
+        let score = compute_maxsim_direct(&query_tokens, &doc_tokens);
         // Expected: (1.0 + 0.0) / 2 = 0.5
         assert!((score - 0.5).abs() < 0.01, "Partial match should give ~0.5, got {}", score);
         println!("[VERIFIED] ColBERT MaxSim with partial match = {}", score);
@@ -2081,9 +2033,9 @@ mod tests {
     #[test]
     fn test_colbert_maxsim_empty_inputs() {
         // Empty inputs should return 0.0
-        let score_empty_query = compute_colbert_maxsim(&[], &[vec![1.0, 0.0]]);
-        let score_empty_doc = compute_colbert_maxsim(&[vec![1.0, 0.0]], &[]);
-        let score_both_empty = compute_colbert_maxsim(&[], &[]);
+        let score_empty_query = compute_maxsim_direct(&[], &[vec![1.0, 0.0]]);
+        let score_empty_doc = compute_maxsim_direct(&[vec![1.0, 0.0]], &[]);
+        let score_both_empty = compute_maxsim_direct(&[], &[]);
 
         assert_eq!(score_empty_query, 0.0);
         assert_eq!(score_empty_doc, 0.0);
@@ -2112,7 +2064,7 @@ mod tests {
             vec![1.0, 1.0, 1.0],
         ];
 
-        let score = compute_colbert_maxsim(&query_tokens, &doc_tokens);
+        let score = compute_maxsim_direct(&query_tokens, &doc_tokens);
         assert!(score >= 0.0, "Score should be >= 0.0");
         assert!(score <= 1.0, "Score should be <= 1.0");
         println!("[VERIFIED] ColBERT MaxSim normalized to [0, 1]: {}", score);

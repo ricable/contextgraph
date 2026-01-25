@@ -1158,8 +1158,14 @@ impl MultiSpaceClusterManager {
         self.topics.clear();
 
         // Import topics from portfolio
+        // CRITICAL FIX (AP-60): Call update_contributing_spaces() to filter out
+        // temporal embedders that may have been persisted before the fix.
+        // Temporal embedders (E2-E4) have topic_weight=0.0 and MUST NOT appear
+        // in contributing_spaces.
         for topic in &portfolio.topics {
-            self.topics.insert(topic.id, topic.clone());
+            let mut imported_topic = topic.clone();
+            imported_topic.update_contributing_spaces();
+            self.topics.insert(imported_topic.id, imported_topic);
         }
 
         self.topics.len()

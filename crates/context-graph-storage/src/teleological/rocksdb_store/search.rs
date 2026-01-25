@@ -846,12 +846,13 @@ impl RocksDbTeleologicalStore {
 
                 // Blend Stage 2 score with MaxSim (60% fusion, 40% MaxSim)
                 // This preserves semantic ranking while adding precision
-                let blended = *score * 0.6 + maxsim_score * 0.4;
+                let original_fusion = *score;
+                let blended = original_fusion * 0.6 + maxsim_score * 0.4;
                 *score = blended;
 
                 debug!(
                     "E12 rerank: fusion={:.4}, maxsim={:.4}, blended={:.4}",
-                    *score * 0.6 / 0.6, maxsim_score, blended
+                    original_fusion, maxsim_score, blended
                 );
             }
         }

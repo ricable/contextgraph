@@ -1,7 +1,20 @@
 //! Text encoding for HDC.
 //!
-//! Provides text-to-hypervector encoding using character n-grams with
-//! positional binding.
+//! Provides text-to-hypervector encoding using character n-grams.
+//!
+//! ## Noise Tolerance Design (per Constitution E9)
+//!
+//! E9 (V_robustness) is designed for typo tolerance. The encoding uses a
+//! "bag of n-grams" approach WITHOUT absolute position binding to ensure
+//! that character insertions/deletions only affect local n-grams, not the
+//! entire document vector.
+//!
+//! - Each n-gram captures relative character ordering (via permute within n-gram)
+//! - N-grams are bundled position-independently (no absolute position)
+//! - Result: ~5% character difference → ~5% bit difference → high similarity
+//!
+//! This makes "authentication" and "authetication" (typo) highly similar,
+//! which is the core purpose of E9.
 
 use super::operations::{bind, bundle, permute};
 use super::types::{Hypervector, HDC_DIMENSION, HDC_PROJECTED_DIMENSION};
@@ -58,10 +71,28 @@ pub fn position_hypervector(seed: u64, position: usize) -> Hypervector {
 
 /// Encodes text into a hypervector using character n-grams.
 ///
-/// Algorithm:
-/// 1. For each n-gram of characters
-/// 2. Bind character vectors with position shifts
-/// 3. Bundle all n-gram vectors
+/// ## Algorithm (Bag of N-grams for Noise Tolerance)
+///
+/// 1. Extract sliding window character n-grams
+/// 2. For each n-gram:
+///    - Bind character vectors with RELATIVE position shifts within the n-gram
+///    - This preserves local character ordering (e.g., "abc" ≠ "cba")
+/// 3. Bundle all n-gram vectors WITHOUT absolute position binding
+///    - This makes encoding robust to insertions/deletions
+///    - A typo only affects the 2-3 n-grams containing the error
+///
+/// ## Why No Absolute Position Binding (per Constitution E9)
+///
+/// E9 is designed for typo/noise tolerance. Binding with absolute position
+/// makes the encoding sensitive to insertions/deletions:
+/// - "authentication" at position 5 ≠ "authentication" at position 6
+/// - A single character insertion shifts ALL subsequent positions
+/// - This destroys the noise tolerance that is E9's core purpose
+///
+/// By removing absolute position, we get:
+/// - "authentication" → same n-grams regardless of position in document
+/// - "authetication" → differs in only 2-3 n-grams (the typo region)
+/// - Result: high similarity despite the typo
 ///
 /// # Arguments
 /// * `seed` - Model seed for deterministic generation
@@ -69,7 +100,7 @@ pub fn position_hypervector(seed: u64, position: usize) -> Hypervector {
 /// * `text` - Text to encode
 ///
 /// # Returns
-/// Hypervector encoding of the text
+/// Hypervector encoding of the text (bag of n-grams)
 #[must_use]
 #[instrument(skip(text), fields(text_len = text.len()))]
 pub fn encode_text(seed: u64, ngram_size: usize, text: &str) -> Hypervector {
@@ -88,7 +119,9 @@ pub fn encode_text(seed: u64, ngram_size: usize, text: &str) -> Hypervector {
     for window_start in 0..=chars.len().saturating_sub(effective_ngram) {
         let mut ngram_hv = char_hypervector(seed, chars[window_start]);
 
-        // Bind characters within n-gram with position shifts
+        // Bind characters within n-gram with RELATIVE position shifts
+        // This preserves the character ordering within each n-gram
+        // e.g., "abc" produces different vector than "cba"
         for (pos, &c) in chars[window_start..]
             .iter()
             .take(effective_ngram)
@@ -100,9 +133,10 @@ pub fn encode_text(seed: u64, ngram_size: usize, text: &str) -> Hypervector {
             ngram_hv = bind(&ngram_hv, &shifted);
         }
 
-        // Bind with absolute position
-        let pos_hv = position_hypervector(seed, window_start);
-        ngram_hv = bind(&ngram_hv, &pos_hv);
+        // NOTE: We intentionally DO NOT bind with absolute position.
+        // This implements a "bag of n-grams" that is robust to typos.
+        // A character insertion/deletion only affects 2-3 local n-grams,
+        // not the entire document vector. This is E9's core value proposition.
 
         ngram_vectors.push(ngram_hv);
     }
@@ -111,7 +145,7 @@ pub fn encode_text(seed: u64, ngram_size: usize, text: &str) -> Hypervector {
     debug!(
         ngrams = ngram_vectors.len(),
         popcount = result.count_ones(),
-        "Encoded text"
+        "Encoded text (bag of n-grams, no absolute position)"
     );
     result
 }

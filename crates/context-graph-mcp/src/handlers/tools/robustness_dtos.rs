@@ -42,14 +42,15 @@ pub const DEFAULT_MIN_ROBUST_SCORE: f32 = 0.1;
 /// Minimum E9 score for a result to be considered an "E9 discovery".
 /// Results with E9 score >= this AND E1 score < E1_WEAKNESS_THRESHOLD
 /// are marked as blind spots E9 found.
-pub const E9_DISCOVERY_THRESHOLD: f32 = 0.7;
+///
+/// NOTE: The projected E9 vectors (1024D) have lower cosine similarity than
+/// native Hamming similarity (10K bits). A native similarity of 0.58 maps to
+/// projected cosine of ~0.16. This threshold is calibrated for projected vectors.
+pub const E9_DISCOVERY_THRESHOLD: f32 = 0.15;
 
 /// Maximum E1 score for a result to be considered "missed" by E1.
 /// If E1 would have found it (score >= this), it's not a blind spot.
 pub const E1_WEAKNESS_THRESHOLD: f32 = 0.5;
-
-/// Minimum divergence (E9 - E1) to qualify as a significant discovery.
-pub const MIN_DIVERGENCE: f32 = 0.2;
 
 /// Minimum query length for E9 trigram encoding.
 pub const MIN_QUERY_LENGTH: usize = 3;
@@ -93,8 +94,9 @@ pub struct SearchRobustRequest {
     #[serde(rename = "includeE9Score", default = "default_include_e9_score")]
     pub include_e9_score: bool,
 
-    /// E9 discovery threshold override (default: 0.7).
+    /// E9 discovery threshold override (default: 0.15).
     /// Minimum E9 score for a result to be marked as "E9 discovery".
+    /// Note: Projected E9 vectors have lower cosine similarity than native Hamming.
     #[serde(rename = "e9DiscoveryThreshold", default = "default_e9_threshold")]
     pub e9_discovery_threshold: f32,
 
@@ -331,9 +333,13 @@ pub struct BlindSpotCandidate {
 impl BlindSpotCandidate {
     /// Check if this candidate qualifies as an E9 discovery.
     pub fn is_discovery(&self, e9_threshold: f32, e1_threshold: f32) -> bool {
-        self.e9_score >= e9_threshold
-            && self.e1_score < e1_threshold
-            && self.divergence >= MIN_DIVERGENCE
+        // A discovery is when E9 found something (score >= threshold)
+        // but E1 missed it (score < weakness threshold).
+        //
+        // NOTE: With projected E9 vectors, E9 scores are much lower than E1 scores
+        // in absolute terms, so divergence (E9-E1) is often negative. We don't
+        // require positive divergence; the E9/E1 thresholds capture the semantics.
+        self.e9_score >= e9_threshold && self.e1_score < e1_threshold
     }
 }
 
@@ -384,12 +390,12 @@ mod tests {
     fn test_blind_spot_candidate_is_discovery() {
         let candidate = BlindSpotCandidate {
             memory_id: Uuid::new_v4(),
-            e9_score: 0.85,
-            e1_score: 0.30,
-            divergence: 0.55,
+            e9_score: 0.20,  // Above 0.15 threshold for projected vectors
+            e1_score: 0.30,  // Below 0.5 E1 weakness threshold
+            divergence: -0.10,
         };
 
-        // Should be a discovery: E9=0.85 >= 0.7, E1=0.30 < 0.5, divergence=0.55 >= 0.2
+        // Should be a discovery: E9=0.20 >= 0.15, E1=0.30 < 0.5
         assert!(candidate.is_discovery(E9_DISCOVERY_THRESHOLD, E1_WEAKNESS_THRESHOLD));
     }
 
@@ -397,9 +403,9 @@ mod tests {
     fn test_blind_spot_candidate_not_discovery_e1_too_high() {
         let candidate = BlindSpotCandidate {
             memory_id: Uuid::new_v4(),
-            e9_score: 0.85,
-            e1_score: 0.75, // E1 found it too
-            divergence: 0.10,
+            e9_score: 0.20,  // Above E9 threshold
+            e1_score: 0.75,  // E1 found it too (above 0.5)
+            divergence: -0.55,
         };
 
         // Should NOT be a discovery: E1=0.75 >= 0.5 means E1 would have found it
@@ -410,20 +416,20 @@ mod tests {
     fn test_blind_spot_candidate_not_discovery_e9_too_low() {
         let candidate = BlindSpotCandidate {
             memory_id: Uuid::new_v4(),
-            e9_score: 0.50, // E9 didn't find it strongly
+            e9_score: 0.10,  // Below 0.15 threshold for projected vectors
             e1_score: 0.30,
-            divergence: 0.20,
+            divergence: -0.20,
         };
 
-        // Should NOT be a discovery: E9=0.50 < 0.7 means not a strong E9 match
+        // Should NOT be a discovery: E9=0.10 < 0.15 means not a strong E9 match
         assert!(!candidate.is_discovery(E9_DISCOVERY_THRESHOLD, E1_WEAKNESS_THRESHOLD));
     }
 
     #[test]
     fn test_default_thresholds() {
-        assert!((E9_DISCOVERY_THRESHOLD - 0.7).abs() < 0.001);
+        // E9 threshold calibrated for projected vectors (cosine similarity much lower than native Hamming)
+        assert!((E9_DISCOVERY_THRESHOLD - 0.15).abs() < 0.001);
         assert!((E1_WEAKNESS_THRESHOLD - 0.5).abs() < 0.001);
-        assert!((MIN_DIVERGENCE - 0.2).abs() < 0.001);
     }
 
     #[test]

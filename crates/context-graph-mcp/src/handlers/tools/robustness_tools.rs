@@ -489,9 +489,12 @@ mod tests {
 
     #[test]
     fn test_threshold_constants() {
-        // Verify thresholds make sense
-        assert!(E9_DISCOVERY_THRESHOLD > E1_WEAKNESS_THRESHOLD);
-        assert!(E9_DISCOVERY_THRESHOLD >= 0.5);
-        assert!(E1_WEAKNESS_THRESHOLD <= 0.6);
+        // E9 threshold is LOWER than E1 because projected E9 vectors have much
+        // lower cosine similarity than native Hamming. This is expected.
+        // E9 finds blind spots where E9 >= 0.15 AND E1 < 0.5
+        assert!(E9_DISCOVERY_THRESHOLD < E1_WEAKNESS_THRESHOLD,
+                "E9 projected threshold should be lower than E1 semantic threshold");
+        assert!(E9_DISCOVERY_THRESHOLD >= 0.1, "E9 should be at least 0.1");
+        assert!(E1_WEAKNESS_THRESHOLD <= 0.6, "E1 weakness should be <= 0.6");
     }
 }

@@ -183,6 +183,8 @@ pub use rocksdb_store::{
 
 // Re-export search types (TASK-LOGIC-005)
 pub use search::{
+    // MaxSim for E12 ColBERT reranking
+    compute_maxsim_direct,
     EmbedderSearchHit, SearchError, SearchResult, SingleEmbedderSearch, SingleEmbedderSearchConfig,
     SingleEmbedderSearchResults,
 };

@@ -69,6 +69,8 @@ pub use serialization::{
 
 // Re-export teleological storage types (TASK-F004)
 pub use teleological::{
+    // MaxSim for E12 ColBERT reranking (TASK-STORAGE-P2-001)
+    compute_maxsim_direct,
     // HNSW index configuration types (TASK-F005)
     all_hnsw_configs,
     deserialize_e1_matryoshka_128,

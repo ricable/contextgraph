@@ -82,10 +82,5 @@ name = "source_metadata_integration"
 required-features = ["test-utils"]
 
 [[example]]
-name = "nvml_verify"
-path = "examples/nvml_verify.rs"
-required-features = ["nvml"]
-
-[[example]]
 name = "tree_sitter_test"
 path = "examples/tree_sitter_test.rs"

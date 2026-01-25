@@ -146,9 +146,24 @@ impl TopicProfile {
     /// assert!(dominant.contains(&Embedder::Semantic));
     /// assert!(dominant.contains(&Embedder::Causal));
     /// ```
+    /// Returns embedders that are dominant AND contribute to topic detection.
+    ///
+    /// Per ARCH-04 and AP-60: Temporal embedders (E2-E4) are EXCLUDED
+    /// because they have topic_weight = 0.0. They should NEVER appear
+    /// in contributing_spaces, regardless of their strength.
+    ///
+    /// Only returns embedders where:
+    /// - strength > 0.5 (dominant signal)
+    /// - topic_weight > 0.0 (contributes to topics)
     pub fn dominant_spaces(&self) -> Vec<Embedder> {
         Embedder::all()
-            .filter(|e| self.strength(*e) > 0.5)
+            .filter(|e| {
+                let strength = self.strength(*e);
+                let topic_weight = category_for(*e).topic_weight();
+                // Must have both: strong signal AND non-zero topic weight
+                // This excludes temporal embedders (E2-E4) per AP-60
+                strength > 0.5 && topic_weight > 0.0
+            })
             .collect()
     }
 
