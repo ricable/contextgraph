@@ -26,6 +26,8 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use context_graph_core::traits::SearchStrategy;
+
 // ============================================================================
 // CONSTANTS
 // ============================================================================
@@ -104,6 +106,14 @@ pub struct SearchRobustRequest {
     /// Maximum E1 score for a result to be considered "missed" by E1.
     #[serde(rename = "e1WeaknessThreshold", default = "default_e1_threshold")]
     pub e1_weakness_threshold: f32,
+
+    /// Search strategy for retrieval.
+    /// - "multi_space": Default multi-embedder fusion
+    /// - "pipeline": E13 SPLADE recall → E1 → E12 ColBERT rerank (maximum precision)
+    ///
+    /// When "pipeline" is selected, E12 reranking is automatically enabled.
+    #[serde(default)]
+    pub strategy: Option<String>,
 }
 
 fn default_top_k() -> usize {
@@ -136,11 +146,35 @@ impl Default for SearchRobustRequest {
             include_e9_score: true,
             e9_discovery_threshold: E9_DISCOVERY_THRESHOLD,
             e1_weakness_threshold: E1_WEAKNESS_THRESHOLD,
+            strategy: None,
         }
     }
 }
 
 impl SearchRobustRequest {
+    /// Parse the strategy parameter into SearchStrategy enum.
+    ///
+    /// Strategy selection priority:
+    /// 1. User-specified strategy takes precedence
+    /// 2. Auto-upgrade to Pipeline if query is a precision query (quoted terms, keyword patterns)
+    /// 3. Default to MultiSpace
+    pub fn parse_strategy(&self) -> SearchStrategy {
+        // User-specified strategy takes precedence
+        match self.strategy.as_deref() {
+            Some("pipeline") => return SearchStrategy::Pipeline,
+            Some("multi_space") => return SearchStrategy::MultiSpace,
+            _ => {}
+        }
+
+        // Auto-upgrade precision queries to Pipeline (Phase 4 E12/E13 integration)
+        if super::query_type_detector::should_auto_upgrade_to_pipeline(&self.query) {
+            return SearchStrategy::Pipeline;
+        }
+
+        // Default to MultiSpace
+        SearchStrategy::MultiSpace
+    }
+
     /// Validate the request parameters.
     ///
     /// # Errors
@@ -187,6 +221,17 @@ impl SearchRobustRequest {
                 "e1WeaknessThreshold must be between 0.0 and 1.0, got {}",
                 self.e1_weakness_threshold
             ));
+        }
+
+        // Validate strategy if provided
+        if let Some(ref strat) = self.strategy {
+            let valid = ["multi_space", "pipeline"];
+            if !valid.contains(&strat.as_str()) {
+                return Err(format!(
+                    "strategy must be one of {:?}, got '{}'",
+                    valid, strat
+                ));
+            }
         }
 
         Ok(())

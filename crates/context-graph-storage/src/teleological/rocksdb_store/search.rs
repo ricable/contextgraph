@@ -787,8 +787,11 @@ impl RocksDbTeleologicalStore {
         // Per AP-74: E12 ColBERT MUST only be used for re-ranking, NOT initial retrieval
         // =========================================================================
         let final_candidates = if options.enable_rerank && !query.e12_late_interaction.is_empty() {
-            info!("Stage 3: Applying E12 ColBERT MaxSim re-ranking");
-            self.rerank_with_colbert(query, scored_candidates, options.top_k)
+            info!(
+                "Stage 3: Applying E12 ColBERT MaxSim re-ranking (weight={})",
+                options.rerank_weight
+            );
+            self.rerank_with_colbert(query, scored_candidates, options.top_k, options.rerank_weight)
         } else {
             if options.enable_rerank {
                 debug!("Stage 3: Re-ranking requested but E12 query tokens empty, skipping");
@@ -824,13 +827,24 @@ impl RocksDbTeleologicalStore {
     ///
     /// Per AP-74: ColBERT is for re-ranking only.
     /// Uses token-level MaxSim for precise similarity scoring.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - Query semantic fingerprint with E12 tokens
+    /// * `candidates` - Candidates from Stage 2 fusion
+    /// * `top_k` - Number of results to return
+    /// * `rerank_weight` - E12 weight for blending (0.0-1.0, default 0.4)
     fn rerank_with_colbert(
         &self,
         query: &SemanticFingerprint,
         mut candidates: Vec<(Uuid, f32, [f32; 13], SemanticFingerprint)>,
         top_k: usize,
+        rerank_weight: f32,
     ) -> Vec<(Uuid, f32, [f32; 13], SemanticFingerprint)> {
         use crate::teleological::search::compute_maxsim_direct;
+
+        // Pre-compute complementary weight for fusion score
+        let fusion_weight = 1.0 - rerank_weight;
 
         // Compute MaxSim scores for all candidates
         for (_, score, embedder_scores, semantic) in candidates.iter_mut() {
@@ -844,15 +858,16 @@ impl RocksDbTeleologicalStore {
                 // Update E12 score in embedder_scores
                 embedder_scores[11] = maxsim_score;
 
-                // Blend Stage 2 score with MaxSim (60% fusion, 40% MaxSim)
-                // This preserves semantic ranking while adding precision
+                // Blend Stage 2 score with MaxSim using configurable weight
+                // Formula: final = fusion * (1 - weight) + maxsim * weight
+                // This preserves semantic ranking while adding E12 precision
                 let original_fusion = *score;
-                let blended = original_fusion * 0.6 + maxsim_score * 0.4;
+                let blended = original_fusion * fusion_weight + maxsim_score * rerank_weight;
                 *score = blended;
 
                 debug!(
-                    "E12 rerank: fusion={:.4}, maxsim={:.4}, blended={:.4}",
-                    original_fusion, maxsim_score, blended
+                    "E12 rerank: fusion={:.4}, maxsim={:.4}, blended={:.4} (weight={})",
+                    original_fusion, maxsim_score, blended, rerank_weight
                 );
             }
         }
@@ -1126,21 +1141,40 @@ impl RocksDbTeleologicalStore {
     }
 
     /// Search by sparse vector (internal async wrapper).
+    ///
+    /// Uses BM25-IDF scoring per Phase 2 of E12/E13 integration plan:
+    /// - IDF = ln((N - df + 0.5) / (df + 0.5) + 1)
+    /// - Score = Σ(query_weight × IDF(term))
+    ///
+    /// This is BM25 without per-document TF saturation (posting lists only store doc IDs).
+    /// Still provides significant improvement over simple term frequency scoring by
+    /// properly weighting rare terms higher than common terms.
     pub(crate) async fn search_sparse_async(
         &self,
         sparse_query: &SparseVector,
         top_k: usize,
     ) -> CoreResult<Vec<(Uuid, f32)>> {
         debug!(
-            "Searching sparse with {} active terms, top_k={}",
+            "Searching sparse with {} active terms, top_k={} (BM25-IDF scoring)",
             sparse_query.nnz(),
             top_k
         );
 
+        // Get total document count for IDF calculation FIRST (before any cf references)
+        // This is an O(n) scan but cached in typical usage patterns
+        let total_docs = self.count_async().await.unwrap_or(1) as f32;
+
+        // Now get the column family (not held across await)
         let cf = self.get_cf(CF_E13_SPLADE_INVERTED)?;
 
-        // Accumulate scores per document
-        let mut doc_scores: HashMap<Uuid, f32> = HashMap::new();
+        // First pass: collect posting lists and compute IDF weights
+        // Store (term_id, query_weight, posting_list, idf) tuples
+        struct TermData {
+            query_weight: f32,
+            doc_ids: Vec<Uuid>,
+            idf: f32,
+        }
+        let mut term_data: Vec<TermData> = Vec::with_capacity(sparse_query.nnz());
 
         for (i, &term_id) in sparse_query.indices.iter().enumerate() {
             let term_key = e13_splade_inverted_key(term_id);
@@ -1150,17 +1184,35 @@ impl RocksDbTeleologicalStore {
                 TeleologicalStoreError::rocksdb_op("get", CF_E13_SPLADE_INVERTED, None, e)
             })? {
                 let doc_ids = deserialize_memory_id_list(&data);
+                let df = doc_ids.len() as f32;
 
-                for doc_id in doc_ids {
-                    // Skip soft-deleted
-                    if self.is_soft_deleted(&doc_id) {
-                        continue;
-                    }
+                // BM25 IDF formula: ln((N - df + 0.5) / (df + 0.5) + 1)
+                // This gives higher weight to rare terms (low df) and lower weight to common terms
+                let idf = ((total_docs - df + 0.5) / (df + 0.5) + 1.0).ln();
 
-                    // Simple term frequency scoring
-                    // TODO: Implement BM25 or other scoring
-                    *doc_scores.entry(doc_id).or_insert(0.0) += query_weight;
+                term_data.push(TermData {
+                    query_weight,
+                    doc_ids,
+                    idf,
+                });
+            }
+        }
+
+        // Second pass: accumulate BM25-IDF scores per document
+        let mut doc_scores: HashMap<Uuid, f32> = HashMap::new();
+
+        for term in &term_data {
+            // Pre-compute term contribution: query_weight × IDF
+            let term_contribution = term.query_weight * term.idf;
+
+            for doc_id in &term.doc_ids {
+                // Skip soft-deleted documents
+                if self.is_soft_deleted(doc_id) {
+                    continue;
                 }
+
+                // BM25-IDF scoring: accumulate query_weight × IDF for each matching term
+                *doc_scores.entry(*doc_id).or_insert(0.0) += term_contribution;
             }
         }
 
@@ -1171,7 +1223,12 @@ impl RocksDbTeleologicalStore {
         // Truncate to top_k
         results.truncate(top_k);
 
-        debug!("Sparse search returned {} results", results.len());
+        debug!(
+            "Sparse search (BM25-IDF) returned {} results from {} terms, total_docs={}",
+            results.len(),
+            term_data.len(),
+            total_docs
+        );
         Ok(results)
     }
 }

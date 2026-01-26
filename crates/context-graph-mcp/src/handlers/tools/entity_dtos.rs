@@ -26,6 +26,7 @@
 //! - Delta_S method: TransE ||h+r-t||
 
 use context_graph_core::entity::{EntityLink, EntityType};
+use context_graph_core::traits::SearchStrategy;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -450,6 +451,27 @@ pub struct SearchByEntitiesRequest {
     /// Boost for exact entity matches (default: 1.3).
     #[serde(rename = "boostExactMatch", default = "default_exact_match_boost")]
     pub boost_exact_match: f32,
+
+    /// Search strategy for retrieval.
+    /// - "multi_space": Default multi-embedder fusion
+    /// - "pipeline": E13 SPLADE recall → E1 → E12 ColBERT rerank (maximum precision)
+    ///
+    /// When "pipeline" is selected, E12 reranking is automatically enabled.
+    #[serde(default)]
+    pub strategy: Option<String>,
+}
+
+impl SearchByEntitiesRequest {
+    /// Parse the strategy parameter into SearchStrategy enum.
+    /// Returns E1Only by default (for entity search we use E1+E11 union, not multi_space).
+    /// Pipeline if "pipeline" is specified.
+    pub fn parse_strategy(&self) -> SearchStrategy {
+        match self.strategy.as_deref() {
+            Some("pipeline") => SearchStrategy::Pipeline,
+            Some("multi_space") => SearchStrategy::MultiSpace,
+            _ => SearchStrategy::E1Only, // Default for entity search
+        }
+    }
 }
 
 fn default_match_mode() -> String {
@@ -505,6 +527,17 @@ impl SearchByEntitiesRequest {
                 "boostExactMatch must be between 1.0 and 3.0, got {}",
                 self.boost_exact_match
             ));
+        }
+
+        // Validate strategy if provided
+        if let Some(ref strat) = self.strategy {
+            let valid = ["e1_only", "multi_space", "pipeline"];
+            if !valid.contains(&strat.as_str()) {
+                return Err(format!(
+                    "strategy must be one of {:?}, got '{}'",
+                    valid, strat
+                ));
+            }
         }
 
         Ok(())
@@ -1084,8 +1117,10 @@ mod tests {
             min_score: 0.2,
             include_content: false,
             boost_exact_match: 1.3,
+            strategy: Some("pipeline".to_string()),
         };
         assert!(req.validate().is_ok());
+        assert_eq!(req.parse_strategy(), SearchStrategy::Pipeline);
     }
 
     #[test]
@@ -1098,6 +1133,7 @@ mod tests {
             min_score: 0.2,
             include_content: false,
             boost_exact_match: 1.3,
+            strategy: None,
         };
         assert!(req.validate().is_err());
     }
@@ -1112,8 +1148,25 @@ mod tests {
             min_score: 0.2,
             include_content: false,
             boost_exact_match: 1.3,
+            strategy: None,
         };
         assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn test_search_by_entities_parse_strategy_default() {
+        let req = SearchByEntitiesRequest {
+            entities: vec!["PostgreSQL".to_string()],
+            entity_types: None,
+            match_mode: "any".to_string(),
+            top_k: 10,
+            min_score: 0.2,
+            include_content: false,
+            boost_exact_match: 1.3,
+            strategy: None,
+        };
+        // Default is E1Only for entity search
+        assert_eq!(req.parse_strategy(), SearchStrategy::E1Only);
     }
 
     #[test]

@@ -324,6 +324,85 @@ pub const WEIGHT_PROFILES: &[(&str, [f32; NUM_EMBEDDERS])] = &[
         ],
     ),
 
+    // =========================================================================
+    // PIPELINE-AWARE PROFILES - Phase 5 E12/E13 Integration
+    // =========================================================================
+
+    // Pipeline Stage 1 Recall: E13-heavy for sparse retrieval
+    // Use in SearchStrategy::Pipeline Stage 1 for maximum recall.
+    // E13 SPLADE provides term expansion (fast→quick) and sparse retrieval.
+    // Per ARCH-13/AP-74: E13 is for Stage 1 recall ONLY.
+    //
+    // This profile is used internally by the pipeline, not directly by users.
+    // The weights are designed for candidate generation, not final ranking.
+    (
+        "pipeline_stage1_recall",
+        [
+            0.20, // E1_Semantic (backup for semantic overlap)
+            0.0,  // E2_Temporal_Recent - NOT for recall stage
+            0.0,  // E3_Temporal_Periodic - NOT for recall stage
+            0.0,  // E4_Temporal_Positional - NOT for recall stage
+            0.05, // E5_Causal (minimal)
+            0.25, // E6_Sparse (keyword matching, supports E13)
+            0.10, // E7_Code (for code queries)
+            0.0,  // E8_Graph
+            0.05, // E9_HDC (typo tolerance helps recall)
+            0.05, // E10_Multimodal
+            0.05, // E11_Entity (entity names)
+            0.0,  // E12_Late_Interaction (Stage 3 rerank only per AP-73)
+            0.25, // E13_SPLADE (PRIMARY - term expansion for recall)
+        ],
+    ),
+
+    // Pipeline Stage 2 Scoring: E1-heavy for dense candidate scoring
+    // Use in SearchStrategy::Pipeline Stage 2 after E13 recall.
+    // E1 provides the semantic foundation for scoring retrieved candidates.
+    // Per ARCH-12: E1 is THE semantic foundation.
+    //
+    // This profile is used internally by the pipeline, not directly by users.
+    // E12 (ColBERT) is NOT included here - it's applied via MaxSim in Stage 3.
+    (
+        "pipeline_stage2_scoring",
+        [
+            0.50, // E1_Semantic (PRIMARY - semantic foundation per ARCH-12)
+            0.0,  // E2_Temporal_Recent - NOT for scoring stage
+            0.0,  // E3_Temporal_Periodic - NOT for scoring stage
+            0.0,  // E4_Temporal_Positional - NOT for scoring stage
+            0.12, // E5_Causal (causal relationships)
+            0.05, // E6_Sparse (keyword precision)
+            0.15, // E7_Code (code understanding)
+            0.03, // E8_Graph (relational)
+            0.02, // E9_HDC (noise tolerance)
+            0.08, // E10_Multimodal (intent alignment via boost)
+            0.05, // E11_Entity (entity matching)
+            0.0,  // E12_Late_Interaction (Stage 3 rerank only per AP-73)
+            0.0,  // E13_SPLADE (Stage 1 recall only per AP-74)
+        ],
+    ),
+
+    // Pipeline Full: Combined profile for complete pipeline execution
+    // Use when running full E13→E1→E12 pipeline but need fusion weights.
+    // This balances recall (E6/E13) with precision (E1/E7).
+    // E12 is applied separately via MaxSim reranking.
+    (
+        "pipeline_full",
+        [
+            0.40, // E1_Semantic (strong foundation)
+            0.0,  // E2_Temporal_Recent - NOT for pipeline
+            0.0,  // E3_Temporal_Periodic - NOT for pipeline
+            0.0,  // E4_Temporal_Positional - NOT for pipeline
+            0.10, // E5_Causal
+            0.10, // E6_Sparse (keyword precision)
+            0.15, // E7_Code
+            0.03, // E8_Graph
+            0.02, // E9_HDC
+            0.08, // E10_Multimodal
+            0.05, // E11_Entity
+            0.0,  // E12_Late_Interaction (applied via MaxSim, not fusion)
+            0.07, // E13_SPLADE (mild weight for fusion awareness)
+        ],
+    ),
+
     // Balanced: Equal weights across all 13 spaces (for testing/comparison)
     // NOTE: This is NOT recommended for production - temporal affects results
     (
@@ -1063,5 +1142,178 @@ mod tests {
             "[VERIFIED] Intent profiles have boosted E1: intent_search={:.2}, intent_enhanced={:.2}, semantic_search={:.2}",
             intent_search[0], intent_enhanced[0], semantic_search[0]
         );
+    }
+
+    // =========================================================================
+    // PIPELINE-AWARE PROFILE TESTS - Phase 5 E12/E13 Integration
+    // =========================================================================
+
+    #[test]
+    fn test_pipeline_stage1_recall_profile_exists() {
+        let weights = get_weight_profile("pipeline_stage1_recall");
+        assert!(
+            weights.is_some(),
+            "pipeline_stage1_recall profile should exist"
+        );
+        println!("[VERIFIED] pipeline_stage1_recall profile exists");
+    }
+
+    #[test]
+    fn test_pipeline_stage1_e13_is_primary() {
+        // E13 should have significant weight for sparse recall
+        let weights = get_weight_profile("pipeline_stage1_recall").unwrap();
+
+        // E13 should be one of the highest weighted
+        assert!(
+            weights[12] >= 0.20,
+            "E13 should be >= 0.20 in pipeline_stage1_recall (got {})",
+            weights[12]
+        );
+
+        // E6 (sparse keywords) should also have significant weight to support E13
+        assert!(
+            weights[5] >= 0.15,
+            "E6 should be >= 0.15 in pipeline_stage1_recall (got {})",
+            weights[5]
+        );
+
+        println!(
+            "[VERIFIED] pipeline_stage1_recall has E13={:.2}, E6={:.2} for recall",
+            weights[12], weights[5]
+        );
+    }
+
+    #[test]
+    fn test_pipeline_stage1_e12_excluded() {
+        // E12 (ColBERT) should be 0.0 - it's for Stage 3 reranking only
+        let weights = get_weight_profile("pipeline_stage1_recall").unwrap();
+
+        assert_eq!(
+            weights[11], 0.0,
+            "E12 should be 0.0 in pipeline_stage1_recall (Stage 3 rerank only per AP-73)"
+        );
+
+        println!("[VERIFIED] pipeline_stage1_recall excludes E12 (rerank-only)");
+    }
+
+    #[test]
+    fn test_pipeline_stage2_scoring_profile_exists() {
+        let weights = get_weight_profile("pipeline_stage2_scoring");
+        assert!(
+            weights.is_some(),
+            "pipeline_stage2_scoring profile should exist"
+        );
+        println!("[VERIFIED] pipeline_stage2_scoring profile exists");
+    }
+
+    #[test]
+    fn test_pipeline_stage2_e1_is_primary() {
+        // E1 should be the PRIMARY embedder for Stage 2 scoring per ARCH-12
+        let weights = get_weight_profile("pipeline_stage2_scoring").unwrap();
+
+        // E1 should be >= 0.45 (dominant)
+        assert!(
+            weights[0] >= 0.45,
+            "E1 should be >= 0.45 in pipeline_stage2_scoring (got {})",
+            weights[0]
+        );
+
+        // E1 should be the highest weighted embedder
+        let max_weight = weights.iter().cloned().fold(0.0f32, f32::max);
+        assert!(
+            (weights[0] - max_weight).abs() < 0.001,
+            "E1 should be highest weighted in pipeline_stage2_scoring"
+        );
+
+        println!(
+            "[VERIFIED] pipeline_stage2_scoring has E1={:.2} as primary (ARCH-12)",
+            weights[0]
+        );
+    }
+
+    #[test]
+    fn test_pipeline_stage2_e12_e13_excluded() {
+        // E12 and E13 should be 0.0 in Stage 2 scoring:
+        // - E12 is applied via MaxSim in Stage 3
+        // - E13 was used in Stage 1 recall
+        let weights = get_weight_profile("pipeline_stage2_scoring").unwrap();
+
+        assert_eq!(
+            weights[11], 0.0,
+            "E12 should be 0.0 in pipeline_stage2_scoring (Stage 3 rerank only per AP-73)"
+        );
+        assert_eq!(
+            weights[12], 0.0,
+            "E13 should be 0.0 in pipeline_stage2_scoring (Stage 1 recall only per AP-74)"
+        );
+
+        println!("[VERIFIED] pipeline_stage2_scoring excludes E12/E13 (pipeline-stage only)");
+    }
+
+    #[test]
+    fn test_pipeline_full_profile_exists() {
+        let weights = get_weight_profile("pipeline_full");
+        assert!(weights.is_some(), "pipeline_full profile should exist");
+        println!("[VERIFIED] pipeline_full profile exists");
+    }
+
+    #[test]
+    fn test_pipeline_full_balanced() {
+        // pipeline_full should balance E1 (semantic) with E6/E13 (keyword/recall)
+        let weights = get_weight_profile("pipeline_full").unwrap();
+
+        // E1 should be strong
+        assert!(
+            weights[0] >= 0.35,
+            "E1 should be >= 0.35 in pipeline_full (got {})",
+            weights[0]
+        );
+
+        // E12 should be 0.0 (applied via MaxSim separately)
+        assert_eq!(
+            weights[11], 0.0,
+            "E12 should be 0.0 in pipeline_full (applied via MaxSim, not fusion)"
+        );
+
+        println!(
+            "[VERIFIED] pipeline_full has E1={:.2}, E12={:.2} (E12 via MaxSim)",
+            weights[0], weights[11]
+        );
+    }
+
+    #[test]
+    fn test_pipeline_profiles_temporal_excluded() {
+        // All pipeline profiles should have E2-E4 = 0.0 per AP-71
+        let pipeline_profiles = [
+            "pipeline_stage1_recall",
+            "pipeline_stage2_scoring",
+            "pipeline_full",
+        ];
+
+        for profile_name in pipeline_profiles {
+            let weights = get_weight_profile(profile_name)
+                .expect(&format!("Profile '{}' should exist", profile_name));
+
+            assert_eq!(
+                weights[1], 0.0,
+                "E2 should be 0.0 in '{}' per AP-71",
+                profile_name
+            );
+            assert_eq!(
+                weights[2], 0.0,
+                "E3 should be 0.0 in '{}' per AP-71",
+                profile_name
+            );
+            assert_eq!(
+                weights[3], 0.0,
+                "E4 should be 0.0 in '{}' per AP-71",
+                profile_name
+            );
+
+            println!(
+                "[VERIFIED] Profile '{}' has temporal embedders (E2-E4) = 0.0",
+                profile_name
+            );
+        }
     }
 }

@@ -94,11 +94,17 @@ impl Handlers {
             detected_language.confidence = 1.0;
         }
 
+        // Parse strategy from request - Pipeline enables E13 recall + E12 reranking
+        let strategy = request.parse_strategy();
+        let enable_rerank = matches!(strategy, SearchStrategy::Pipeline);
+
         info!(
             query_preview = %query.chars().take(50).collect::<String>(),
             top_k = top_k,
             min_score = min_score,
             search_mode = %search_mode,
+            strategy = ?strategy,
+            enable_rerank = enable_rerank,
             e7_blend = e7_blend,
             detected_language = ?detected_language.primary_language,
             "search_code: Starting code search"
@@ -119,9 +125,10 @@ impl Handlers {
 
         // Use code_search weight profile with E7 emphasis
         let options = TeleologicalSearchOptions::quick(fetch_top_k)
-            .with_strategy(SearchStrategy::MultiSpace)
+            .with_strategy(strategy)
             .with_weight_profile("code_search") // E7 emphasis
-            .with_min_similarity(0.0); // Get all candidates, filter later
+            .with_min_similarity(0.0) // Get all candidates, filter later
+            .with_rerank(enable_rerank); // Auto-enable E12 for pipeline
 
         let candidates = match self
             .teleological_store

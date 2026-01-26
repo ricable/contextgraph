@@ -110,11 +110,22 @@ impl Handlers {
         let fetch_multiplier = 3;
         let fetch_top_k = top_k * fetch_multiplier;
 
+        // Parse strategy from request - Pipeline enables E13 recall + E12 reranking
+        let strategy = request.parse_strategy();
+        let enable_rerank = matches!(strategy, SearchStrategy::Pipeline);
+
+        info!(
+            strategy = ?strategy,
+            enable_rerank = enable_rerank,
+            "search_by_keywords: Using search strategy"
+        );
+
         // Use keyword_search weight profile with E6 emphasis
         let options = TeleologicalSearchOptions::quick(fetch_top_k)
-            .with_strategy(SearchStrategy::MultiSpace)
+            .with_strategy(strategy)
             .with_weight_profile("semantic_search") // E1 foundation
-            .with_min_similarity(0.0); // Get all candidates, filter later
+            .with_min_similarity(0.0) // Get all candidates, filter later
+            .with_rerank(enable_rerank); // Auto-enable E12 for pipeline
 
         let candidates = match self
             .teleological_store

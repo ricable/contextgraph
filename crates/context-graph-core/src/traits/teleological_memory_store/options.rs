@@ -1281,6 +1281,20 @@ pub struct TeleologicalSearchOptions {
     #[serde(default)]
     pub enable_rerank: bool,
 
+    /// E12 rerank weight for blending with fusion score.
+    ///
+    /// Controls how much weight E12 MaxSim scores have in the final ranking.
+    /// Formula: `final_score = fusion_score * (1 - weight) + maxsim_score * weight`
+    ///
+    /// - 0.0: Pure fusion score (E12 has no effect)
+    /// - 0.4: Default - 60% fusion + 40% E12 MaxSim
+    /// - 1.0: Pure E12 MaxSim score (ignores fusion)
+    ///
+    /// Only used when `enable_rerank = true`.
+    /// Default: `0.4` (40% E12 weight, per Phase 3 E12/E13 integration).
+    #[serde(default = "TeleologicalSearchOptions::default_rerank_weight")]
+    pub rerank_weight: f32,
+
     /// Normalization strategy for score fusion.
     ///
     /// Applied before combining scores from multiple embedders.
@@ -1437,6 +1451,10 @@ impl TeleologicalSearchOptions {
     fn default_intent_blend() -> f32 {
         0.3
     }
+
+    fn default_rerank_weight() -> f32 {
+        0.4 // 40% E12 MaxSim, 60% fusion score
+    }
 }
 
 impl Default for TeleologicalSearchOptions {
@@ -1454,6 +1472,7 @@ impl Default for TeleologicalSearchOptions {
             weight_profile: None,
             recency_boost: 0.0, // Deprecated: use temporal_options.temporal_weight
             enable_rerank: false,
+            rerank_weight: Self::default_rerank_weight(),
             normalization: NormalizationStrategyOption::default(),
             // Fusion strategy (ARCH-18) - WeightedRRF by default
             fusion_strategy: FusionStrategy::default(),
@@ -1618,6 +1637,27 @@ impl TeleologicalSearchOptions {
     #[inline]
     pub fn with_rerank(mut self, enable: bool) -> Self {
         self.enable_rerank = enable;
+        self
+    }
+
+    /// Set the E12 rerank weight for blending with fusion score.
+    ///
+    /// Controls how much weight E12 MaxSim scores have in final ranking:
+    /// - 0.0: Pure fusion score (E12 has no effect)
+    /// - 0.4: Default - 60% fusion + 40% E12 MaxSim
+    /// - 1.0: Pure E12 MaxSim score (ignores fusion)
+    ///
+    /// # Panics
+    ///
+    /// Panics if weight is not in range [0.0, 1.0].
+    #[inline]
+    pub fn with_rerank_weight(mut self, weight: f32) -> Self {
+        assert!(
+            (0.0..=1.0).contains(&weight),
+            "rerank_weight must be between 0.0 and 1.0, got {}",
+            weight
+        );
+        self.rerank_weight = weight;
         self
     }
 

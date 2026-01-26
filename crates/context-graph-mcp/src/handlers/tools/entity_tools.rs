@@ -470,10 +470,21 @@ impl Handlers {
         let fetch_multiplier = 3;
         let fetch_top_k = top_k * fetch_multiplier;
 
+        // Parse strategy from request - Pipeline enables E13 recall + E12 reranking
+        let strategy = request.parse_strategy();
+        let enable_rerank = matches!(strategy, SearchStrategy::Pipeline);
+
+        info!(
+            strategy = ?strategy,
+            enable_rerank = enable_rerank,
+            "search_by_entities: Using search strategy"
+        );
+
         let e1_options = TeleologicalSearchOptions::quick(fetch_top_k)
-            .with_strategy(SearchStrategy::E1Only)
+            .with_strategy(strategy)
             .with_embedders(vec![0]) // E1 only
-            .with_min_similarity(0.0);
+            .with_min_similarity(0.0)
+            .with_rerank(enable_rerank); // Auto-enable E12 for pipeline
 
         let e1_candidates = match self
             .teleological_store
@@ -497,9 +508,10 @@ impl Handlers {
         // Example: E1 might miss "Diesel ORM" when searching for "database",
         // but E11 knows Diesel is a database ORM and surfaces it.
         let e11_options = TeleologicalSearchOptions::quick(fetch_top_k)
-            .with_strategy(SearchStrategy::E1Only) // Strategy doesn't matter with explicit embedders
+            .with_strategy(strategy) // Use same strategy for E11 search
             .with_embedders(vec![10]) // E11 (Entity) only - index 10
-            .with_min_similarity(0.0);
+            .with_min_similarity(0.0)
+            .with_rerank(enable_rerank); // Auto-enable E12 for pipeline
 
         let e11_candidates = match self
             .teleological_store

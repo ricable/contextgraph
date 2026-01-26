@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use std::fmt;
 
+use context_graph_core::traits::SearchStrategy;
+
 // ============================================================================
 // CONSTANTS
 // ============================================================================
@@ -183,6 +185,30 @@ impl Default for SearchCodeRequest {
 }
 
 impl SearchCodeRequest {
+    /// Parse the search mode into SearchStrategy enum.
+    ///
+    /// Strategy selection priority:
+    /// 1. User-specified Pipeline mode takes precedence
+    /// 2. Auto-upgrade to Pipeline if query is a precision query (quoted terms, keyword patterns)
+    /// 3. Map other modes to MultiSpace
+    ///
+    /// Note: Code search benefits from Pipeline for exact function names, error messages, etc.
+    pub fn parse_strategy(&self) -> SearchStrategy {
+        // User-specified Pipeline mode takes precedence
+        if self.search_mode == CodeSearchMode::Pipeline {
+            return SearchStrategy::Pipeline;
+        }
+
+        // Auto-upgrade precision queries to Pipeline (Phase 4 E12/E13 integration)
+        // Even code searches benefit from E12/E13 for exact function names, error strings
+        if super::query_type_detector::should_auto_upgrade_to_pipeline(&self.query) {
+            return SearchStrategy::Pipeline;
+        }
+
+        // Default to MultiSpace for code search
+        SearchStrategy::MultiSpace
+    }
+
     /// Validate the request parameters.
     ///
     /// # Errors

@@ -95,12 +95,18 @@ impl Handlers {
         let e9_threshold = request.e9_discovery_threshold;
         let e1_threshold = request.e1_weakness_threshold;
 
+        // Parse strategy from request - Pipeline enables E13 recall + E12 reranking
+        let strategy = request.parse_strategy();
+        let enable_rerank = matches!(strategy, SearchStrategy::Pipeline);
+
         info!(
             query_preview = %query.chars().take(50).collect::<String>(),
             top_k = top_k,
             min_score = min_score,
             e9_threshold = e9_threshold,
             e1_threshold = e1_threshold,
+            strategy = ?strategy,
+            enable_rerank = enable_rerank,
             "search_robust: Starting E9 blind-spot detection search"
         );
 
@@ -119,9 +125,10 @@ impl Handlers {
         let fetch_top_k = top_k * fetch_multiplier;
 
         let e1_options = TeleologicalSearchOptions::quick(fetch_top_k)
-            .with_strategy(SearchStrategy::MultiSpace)
+            .with_strategy(strategy)
             .with_weight_profile("semantic_search")
-            .with_min_similarity(0.0); // Get all candidates, filter later
+            .with_min_similarity(0.0) // Get all candidates, filter later
+            .with_rerank(enable_rerank); // Auto-enable E12 for pipeline
 
         let e1_candidates = match self
             .teleological_store
@@ -144,9 +151,10 @@ impl Handlers {
         // Step 3: Search E9 space (structural/noise-robust)
         // Use typo_tolerant profile which emphasizes E9
         let e9_options = TeleologicalSearchOptions::quick(fetch_top_k)
-            .with_strategy(SearchStrategy::MultiSpace)
+            .with_strategy(strategy)
             .with_weight_profile("typo_tolerant")
-            .with_min_similarity(0.0);
+            .with_min_similarity(0.0)
+            .with_rerank(enable_rerank); // Auto-enable E12 for pipeline
 
         let e9_candidates = match self
             .teleological_store

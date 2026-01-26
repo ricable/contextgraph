@@ -421,7 +421,7 @@ fn is_common_start_word(word: &str) -> bool {
 /// Count quoted terms in the query.
 ///
 /// Quoted terms indicate exact match requirements.
-fn count_quoted_terms(query: &str) -> usize {
+pub fn count_quoted_terms(query: &str) -> usize {
     let mut count = 0;
     let mut in_quote = false;
 
@@ -435,6 +435,71 @@ fn count_quoted_terms(query: &str) -> usize {
     }
 
     count
+}
+
+// =============================================================================
+// AUTO-UPGRADE DETECTION
+// =============================================================================
+
+/// Minimum quoted terms to trigger auto-upgrade to Pipeline strategy.
+const AUTO_UPGRADE_QUOTED_THRESHOLD: usize = 1;
+
+/// Minimum keyword pattern matches to trigger auto-upgrade to Pipeline strategy.
+const AUTO_UPGRADE_KEYWORD_THRESHOLD: usize = 2;
+
+/// Determine if a query should be auto-upgraded to Pipeline strategy.
+///
+/// Per Phase 4 E12/E13 Integration Plan, precision queries benefit from:
+/// - E13 SPLADE for Stage 1 recall (exact term matching)
+/// - E12 ColBERT for final reranking (phrase-level precision)
+///
+/// A query is considered a "precision query" if:
+/// 1. It contains quoted terms (e.g., "ConnectionRefused") - indicates exact match need
+/// 2. It has multiple keyword patterns (exact, verbatim, error:, etc.)
+///
+/// # Arguments
+/// * `query` - The search query text
+///
+/// # Returns
+/// `true` if the query should use Pipeline strategy, `false` for MultiSpace.
+///
+/// # Examples
+///
+/// ```ignore
+/// // Quoted terms → Pipeline
+/// assert!(should_auto_upgrade_to_pipeline("find \"ConnectionRefused\" error"));
+///
+/// // Keyword patterns → Pipeline
+/// assert!(should_auto_upgrade_to_pipeline("exact error message: timeout"));
+///
+/// // Generic query → MultiSpace
+/// assert!(!should_auto_upgrade_to_pipeline("what is authentication"));
+/// ```
+pub fn should_auto_upgrade_to_pipeline(query: &str) -> bool {
+    // Check for quoted terms - strong indicator of precision need
+    let quoted_count = count_quoted_terms(query);
+    if quoted_count >= AUTO_UPGRADE_QUOTED_THRESHOLD {
+        debug!(
+            query_preview = %query.chars().take(50).collect::<String>(),
+            quoted_terms = quoted_count,
+            "Auto-upgrading to Pipeline: quoted terms detected"
+        );
+        return true;
+    }
+
+    // Check for keyword patterns
+    let query_lower = query.to_lowercase();
+    let keyword_count = count_pattern_matches(&query_lower, KEYWORD_PATTERNS);
+    if keyword_count >= AUTO_UPGRADE_KEYWORD_THRESHOLD {
+        debug!(
+            query_preview = %query.chars().take(50).collect::<String>(),
+            keyword_patterns = keyword_count,
+            "Auto-upgrading to Pipeline: keyword patterns detected"
+        );
+        return true;
+    }
+
+    false
 }
 
 // =============================================================================
@@ -891,5 +956,58 @@ mod tests {
         assert!(is_common_start_word("Why"));
         assert!(!is_common_start_word("Diesel"));
         assert!(!is_common_start_word("PostgreSQL"));
+    }
+
+    // =========================================================================
+    // AUTO-UPGRADE DETECTION TESTS
+    // =========================================================================
+
+    #[test]
+    fn test_auto_upgrade_quoted_terms() {
+        // Single quoted term → upgrade
+        assert!(should_auto_upgrade_to_pipeline("find \"ConnectionRefused\" error"));
+        assert!(should_auto_upgrade_to_pipeline("search for 'exact match'"));
+        println!("[PASS] Quoted terms trigger auto-upgrade to Pipeline");
+    }
+
+    #[test]
+    fn test_auto_upgrade_multiple_quoted() {
+        // Multiple quoted terms → upgrade
+        assert!(should_auto_upgrade_to_pipeline("find \"error\" and \"timeout\""));
+        println!("[PASS] Multiple quoted terms trigger auto-upgrade to Pipeline");
+    }
+
+    #[test]
+    fn test_auto_upgrade_keyword_patterns() {
+        // Multiple keyword patterns → upgrade
+        // "exact" + "error message" = 2 patterns
+        assert!(should_auto_upgrade_to_pipeline("exact error message please"));
+        // "verbatim" + "specific" = 2 patterns
+        assert!(should_auto_upgrade_to_pipeline("verbatim specific text"));
+        println!("[PASS] Keyword patterns trigger auto-upgrade to Pipeline");
+    }
+
+    #[test]
+    fn test_no_auto_upgrade_generic_query() {
+        // Generic queries → no upgrade (stay on MultiSpace)
+        assert!(!should_auto_upgrade_to_pipeline("what is authentication"));
+        assert!(!should_auto_upgrade_to_pipeline("how does the system work"));
+        assert!(!should_auto_upgrade_to_pipeline("find database queries"));
+        println!("[PASS] Generic queries do not auto-upgrade");
+    }
+
+    #[test]
+    fn test_no_auto_upgrade_single_keyword() {
+        // Single keyword pattern (below threshold) → no upgrade
+        assert!(!should_auto_upgrade_to_pipeline("exact match")); // Only 1 pattern
+        println!("[PASS] Single keyword pattern does not auto-upgrade");
+    }
+
+    #[test]
+    fn test_auto_upgrade_error_patterns() {
+        // Error messages often need precision
+        // "error:" + "specific" = 2 patterns
+        assert!(should_auto_upgrade_to_pipeline("specific error: connection failed"));
+        println!("[PASS] Error patterns can trigger auto-upgrade");
     }
 }

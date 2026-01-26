@@ -31,7 +31,8 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use context_graph_core::traits::{
-    DecayFunction, TeleologicalMemoryStore, TeleologicalSearchOptions, TeleologicalSearchResult,
+    DecayFunction, SearchStrategy, TeleologicalMemoryStore, TeleologicalSearchOptions,
+    TeleologicalSearchResult,
 };
 use context_graph_core::types::fingerprint::SemanticFingerprint;
 
@@ -112,10 +113,25 @@ impl EnrichmentPipeline {
                 .await;
         }
 
+        // Phase 0: Pipeline Upgrade for Full mode (Phase 6 E12/E13 Integration)
+        // When enrichMode: 'full', auto-use Pipeline strategy with E13 recall + E12 rerank.
+        // Per ARCH-13: E13 for Stage 1 recall, E12 for Stage 3 reranking.
+        let effective_options = if config.mode == EnrichmentMode::Full {
+            debug!(
+                "Upgrading to Pipeline strategy for Full enrichment mode (E13 recall + E12 rerank)"
+            );
+            base_options
+                .clone()
+                .with_strategy(SearchStrategy::Pipeline)
+                .with_rerank(true)
+        } else {
+            base_options.clone()
+        };
+
         // Phase 1: E1 Foundation Search (always first per ARCH-12)
         let e1_start = Instant::now();
         let e1_results = self
-            .run_e1_search(query_fingerprint, &base_options)
+            .run_e1_search(query_fingerprint, &effective_options)
             .await?;
         let e1_time = e1_start.elapsed().as_millis() as u64;
 
@@ -127,7 +143,8 @@ impl EnrichmentPipeline {
 
         // Phase 1.5: E9 HDC Fallback Detection
         // Per remaining_embedder_integration_plan.md: trigger when e1_top_score < 0.4
-        let e1_top_score = e1_results.first().map(|r| r.similarity).unwrap_or(0.0);
+        // BUG FIX: Use raw E1 score (embedder_scores[0]), not fused similarity
+        let e1_top_score = e1_results.first().map(|r| r.embedder_scores[0]).unwrap_or(0.0);
         let hdc_fallback_needed = e1_top_score < E1_WEAK_THRESHOLD;
 
         if hdc_fallback_needed {
@@ -150,7 +167,7 @@ impl EnrichmentPipeline {
             .run_parallel_enhancer_searches(
                 query_fingerprint,
                 &effective_embedders,
-                &base_options,
+                &effective_options,
             )
             .await?;
         let enhancer_time = enhancer_start.elapsed().as_millis() as u64;
@@ -168,7 +185,7 @@ impl EnrichmentPipeline {
             &e1_results,
             &enhancer_results,
             &effective_embedders,
-            base_options.top_k,
+            effective_options.top_k,
         );
         let rrf_time = rrf_start.elapsed().as_millis() as u64;
 
@@ -263,10 +280,10 @@ impl EnrichmentPipeline {
             "Enrichment pipeline complete"
         );
 
-        let strategy_name = match base_options.strategy {
-            context_graph_core::traits::SearchStrategy::E1Only => "e1_only",
-            context_graph_core::traits::SearchStrategy::MultiSpace => "multi_space",
-            context_graph_core::traits::SearchStrategy::Pipeline => "pipeline",
+        let strategy_name = match effective_options.strategy {
+            SearchStrategy::E1Only => "e1_only",
+            SearchStrategy::MultiSpace => "multi_space",
+            SearchStrategy::Pipeline => "pipeline",
         };
 
         Ok(EnrichedSearchResponse::new(
@@ -290,7 +307,8 @@ impl EnrichmentPipeline {
         let mut enriched_results: Vec<EnrichedSearchResult> = e1_results
             .into_iter()
             .map(|r| {
-                let scoring = ScoringBreakdown::e1_only(r.similarity);
+                // BUG FIX: Use raw E1 score for consistency
+                let scoring = ScoringBreakdown::e1_only(r.embedder_scores[0]);
                 let agreement =
                     AgreementMetrics::from_embedders(vec![EmbedderId::E1], 1);
                 EnrichedSearchResult::new(r.fingerprint.id, scoring, agreement)
@@ -445,11 +463,13 @@ impl EnrichmentPipeline {
                     }
                 }
 
-                // Get E1 raw score
+                // Get E1 raw score from embedder_scores[0], NOT from similarity
+                // BUG FIX: similarity is the fused/post-processed score (~0.13)
+                // embedder_scores[0] is the raw E1 semantic score (~0.73-0.89)
                 let e1_score = e1_results
                     .iter()
                     .find(|r| r.fingerprint.id == id)
-                    .map(|r| r.similarity)
+                    .map(|r| r.embedder_scores[0]) // Index 0 = E1_Semantic
                     .unwrap_or(0.0);
 
                 // Get enhancer raw scores
@@ -544,10 +564,11 @@ impl EnrichmentPipeline {
     ) -> usize {
         let mut blind_spots_count = 0;
 
-        // Build E1 score lookup
+        // Build E1 score lookup using raw E1 scores, not fused similarity
+        // BUG FIX: Use embedder_scores[0] for accurate blind spot detection
         let e1_scores: HashMap<Uuid, f32> = e1_results
             .iter()
-            .map(|r| (r.fingerprint.id, r.similarity))
+            .map(|r| (r.fingerprint.id, r.embedder_scores[0]))
             .collect();
 
         for result in results.iter_mut() {

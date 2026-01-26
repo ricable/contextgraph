@@ -14,6 +14,8 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use context_graph_core::traits::SearchStrategy;
+
 // ============================================================================
 // CONSTANTS
 // ============================================================================
@@ -80,6 +82,14 @@ pub struct SearchByKeywordsRequest {
     /// Whether to include full content text in results (default: false).
     #[serde(rename = "includeContent", default)]
     pub include_content: bool,
+
+    /// Search strategy for retrieval.
+    /// - "multi_space": Default multi-embedder fusion (backward compatible)
+    /// - "pipeline": E13 SPLADE recall → E1 → E12 ColBERT rerank (maximum precision)
+    ///
+    /// When "pipeline" is selected, E12 reranking is automatically enabled.
+    #[serde(default)]
+    pub strategy: Option<String>,
 }
 
 fn default_top_k() -> usize {
@@ -107,11 +117,38 @@ impl Default for SearchByKeywordsRequest {
             blend_with_semantic: DEFAULT_KEYWORD_BLEND,
             use_splade_expansion: DEFAULT_USE_SPLADE_EXPANSION,
             include_content: false,
+            strategy: None,
         }
     }
 }
 
 impl SearchByKeywordsRequest {
+    /// Parse the strategy parameter into SearchStrategy enum.
+    ///
+    /// Strategy selection priority:
+    /// 1. User-specified strategy takes precedence
+    /// 2. Auto-upgrade to Pipeline if query is a precision query (quoted terms, keyword patterns)
+    /// 3. Default to MultiSpace
+    ///
+    /// Note: Keyword search already benefits from E6/E13, but Pipeline adds E12 reranking
+    /// for even better precision on exact matches.
+    pub fn parse_strategy(&self) -> SearchStrategy {
+        // User-specified strategy takes precedence
+        match self.strategy.as_deref() {
+            Some("pipeline") => return SearchStrategy::Pipeline,
+            Some("multi_space") => return SearchStrategy::MultiSpace,
+            _ => {}
+        }
+
+        // Auto-upgrade precision queries to Pipeline (Phase 4 E12/E13 integration)
+        if super::query_type_detector::should_auto_upgrade_to_pipeline(&self.query) {
+            return SearchStrategy::Pipeline;
+        }
+
+        // Default to MultiSpace
+        SearchStrategy::MultiSpace
+    }
+
     /// Validate the request parameters.
     ///
     /// # Errors
@@ -152,6 +189,17 @@ impl SearchByKeywordsRequest {
                 "blendWithSemantic must be between 0.0 and 1.0, got {}",
                 self.blend_with_semantic
             ));
+        }
+
+        // Validate strategy if provided
+        if let Some(ref strat) = self.strategy {
+            let valid = ["multi_space", "pipeline"];
+            if !valid.contains(&strat.as_str()) {
+                return Err(format!(
+                    "strategy must be one of {:?}, got '{}'",
+                    valid, strat
+                ));
+            }
         }
 
         Ok(())

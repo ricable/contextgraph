@@ -79,6 +79,10 @@ impl Handlers {
         let top_k = request.top_k;
         let min_score = request.min_score;
 
+        // Parse strategy from request - Pipeline enables E13 recall + E12 reranking
+        let strategy = request.parse_strategy();
+        let enable_rerank = matches!(strategy, SearchStrategy::Pipeline);
+
         // Use multiplicative boost (ARCH-17) instead of linear blending
         // E10 ENHANCES E1, it doesn't compete with it
         let intent_boost_config = IntentBoostConfig::default();
@@ -87,6 +91,8 @@ impl Handlers {
             query_preview = %query.chars().take(50).collect::<String>(),
             top_k = top_k,
             min_score = min_score,
+            strategy = ?strategy,
+            enable_rerank = enable_rerank,
             boost_mode = "multiplicative",
             "search_by_intent: Starting intent-enhanced search (ARCH-17)"
         );
@@ -106,9 +112,10 @@ impl Handlers {
 
         // Use intent_search weight profile for E10-enhanced retrieval
         let options = TeleologicalSearchOptions::quick(fetch_top_k)
-            .with_strategy(SearchStrategy::MultiSpace)
+            .with_strategy(strategy)
             .with_weight_profile("intent_search") // E10=0.25, E1=0.40 per E10 Upgrade
-            .with_min_similarity(0.0); // Get all candidates, filter later
+            .with_min_similarity(0.0) // Get all candidates, filter later
+            .with_rerank(enable_rerank); // Auto-enable E12 for pipeline
 
         let candidates = match self
             .teleological_store
@@ -290,6 +297,10 @@ impl Handlers {
         let top_k = request.top_k;
         let min_score = request.min_score;
 
+        // Parse strategy from request - Pipeline enables E13 recall + E12 reranking
+        let strategy = request.parse_strategy();
+        let enable_rerank = matches!(strategy, SearchStrategy::Pipeline);
+
         // Use multiplicative boost (ARCH-17) instead of linear blending
         // E10 ENHANCES E1, it doesn't compete with it
         let intent_boost_config = IntentBoostConfig::default();
@@ -298,6 +309,8 @@ impl Handlers {
             context_preview = %context.chars().take(50).collect::<String>(),
             top_k = top_k,
             min_score = min_score,
+            strategy = ?strategy,
+            enable_rerank = enable_rerank,
             boost_mode = "multiplicative",
             "find_contextual_matches: Starting context-enhanced search (ARCH-17)"
         );
@@ -316,9 +329,10 @@ impl Handlers {
         let fetch_top_k = top_k * fetch_multiplier;
 
         let options = TeleologicalSearchOptions::quick(fetch_top_k)
-            .with_strategy(SearchStrategy::MultiSpace)
+            .with_strategy(strategy)
             .with_weight_profile("balanced")
-            .with_min_similarity(0.0);
+            .with_min_similarity(0.0)
+            .with_rerank(enable_rerank); // Auto-enable E12 for pipeline
 
         let candidates = match self
             .teleological_store

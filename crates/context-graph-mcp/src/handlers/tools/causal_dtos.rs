@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use context_graph_core::causal::asymmetric::CausalDirection;
 use context_graph_core::causal::chain::HOP_ATTENUATION;
+use context_graph_core::traits::SearchStrategy;
 
 // ============================================================================
 // CONSTANTS
@@ -80,6 +81,30 @@ pub struct SearchCausesRequest {
     /// - None: No filtering (default)
     #[serde(rename = "filterCausalDirection")]
     pub filter_causal_direction: Option<String>,
+
+    /// Search strategy for retrieval.
+    /// - "multi_space": Default multi-embedder fusion (backward compatible)
+    /// - "pipeline": E13 SPLADE recall → E1 → E12 ColBERT rerank (maximum precision)
+    ///
+    /// When "pipeline" is selected, E12 reranking is automatically enabled.
+    #[serde(default)]
+    pub strategy: Option<String>,
+
+    /// E12 rerank weight for blending with fusion score (0.0-1.0, default: 0.4).
+    ///
+    /// Controls how much weight E12 MaxSim scores have in the final ranking:
+    /// - 0.0: Pure fusion score (E12 has no effect)
+    /// - 0.4: Default - 60% fusion + 40% E12 MaxSim
+    /// - 1.0: Pure E12 MaxSim score (ignores fusion)
+    ///
+    /// Only used when strategy="pipeline" (which auto-enables E12 reranking).
+    #[serde(rename = "rerankWeight", default = "default_rerank_weight")]
+    pub rerank_weight: f32,
+}
+
+/// Default E12 rerank weight (40% E12, 60% fusion).
+fn default_rerank_weight() -> f32 {
+    0.4
 }
 
 fn default_top_k() -> usize {
@@ -98,11 +123,36 @@ impl Default for SearchCausesRequest {
             min_score: MIN_CAUSE_SCORE,
             include_content: false,
             filter_causal_direction: None,
+            strategy: None,
+            rerank_weight: default_rerank_weight(),
         }
     }
 }
 
 impl SearchCausesRequest {
+    /// Parse the strategy parameter into SearchStrategy enum.
+    ///
+    /// Strategy selection priority:
+    /// 1. User-specified strategy takes precedence
+    /// 2. Auto-upgrade to Pipeline if query is a precision query (quoted terms, keyword patterns)
+    /// 3. Default to MultiSpace
+    pub fn parse_strategy(&self) -> SearchStrategy {
+        // User-specified strategy takes precedence
+        match self.strategy.as_deref() {
+            Some("pipeline") => return SearchStrategy::Pipeline,
+            Some("multi_space") => return SearchStrategy::MultiSpace,
+            _ => {}
+        }
+
+        // Auto-upgrade precision queries to Pipeline (Phase 4 E12/E13 integration)
+        if super::query_type_detector::should_auto_upgrade_to_pipeline(&self.query) {
+            return SearchStrategy::Pipeline;
+        }
+
+        // Default to MultiSpace
+        SearchStrategy::MultiSpace
+    }
+
     /// Validate the request parameters.
     ///
     /// # Errors
@@ -142,6 +192,29 @@ impl SearchCausesRequest {
                     valid, dir
                 ));
             }
+        }
+
+        // Validate strategy if provided
+        if let Some(ref strat) = self.strategy {
+            let valid = ["multi_space", "pipeline"];
+            if !valid.contains(&strat.as_str()) {
+                return Err(format!(
+                    "strategy must be one of {:?}, got '{}'",
+                    valid, strat
+                ));
+            }
+        }
+
+        // Validate rerank_weight
+        if self.rerank_weight.is_nan() || self.rerank_weight.is_infinite() {
+            return Err("rerankWeight must be a finite number".to_string());
+        }
+
+        if self.rerank_weight < 0.0 || self.rerank_weight > 1.0 {
+            return Err(format!(
+                "rerankWeight must be between 0.0 and 1.0, got {}",
+                self.rerank_weight
+            ));
         }
 
         Ok(())
@@ -509,10 +582,14 @@ mod tests {
             min_score: 0.5,
             include_content: true,
             filter_causal_direction: Some("cause".to_string()),
+            strategy: Some("pipeline".to_string()),
+            rerank_weight: 0.6, // Custom E12 weight
         };
 
         assert!(req.validate().is_ok());
-        println!("[PASS] SearchCausesRequest validates correct input");
+        assert_eq!(req.parse_strategy(), SearchStrategy::Pipeline);
+        assert!((req.rerank_weight - 0.6).abs() < f32::EPSILON);
+        println!("[PASS] SearchCausesRequest validates correct input with pipeline strategy");
     }
 
     #[test]
@@ -554,6 +631,63 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("filterCausalDirection"));
         println!("[PASS] SearchCausesRequest rejects invalid causal direction filter");
+    }
+
+    #[test]
+    fn test_search_causes_request_validation_invalid_strategy() {
+        let req = SearchCausesRequest {
+            query: "test".to_string(),
+            strategy: Some("invalid_strategy".to_string()),
+            ..Default::default()
+        };
+
+        let result = req.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("strategy"));
+        println!("[PASS] SearchCausesRequest rejects invalid strategy");
+    }
+
+    #[test]
+    fn test_parse_strategy_default() {
+        let req = SearchCausesRequest::default();
+        assert_eq!(req.parse_strategy(), SearchStrategy::MultiSpace);
+        println!("[PASS] parse_strategy returns MultiSpace by default");
+    }
+
+    #[test]
+    fn test_parse_strategy_auto_upgrade_quoted() {
+        // Quoted terms should auto-upgrade to Pipeline (Phase 4 E12/E13 integration)
+        let req = SearchCausesRequest {
+            query: "find \"ConnectionRefused\" error".to_string(),
+            strategy: None, // No explicit strategy
+            ..Default::default()
+        };
+        assert_eq!(req.parse_strategy(), SearchStrategy::Pipeline);
+        println!("[PASS] parse_strategy auto-upgrades quoted terms to Pipeline");
+    }
+
+    #[test]
+    fn test_parse_strategy_user_specified_multispace() {
+        // User explicitly specifying multi_space should be respected even with precision query
+        let req = SearchCausesRequest {
+            query: "find \"ConnectionRefused\" error".to_string(),
+            strategy: Some("multi_space".to_string()), // Explicit multi_space
+            ..Default::default()
+        };
+        assert_eq!(req.parse_strategy(), SearchStrategy::MultiSpace);
+        println!("[PASS] parse_strategy respects user-specified multi_space");
+    }
+
+    #[test]
+    fn test_parse_strategy_user_specified_pipeline() {
+        // User explicitly specifying pipeline should work
+        let req = SearchCausesRequest {
+            query: "generic query".to_string(),
+            strategy: Some("pipeline".to_string()), // Explicit pipeline
+            ..Default::default()
+        };
+        assert_eq!(req.parse_strategy(), SearchStrategy::Pipeline);
+        println!("[PASS] parse_strategy respects user-specified pipeline");
     }
 
     // ===== GetCausalChainRequest Tests =====

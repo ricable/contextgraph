@@ -99,11 +99,24 @@ impl Handlers {
         let fetch_multiplier = 5;
         let fetch_top_k = top_k * fetch_multiplier;
 
+        // Parse strategy from request - Pipeline enables E13 recall + E12 reranking
+        let strategy = request.parse_strategy();
+        let enable_rerank = matches!(strategy, SearchStrategy::Pipeline);
+
+        info!(
+            strategy = ?strategy,
+            enable_rerank = enable_rerank,
+            rerank_weight = request.rerank_weight,
+            "search_causes: Using search strategy"
+        );
+
         let options = TeleologicalSearchOptions::quick(fetch_top_k)
-            .with_strategy(SearchStrategy::MultiSpace)
+            .with_strategy(strategy)
             .with_weight_profile("causal_reasoning")
             .with_min_similarity(0.0) // Get all candidates, filter later
-            .with_causal_direction(CausalDirection::Cause); // Seeking causes
+            .with_causal_direction(CausalDirection::Cause) // Seeking causes
+            .with_rerank(enable_rerank) // Auto-enable E12 for pipeline
+            .with_rerank_weight(request.rerank_weight); // User-configurable E12 weight
 
         let candidates = match self
             .teleological_store
