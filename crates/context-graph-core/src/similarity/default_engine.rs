@@ -96,32 +96,21 @@ impl DefaultCrossSpaceEngine {
         }
     }
 
-    /// Compute sparse dot product similarity between two sparse vectors.
+    /// Compute sparse cosine similarity between two sparse vectors.
     ///
-    /// Uses sorted merge to compute intersection efficiently.
+    /// Uses SparseVector::cosine_similarity() for proper normalization.
+    /// This ensures E6/E13 sparse embeddings produce scores in [-1, 1] range.
+    ///
+    /// # Important
+    ///
+    /// Per ARCH-12 and constitution.yaml, sparse vectors (E6/E13) must use
+    /// cosine similarity, NOT raw dot product. Raw dot product is unbounded
+    /// and would produce incorrect scores when normalized with (sim + 1) / 2.
     #[inline]
-    fn sparse_dot_product(a: &SparseVector, b: &SparseVector) -> f32 {
-        if a.indices.is_empty() || b.indices.is_empty() {
-            return 0.0;
-        }
-
-        let mut sum = 0.0f32;
-        let mut i = 0usize;
-        let mut j = 0usize;
-
-        while i < a.indices.len() && j < b.indices.len() {
-            if a.indices[i] == b.indices[j] {
-                sum += a.values[i] * b.values[j];
-                i += 1;
-                j += 1;
-            } else if a.indices[i] < b.indices[j] {
-                i += 1;
-            } else {
-                j += 1;
-            }
-        }
-
-        sum
+    fn sparse_cosine_similarity(a: &SparseVector, b: &SparseVector) -> f32 {
+        // Delegate to SparseVector's proper cosine similarity implementation
+        // which normalizes by L2 norms: dot(a,b) / (||a|| * ||b||)
+        a.cosine_similarity(b)
     }
 
     /// Compute MaxSim for token-level embeddings (E12 ColBERT).
@@ -168,6 +157,14 @@ impl DefaultCrossSpaceEngine {
     /// Compute similarity between two embedding slices.
     ///
     /// Handles all three types: Dense, Sparse, TokenLevel
+    ///
+    /// # Space-specific handling
+    ///
+    /// - Dense vectors (E1, E5, E7, E8, E10, E11): Cosine similarity in [-1, 1]
+    /// - Sparse vectors (E6, E13): Cosine similarity via SparseVector::cosine_similarity()
+    /// - Token-level (E12): MaxSim normalized by query length
+    /// - E9 (HDC projected): Returns score directly without additional normalization
+    ///   (E9 projected vectors are already in [0, 1] conceptually from Hamming)
     fn compute_slice_similarity(
         slice1: &EmbeddingSlice<'_>,
         slice2: &EmbeddingSlice<'_>,
@@ -178,7 +175,9 @@ impl DefaultCrossSpaceEngine {
                 Self::cosine_similarity_dense(a, b)
             }
             (EmbeddingSlice::Sparse(a), EmbeddingSlice::Sparse(b)) => {
-                Ok(Self::sparse_dot_product(a, b))
+                // Use proper cosine similarity, not raw dot product
+                // This ensures E6/E13 produce scores in [-1, 1] range
+                Ok(Self::sparse_cosine_similarity(a, b))
             }
             (EmbeddingSlice::TokenLevel(a), EmbeddingSlice::TokenLevel(b)) => {
                 Ok(Self::maxsim_token_level(a, b))
@@ -535,7 +534,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sparse_dot_product() {
+    fn test_sparse_cosine_similarity() {
         let a = SparseVector {
             indices: vec![1, 3, 5],
             values: vec![0.5, 0.3, 0.2],
@@ -544,14 +543,17 @@ mod tests {
             indices: vec![1, 4, 5],
             values: vec![0.4, 0.6, 0.1],
         };
-        // Intersection at indices 1 and 5: 0.5*0.4 + 0.2*0.1 = 0.2 + 0.02 = 0.22
-        let dot = DefaultCrossSpaceEngine::sparse_dot_product(&a, &b);
+        // Intersection at indices 1 and 5: 0.5*0.4 + 0.2*0.1 = 0.2 + 0.02 = 0.22 (dot product)
+        // ||a|| = sqrt(0.25 + 0.09 + 0.04) = sqrt(0.38) ≈ 0.6164
+        // ||b|| = sqrt(0.16 + 0.36 + 0.01) = sqrt(0.53) ≈ 0.7280
+        // cosine = 0.22 / (0.6164 * 0.7280) ≈ 0.490
+        let cos = DefaultCrossSpaceEngine::sparse_cosine_similarity(&a, &b);
         assert!(
-            (dot - 0.22).abs() < 1e-6,
-            "Sparse dot product mismatch: {}",
-            dot
+            (cos - 0.490).abs() < 0.01,
+            "Sparse cosine similarity mismatch: {}",
+            cos
         );
-        println!("[PASS] Sparse dot product: {}", dot);
+        println!("[PASS] Sparse cosine similarity: {}", cos);
     }
 
     #[test]

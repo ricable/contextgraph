@@ -119,10 +119,20 @@ pub fn max_sim(query_tokens: &[Vec<f32>], memory_tokens: &[Vec<f32>]) -> f32 {
     total_max / query_tokens.len() as f32
 }
 
-/// Compute TransE-style similarity for knowledge graph embeddings.
+/// Compute TransE-style similarity for knowledge graph triplet scoring.
 ///
 /// Uses inverse of Euclidean distance: 1 / (1 + distance).
 /// This maps distance [0, ∞) to similarity (0, 1].
+///
+/// # Important
+///
+/// This function is designed for TransE triplet operations (h + r - t),
+/// NOT for general entity-entity similarity. For general E11 similarity,
+/// use `cosine_similarity()` instead.
+///
+/// This function is used by:
+/// - `infer_relationship` MCP tool (computing predicted relation vectors)
+/// - `validate_knowledge` MCP tool (scoring (subject, predicate, object) triples)
 ///
 /// # Returns
 /// Similarity in (0.0, 1.0] where 1.0 = identical vectors (distance = 0)
@@ -152,7 +162,7 @@ pub fn transe_similarity(a: &[f32], b: &[f32]) -> f32 {
 /// - E8 (Emotional): Cosine
 /// - E9 (HDC): Cosine on projected dense (see note below)
 /// - E10 (Multimodal): Cosine
-/// - E11 (Entity): TransE (with optional entity linking via entity module)
+/// - E11 (Entity): Cosine (TransE used only for triplet operations in entity tools)
 /// - E12 (LateInteraction): MaxSim (used for Stage 3 re-ranking only)
 /// - E13 (KeywordSplade): Jaccard (used for Stage 1 recall only)
 ///
@@ -163,6 +173,13 @@ pub fn transe_similarity(a: &[f32], b: &[f32]) -> f32 {
 /// on the projected representation is used. For true Hamming distance on binary
 /// HDC vectors, the `hamming_similarity()` function with `BinaryVector` can be
 /// used if native binary storage is implemented in the future.
+///
+/// # E11 Entity Note
+///
+/// E11 uses cosine similarity for general entity-entity comparison. The TransE
+/// similarity function (transe_similarity) is reserved for specific knowledge
+/// graph operations in entity_tools (infer_relationship, validate_knowledge)
+/// where the triplet scoring formula ||h + r - t|| is semantically meaningful.
 ///
 /// # Arguments
 /// * `embedder` - Which embedding space to compare
@@ -181,10 +198,10 @@ pub fn compute_similarity_for_space(
 
     match (query_ref, memory_ref) {
         (EmbeddingRef::Dense(q), EmbeddingRef::Dense(m)) => {
-            match embedder {
-                Embedder::Entity => transe_similarity(q, m),
-                _ => cosine_similarity(q, m),
-            }
+            // All dense embedders use cosine similarity
+            // E11 (Entity) now uses cosine for general similarity;
+            // TransE is reserved for triplet operations in entity_tools
+            cosine_similarity(q, m)
         }
         (EmbeddingRef::Sparse(q), EmbeddingRef::Sparse(m)) => jaccard_similarity(q, m),
         (EmbeddingRef::TokenLevel(q), EmbeddingRef::TokenLevel(m)) => max_sim(q, m),
@@ -692,20 +709,41 @@ mod tests {
     }
 
     #[test]
-    fn test_compute_similarity_entity_uses_transe() {
+    fn test_compute_similarity_entity_uses_cosine() {
         let mut query = SemanticFingerprint::zeroed();
         let mut memory = SemanticFingerprint::zeroed();
 
-        // Set entity embeddings with unit distance (KEPLER = 768D)
+        // Set entity embeddings - both pointing in same direction (KEPLER = 768D)
         query.e11_entity = vec![0.0; 768];
         memory.e11_entity = vec![0.0; 768];
-        memory.e11_entity[0] = 1.0; // Distance = 1.0
+        query.e11_entity[0] = 1.0;
+        memory.e11_entity[0] = 1.0;
 
         let sim = compute_similarity_for_space(Embedder::Entity, &query, &memory);
-        // TransE: 1 / (1 + 1) = 0.5
-        assert!((sim - 0.5).abs() < 1e-5, "Expected 0.5 (TransE), got {}", sim);
+        // Cosine of identical unit vectors = 1.0, normalized = (1.0 + 1.0) / 2.0 = 1.0
+        assert!((sim - 1.0).abs() < 1e-5, "Expected 1.0 (cosine identical), got {}", sim);
         println!(
-            "[PASS] compute_similarity_for_space(Entity) uses TransE = {:.6}",
+            "[PASS] compute_similarity_for_space(Entity) uses Cosine = {:.6}",
+            sim
+        );
+    }
+
+    #[test]
+    fn test_compute_similarity_entity_orthogonal() {
+        let mut query = SemanticFingerprint::zeroed();
+        let mut memory = SemanticFingerprint::zeroed();
+
+        // Set orthogonal entity embeddings (KEPLER = 768D)
+        query.e11_entity = vec![0.0; 768];
+        memory.e11_entity = vec![0.0; 768];
+        query.e11_entity[0] = 1.0;  // Points in first dimension
+        memory.e11_entity[1] = 1.0; // Points in second dimension
+
+        let sim = compute_similarity_for_space(Embedder::Entity, &query, &memory);
+        // Cosine of orthogonal vectors = 0.0, normalized = (0.0 + 1.0) / 2.0 = 0.5
+        assert!((sim - 0.5).abs() < 1e-5, "Expected 0.5 (cosine orthogonal), got {}", sim);
+        println!(
+            "[PASS] compute_similarity_for_space(Entity) orthogonal = {:.6}",
             sim
         );
     }
