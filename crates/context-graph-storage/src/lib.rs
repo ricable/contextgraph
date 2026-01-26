@@ -11,15 +11,17 @@
 //! # Architecture
 //! - `memex`: Storage trait abstraction (Memex = "memory index")
 //! - `rocksdb_backend`: RocksDB implementation
-//! - `column_families`: Column family definitions (8 base CFs per PRD v6)
+//! - `column_families`: Column family definitions (11 base CFs)
 //! - `teleological`: TeleologicalFingerprint storage extensions
+//! - `graph_edges`: K-NN graph edges and typed edges (TASK-GRAPHLINK)
 //! - `serialization`: Bincode serialization utilities
 //! - `indexes`: Secondary index operations (tags, temporal, sources)
 //! - `code`: Code entity and E7 embedding storage (separate from text)
 //!
-//! # Column Families (37 total per PRD v6)
+//! # Column Families (39 total)
 //!
-//! Base (8): nodes, edges, embeddings, metadata, temporal, tags, sources, system
+//! Base (11): nodes, edges, embeddings, metadata, temporal, tags, sources, system,
+//!            embedder_edges, typed_edges, typed_edges_by_type
 //! Teleological (15): fingerprints, topic_profiles, e13_splade_inverted, e1_matryoshka_128,
 //!                    synergy_matrix, teleological_profiles, teleological_vectors, etc.
 //! Quantized Embedder (13): emb_0..emb_12
@@ -32,6 +34,7 @@
 
 pub mod code;
 pub mod column_families;
+pub mod graph_edges;
 pub mod indexes;
 pub mod memex;
 pub mod rocksdb_backend;

@@ -22,20 +22,24 @@
 //! - `storage_keys`: Binary key formats for RocksDB storage
 
 mod direction;
+mod edge_builder;
 mod edge_type;
 mod embedder_edge;
 mod error;
 mod knn_graph;
+mod nn_descent;
 mod storage_keys;
 mod thresholds;
 mod typed_edge;
 
 // Re-exports
 pub use direction::DirectedRelation;
+pub use edge_builder::{EdgeBuilder, EdgeBuilderConfig, EdgeBuilderStats};
 pub use edge_type::GraphLinkEdgeType;
 pub use embedder_edge::EmbedderEdge;
 pub use error::{EdgeError, EdgeResult};
 pub use knn_graph::{KnnGraph, KnnGraphStats};
+pub use nn_descent::{build_asymmetric_knn, NnDescent, NnDescentConfig, NnDescentStats};
 pub use storage_keys::{EdgeStorageKey, TypedEdgeStorageKey};
 pub use thresholds::{EdgeThresholds, DEFAULT_THRESHOLDS};
 pub use typed_edge::TypedEdge;

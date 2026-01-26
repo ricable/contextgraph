@@ -222,6 +222,53 @@ impl EmbedderEdge {
             direction: self.direction.reverse(),
         }
     }
+
+    /// Reconstruct an edge from storage without validation.
+    ///
+    /// # Safety (Logical)
+    ///
+    /// This method bypasses validation checks because the data was already
+    /// validated when it was originally stored. Use only for deserializing
+    /// data that was written by this module.
+    ///
+    /// # Arguments
+    ///
+    /// * `source` - Source node UUID
+    /// * `target` - Target node UUID
+    /// * `embedder_id` - Embedder index (0-12)
+    /// * `similarity` - Similarity score
+    ///
+    /// Direction is set to Symmetric. For asymmetric edges, use `from_storage_directed`.
+    #[inline]
+    pub fn from_storage(source: Uuid, target: Uuid, embedder_id: u8, similarity: f32) -> Self {
+        Self {
+            source,
+            target,
+            embedder_id,
+            similarity,
+            direction: DirectedRelation::Symmetric,
+        }
+    }
+
+    /// Reconstruct an edge from storage with direction, without validation.
+    ///
+    /// See `from_storage` for safety notes.
+    #[inline]
+    pub fn from_storage_directed(
+        source: Uuid,
+        target: Uuid,
+        embedder_id: u8,
+        similarity: f32,
+        direction: DirectedRelation,
+    ) -> Self {
+        Self {
+            source,
+            target,
+            embedder_id,
+            similarity,
+            direction,
+        }
+    }
 }
 
 #[cfg(test)]

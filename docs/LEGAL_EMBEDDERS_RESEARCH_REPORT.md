@@ -2,10 +2,11 @@
 
 ## Multi-Embedder Knowledge Graph Architecture for Billion-Scale Legal Corpus
 
-**Version**: 2.0.0
+**Version**: 2.1.0
 **Date**: 2026-01-25
 **Scale Target**: 1+ Billion Legal Documents
 **Purpose**: Comprehensive architecture for legal document embedding, linking, and insight extraction
+**Status**: Current state analysis added - see Part VII for implementation gap analysis
 
 ---
 
@@ -40,7 +41,13 @@
 ### Part VI: Implementation
 17. [Recommended Legal Embedder Stack (15+ Embedders)](#17-recommended-legal-embedder-stack)
 18. [Implementation Roadmap](#18-implementation-roadmap)
-19. [References](#19-references)
+
+### Part VII: Current State Analysis
+19. [Current State vs. Target State](#19-current-state-vs-target-state)
+20. [Gap Analysis and Prioritization](#20-gap-analysis-and-prioritization)
+
+### Appendices
+21. [References](#21-references)
 
 ---
 
@@ -1936,7 +1943,370 @@ Month 12: Optimization + Launch
 
 ---
 
-## 19. References
+# Part VII: Current State Analysis
+
+## 19. Current State vs. Target State
+
+*This section documents what exists in the Context Graph codebase as of 2026-01-25 versus what needs to be built for the legal document analysis system.*
+
+### 19.1 Graph Linking Infrastructure: ✅ IMPLEMENTED
+
+The core graph linking module has been implemented in `context-graph-core/src/graph_linking/`:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    GRAPH LINKING MODULE (IMPLEMENTED)                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  crates/context-graph-core/src/graph_linking/                               │
+│  ├── mod.rs           Module entry point, constants                         │
+│  ├── edge_type.rs     8 GraphLinkEdgeType variants                          │
+│  ├── typed_edge.rs    TypedEdge with 13-embedder score tracking             │
+│  ├── embedder_edge.rs Per-embedder K-NN edges                               │
+│  ├── knn_graph.rs     K-NN graph with adjacency list                        │
+│  ├── direction.rs     DirectedRelation for asymmetric edges                 │
+│  ├── storage_keys.rs  Binary key formats for RocksDB                        │
+│  ├── thresholds.rs    Configurable edge detection thresholds                │
+│  └── error.rs         Fail-fast error types                                 │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Constants (from mod.rs):**
+```rust
+pub const KNN_K: usize = 20;              // Neighbors per node (k=20)
+pub const NN_DESCENT_ITERATIONS: usize = 8;  // NN-Descent iterations
+pub const NN_DESCENT_SAMPLE_RATE: f32 = 0.5; // Sampling rate (ρ=0.5)
+pub const MIN_KNN_SIMILARITY: f32 = 0.3;     // Minimum edge threshold
+```
+
+### 19.2 Edge Types: ✅ 8 TYPES IMPLEMENTED
+
+The 8 `GraphLinkEdgeType` variants map to specific embedders:
+
+| Edge Type | Primary Embedder | Description | Status |
+|-----------|------------------|-------------|--------|
+| `SemanticSimilar` | E1 (index 0) | Semantic similarity edges | ✅ Implemented |
+| `CodeRelated` | E7 (index 6) | Code pattern edges | ✅ Implemented |
+| `EntityShared` | E11 (index 10) | Shared entity edges | ✅ Implemented |
+| `CausalChain` | E5 (index 4) | Causal reasoning edges | ✅ Implemented |
+| `GraphConnected` | E8 (index 7) | Graph structure edges | ✅ Implemented |
+| `IntentAligned` | E10 (index 9) | Intent alignment edges | ✅ Implemented |
+| `KeywordOverlap` | E6 (index 5) / E13 (index 12) | Keyword edges | ✅ Implemented |
+| `MultiAgreement` | None (multi-space) | Cross-embedder agreement | ✅ Implemented |
+
+**Embedder Index Mapping (from edge_type.rs):**
+```rust
+pub fn primary_embedder_index(&self) -> Option<usize> {
+    match self {
+        Self::SemanticSimilar => Some(0),  // E1
+        Self::CodeRelated => Some(6),      // E7
+        Self::EntityShared => Some(10),    // E11
+        Self::CausalChain => Some(4),      // E5
+        Self::GraphConnected => Some(7),   // E8
+        Self::IntentAligned => Some(9),    // E10
+        Self::KeywordOverlap => Some(5),   // E6 (or E13=12)
+        Self::MultiAgreement => None,      // Multi-space agreement
+    }
+}
+```
+
+### 19.3 TypedEdge Structure: ✅ IMPLEMENTED
+
+`TypedEdge` stores multi-embedder agreement scores:
+
+```rust
+pub struct TypedEdge {
+    source: Uuid,                      // Source memory node
+    target: Uuid,                      // Target memory node
+    edge_type: GraphLinkEdgeType,      // One of 8 types
+    weight: f32,                       // Edge weight
+    direction: DirectedRelation,       // Forward/Reverse/Bidirectional
+    embedder_scores: [f32; NUM_EMBEDDERS],  // All 13 scores
+    agreement_count: u8,               // How many embedders agree
+    agreeing_embedders: u16,           // Bitset of agreeing embedders
+}
+```
+
+**Temporal Exclusion (per AP-60):**
+```rust
+// Temporal embedders (E2-E4, indices 1-3) are EXCLUDED from edge detection
+fn is_temporal_embedder(index: usize) -> bool {
+    matches!(index, 1 | 2 | 3)
+}
+```
+
+### 19.4 Storage Infrastructure: ✅ COLUMN FAMILIES EXIST
+
+Three column families for graph linking (from `column_families.rs`):
+
+```rust
+pub const EMBEDDER_EDGES: &str = "embedder_edges";      // Per-embedder K-NN edges
+pub const TYPED_EDGES: &str = "typed_edges";            // Multi-relation typed edges
+pub const TYPED_EDGES_BY_TYPE: &str = "typed_edges_by_type";  // Secondary index by type
+```
+
+### 19.5 Current 13 Embedders: ✅ IMPLEMENTED
+
+The existing embedder stack (from CLAUDE.md):
+
+| ID | Name | Dimension | Model | Status |
+|----|------|-----------|-------|--------|
+| E1 | V_meaning | 1024D | e5-large-v2 | ✅ Generic (needs legal upgrade) |
+| E2 | V_freshness | 512D | Temporal | ✅ Implemented |
+| E3 | V_periodicity | 512D | Temporal | ✅ Implemented |
+| E4 | V_ordering | 512D | Temporal | ✅ Implemented |
+| E5 | V_causality | 768D | Causal | ✅ Implemented (asymmetric per ARCH-18) |
+| E6 | V_selectivity | Sparse | SPLADE | ✅ Implemented |
+| E7 | V_correctness | 1536D | Qodo-Embed | ✅ Implemented |
+| E8 | V_connectivity | 384D | Graph | ✅ Implemented (asymmetric) |
+| E9 | V_robustness | 1024D | HDC | ✅ Implemented |
+| E10 | V_multimodality | 768D | Intent | ✅ Implemented (multiplicative boost) |
+| E11 | V_factuality | 768D | KEPLER | ✅ Generic (needs legal NER) |
+| E12 | V_precision | Per-token | ColBERT | ✅ Implemented (reranking only) |
+| E13 | V_keyword_precision | Sparse | SPLADE | ✅ Implemented (Stage 1 recall) |
+
+### 19.6 Architectural Rules: ✅ ENFORCED
+
+Key architectural rules already implemented:
+
+| Rule | Description | Status |
+|------|-------------|--------|
+| ARCH-01 | TeleologicalArray is atomic (all 13 or nothing) | ✅ Enforced |
+| ARCH-02 | Apples-to-apples only (E1↔E1, never E1↔E5) | ✅ Enforced |
+| ARCH-04 | Temporal (E2-E4) NEVER count toward topics | ✅ Enforced |
+| ARCH-12 | E1 is foundation for all retrieval | ✅ Enforced |
+| ARCH-18 | E5/E8 use asymmetric similarity | ✅ Enforced |
+| ARCH-21 | Multi-space uses Weighted RRF | ✅ Enforced |
+| AP-60 | Temporal MUST NOT count toward edges | ✅ Enforced |
+| AP-77 | E5 MUST NOT use symmetric cosine | ✅ Enforced |
+
+---
+
+## 20. Gap Analysis and Prioritization
+
+### 20.1 What's Missing for Legal Domain
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         GAP ANALYSIS: LEGAL SYSTEM                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  EMBEDDER UPGRADES REQUIRED                                                 │
+│  ═════════════════════════════════════════════════════════════════════════  │
+│                                                                             │
+│  ❌ E1-LEGAL: Replace e5-large-v2 with voyage-law-2                         │
+│     • Currently: Generic e5-large-v2 (1024D)                                │
+│     • Target: voyage-law-2 (1024D, +6% on legal benchmarks)                 │
+│     • Effort: API integration or self-hosted deployment                     │
+│     • Priority: P0 (Foundation - everything depends on this)                │
+│                                                                             │
+│  ❌ E5-LEGAL: Legal argument causal embedder                                │
+│     • Currently: Generic causal embedder                                    │
+│     • Target: Legal-BERT fine-tuned on argument mining                      │
+│     • Effort: Fine-tune on legal argument datasets                          │
+│     • Priority: P1 (Enables argument chain discovery)                       │
+│                                                                             │
+│  ❌ E6-LEGAL: Legal keyword sparse embedder                                 │
+│     • Currently: Generic SPLADE                                             │
+│     • Target: SPLADE with legal vocabulary expansion                        │
+│     • Effort: Expand vocabulary with legal terms                            │
+│     • Priority: P2 (Improves precision on legal jargon)                     │
+│                                                                             │
+│  ❌ E8-LEGAL: Citation network embedder                                     │
+│     • Currently: Generic graph embedder                                     │
+│     • Target: MiniLM fine-tuned on citation treatment                       │
+│     • Effort: Fine-tune on citation following/distinguishing                │
+│     • Priority: P1 (Core for precedent navigation)                          │
+│                                                                             │
+│  ❌ E11-LEGAL: Legal entity recognition embedder                            │
+│     • Currently: Generic KEPLER                                             │
+│     • Target: KEPLER + Legal-BERT NER for legal entities                    │
+│     • Effort: Fine-tune on legal entity taxonomy                            │
+│     • Priority: P1 (Courts, parties, doctrines, citations)                  │
+│                                                                             │
+│  NEW EMBEDDERS REQUIRED                                                     │
+│  ═════════════════════════════════════════════════════════════════════════  │
+│                                                                             │
+│  ❌ E14: SAILER Legal Structure (768D)                                      │
+│     • Model: Implement SAILER architecture from SIGIR 2023 paper            │
+│     • Captures: FIRAC structure, fact patterns, holdings                    │
+│     • Effort: Major (implement from paper, pre-train)                       │
+│     • Priority: P1 (Key differentiator for legal search)                    │
+│                                                                             │
+│  ❌ E15: Citation Network Embedding (768D)                                  │
+│     • Model: Node2Vec/GraphSAGE on citation graph                           │
+│     • Captures: Citation pattern similarity                                 │
+│     • Effort: Moderate (train on extracted citation graph)                  │
+│     • Priority: P1 (Enables citation-based similarity)                      │
+│                                                                             │
+│  LEGAL EDGE TYPES REQUIRED                                                  │
+│  ═════════════════════════════════════════════════════════════════════════  │
+│                                                                             │
+│  Current 8 edge types need legal extensions:                                │
+│                                                                             │
+│  ❌ LegalCites       - Explicit citation relationship                       │
+│  ❌ LegalInterprets  - Statute interpretation                               │
+│  ❌ LegalOverrules   - Precedent overruling                                 │
+│  ❌ LegalDistinguishes - Case distinction                                   │
+│  ❌ LegalFollows     - Precedent following                                  │
+│  ❌ LegalAffirms     - Appellate affirmation                                │
+│  ❌ LegalReverses    - Appellate reversal                                   │
+│  ❌ LegalCitedBy     - Reverse citation (for impact)                        │
+│                                                                             │
+│  INFRASTRUCTURE GAPS                                                        │
+│  ═════════════════════════════════════════════════════════════════════════  │
+│                                                                             │
+│  ❌ Legal Citation Parser                                                   │
+│     • Parse US (Bluebook), UK (OSCOLA), EU citation formats                 │
+│     • Extract: Court, year, reporter, page, treatment                       │
+│     • Priority: P0 (Required for citation graph)                            │
+│                                                                             │
+│  ❌ Legal NER Pipeline                                                      │
+│     • Extended taxonomy: Courts, judges, parties, statutes                  │
+│     • Doctrines, remedies, procedural postures                              │
+│     • Priority: P1 (Required for E11-LEGAL)                                 │
+│                                                                             │
+│  ❌ Hyperbolic Hierarchy Embeddings                                         │
+│     • Poincaré embeddings for statute hierarchy                             │
+│     • Court hierarchy navigation                                            │
+│     • Priority: P2 (Improves statute search by 15%)                         │
+│                                                                             │
+│  ❌ R-GCN/GNN Integration                                                   │
+│     • Relation-specific weight learning                                     │
+│     • Multi-hop reasoning on citation graph                                 │
+│     • Priority: P2 (Advanced reasoning capability)                          │
+│                                                                             │
+│  ❌ Jurisdiction-Based Sharding                                             │
+│     • Partition graphs by jurisdiction                                      │
+│     • Cross-jurisdiction query routing                                      │
+│     • Priority: P3 (Required at billion scale)                              │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 20.2 Revised Implementation Roadmap Based on Current State
+
+Given what's already implemented, the revised timeline:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              REVISED ROADMAP: LEGAL DOCUMENT ANALYSIS SYSTEM                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  PHASE 0: LEVERAGE EXISTING (Already Done)                                  │
+│  ═════════════════════════════════════════════════════════════════════════  │
+│  ✅ Graph linking module with K-NN infrastructure                           │
+│  ✅ 8 edge types with embedder mapping                                      │
+│  ✅ TypedEdge with 13-embedder score tracking                               │
+│  ✅ Storage column families (embedder_edges, typed_edges)                   │
+│  ✅ Asymmetric similarity for E5/E8 (per ARCH-18, AP-77)                    │
+│  ✅ Temporal exclusion from edge detection (per AP-60)                      │
+│  ✅ NN-Descent constants (k=20, 8 iterations, ρ=0.5)                        │
+│                                                                             │
+│  PHASE 1: LEGAL FOUNDATION (Month 1-2)                                      │
+│  ═════════════════════════════════════════════════════════════════════════  │
+│  Week 1-2: Integrate voyage-law-2 as E1-LEGAL                               │
+│     • API integration or model download                                     │
+│     • Benchmark vs generic E1 on MLEB legal datasets                        │
+│     • Update E1 index with voyage-law-2 embeddings                          │
+│                                                                             │
+│  Week 3-4: Legal Citation Parser                                            │
+│     • Implement Bluebook citation regex patterns                            │
+│     • Extract: court, year, reporter, page, parallel cites                  │
+│     • Build citation extraction pipeline                                    │
+│                                                                             │
+│  Week 5-6: Legal NER Pipeline                                               │
+│     • Fine-tune Legal-BERT for legal NER                                    │
+│     • Extended taxonomy: courts, judges, parties, statutes, doctrines       │
+│     • Integrate with E11 entity extraction                                  │
+│                                                                             │
+│  Week 7-8: E11-LEGAL Upgrade                                                │
+│     • Update KEPLER with legal entity fine-tuning                           │
+│     • Test entity extraction accuracy on legal docs                         │
+│     • Deploy upgraded E11-LEGAL                                             │
+│                                                                             │
+│  PHASE 2: LEGAL EDGE TYPES (Month 3)                                        │
+│  ═════════════════════════════════════════════════════════════════════════  │
+│  Week 1-2: Extend GraphLinkEdgeType enum                                    │
+│     • Add 8 legal-specific edge types                                       │
+│     • Update edge_type.rs with legal variants                               │
+│     • Implement citation treatment detection                                │
+│                                                                             │
+│  Week 3-4: E8-LEGAL Citation Network                                        │
+│     • Fine-tune MiniLM on citation treatment data                           │
+│     • Asymmetric: citing vs cited direction                                 │
+│     • Build citation graph edges from parsed citations                      │
+│                                                                             │
+│  PHASE 3: LEGAL STRUCTURE EMBEDDERS (Month 4-5)                             │
+│  ═════════════════════════════════════════════════════════════════════════  │
+│  Week 1-4: E14 SAILER Implementation                                        │
+│     • Implement SAILER architecture from paper                              │
+│     • Pre-train on legal document structure                                 │
+│     • Integrate into TeleologicalArray (now 14 embedders)                   │
+│                                                                             │
+│  Week 5-6: E15 Citation Network Embedding                                   │
+│     • Train Node2Vec on extracted citation graph                            │
+│     • Integrate citation embeddings (now 15 embedders)                      │
+│                                                                             │
+│  Week 7-8: E5-LEGAL Argument Mining                                         │
+│     • Fine-tune on legal argument datasets                                  │
+│     • Enhance causal chain detection for legal reasoning                    │
+│                                                                             │
+│  PHASE 4: ADVANCED FEATURES (Month 6-7)                                     │
+│  ═════════════════════════════════════════════════════════════════════════  │
+│  Week 1-4: Hyperbolic Hierarchy                                             │
+│     • Implement Poincaré embeddings                                         │
+│     • Embed statute/court hierarchy                                         │
+│     • Add hyperbolic navigation tools                                       │
+│                                                                             │
+│  Week 5-8: R-GCN Integration                                                │
+│     • Implement R-GCN layer for legal KG                                    │
+│     • Train on citation link prediction                                     │
+│     • Integrate into retrieval pipeline                                     │
+│                                                                             │
+│  PHASE 5: SCALE TO BILLION (Month 8-10)                                     │
+│  ═════════════════════════════════════════════════════════════════════════  │
+│  • Jurisdiction-based sharding implementation                               │
+│  • Distributed index infrastructure                                         │
+│  • Batch ingest 100M → 500M → 1B documents                                  │
+│  • Performance optimization (<200ms P95)                                    │
+│                                                                             │
+│  TOTAL REVISED TIMELINE: 10 months (reduced from 12 due to existing work)   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 20.3 Priority Matrix
+
+| Component | Priority | Depends On | Effort | Impact |
+|-----------|----------|------------|--------|--------|
+| **E1-LEGAL** (voyage-law-2) | P0 | None | Low | High |
+| **Citation Parser** | P0 | None | Medium | High |
+| **Legal NER Pipeline** | P1 | Citation Parser | Medium | High |
+| **E11-LEGAL** (Legal Entities) | P1 | Legal NER | Medium | High |
+| **Legal Edge Types** | P1 | Citation Parser | Medium | High |
+| **E8-LEGAL** (Citation Network) | P1 | Legal Edge Types | Medium | High |
+| **E14** (SAILER Structure) | P1 | E1-LEGAL | High | High |
+| **E15** (Citation Embedding) | P1 | Citation Parser | Medium | Medium |
+| **E5-LEGAL** (Argument Mining) | P2 | E1-LEGAL | Medium | Medium |
+| **E6-LEGAL** (Legal Keywords) | P2 | None | Low | Medium |
+| **Hyperbolic Hierarchy** | P2 | E11-LEGAL | High | Medium |
+| **R-GCN Integration** | P2 | Legal Edge Types | High | Medium |
+| **Jurisdiction Sharding** | P3 | All Above | High | Scale |
+
+### 20.4 Technical Debt to Address
+
+Before legal migration:
+
+1. **Clean up diagnostics** - Several unused variables and imports flagged in recent build
+2. **Validate K-NN graph construction** - KnnGraph structure exists but verify end-to-end flow
+3. **Test TypedEdge persistence** - Column families exist, verify read/write correctness
+4. **Benchmark current E1** - Establish baseline before voyage-law-2 migration
+
+---
+
+## 21. References
 
 ### Legal Embedding Models
 
@@ -2003,31 +2373,52 @@ Month 12: Optimization + Launch
 | ColBERT rerank | <30ms | 50 candidates |
 | **Total P95** | **<200ms** | Full pipeline |
 
-## Appendix C: Implementation Checklist
+## Appendix C: Implementation Checklist (Updated with Current State)
 
-### Phase 1: Foundation
-- [ ] Integrate voyage-law-2 as E1-LEGAL
-- [ ] Fine-tune Legal-BERT for legal NER (E11-LEGAL)
-- [ ] Implement citation parser
-- [ ] Build E1-LEGAL K-NN graph (NN-Descent)
-- [ ] Add `embedder_edges` column family
+### Phase 0: Foundation Infrastructure (ALREADY IMPLEMENTED ✅)
+- [x] Graph linking module (`context-graph-core/src/graph_linking/`)
+- [x] 8 base edge types with embedder mapping (`edge_type.rs`)
+- [x] TypedEdge with 13-embedder score tracking (`typed_edge.rs`)
+- [x] K-NN graph structure with adjacency list (`knn_graph.rs`)
+- [x] NN-Descent constants (k=20, 8 iterations, ρ=0.5)
+- [x] Asymmetric similarity handling for E5/E8 (per ARCH-18, AP-77)
+- [x] Temporal exclusion from edge detection (per AP-60)
+- [x] Add `embedder_edges` column family
+- [x] Add `typed_edges` column family
+- [x] Add `typed_edges_by_type` secondary index
 
-### Phase 2: Legal Structure
-- [ ] Implement SAILER architecture (E14)
-- [ ] Train Node2Vec on citation graph (E15)
-- [ ] Define legal edge type taxonomy
-- [ ] Implement edge type detection pipeline
-- [ ] Create `typed_edges` column family
+### Phase 1: Legal Foundation (TO DO)
+- [ ] Integrate voyage-law-2 as E1-LEGAL (P0)
+- [ ] Benchmark voyage-law-2 vs generic e5-large-v2 on MLEB
+- [ ] Implement legal citation parser (Bluebook, OSCOLA) (P0)
+- [ ] Fine-tune Legal-BERT for legal NER (P1)
+- [ ] Upgrade E11 with legal entity taxonomy (P1)
+- [ ] Build citation extraction pipeline
 
-### Phase 3: GNN Integration
-- [ ] Implement R-GCN for legal KG
-- [ ] Implement Poincaré embeddings for hierarchy
+### Phase 2: Legal Edge Types (TO DO)
+- [ ] Extend GraphLinkEdgeType enum with 8 legal types
+- [ ] Implement citation treatment detection
+- [ ] Fine-tune MiniLM for E8-LEGAL (citation direction)
+- [ ] Build citation graph edges from parsed citations
+- [ ] Test edge type detection accuracy
+
+### Phase 3: Legal Structure Embedders (TO DO)
+- [ ] Implement SAILER architecture (E14) (P1)
+- [ ] Pre-train E14 on legal document structure
+- [ ] Train Node2Vec on citation graph (E15) (P1)
+- [ ] Integrate E14/E15 into TeleologicalArray (→15 embedders)
+- [ ] Update NUM_EMBEDDERS constant to 15
+- [ ] Fine-tune E5 for legal argument mining (P2)
+
+### Phase 4: GNN Integration (TO DO)
+- [ ] Implement R-GCN for legal KG (P2)
+- [ ] Implement Poincaré embeddings for hierarchy (P2)
 - [ ] Implement cross-view contrastive loss
 - [ ] Train on self-supervised legal signals
-- [ ] Integrate GNN inference into pipeline
+- [ ] Integrate GNN inference into retrieval pipeline
 
-### Phase 4: Scale
-- [ ] Implement jurisdiction-based sharding
+### Phase 5: Scale to Billion (TO DO)
+- [ ] Implement jurisdiction-based sharding (P3)
 - [ ] Deploy distributed index infrastructure
 - [ ] Ingest 1B+ documents
 - [ ] Optimize to <200ms P95
