@@ -8,6 +8,7 @@ pub mod comparative;
 pub mod e1_semantic;
 pub mod e4_hybrid_session;
 pub mod e11_entity;
+pub mod embedder_impact;
 pub mod failfast;
 pub mod graph_linking;
 pub mod graph_realdata;
@@ -85,4 +86,9 @@ pub use graph_linking::{
     GraphLinkingBenchmarkConfig, GraphLinkingBenchmarkResults, GraphLinkingBenchmarkRunner,
     GraphLinkingDatasetStats, ValidationCheck as GraphLinkingValidationCheck,
     ValidationSummary as GraphLinkingValidationSummary, run_tier_benchmark, run_quick_benchmark,
+};
+pub use embedder_impact::{
+    EmbedderImpactConfig, EmbedderImpactResults, EmbedderImpactRunner,
+    TierImpactResults, AblationDelta, EnhancementDelta, RetrievalImpactAnalysis,
+    ConstitutionalCompliance, ImpactRecommendation, RecommendationType, BenchmarkMetadata,
 };

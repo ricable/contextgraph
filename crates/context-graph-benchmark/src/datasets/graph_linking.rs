@@ -7,7 +7,7 @@
 //! - Graph expansion in retrieval pipeline
 //! - R-GCN GNN inference
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
@@ -102,7 +102,7 @@ impl GraphLinkingDatasetConfig {
 }
 
 /// Scale tiers for benchmarking.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ScaleTier {
     /// 100 memories, 5 topics
     Tier1_100,
@@ -248,7 +248,7 @@ impl GraphLinkingDataset {
     }
 
     /// Get sample pairs for edge building.
-    pub fn sample_pairs(&self, count: usize) -> impl Iterator<Item = MemoryPair> + '_ {
+    pub fn sample_pairs(&self, count: usize) -> impl Iterator<Item = MemoryPair<'_>> + '_ {
         let mut rng = ChaCha8Rng::seed_from_u64(self.config.seed + 100);
         let memories = &self.memories;
 
@@ -445,8 +445,9 @@ impl GraphLinkingDatasetGenerator {
             e2_temporal_recent: embeddings.e2,
             e3_temporal_periodic: embeddings.e3,
             e4_temporal_positional: embeddings.e4,
-            e5_causal_as_cause: embeddings.e5.clone(),
-            e5_causal_as_effect: embeddings.e5,
+            // Per ARCH-18, AP-77: E5 cause/effect are distinct vectors
+            e5_causal_as_cause: embeddings.e5_cause,
+            e5_causal_as_effect: embeddings.e5_effect,
             e5_causal: Vec::new(),
             e6_sparse: self.generate_sparse(E6_SPARSE_VOCAB, 100),
             e7_code: embeddings.e7,

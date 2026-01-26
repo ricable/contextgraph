@@ -1,11 +1,13 @@
-//! Synthetic dataset generation for benchmarking.
+//! Dataset generation and loading for benchmarking.
 //!
-//! This module generates controlled test data with known ground truth for
-//! evaluating retrieval and clustering performance.
+//! This module provides both synthetic data generation with known ground truth
+//! and real data loaders for BEIR and other benchmark formats.
 
+pub mod beir_loader;
 pub mod causal;
 pub mod e1_semantic;
 pub mod e11_entity;
+pub mod embedder_impact;
 pub mod generator;
 pub mod graph_linking;
 pub mod ground_truth;
@@ -46,6 +48,13 @@ pub use e11_entity::{
 pub use graph_linking::{
     CandidateData, ExpectedEdge, GraphLinkingDataset, GraphLinkingDatasetConfig,
     MemoryData, MemoryPair, ScaleTier, SubgraphData,
+};
+pub use embedder_impact::{
+    EmbedderImpactDataset, EmbedderImpactDatasetConfig, EmbedderImpactDatasetStats,
+    ImpactQueryData, KnnGraph,
+};
+pub use beir_loader::{
+    BeirChunk, BeirDataset, BeirLoader, BeirLoadError, BeirMetadata, BeirQrels, BeirQuery,
 };
 
 use std::collections::{HashMap, HashSet};

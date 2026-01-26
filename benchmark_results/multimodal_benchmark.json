@@ -1,174 +1,174 @@
 {
   "metadata": {
-    "timestamp": "2026-01-23T18:20:01.528629020+00:00",
+    "timestamp": "2026-01-26T15:00:20.380938063+00:00",
     "version": "0.1.0",
     "seed": 42,
-    "max_samples": 200,
-    "num_documents": 100,
-    "num_intent_queries": 30,
-    "num_context_queries": 30
+    "max_samples": 1000,
+    "num_documents": 500,
+    "num_intent_queries": 50,
+    "num_context_queries": 50
   },
   "results": {
     "metrics": {
       "intent_detection": {
-        "total_queries": 60,
-        "correct_intent": 30,
-        "correct_context": 29,
-        "misclassified": 1,
-        "accuracy": 0.9833333333333333,
+        "total_queries": 100,
+        "correct_intent": 50,
+        "correct_context": 45,
+        "misclassified": 5,
+        "accuracy": 0.95,
         "per_domain_accuracy": {
-          "documentation": 1.0,
-          "feature_development": 0.8,
-          "refactoring": 1.0,
-          "testing": 1.0,
+          "feature_development": 0.4444444444444444,
           "infrastructure": 1.0,
+          "testing": 1.0,
+          "documentation": 1.0,
           "bug_fixing": 1.0,
-          "security": 1.0,
-          "performance_optimization": 1.0
+          "performance_optimization": 1.0,
+          "refactoring": 1.0,
+          "security": 1.0
         },
-        "intent_precision": 0.967741935483871,
+        "intent_precision": 0.9090909090909091,
         "intent_recall": 1.0,
-        "intent_f1": 0.9836065573770492
+        "intent_f1": 0.9523809523809523
       },
       "context_matching": {
-        "mrr": 0.2699470899470899,
+        "mrr": 0.08656634567258292,
         "precision_at_k": {
-          "1": 0.06666666666666667,
-          "5": 0.14000000000000007,
-          "10": 0.15833333333333327,
-          "20": 0.14750000000000016
+          "1": 0.0,
+          "20": 0.034499999999999996,
+          "10": 0.027000000000000003,
+          "5": 0.013999999999999999
         },
         "recall_at_k": {
-          "10": 0.5444444444444443,
-          "20": 1.0,
-          "1": 0.02222222222222222,
-          "5": 0.23333333333333328
+          "10": 0.09,
+          "20": 0.22999999999999995,
+          "5": 0.02333333333333333,
+          "1": 0.0
         },
         "ndcg_at_k": {
-          "1": 0.06666666666666667,
-          "20": 0.4830011105154959,
-          "10": 0.3136736652644914,
-          "5": 0.1756327268409294
+          "20": 0.100374331383669,
+          "1": 0.0,
+          "5": 0.020725733767610565,
+          "10": 0.05156847655021371
         },
-        "total_queries": 60,
-        "hits_at_1": 4,
-        "hits_at_5": 27,
-        "hits_at_10": 51
+        "total_queries": 100,
+        "hits_at_1": 0,
+        "hits_at_5": 7,
+        "hits_at_10": 17
       },
       "asymmetric_retrieval": {
         "total_queries": 4,
-        "intent_to_context_wins": 4,
+        "intent_to_context_wins": 0,
         "context_to_intent_wins": 0,
-        "ties": 0,
-        "observed_asymmetry_ratio": 1.5000000372529023,
-        "expected_asymmetry_ratio": 1.5,
+        "ties": 4,
+        "observed_asymmetry_ratio": 1.0,
+        "expected_asymmetry_ratio": 1.0,
         "formula_compliant": true,
-        "intent_to_context_modifier": 1.2,
-        "context_to_intent_modifier": 0.8,
+        "intent_to_context_modifier": 1.0,
+        "context_to_intent_modifier": 1.0,
         "same_direction_modifier": 1.0,
-        "e10_contribution_percentage": 100.0
+        "e10_contribution_percentage": 0.0
       },
       "ablation": {
-        "e1_only_mrr": 0.47303571428571417,
-        "e10_only_mrr": 0.42713744588744584,
-        "e1_e10_blend_mrr": 0.38407287157287145,
-        "full_13_space_mrr": 0.3475198412698414,
-        "e10_contribution": -0.08896284271284272,
-        "e10_contribution_percentage": -18.80679196647487,
+        "e1_only_mrr": 0.17024998948142847,
+        "e10_only_mrr": 0.11658164688387371,
+        "e1_e10_blend_mrr": 0.1694826160336203,
+        "full_13_space_mrr": 0.1700148509771961,
+        "e10_contribution": -0.0007673734478081673,
+        "e10_contribution_percentage": -0.4507333305250367,
         "blend_analysis": [
           {
             "blend_value": 0.0,
             "e1_weight": 1.0,
             "e10_weight": 0.0,
-            "mrr": 0.47303571428571417,
-            "precision_at_5": 0.16000000000000006
+            "mrr": 0.17024998948142847,
+            "precision_at_5": 0.04600000000000001
           },
           {
             "blend_value": 0.1,
             "e1_weight": 0.9,
             "e10_weight": 0.1,
-            "mrr": 0.38876984126984127,
-            "precision_at_5": 0.17
+            "mrr": 0.1694826160336203,
+            "precision_at_5": 0.04600000000000001
           },
           {
             "blend_value": 0.2,
             "e1_weight": 0.8,
             "e10_weight": 0.2,
-            "mrr": 0.36960317460317443,
-            "precision_at_5": 0.17
+            "mrr": 0.17082060775204685,
+            "precision_at_5": 0.04600000000000001
           },
           {
             "blend_value": 0.3,
             "e1_weight": 0.7,
             "e10_weight": 0.3,
-            "mrr": 0.38407287157287145,
-            "precision_at_5": 0.19666666666666668
+            "mrr": 0.2051947166180913,
+            "precision_at_5": 0.04600000000000001
           },
           {
             "blend_value": 0.4,
             "e1_weight": 0.6,
             "e10_weight": 0.4,
-            "mrr": 0.4554882154882153,
-            "precision_at_5": 0.1933333333333333
+            "mrr": 0.20648137440474912,
+            "precision_at_5": 0.04600000000000001
           },
           {
             "blend_value": 0.5,
             "e1_weight": 0.5,
             "e10_weight": 0.5,
-            "mrr": 0.4568823768823767,
-            "precision_at_5": 0.21666666666666662
+            "mrr": 0.2152981713384942,
+            "precision_at_5": 0.04600000000000001
           },
           {
             "blend_value": 0.6,
             "e1_weight": 0.4,
             "e10_weight": 0.6,
-            "mrr": 0.4602248677248678,
-            "precision_at_5": 0.21666666666666662
+            "mrr": 0.20357646009819944,
+            "precision_at_5": 0.04600000000000001
           },
           {
             "blend_value": 0.7,
             "e1_weight": 0.30000000000000004,
             "e10_weight": 0.7,
-            "mrr": 0.427680375180375,
-            "precision_at_5": 0.21666666666666662
+            "mrr": 0.19773093988950763,
+            "precision_at_5": 0.06600000000000003
           },
           {
             "blend_value": 0.8,
             "e1_weight": 0.19999999999999996,
             "e10_weight": 0.8,
-            "mrr": 0.3152919322965767,
-            "precision_at_5": 0.1266666666666667
+            "mrr": 0.1467583835616216,
+            "precision_at_5": 0.05200000000000002
           },
           {
             "blend_value": 0.9,
             "e1_weight": 0.09999999999999998,
             "e10_weight": 0.9,
-            "mrr": 0.2664925277135655,
-            "precision_at_5": 0.08000000000000003
+            "mrr": 0.10997404078499473,
+            "precision_at_5": 0.03400000000000001
           },
           {
             "blend_value": 1.0,
             "e1_weight": 0.0,
             "e10_weight": 1.0,
-            "mrr": 0.10325497974702483,
-            "precision_at_5": 0.03666666666666666
+            "mrr": 0.018398212613127022,
+            "precision_at_5": 0.0
           }
         ]
       }
     },
     "timings": {
-      "total_ms": 100,
-      "dataset_generation_ms": 0,
+      "total_ms": 9227,
+      "dataset_generation_ms": 7,
       "intent_detection_ms": 0,
-      "context_matching_ms": 4,
+      "context_matching_ms": 379,
       "asymmetric_validation_ms": 0,
-      "ablation_ms": 96
+      "ablation_ms": 8839
     },
     "config": {
       "dataset": {
-        "num_documents": 100,
-        "num_intent_queries": 30,
-        "num_context_queries": 30,
+        "num_documents": 500,
+        "num_intent_queries": 50,
+        "num_context_queries": 50,
         "seed": 42,
         "domains": [
           "PerformanceOptimization",
@@ -207,42 +207,42 @@
       ]
     },
     "dataset_stats": {
-      "total_documents": 100,
+      "total_documents": 500,
       "documents_per_domain": {
-        "infrastructure": 13,
-        "performance_optimization": 10,
-        "documentation": 16,
-        "testing": 12,
-        "security": 8,
-        "bug_fixing": 11,
-        "refactoring": 15,
-        "feature_development": 15
+        "testing": 54,
+        "performance_optimization": 67,
+        "security": 55,
+        "documentation": 72,
+        "infrastructure": 63,
+        "feature_development": 59,
+        "bug_fixing": 65,
+        "refactoring": 65
       },
-      "intent_documents": 50,
-      "context_documents": 50,
-      "intent_queries": 30,
-      "context_queries": 30
+      "intent_documents": 250,
+      "context_documents": 250,
+      "intent_queries": 50,
+      "context_queries": 50
     }
   },
   "summary": {
-    "intent_detection_accuracy": 0.9833333333333333,
-    "intent_precision": 0.967741935483871,
+    "intent_detection_accuracy": 0.95,
+    "intent_precision": 0.9090909090909091,
     "intent_recall": 1.0,
-    "mrr": 0.2699470899470899,
-    "precision_at_1": 0.06666666666666667,
-    "precision_at_5": 0.14000000000000007,
-    "precision_at_10": 0.15833333333333327,
-    "ndcg_at_10": 0.3136736652644914,
-    "asymmetry_ratio": 1.5000000372529023,
-    "intent_to_context_modifier": 1.2,
-    "context_to_intent_modifier": 0.8,
+    "mrr": 0.08656634567258292,
+    "precision_at_1": 0.0,
+    "precision_at_5": 0.013999999999999999,
+    "precision_at_10": 0.027000000000000003,
+    "ndcg_at_10": 0.05156847655021371,
+    "asymmetry_ratio": 1.0,
+    "intent_to_context_modifier": 1.0,
+    "context_to_intent_modifier": 1.0,
     "formula_compliant": true,
-    "e1_only_mrr": 0.47303571428571417,
-    "e10_only_mrr": 0.42713744588744584,
-    "e1_e10_blend_mrr": 0.38407287157287145,
-    "e10_contribution_percentage": -18.80679196647487,
-    "optimal_blend_value": 0.0,
-    "total_duration_ms": 100,
+    "e1_only_mrr": 0.17024998948142847,
+    "e10_only_mrr": 0.11658164688387371,
+    "e1_e10_blend_mrr": 0.1694826160336203,
+    "e10_contribution_percentage": -0.4507333305250367,
+    "optimal_blend_value": 0.5,
+    "total_duration_ms": 9227,
     "all_tests_passed": false
   }
 }

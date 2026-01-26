@@ -22,8 +22,12 @@ pub struct TopicCluster {
     pub name: String,
     /// Centroid for E1 (semantic) - 1024D.
     pub e1_centroid: Vec<f32>,
-    /// Centroid for E5 (causal) - 768D.
-    pub e5_centroid: Vec<f32>,
+    /// Centroid for E5 cause vector - 768D.
+    /// Per ARCH-18, AP-77: E5 requires distinct cause/effect vectors for asymmetric similarity.
+    pub e5_cause_centroid: Vec<f32>,
+    /// Centroid for E5 effect vector - 768D.
+    /// Per ARCH-18, AP-77: E5 requires distinct cause/effect vectors for asymmetric similarity.
+    pub e5_effect_centroid: Vec<f32>,
     /// Centroid for E7 (code) - 1536D.
     pub e7_centroid: Vec<f32>,
     /// Centroid for E10 (multimodal) - 768D.
@@ -54,7 +58,9 @@ impl TopicCluster {
             e2: random_embedding(E2_DIM, rng), // Temporal - not topic-specific
             e3: random_embedding(E3_DIM, rng),
             e4: random_embedding(E4_DIM, rng),
-            e5: sample_from_centroid(&self.e5_centroid, noise_std, rng),
+            // Per ARCH-18, AP-77: E5 cause/effect are distinct vectors
+            e5_cause: sample_from_centroid(&self.e5_cause_centroid, noise_std, rng),
+            e5_effect: sample_from_centroid(&self.e5_effect_centroid, noise_std, rng),
             e7: sample_from_centroid(&self.e7_centroid, noise_std, rng),
             e8: random_embedding(E8_DIM, rng),
             e9: random_embedding(E9_DIM, rng),
@@ -71,7 +77,10 @@ pub struct AllEmbeddings {
     pub e2: Vec<f32>,
     pub e3: Vec<f32>,
     pub e4: Vec<f32>,
-    pub e5: Vec<f32>,
+    /// E5 cause vector - per ARCH-18, AP-77 for asymmetric similarity.
+    pub e5_cause: Vec<f32>,
+    /// E5 effect vector - per ARCH-18, AP-77 for asymmetric similarity.
+    pub e5_effect: Vec<f32>,
     pub e7: Vec<f32>,
     pub e8: Vec<f32>,
     pub e9: Vec<f32>,
@@ -126,6 +135,9 @@ impl TopicGenerator {
     }
 
     /// Generate a single topic with controlled distance from existing topics.
+    ///
+    /// Per ARCH-18, AP-77: E5 requires distinct cause/effect centroids with
+    /// minimum 0.3 cosine distance to enable asymmetric similarity.
     fn generate_single_topic(
         &mut self,
         id: usize,
@@ -133,10 +145,13 @@ impl TopicGenerator {
         noise_std: f32,
     ) -> TopicCluster {
         const MAX_ATTEMPTS: usize = 100;
+        const E5_MIN_CAUSE_EFFECT_DISTANCE: f32 = 0.3;
 
         for _ in 0..MAX_ATTEMPTS {
             let e1_centroid = random_unit_embedding(E1_DIM, &mut self.rng);
-            let e5_centroid = random_unit_embedding(768, &mut self.rng);
+            // Generate two distinct E5 centroids for cause/effect per ARCH-18, AP-77
+            let (e5_cause_centroid, e5_effect_centroid) =
+                generate_distinct_e5_pair(&mut self.rng, E5_MIN_CAUSE_EFFECT_DISTANCE);
             let e7_centroid = random_unit_embedding(E7_DIM, &mut self.rng);
             let e10_centroid = random_unit_embedding(768, &mut self.rng);
 
@@ -155,7 +170,8 @@ impl TopicGenerator {
                     id,
                     name: format!("Topic_{}", id),
                     e1_centroid,
-                    e5_centroid,
+                    e5_cause_centroid,
+                    e5_effect_centroid,
                     e7_centroid,
                     e10_centroid,
                     noise_std,
@@ -165,11 +181,14 @@ impl TopicGenerator {
 
         // If we couldn't find a well-separated point, just use random
         // This can happen with many topics in high dimensions
+        let (e5_cause_centroid, e5_effect_centroid) =
+            generate_distinct_e5_pair(&mut self.rng, E5_MIN_CAUSE_EFFECT_DISTANCE);
         TopicCluster {
             id,
             name: format!("Topic_{}", id),
             e1_centroid: random_unit_embedding(E1_DIM, &mut self.rng),
-            e5_centroid: random_unit_embedding(768, &mut self.rng),
+            e5_cause_centroid,
+            e5_effect_centroid,
             e7_centroid: random_unit_embedding(E7_DIM, &mut self.rng),
             e10_centroid: random_unit_embedding(768, &mut self.rng),
             noise_std,
@@ -201,16 +220,21 @@ impl TopicGenerator {
     /// Generate a full divergent topic cluster (not similar to any existing topic).
     /// Used for creating full fingerprints for divergent queries.
     pub fn generate_divergent_topic(&mut self, existing: &[TopicCluster]) -> TopicCluster {
+        const E5_MIN_CAUSE_EFFECT_DISTANCE: f32 = 0.3;
+
         let id = self.next_id;
         self.next_id += 1;
 
         let e1_centroid = self.generate_divergent_centroid(existing);
+        let (e5_cause_centroid, e5_effect_centroid) =
+            generate_distinct_e5_pair(&mut self.rng, E5_MIN_CAUSE_EFFECT_DISTANCE);
 
         TopicCluster {
             id,
             name: format!("Divergent_{}", id),
             e1_centroid,
-            e5_centroid: random_unit_embedding(768, &mut self.rng),
+            e5_cause_centroid,
+            e5_effect_centroid,
             e7_centroid: random_unit_embedding(E7_DIM, &mut self.rng),
             e10_centroid: random_unit_embedding(768, &mut self.rng),
             noise_std: 0.1, // Lower noise for divergent topics
@@ -260,6 +284,34 @@ fn sample_from_centroid(centroid: &[f32], noise_std: f32, rng: &mut ChaCha8Rng) 
     sample
 }
 
+/// Generate a pair of distinct E5 cause/effect centroids.
+///
+/// Per ARCH-18, AP-77: E5 requires distinct cause/effect vectors for asymmetric similarity.
+/// This function ensures the two vectors have at least `min_distance` cosine distance
+/// (i.e., cosine similarity <= 1.0 - min_distance).
+fn generate_distinct_e5_pair(rng: &mut ChaCha8Rng, min_distance: f32) -> (Vec<f32>, Vec<f32>) {
+    const E5_DIM: usize = 768;
+    const MAX_ATTEMPTS: usize = 100;
+
+    let cause = random_unit_embedding(E5_DIM, rng);
+
+    for _ in 0..MAX_ATTEMPTS {
+        let effect = random_unit_embedding(E5_DIM, rng);
+        let sim = cosine_similarity(&cause, &effect);
+
+        // Check distance: cosine_distance = 1 - cosine_similarity
+        // We want distance >= min_distance, so sim <= 1 - min_distance
+        if sim <= 1.0 - min_distance {
+            return (cause, effect);
+        }
+    }
+
+    // Fallback: just use two random vectors (in high dimensions, random vectors
+    // are nearly orthogonal anyway, so this should rarely happen)
+    let effect = random_unit_embedding(E5_DIM, rng);
+    (cause, effect)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -274,8 +326,27 @@ mod tests {
         // Check all topics have correct dimensions
         for topic in &topics {
             assert_eq!(topic.e1_centroid.len(), E1_DIM);
-            assert_eq!(topic.e5_centroid.len(), 768);
+            // Per ARCH-18, AP-77: E5 has distinct cause/effect centroids
+            assert_eq!(topic.e5_cause_centroid.len(), 768);
+            assert_eq!(topic.e5_effect_centroid.len(), 768);
             assert_eq!(topic.e7_centroid.len(), E7_DIM);
+        }
+    }
+
+    #[test]
+    fn test_e5_cause_effect_distinct() {
+        // Per ARCH-18, AP-77: E5 cause/effect vectors must be distinct
+        let mut generator = TopicGenerator::new(42);
+        let topics = generator.generate(3, 0.1);
+
+        for topic in &topics {
+            let sim = cosine_similarity(&topic.e5_cause_centroid, &topic.e5_effect_centroid);
+            // E5 cause/effect should have cosine similarity <= 0.7 (distance >= 0.3)
+            assert!(
+                sim <= 0.7,
+                "E5 cause and effect centroids too similar: {}",
+                sim
+            );
         }
     }
 

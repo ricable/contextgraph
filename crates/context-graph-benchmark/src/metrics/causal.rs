@@ -179,6 +179,197 @@ pub struct CausalFeatureContributions {
     pub causal_reasoning: f64,
 }
 
+// =============================================================================
+// E5 BENCHMARK-SPECIFIC METRICS (per E5 Causal Embedder Benchmark Enhancement Plan)
+// =============================================================================
+
+/// Comparison between symmetric and asymmetric E5 retrieval.
+///
+/// Per ARCH-18, AP-77: E5 uses asymmetric similarity with direction modifiers.
+/// This structure captures how much better asymmetric retrieval performs vs symmetric.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SymmetricVsAsymmetricComparison {
+    /// MRR using symmetric cosine similarity (no direction modifiers).
+    pub symmetric_mrr: f64,
+    /// MRR using asymmetric similarity (with 1.2x/0.8x modifiers).
+    pub asymmetric_mrr: f64,
+    /// Percentage improvement: (asymmetric - symmetric) / symmetric * 100.
+    pub mrr_improvement_pct: f64,
+    /// Average rank improvement over symmetric baseline.
+    pub avg_rank_improvement: f64,
+    /// Percentage of queries where asymmetric ranked better than symmetric.
+    pub asymmetric_wins_pct: f64,
+}
+
+impl SymmetricVsAsymmetricComparison {
+    /// Check if asymmetric retrieval shows meaningful improvement.
+    /// Target: >10% MRR improvement per the plan.
+    pub fn is_improvement_significant(&self) -> bool {
+        self.mrr_improvement_pct > 10.0
+    }
+}
+
+/// MRR breakdown by query direction.
+///
+/// Per ARCH-18: Cause→effect queries should get 1.2x boost, effect→cause 0.8x dampening.
+/// The expected cause/effect MRR ratio is ~1.5 (1.2/0.8).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DirectionMRRBreakdown {
+    /// MRR for cause-direction queries.
+    pub cause_mrr: f64,
+    /// MRR for effect-direction queries.
+    pub effect_mrr: f64,
+    /// MRR for unknown-direction queries.
+    pub unknown_mrr: f64,
+    /// Ratio of cause MRR to effect MRR (should be ~1.5).
+    pub cause_to_effect_ratio: f64,
+    /// Whether the ratio is in target range [1.3, 1.7].
+    pub ratio_in_target_range: bool,
+}
+
+impl DirectionMRRBreakdown {
+    /// Compute ratio and check if in target range.
+    pub fn compute_ratio(&mut self) {
+        if self.effect_mrr > 0.0 {
+            self.cause_to_effect_ratio = self.cause_mrr / self.effect_mrr;
+        } else {
+            self.cause_to_effect_ratio = 0.0;
+        }
+        // Target range: 1.3-1.7 (around 1.5 = 1.2/0.8)
+        self.ratio_in_target_range = self.cause_to_effect_ratio >= 1.3 && self.cause_to_effect_ratio <= 1.7;
+    }
+}
+
+/// E5 vector verification metrics.
+///
+/// Per ARCH-18, AP-77: E5 cause/effect vectors must be distinct with minimum
+/// 0.3 cosine distance to enable proper asymmetric similarity.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct E5VectorVerificationMetrics {
+    /// Number of documents with distinct cause/effect vectors (distance >= 0.3).
+    pub docs_with_distinct_vectors: usize,
+    /// Total documents checked.
+    pub total_docs_checked: usize,
+    /// Percentage of docs with distinct vectors.
+    pub distinct_vector_pct: f64,
+    /// Average cosine distance between cause and effect vectors.
+    pub avg_cause_effect_distance: f64,
+    /// Minimum cosine distance observed.
+    pub min_cause_effect_distance: f64,
+    /// Number of threshold violations (distance < 0.3).
+    pub threshold_violations: usize,
+}
+
+impl E5VectorVerificationMetrics {
+    /// Check if all vectors meet the distance threshold.
+    pub fn all_vectors_valid(&self) -> bool {
+        self.threshold_violations == 0
+    }
+
+    /// The minimum required distance per ARCH-18.
+    pub const MIN_DISTANCE_THRESHOLD: f64 = 0.3;
+}
+
+/// Direction distribution verification metrics.
+///
+/// Per the plan: Query causal directions should be distributed 40% Cause, 40% Effect, 20% Unknown.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DirectionDistributionMetrics {
+    /// Number of cause-direction queries.
+    pub cause_query_count: usize,
+    /// Number of effect-direction queries.
+    pub effect_query_count: usize,
+    /// Number of unknown-direction queries.
+    pub unknown_query_count: usize,
+    /// Actual percentage of cause queries.
+    pub actual_cause_pct: f64,
+    /// Actual percentage of effect queries.
+    pub actual_effect_pct: f64,
+    /// Actual percentage of unknown queries.
+    pub actual_unknown_pct: f64,
+    /// Whether the distribution is within tolerance (±5%) of target 40/40/20.
+    pub distribution_valid: bool,
+}
+
+impl DirectionDistributionMetrics {
+    /// Target percentages for the 40/40/20 distribution.
+    pub const TARGET_CAUSE_PCT: f64 = 40.0;
+    pub const TARGET_EFFECT_PCT: f64 = 40.0;
+    pub const TARGET_UNKNOWN_PCT: f64 = 20.0;
+    pub const TOLERANCE_PCT: f64 = 5.0;
+
+    /// Compute percentages and check if distribution is valid.
+    pub fn compute_distribution(&mut self) {
+        let total = self.cause_query_count + self.effect_query_count + self.unknown_query_count;
+        if total > 0 {
+            let total_f = total as f64;
+            self.actual_cause_pct = (self.cause_query_count as f64 / total_f) * 100.0;
+            self.actual_effect_pct = (self.effect_query_count as f64 / total_f) * 100.0;
+            self.actual_unknown_pct = (self.unknown_query_count as f64 / total_f) * 100.0;
+
+            // Check if within tolerance of 40/40/20 target
+            let cause_ok = (self.actual_cause_pct - Self::TARGET_CAUSE_PCT).abs() <= Self::TOLERANCE_PCT;
+            let effect_ok = (self.actual_effect_pct - Self::TARGET_EFFECT_PCT).abs() <= Self::TOLERANCE_PCT;
+            let unknown_ok = (self.actual_unknown_pct - Self::TARGET_UNKNOWN_PCT).abs() <= Self::TOLERANCE_PCT;
+
+            self.distribution_valid = cause_ok && effect_ok && unknown_ok;
+        }
+    }
+}
+
+/// E5-specific impact analysis combining all E5 benchmark metrics.
+///
+/// This is the top-level structure for E5 causal embedder benchmark results.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct E5ImpactAnalysis {
+    /// E5 vector verification (cause/effect distinctness).
+    pub vector_verification: E5VectorVerificationMetrics,
+    /// Query direction distribution (40/40/20 target).
+    pub direction_distribution: DirectionDistributionMetrics,
+    /// Symmetric vs asymmetric retrieval comparison.
+    pub asymmetric_comparison: SymmetricVsAsymmetricComparison,
+    /// Per-direction MRR breakdown.
+    pub direction_mrr: DirectionMRRBreakdown,
+    /// Observed asymmetry ratio (from direction_mrr.cause_to_effect_ratio).
+    pub observed_asymmetry_ratio: f64,
+}
+
+impl E5ImpactAnalysis {
+    /// Check overall E5 compliance per Constitution ARCH-18, AP-77.
+    pub fn verify_compliance(&self) -> E5ConstitutionalCompliance {
+        E5ConstitutionalCompliance {
+            // ARCH-18: E5 uses asymmetric similarity (not just cosine)
+            arch18_asymmetric: self.asymmetric_comparison.asymmetric_mrr != self.asymmetric_comparison.symmetric_mrr,
+            // AP-77: E5 does NOT use symmetric cosine alone (asymmetric should be better)
+            ap77_no_symmetric: self.asymmetric_comparison.mrr_improvement_pct > 0.0,
+            // Direction modifiers correct: cause MRR > effect MRR (because 1.2x > 0.8x)
+            direction_modifiers_correct: self.direction_mrr.cause_mrr > self.direction_mrr.effect_mrr,
+            // Asymmetry ratio in valid range (1.3-1.7, target 1.5)
+            asymmetry_ratio_valid: (self.observed_asymmetry_ratio - 1.5).abs() <= 0.2,
+        }
+    }
+}
+
+/// E5 constitutional compliance verification results.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct E5ConstitutionalCompliance {
+    /// ARCH-18: E5 uses asymmetric similarity (verified by MRR difference).
+    pub arch18_asymmetric: bool,
+    /// AP-77: E5 does NOT use symmetric cosine alone (asymmetric performs better).
+    pub ap77_no_symmetric: bool,
+    /// Direction modifiers applied correctly (1.2x cause→effect, 0.8x effect→cause).
+    pub direction_modifiers_correct: bool,
+    /// Asymmetry ratio is in valid range (1.3-1.7).
+    pub asymmetry_ratio_valid: bool,
+}
+
+impl E5ConstitutionalCompliance {
+    /// Check if all E5 compliance rules pass.
+    pub fn all_pass(&self) -> bool {
+        self.arch18_asymmetric && self.ap77_no_symmetric && self.direction_modifiers_correct && self.asymmetry_ratio_valid
+    }
+}
+
 impl CausalMetrics {
     /// Overall causal quality score (weighted combination).
     ///

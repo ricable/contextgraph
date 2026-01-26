@@ -184,3 +184,11 @@ path = "src/bin/weight_profile_bench.rs"
 [[bin]]
 name = "graph-linking-bench"
 path = "src/bin/graph_linking_bench.rs"
+
+[[bin]]
+name = "embedder-impact-bench"
+path = "src/bin/embedder_impact_bench.rs"
+
+[[bin]]
+name = "embedder-impact-realdata-bench"
+path = "src/bin/embedder_impact_realdata_bench.rs"

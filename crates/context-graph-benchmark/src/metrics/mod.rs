@@ -19,17 +19,24 @@ pub mod e4_hybrid_session;
 pub mod e7_code;
 pub mod e7_iou;
 pub mod e11_entity;
+pub mod embedder_contribution;
 pub mod graph_linking;
+pub mod graph_structure;
 pub mod mcp_intent;
 pub mod multimodal;
 pub mod performance;
+pub mod resource_usage;
 pub mod retrieval;
 pub mod sparse;
 pub mod temporal;
 pub mod temporal_realdata;
 pub mod validation;
 
-pub use causal::CausalMetrics;
+pub use causal::{
+    CausalMetrics, DirectionDistributionMetrics, DirectionMRRBreakdown,
+    E5ConstitutionalCompliance, E5ImpactAnalysis, E5VectorVerificationMetrics,
+    SymmetricVsAsymmetricComparison,
+};
 pub use multimodal::{
     AsymmetricRetrievalMetrics, AsymmetricRetrievalResult, BlendAnalysisPoint,
     ContextMatchingMetrics, ContextMatchingResult, E10AblationMetrics, E10MultimodalMetrics,
@@ -76,6 +83,19 @@ pub use graph_linking::{
     BackgroundBuilderMetrics, EdgeBuilderMetrics, GraphExpansionMetrics,
     GraphLinkingReport, LatencyStats as GraphLatencyStats, LatencyTracker, MemoryStats,
     NNDescentMetrics, RGCNMetrics, WeightComparisonMetrics, WeightProjectionMetrics,
+};
+pub use embedder_contribution::{
+    AgreementPatternAnalysis, BlindSpotAnalysis, BlindSpotExample, ContributionAttribution,
+    RRFRankContribution, ResultContribution, UniqueFinds,
+};
+pub use graph_structure::{
+    AgreementDistribution, CategoryWeights, ConnectivitySnapshot, EdgeTypeDistribution,
+    EmbedderConnectivity, GraphConnectivityMetrics, GraphStructureImpact,
+    TopicFormationImpact, WeightedAgreementAnalysis,
+};
+pub use resource_usage::{
+    EmbedderEfficiency, IndexStats, IndexType, LatencyStats as ResourceLatencyStats,
+    MemoryFootprint, ResourceImpact, StorageEfficiency,
 };
 
 /// Combined metrics for a single benchmark run.

@@ -170,6 +170,7 @@ impl Handlers {
     /// # Panics
     ///
     /// Panics if EdgeRepository column families are missing from the database.
+    #[allow(dead_code)]
     pub fn with_graph_linking(
         teleological_store: Arc<dyn TeleologicalMemoryStore>,
         multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider>,
@@ -240,6 +241,7 @@ impl Handlers {
     ///
     /// This is a convenience constructor that creates default cluster manager
     /// and stability tracker. Use `with_all` for full control over dependencies.
+    #[allow(dead_code)]
     pub fn with_defaults(
         teleological_store: Arc<dyn TeleologicalMemoryStore>,
         multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider>,
@@ -298,11 +300,13 @@ impl Handlers {
     /// Check if the graph linking pipeline is available.
     ///
     /// Returns true if edge_repository is configured.
+    #[allow(dead_code)]
     pub fn has_graph_linking(&self) -> bool {
         self.edge_repository.is_some()
     }
 
     /// Get the edge repository if available.
+    #[allow(dead_code)]
     pub fn edge_repository(&self) -> Option<&EdgeRepository> {
         self.edge_repository.as_ref()
     }
@@ -315,6 +319,7 @@ impl Handlers {
     }
 
     /// Check if the background graph builder is available and running.
+    #[allow(dead_code)]
     pub fn has_graph_builder(&self) -> bool {
         self.graph_builder
             .as_ref()
@@ -340,6 +345,7 @@ impl Handlers {
     /// Reset the session sequence counter to 0.
     ///
     /// Should be called at the start of a new session.
+    #[allow(dead_code)]
     pub fn reset_sequence(&self) {
         self.session_sequence_counter.store(0, Ordering::SeqCst);
     }
@@ -359,6 +365,7 @@ impl Handlers {
     /// Set the current session ID.
     ///
     /// Also resets the sequence counter for the new session.
+    #[allow(dead_code)]
     pub fn set_session_id(&self, session_id: Option<String>) {
         *self.current_session_id.write() = session_id;
         self.reset_sequence();

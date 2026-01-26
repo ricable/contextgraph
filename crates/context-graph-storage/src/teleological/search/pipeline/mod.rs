@@ -90,6 +90,7 @@ pub use traits::{
     // Token and SPLADE storage for pipeline stages
     InMemorySpladeIndex, InMemoryTokenStorage, SpladeIndex, TokenStorage,
 };
+#[allow(unused_imports)]
 pub use types::{
     EdgeTypeRouting, GraphExpansionConfig, PipelineCandidate, PipelineConfig, PipelineError,
     PipelineResult, PipelineStage, QueryType, StageConfig, StageResult,

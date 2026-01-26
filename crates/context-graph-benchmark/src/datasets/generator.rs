@@ -179,8 +179,9 @@ impl DatasetGenerator {
             e2_temporal_recent: embeddings.e2,
             e3_temporal_periodic: embeddings.e3,
             e4_temporal_positional: embeddings.e4,
-            e5_causal_as_cause: embeddings.e5.clone(),
-            e5_causal_as_effect: embeddings.e5,
+            // Per ARCH-18, AP-77: E5 cause/effect are distinct vectors
+            e5_causal_as_cause: embeddings.e5_cause,
+            e5_causal_as_effect: embeddings.e5_effect,
             e5_causal: Vec::new(), // Empty - using new dual format
             e6_sparse: self.generate_sparse(E6_SPARSE_VOCAB, self.config.sparse_entries_e6),
             e7_code: embeddings.e7,
