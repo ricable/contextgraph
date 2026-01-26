@@ -11,7 +11,7 @@
 //! | E5 | Longformer SCM | 768 |
 //! | E6 | SPLADE (Sparse) | ~1500 active / 30522 vocab |
 //! | E7 | Qodo-Embed | 1536 |
-//! | E8 | MiniLM (Graph) | 384 |
+//! | E8 | e5-large-v2 (Graph) | 1024 |
 //! | E9 | HDC (projected) | 1024 |
 //! | E10 | CLIP | 768 |
 //! | E11 | KEPLER (Entity) | 768 |
@@ -39,8 +39,13 @@ pub const E6_SPARSE_VOCAB: usize = 30_522;
 /// E7: Code (Qodo-Embed) embedding dimension.
 pub const E7_DIM: usize = 1536;
 
-/// E8: Graph (MiniLM for structure) embedding dimension.
-pub const E8_DIM: usize = 384;
+/// E8: Graph (e5-large-v2 for structure) embedding dimension.
+///
+/// Updated from MiniLM (384D) to e5-large-v2 (1024D) to:
+/// - Share the model with E1 (no extra VRAM)
+/// - Better semantic understanding for graph relationships
+/// - Support asymmetric source/target embeddings via learned projections
+pub const E8_DIM: usize = 1024;
 
 /// E9: HDC (projected) embedding dimension.
 ///
@@ -72,6 +77,7 @@ pub const NUM_EMBEDDERS: usize = 13;
 /// Total dense dimensions (excluding E6 sparse, E12 variable-length, and E13 sparse).
 ///
 /// Calculated as: E1 + E2 + E3 + E4 + E5 + E7 + E8 + E9 + E10 + E11
-/// = 1024 + 512 + 512 + 512 + 768 + 1536 + 384 + 1024 + 768 + 768 = 7808
+/// = 1024 + 512 + 512 + 512 + 768 + 1536 + 1024 + 1024 + 768 + 768 = 8448
+/// (E8 upgraded from 384 to 1024)
 pub const TOTAL_DENSE_DIMS: usize =
     E1_DIM + E2_DIM + E3_DIM + E4_DIM + E5_DIM + E7_DIM + E8_DIM + E9_DIM + E10_DIM + E11_DIM;

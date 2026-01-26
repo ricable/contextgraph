@@ -1,15 +1,18 @@
 [package]
-name = "context-graph-causal-agent"
+name = "context-graph-graph-agent"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Causal relationship discovery agent using local LLM"
+description = "Graph relationship discovery agent using local LLM"
 
 [features]
 default = []
 # Enable CUDA acceleration via llama-cpp-2 (RTX 5090 optimized)
-cuda = ["llama-cpp-2/cuda"]
+cuda = ["llama-cpp-2/cuda", "context-graph-causal-agent/cuda"]
+# Test utilities - provides stub constructors that panic on usage
+# Use for tests that need Handlers but don't actually call graph discovery
+test-utils = []
 
 [dependencies]
 # Workspace dependencies
@@ -28,17 +31,15 @@ rand.workspace = true
 context-graph-core = { path = "../context-graph-core" }
 context-graph-storage = { path = "../context-graph-storage" }
 context-graph-embeddings = { path = "../context-graph-embeddings" }
+context-graph-causal-agent = { path = "../context-graph-causal-agent" }
 
 # llama.cpp bindings for GGUF model inference with grammar constraints
-# Uses GBNF grammar for 100% valid JSON output
+# Graph agent uses shared LLM from causal-agent crate
 llama-cpp-2 = "0.1"
 
 # Async utilities
 futures = "0.3"
 parking_lot = "0.12"
-
-# Regex for fallback parsing
-regex = "1"
 
 [dev-dependencies]
 tokio-test = "0.4"

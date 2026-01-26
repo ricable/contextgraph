@@ -17,6 +17,7 @@ use context_graph_core::clustering::{MultiSpaceClusterManager, TopicStabilityTra
 use context_graph_core::memory::{CodeEmbeddingProvider, CodeStorage};
 use context_graph_core::monitoring::LayerStatusProvider;
 use context_graph_core::traits::{MultiArrayEmbeddingProvider, TeleologicalMemoryStore};
+use context_graph_graph_agent::GraphDiscoveryService;
 use context_graph_storage::{BackgroundGraphBuilder, EdgeRepository};
 
 use crate::protocol::{JsonRpcId, JsonRpcResponse};
@@ -81,10 +82,21 @@ pub struct Handlers {
     /// Optional - only present if graph linking is enabled.
     /// Queues fingerprints on store_memory and builds edges in batches.
     pub(in crate::handlers) graph_builder: Option<Arc<BackgroundGraphBuilder>>,
+
+    // =========================================================================
+    // Graph Discovery Agent (LLM-based relationship discovery)
+    // =========================================================================
+
+    /// Graph discovery service for LLM-based relationship detection.
+    /// REQUIRED - NO FALLBACKS. LLM must load successfully or server startup fails.
+    /// Uses shared CausalDiscoveryLLM (~6GB VRAM for Qwen2.5-3B).
+    pub(in crate::handlers) graph_discovery_service: Arc<GraphDiscoveryService>,
 }
 
 impl Handlers {
     /// Create handlers with all dependencies explicitly provided.
+    ///
+    /// NO FALLBACKS - Requires graph_discovery_service. LLM must be loaded.
     ///
     /// # Arguments
     /// * `teleological_store` - Store for TeleologicalFingerprint
@@ -92,6 +104,7 @@ impl Handlers {
     /// * `layer_status_provider` - Provider for layer status information
     /// * `cluster_manager` - Multi-space cluster manager for topic detection
     /// * `stability_tracker` - Topic stability tracker for portfolio metrics
+    /// * `graph_discovery_service` - REQUIRED LLM-based graph relationship discovery
     #[allow(dead_code)]
     pub fn with_all(
         teleological_store: Arc<dyn TeleologicalMemoryStore>,
@@ -99,7 +112,9 @@ impl Handlers {
         layer_status_provider: Arc<dyn LayerStatusProvider>,
         cluster_manager: Arc<RwLock<MultiSpaceClusterManager>>,
         stability_tracker: Arc<RwLock<TopicStabilityTracker>>,
+        graph_discovery_service: Arc<GraphDiscoveryService>,
     ) -> Self {
+        info!("Creating Handlers with_all - NO FALLBACKS, LLM required");
         Self {
             teleological_store,
             multi_array_provider,
@@ -115,12 +130,15 @@ impl Handlers {
             // TASK-GRAPHLINK: Graph linking disabled by default
             edge_repository: None,
             graph_builder: None,
+            // GRAPH-AGENT: REQUIRED - NO FALLBACKS
+            graph_discovery_service,
         }
     }
 
     /// Create handlers with all dependencies including code embedding pipeline.
     ///
     /// E7-WIRING: Extended constructor for full code embedding support.
+    /// NO FALLBACKS - Requires graph_discovery_service. LLM must be loaded.
     ///
     /// # Arguments
     /// * `teleological_store` - Store for TeleologicalFingerprint
@@ -130,6 +148,7 @@ impl Handlers {
     /// * `stability_tracker` - Topic stability tracker for portfolio metrics
     /// * `code_store` - Code storage backend for code entities
     /// * `code_embedding_provider` - E7 code embedding provider
+    /// * `graph_discovery_service` - REQUIRED LLM-based graph relationship discovery
     #[allow(dead_code)]
     pub fn with_code_pipeline(
         teleological_store: Arc<dyn TeleologicalMemoryStore>,
@@ -139,7 +158,9 @@ impl Handlers {
         stability_tracker: Arc<RwLock<TopicStabilityTracker>>,
         code_store: Arc<dyn CodeStorage>,
         code_embedding_provider: Arc<dyn CodeEmbeddingProvider>,
+        graph_discovery_service: Arc<GraphDiscoveryService>,
     ) -> Self {
+        info!("Creating Handlers with_code_pipeline - NO FALLBACKS, LLM required");
         Self {
             teleological_store,
             multi_array_provider,
@@ -153,19 +174,22 @@ impl Handlers {
             // TASK-GRAPHLINK: Graph linking disabled by default in with_code_pipeline
             edge_repository: None,
             graph_builder: None,
+            // GRAPH-AGENT: REQUIRED - NO FALLBACKS
+            graph_discovery_service,
         }
     }
 
     /// Create handlers with graph linking enabled.
     ///
     /// TASK-GRAPHLINK: Constructor for graph linking support with K-NN edges.
-    /// NO FALLBACKS - If EdgeRepository is provided, it MUST work or tools will error.
+    /// NO FALLBACKS - EdgeRepository and GraphDiscoveryService MUST work.
     ///
     /// # Arguments
     /// * `teleological_store` - Store for TeleologicalFingerprint
     /// * `multi_array_provider` - 13-embedding generator
     /// * `layer_status_provider` - Provider for layer status information
     /// * `edge_repository` - Edge repository for K-NN graph edges and typed edges
+    /// * `graph_discovery_service` - REQUIRED LLM-based graph relationship discovery
     ///
     /// # Panics
     ///
@@ -176,8 +200,9 @@ impl Handlers {
         multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider>,
         layer_status_provider: Arc<dyn LayerStatusProvider>,
         edge_repository: EdgeRepository,
+        graph_discovery_service: Arc<GraphDiscoveryService>,
     ) -> Self {
-        info!("Creating Handlers with graph linking enabled - NO FALLBACKS");
+        info!("Creating Handlers with graph linking enabled - NO FALLBACKS, LLM required");
 
         let cluster_manager = MultiSpaceClusterManager::with_defaults()
             .expect("Default cluster manager should always succeed");
@@ -196,57 +221,28 @@ impl Handlers {
             edge_repository: Some(edge_repository),
             // Graph builder will be set separately via set_graph_builder
             graph_builder: None,
+            // GRAPH-AGENT: REQUIRED - NO FALLBACKS
+            graph_discovery_service,
         }
     }
 
-    /// Create handlers with full graph linking support including background builder.
-    ///
-    /// TASK-GRAPHLINK-BUILDER: Constructor for graph linking with background K-NN building.
-    ///
-    /// # Arguments
-    /// * `teleological_store` - Store for TeleologicalFingerprint
-    /// * `multi_array_provider` - 13-embedding generator
-    /// * `layer_status_provider` - Provider for layer status information
-    /// * `edge_repository` - Edge repository for K-NN graph edges and typed edges
-    /// * `graph_builder` - Background graph builder for K-NN construction
-    pub fn with_full_graph_linking(
-        teleological_store: Arc<dyn TeleologicalMemoryStore>,
-        multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider>,
-        layer_status_provider: Arc<dyn LayerStatusProvider>,
-        edge_repository: EdgeRepository,
-        graph_builder: Arc<BackgroundGraphBuilder>,
-    ) -> Self {
-        info!("Creating Handlers with full graph linking enabled - NO FALLBACKS");
-
-        let cluster_manager = MultiSpaceClusterManager::with_defaults()
-            .expect("Default cluster manager should always succeed");
-        let stability_tracker = TopicStabilityTracker::new();
-
-        Self {
-            teleological_store,
-            multi_array_provider,
-            layer_status_provider,
-            cluster_manager: Arc::new(RwLock::new(cluster_manager)),
-            stability_tracker: Arc::new(RwLock::new(stability_tracker)),
-            session_sequence_counter: Arc::new(AtomicU64::new(0)),
-            current_session_id: Arc::new(RwLock::new(None)),
-            code_store: None,
-            code_embedding_provider: None,
-            edge_repository: Some(edge_repository),
-            graph_builder: Some(graph_builder),
-        }
-    }
+    // NOTE: with_full_graph_linking was removed as dead code.
+    // Use with_graph_discovery instead - it has identical functionality.
 
     /// Create handlers with default clustering components.
     ///
     /// This is a convenience constructor that creates default cluster manager
     /// and stability tracker. Use `with_all` for full control over dependencies.
+    /// NO FALLBACKS - Requires graph_discovery_service. LLM must be loaded.
     #[allow(dead_code)]
     pub fn with_defaults(
         teleological_store: Arc<dyn TeleologicalMemoryStore>,
         multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider>,
         layer_status_provider: Arc<dyn LayerStatusProvider>,
+        graph_discovery_service: Arc<GraphDiscoveryService>,
     ) -> Self {
+        info!("Creating Handlers with_defaults - NO FALLBACKS, LLM required");
+
         // Create default cluster manager
         let cluster_manager = MultiSpaceClusterManager::with_defaults()
             .expect("Default cluster manager should always succeed");
@@ -269,6 +265,51 @@ impl Handlers {
             // TASK-GRAPHLINK: Graph linking disabled by default
             edge_repository: None,
             graph_builder: None,
+            // GRAPH-AGENT: REQUIRED - NO FALLBACKS
+            graph_discovery_service,
+        }
+    }
+
+    /// Create handlers with graph discovery enabled.
+    ///
+    /// GRAPH-AGENT: Constructor for graph linking with LLM-based relationship discovery.
+    /// Uses shared CausalDiscoveryLLM (~6GB for Qwen2.5-3B). NO FALLBACKS.
+    ///
+    /// # Arguments
+    /// * `teleological_store` - Store for TeleologicalFingerprint
+    /// * `multi_array_provider` - 13-embedding generator
+    /// * `layer_status_provider` - Provider for layer status information
+    /// * `edge_repository` - Edge repository for K-NN graph edges and typed edges
+    /// * `graph_builder` - Background graph builder for K-NN construction
+    /// * `graph_discovery_service` - REQUIRED LLM-based graph relationship discovery
+    pub fn with_graph_discovery(
+        teleological_store: Arc<dyn TeleologicalMemoryStore>,
+        multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider>,
+        layer_status_provider: Arc<dyn LayerStatusProvider>,
+        edge_repository: EdgeRepository,
+        graph_builder: Arc<BackgroundGraphBuilder>,
+        graph_discovery_service: Arc<GraphDiscoveryService>,
+    ) -> Self {
+        info!("Creating Handlers with graph discovery enabled - NO FALLBACKS, LLM required");
+
+        let cluster_manager = MultiSpaceClusterManager::with_defaults()
+            .expect("Default cluster manager should always succeed");
+        let stability_tracker = TopicStabilityTracker::new();
+
+        Self {
+            teleological_store,
+            multi_array_provider,
+            layer_status_provider,
+            cluster_manager: Arc::new(RwLock::new(cluster_manager)),
+            stability_tracker: Arc::new(RwLock::new(stability_tracker)),
+            session_sequence_counter: Arc::new(AtomicU64::new(0)),
+            current_session_id: Arc::new(RwLock::new(None)),
+            code_store: None,
+            code_embedding_provider: None,
+            edge_repository: Some(edge_repository),
+            graph_builder: Some(graph_builder),
+            // GRAPH-AGENT: REQUIRED - NO FALLBACKS
+            graph_discovery_service,
         }
     }
 
@@ -325,6 +366,21 @@ impl Handlers {
             .as_ref()
             .map(|b| b.is_running())
             .unwrap_or(false)
+    }
+
+    // =========================================================================
+    // Graph Discovery Agent Accessors (GRAPH-AGENT)
+    // =========================================================================
+
+    /// Get the graph discovery service.
+    ///
+    /// REQUIRED - NO FALLBACKS. The service uses CausalDiscoveryLLM (Qwen2.5-3B)
+    /// for LLM-based relationship detection between memories.
+    ///
+    /// This service is guaranteed to be available since LLM loading is required
+    /// at server startup. If LLM fails to load, server startup fails.
+    pub fn graph_discovery_service(&self) -> &Arc<GraphDiscoveryService> {
+        &self.graph_discovery_service
     }
 
     // =========================================================================

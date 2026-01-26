@@ -3,6 +3,8 @@
 //! Per E8 upgrade specification (Phase 4), these DTOs support:
 //! - search_connections: Find memories connected to a given concept
 //! - get_graph_path: Multi-hop graph traversal between memories
+//! - discover_graph_relationships: LLM-based relationship discovery
+//! - validate_graph_link: Single-pair LLM validation
 //!
 //! Constitution References:
 //! - ARCH-15: Uses asymmetric E8 with separate source/target encodings
@@ -515,6 +517,296 @@ impl GetGraphPathResponse {
         // The last hop's cumulative_strength is the total score
         self.path.last().map(|h| h.cumulative_strength).unwrap_or(0.0)
     }
+}
+
+// ============================================================================
+// GRAPH DISCOVERY DTOs (LLM-based relationship detection)
+// ============================================================================
+
+/// Default minimum confidence for discovered relationships.
+pub const DEFAULT_MIN_DISCOVERY_CONFIDENCE: f32 = 0.7;
+
+/// Default batch size for relationship discovery.
+pub const DEFAULT_DISCOVERY_BATCH_SIZE: usize = 50;
+
+/// Maximum batch size for relationship discovery.
+pub const MAX_DISCOVERY_BATCH_SIZE: usize = 100;
+
+/// Maximum number of memories for relationship discovery.
+pub const MAX_DISCOVERY_MEMORIES: usize = 50;
+
+/// Request parameters for discover_graph_relationships tool.
+///
+/// # Example JSON
+/// ```json
+/// {
+///   "memory_ids": ["550e8400-e29b-41d4-a716-446655440000", "550e8400-e29b-41d4-a716-446655440001"],
+///   "relationship_types": ["imports", "depends_on"],
+///   "min_confidence": 0.7,
+///   "batch_size": 50
+/// }
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+pub struct DiscoverGraphRelationshipsRequest {
+    /// UUIDs of memories to analyze for relationships (2-50 required).
+    pub memory_ids: Vec<String>,
+
+    /// Filter to specific relationship types. Omit to discover all types.
+    #[serde(default)]
+    pub relationship_types: Option<Vec<String>>,
+
+    /// Minimum confidence threshold for discovered relationships (0-1, default: 0.7).
+    #[serde(default = "default_min_confidence")]
+    pub min_confidence: f32,
+
+    /// Maximum number of candidate pairs to analyze (1-100, default: 50).
+    #[serde(default = "default_batch_size")]
+    pub batch_size: usize,
+}
+
+fn default_min_confidence() -> f32 {
+    DEFAULT_MIN_DISCOVERY_CONFIDENCE
+}
+
+fn default_batch_size() -> usize {
+    DEFAULT_DISCOVERY_BATCH_SIZE
+}
+
+impl Default for DiscoverGraphRelationshipsRequest {
+    fn default() -> Self {
+        Self {
+            memory_ids: Vec::new(),
+            relationship_types: None,
+            min_confidence: DEFAULT_MIN_DISCOVERY_CONFIDENCE,
+            batch_size: DEFAULT_DISCOVERY_BATCH_SIZE,
+        }
+    }
+}
+
+impl DiscoverGraphRelationshipsRequest {
+    /// Validate the request parameters.
+    ///
+    /// # Returns
+    /// On success, returns the parsed UUIDs. On failure, returns an error message.
+    pub fn validate(&self) -> Result<Vec<Uuid>, String> {
+        // Validate memory_ids count
+        if self.memory_ids.len() < 2 {
+            return Err("memory_ids must contain at least 2 UUIDs".to_string());
+        }
+        if self.memory_ids.len() > MAX_DISCOVERY_MEMORIES {
+            return Err(format!(
+                "memory_ids cannot exceed {} UUIDs, got {}",
+                MAX_DISCOVERY_MEMORIES,
+                self.memory_ids.len()
+            ));
+        }
+
+        // Parse all UUIDs
+        let mut uuids = Vec::with_capacity(self.memory_ids.len());
+        for (i, id_str) in self.memory_ids.iter().enumerate() {
+            match Uuid::parse_str(id_str) {
+                Ok(uuid) => uuids.push(uuid),
+                Err(e) => {
+                    return Err(format!(
+                        "Invalid UUID format at index {}: '{}' - {}",
+                        i, id_str, e
+                    ))
+                }
+            }
+        }
+
+        // Validate relationship_types if provided
+        if let Some(ref types) = self.relationship_types {
+            let valid_types = [
+                "imports",
+                "depends_on",
+                "references",
+                "calls",
+                "implements",
+                "extends",
+                "contains",
+                "used_by",
+            ];
+            for t in types {
+                if !valid_types.contains(&t.as_str()) {
+                    return Err(format!(
+                        "Invalid relationship_type '{}'. Valid types: {:?}",
+                        t, valid_types
+                    ));
+                }
+            }
+        }
+
+        // Validate min_confidence
+        if self.min_confidence.is_nan() || self.min_confidence.is_infinite() {
+            return Err("min_confidence must be a finite number".to_string());
+        }
+        if self.min_confidence < 0.0 || self.min_confidence > 1.0 {
+            return Err(format!(
+                "min_confidence must be between 0.0 and 1.0, got {}",
+                self.min_confidence
+            ));
+        }
+
+        // Validate batch_size
+        if self.batch_size < 1 || self.batch_size > MAX_DISCOVERY_BATCH_SIZE {
+            return Err(format!(
+                "batch_size must be between 1 and {}, got {}",
+                MAX_DISCOVERY_BATCH_SIZE, self.batch_size
+            ));
+        }
+
+        Ok(uuids)
+    }
+}
+
+/// A discovered relationship between two memories.
+#[derive(Debug, Clone, Serialize)]
+pub struct DiscoveredRelationship {
+    /// UUID of the source memory (the one that "points to").
+    pub source_id: Uuid,
+
+    /// UUID of the target memory (the one that "is pointed to").
+    pub target_id: Uuid,
+
+    /// Type of relationship detected.
+    pub relationship_type: String,
+
+    /// Direction of the relationship.
+    pub direction: String,
+
+    /// Confidence score for this relationship (0-1).
+    pub confidence: f32,
+
+    /// Human-readable description of the relationship.
+    pub description: String,
+}
+
+/// Response for discover_graph_relationships tool.
+#[derive(Debug, Clone, Serialize)]
+pub struct DiscoverGraphRelationshipsResponse {
+    /// Discovered relationships.
+    pub relationships: Vec<DiscoveredRelationship>,
+
+    /// Number of relationships discovered.
+    pub count: usize,
+
+    /// Metadata about the discovery process.
+    pub metadata: DiscoveryMetadata,
+}
+
+/// Metadata about the discovery process.
+#[derive(Debug, Clone, Serialize)]
+pub struct DiscoveryMetadata {
+    /// Number of memories analyzed.
+    pub memories_analyzed: usize,
+
+    /// Number of candidate pairs evaluated.
+    pub candidates_evaluated: usize,
+
+    /// Number of relationships confirmed by LLM.
+    pub relationships_confirmed: usize,
+
+    /// Number of relationships rejected by LLM.
+    pub relationships_rejected: usize,
+
+    /// Minimum confidence threshold used.
+    pub min_confidence: f32,
+
+    /// Any errors encountered during discovery.
+    pub errors: Vec<String>,
+}
+
+/// Request parameters for validate_graph_link tool.
+///
+/// # Example JSON
+/// ```json
+/// {
+///   "source_id": "550e8400-e29b-41d4-a716-446655440000",
+///   "target_id": "550e8400-e29b-41d4-a716-446655440001",
+///   "expected_relationship_type": "imports"
+/// }
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+pub struct ValidateGraphLinkRequest {
+    /// UUID of the source memory (the one that "points to").
+    pub source_id: String,
+
+    /// UUID of the target memory (the one that "is pointed to").
+    pub target_id: String,
+
+    /// Expected relationship type to validate. Omit to detect any relationship.
+    #[serde(default)]
+    pub expected_relationship_type: Option<String>,
+}
+
+impl ValidateGraphLinkRequest {
+    /// Validate the request parameters.
+    ///
+    /// # Returns
+    /// On success, returns the parsed (source_uuid, target_uuid). On failure, returns an error message.
+    pub fn validate(&self) -> Result<(Uuid, Uuid), String> {
+        // Parse source UUID
+        let source_uuid = Uuid::parse_str(&self.source_id)
+            .map_err(|e| format!("Invalid UUID format for source_id '{}': {}", self.source_id, e))?;
+
+        // Parse target UUID
+        let target_uuid = Uuid::parse_str(&self.target_id)
+            .map_err(|e| format!("Invalid UUID format for target_id '{}': {}", self.target_id, e))?;
+
+        // Validate expected_relationship_type if provided
+        if let Some(ref t) = self.expected_relationship_type {
+            let valid_types = [
+                "imports",
+                "depends_on",
+                "references",
+                "calls",
+                "implements",
+                "extends",
+                "contains",
+                "used_by",
+            ];
+            if !valid_types.contains(&t.as_str()) {
+                return Err(format!(
+                    "Invalid expected_relationship_type '{}'. Valid types: {:?}",
+                    t, valid_types
+                ));
+            }
+        }
+
+        Ok((source_uuid, target_uuid))
+    }
+}
+
+/// Response for validate_graph_link tool.
+#[derive(Debug, Clone, Serialize)]
+pub struct ValidateGraphLinkResponse {
+    /// Whether a valid relationship exists between the memories.
+    pub is_valid: bool,
+
+    /// UUID of the source memory.
+    pub source_id: Uuid,
+
+    /// UUID of the target memory.
+    pub target_id: Uuid,
+
+    /// Detected relationship type (if is_valid).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relationship_type: Option<String>,
+
+    /// Detected direction of the relationship.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub direction: Option<String>,
+
+    /// Confidence score for the validation (0-1).
+    pub confidence: f32,
+
+    /// Human-readable description of the validation result.
+    pub description: String,
+
+    /// Whether the expected relationship type matched (if provided).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_type_matched: Option<bool>,
 }
 
 // ============================================================================

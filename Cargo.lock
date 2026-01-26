@@ -936,6 +936,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "context-graph-graph-agent"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "candle-core",
+ "candle-nn",
+ "candle-transformers",
+ "chrono",
+ "context-graph-causal-agent",
+ "context-graph-core",
+ "context-graph-embeddings",
+ "context-graph-storage",
+ "futures",
+ "hf-hub",
+ "parking_lot",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokenizers 0.21.4",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "context-graph-mcp"
 version = "0.1.0"
 dependencies = [
@@ -945,9 +975,11 @@ dependencies = [
  "axum",
  "chrono",
  "config",
+ "context-graph-causal-agent",
  "context-graph-core",
  "context-graph-cuda",
  "context-graph-embeddings",
+ "context-graph-graph-agent",
  "context-graph-storage",
  "futures",
  "glob",

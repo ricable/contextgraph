@@ -1,0 +1,27 @@
+{
+  "total_pairs": 10,
+  "correct_predictions": 3,
+  "accuracy": 0.3,
+  "avg_confidence": 0.35,
+  "avg_inference_time_ms": 2908.0,
+  "relationship_accuracy": {
+    "none": [
+      1,
+      1
+    ],
+    "extends": [
+      0,
+      1
+    ],
+    "imports": [
+      1,
+      1
+    ],
+    "calls": [
+      1,
+      1
+    ]
+  },
+  "model_load_time_sec": 2.779451029,
+  "total_time_sec": 29.084844995
+}

@@ -1,6 +1,8 @@
-//! Graph tool definitions (search_connections, get_graph_path).
+//! Graph tool definitions (search_connections, get_graph_path, discover_graph_relationships, validate_graph_link).
 //!
 //! E8 Upgrade (Phase 4): Leverage asymmetric E8 embeddings for graph reasoning.
+//!
+//! Graph Discovery (LLM-based): Uses context-graph-graph-agent for relationship detection.
 //!
 //! Constitution Compliance:
 //! - ARCH-15: Uses asymmetric E8 with separate source/target encodings
@@ -9,7 +11,7 @@
 use crate::tools::types::ToolDefinition;
 use serde_json::json;
 
-/// Returns graph tool definitions (2 tools).
+/// Returns graph tool definitions (4 tools).
 pub fn definitions() -> Vec<ToolDefinition> {
     vec![
         // search_connections - Find connected memories
@@ -106,6 +108,82 @@ pub fn definitions() -> Vec<ToolDefinition> {
                 "additionalProperties": false
             }),
         ),
+        // discover_graph_relationships - LLM-based relationship discovery
+        ToolDefinition::new(
+            "discover_graph_relationships",
+            "Discover graph relationships between memories using LLM analysis. \
+             Uses the graph-agent with shared CausalDiscoveryLLM (Qwen2.5-3B) for relationship detection. \
+             Supports 8 relationship types: imports, depends_on, references, calls, implements, extends, contains, used_by. \
+             Returns discovered relationships with confidence scores and directions.",
+            json!({
+                "type": "object",
+                "required": ["memory_ids"],
+                "properties": {
+                    "memory_ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "UUIDs of memories to analyze for relationships (2-50).",
+                        "minItems": 2,
+                        "maxItems": 50
+                    },
+                    "relationship_types": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": ["imports", "depends_on", "references", "calls", "implements", "extends", "contains", "used_by"]
+                        },
+                        "description": "Filter to specific relationship types. Omit to discover all types."
+                    },
+                    "min_confidence": {
+                        "type": "number",
+                        "description": "Minimum confidence threshold for discovered relationships (0-1, default: 0.7).",
+                        "default": 0.7,
+                        "minimum": 0,
+                        "maximum": 1
+                    },
+                    "batch_size": {
+                        "type": "integer",
+                        "description": "Maximum number of candidate pairs to analyze (1-100, default: 50).",
+                        "default": 50,
+                        "minimum": 1,
+                        "maximum": 100
+                    }
+                },
+                "additionalProperties": false
+            }),
+        ),
+        // validate_graph_link - Single-pair LLM validation
+        ToolDefinition::new(
+            "validate_graph_link",
+            "Validate a proposed graph link between two memories using LLM analysis. \
+             Uses the graph-agent with shared CausalDiscoveryLLM (Qwen2.5-3B) for validation. \
+             Returns validation result with confidence score, detected relationship type, and direction.",
+            json!({
+                "type": "object",
+                "required": ["source_id", "target_id"],
+                "properties": {
+                    "source_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "UUID of the source memory (the one that 'points to')."
+                    },
+                    "target_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "UUID of the target memory (the one that 'is pointed to')."
+                    },
+                    "expected_relationship_type": {
+                        "type": "string",
+                        "enum": ["imports", "depends_on", "references", "calls", "implements", "extends", "contains", "used_by"],
+                        "description": "Expected relationship type to validate. Omit to detect any relationship."
+                    }
+                },
+                "additionalProperties": false
+            }),
+        ),
     ]
 }
 
@@ -115,7 +193,7 @@ mod tests {
 
     #[test]
     fn test_graph_tool_count() {
-        assert_eq!(definitions().len(), 2);
+        assert_eq!(definitions().len(), 4);
     }
 
     #[test]

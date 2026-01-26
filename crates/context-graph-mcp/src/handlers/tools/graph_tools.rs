@@ -1,10 +1,16 @@
-//! Graph reasoning tool implementations (search_connections, get_graph_path).
+//! Graph reasoning tool implementations.
 //!
 //! # E8 Graph Asymmetric Similarity (ARCH-15, AP-77)
 //!
 //! These tools leverage the E8 (V_connectivity) embedder's asymmetric encoding:
 //! - `search_connections`: Find memories connected to a given concept
 //! - `get_graph_path`: Build and visualize multi-hop graph paths
+//!
+//! # LLM-based Graph Discovery
+//!
+//! These tools use the graph-agent with CausalDiscoveryLLM for relationship detection:
+//! - `discover_graph_relationships`: Discover relationships between memories
+//! - `validate_graph_link`: Validate a proposed graph link
 //!
 //! ## Constitution Compliance
 //!
@@ -24,14 +30,19 @@ use context_graph_core::graph::asymmetric::{
 use context_graph_core::traits::{SearchStrategy, TeleologicalSearchOptions};
 use context_graph_core::types::fingerprint::SemanticFingerprint;
 
+// GRAPH-AGENT: LLM-based relationship discovery types
+use context_graph_graph_agent::{MemoryForGraphAnalysis, RelationshipType};
+
 use crate::protocol::JsonRpcId;
 use crate::protocol::JsonRpcResponse;
 
 use super::graph_dtos::{
-    ConnectionSearchMetadata, ConnectionSearchResult, GetGraphPathRequest, GetGraphPathResponse,
-    GraphPathHop, GraphPathMetadata, GraphSourceInfo, SearchConnectionsRequest,
-    SearchConnectionsResponse, SOURCE_DIRECTION_MODIFIER, TARGET_DIRECTION_MODIFIER,
-    HOP_ATTENUATION,
+    ConnectionSearchMetadata, ConnectionSearchResult, DiscoveredRelationship,
+    DiscoverGraphRelationshipsRequest, DiscoverGraphRelationshipsResponse, DiscoveryMetadata,
+    GetGraphPathRequest, GetGraphPathResponse, GraphPathHop, GraphPathMetadata, GraphSourceInfo,
+    SearchConnectionsRequest, SearchConnectionsResponse, ValidateGraphLinkRequest,
+    ValidateGraphLinkResponse, HOP_ATTENUATION, SOURCE_DIRECTION_MODIFIER,
+    TARGET_DIRECTION_MODIFIER,
 };
 
 use super::super::Handlers;
@@ -490,6 +501,358 @@ impl Handlers {
         );
 
         self.tool_result(id, serde_json::to_value(response).unwrap_or_else(|_| json!({})))
+    }
+
+    /// discover_graph_relationships tool implementation.
+    ///
+    /// Discovers graph relationships between memories using LLM analysis.
+    ///
+    /// Uses the GraphDiscoveryService (Qwen2.5-3B ~6GB VRAM) to analyze
+    /// candidate memory pairs and detect structural relationships like
+    /// imports, dependencies, references, calls, etc.
+    ///
+    /// # Parameters
+    ///
+    /// - `memory_ids`: UUIDs of memories to analyze (2-50 required)
+    /// - `relationship_types`: Filter to specific types (optional)
+    /// - `min_confidence`: Minimum confidence threshold (0-1, default: 0.7)
+    /// - `batch_size`: Maximum candidate pairs to analyze (1-100, default: 50)
+    pub(crate) async fn call_discover_graph_relationships(
+        &self,
+        id: Option<JsonRpcId>,
+        args: serde_json::Value,
+    ) -> JsonRpcResponse {
+        // Parse and validate request
+        let request: DiscoverGraphRelationshipsRequest = match serde_json::from_value(args.clone()) {
+            Ok(req) => req,
+            Err(e) => {
+                error!(error = %e, "discover_graph_relationships: Failed to parse request");
+                return self.tool_error(id, &format!("Invalid request: {}", e));
+            }
+        };
+
+        let memory_uuids = match request.validate() {
+            Ok(uuids) => uuids,
+            Err(e) => {
+                error!(error = %e, "discover_graph_relationships: Validation failed");
+                return self.tool_error(id, &e);
+            }
+        };
+
+        let min_confidence = request.min_confidence;
+
+        info!(
+            memory_count = memory_uuids.len(),
+            min_confidence = min_confidence,
+            "discover_graph_relationships: Request validated"
+        );
+
+        // Get graph discovery service - GUARANTEED to be available (NO FALLBACKS)
+        let service = self.graph_discovery_service();
+
+        // Fetch memory content and metadata for analysis
+        let mut memories_for_analysis: Vec<MemoryForGraphAnalysis> = Vec::with_capacity(memory_uuids.len());
+        let mut fetch_errors: Vec<String> = Vec::new();
+
+        for uuid in &memory_uuids {
+            // Get fingerprint
+            let fingerprint = match self.teleological_store.retrieve(*uuid).await {
+                Ok(Some(fp)) => fp,
+                Ok(None) => {
+                    warn!(uuid = %uuid, "Memory not found, skipping");
+                    fetch_errors.push(format!("Memory {} not found", uuid));
+                    continue;
+                }
+                Err(e) => {
+                    warn!(uuid = %uuid, error = %e, "Failed to fetch memory, skipping");
+                    fetch_errors.push(format!("Failed to fetch {}: {}", uuid, e));
+                    continue;
+                }
+            };
+
+            // Get content
+            let content = match self.teleological_store.get_content(*uuid).await {
+                Ok(Some(c)) => c,
+                Ok(None) => {
+                    warn!(uuid = %uuid, "Memory content not found, skipping");
+                    fetch_errors.push(format!("Content for {} not found", uuid));
+                    continue;
+                }
+                Err(e) => {
+                    warn!(uuid = %uuid, error = %e, "Failed to fetch content, skipping");
+                    fetch_errors.push(format!("Failed to fetch content for {}: {}", uuid, e));
+                    continue;
+                }
+            };
+
+            // Get source metadata (optional - for source_type and file_path)
+            let source_metadata = self
+                .teleological_store
+                .get_source_metadata(*uuid)
+                .await
+                .ok()
+                .flatten();
+
+            memories_for_analysis.push(MemoryForGraphAnalysis {
+                id: *uuid,
+                content,
+                created_at: fingerprint.created_at,
+                session_id: source_metadata.as_ref().and_then(|m| m.session_id.clone()),
+                e1_embedding: fingerprint.semantic.e1_semantic.to_vec(),
+                source_type: source_metadata.as_ref().map(|m| format!("{}", m.source_type)),
+                file_path: source_metadata.and_then(|m| m.file_path),
+            });
+        }
+
+        if memories_for_analysis.len() < 2 {
+            return self.tool_error(
+                id,
+                &format!(
+                    "Need at least 2 valid memories for relationship discovery, got {}. Errors: {:?}",
+                    memories_for_analysis.len(),
+                    fetch_errors
+                ),
+            );
+        }
+
+        info!(
+            valid_memories = memories_for_analysis.len(),
+            errors = fetch_errors.len(),
+            "discover_graph_relationships: Memories fetched, running discovery cycle"
+        );
+
+        // Run discovery cycle
+        let result = match service.run_discovery_cycle(&memories_for_analysis).await {
+            Ok(r) => r,
+            Err(e) => {
+                error!(error = %e, "Graph discovery cycle failed");
+                return self.tool_error(id, &format!("Discovery failed: {}", e));
+            }
+        };
+
+        // Build response from results - get edges from graph storage
+        let graph = service.graph();
+        let graph_read = graph.read();
+        let all_edges = graph_read.all_edges();
+
+        // Filter edges by min_confidence and optionally by relationship types
+        let type_filter: Option<HashSet<RelationshipType>> = request
+            .relationship_types
+            .as_ref()
+            .map(|types| types.iter().map(|t| RelationshipType::from_str(t)).collect());
+
+        let relationships: Vec<DiscoveredRelationship> = all_edges
+            .iter()
+            .filter(|e| e.confidence >= min_confidence)
+            .filter(|e| {
+                type_filter
+                    .as_ref()
+                    .map(|f| f.contains(&e.relationship_type))
+                    .unwrap_or(true)
+            })
+            .map(|e| {
+                // GraphEdge has source_id and target_id already ordered correctly
+                // by the activator based on the LLM analysis direction
+                DiscoveredRelationship {
+                    source_id: e.source_id,
+                    target_id: e.target_id,
+                    relationship_type: e.relationship_type.as_str().to_string(),
+                    direction: "a_connects_b".to_string(), // Source → Target
+                    confidence: e.confidence,
+                    description: e.description.clone(),
+                }
+            })
+            .collect();
+
+        let mut all_errors = result.error_messages.clone();
+        all_errors.extend(fetch_errors);
+
+        let response = DiscoverGraphRelationshipsResponse {
+            relationships: relationships.clone(),
+            count: relationships.len(),
+            metadata: DiscoveryMetadata {
+                memories_analyzed: memories_for_analysis.len(),
+                candidates_evaluated: result.candidates_found,
+                relationships_confirmed: result.relationships_confirmed,
+                relationships_rejected: result.relationships_rejected,
+                min_confidence,
+                errors: all_errors,
+            },
+        };
+
+        info!(
+            relationships_found = relationships.len(),
+            candidates_evaluated = result.candidates_found,
+            confirmed = result.relationships_confirmed,
+            rejected = result.relationships_rejected,
+            "discover_graph_relationships: Discovery cycle complete"
+        );
+
+        self.tool_result(id, serde_json::to_value(response).unwrap_or_else(|_| json!({})))
+    }
+
+    /// validate_graph_link tool implementation.
+    ///
+    /// Validates a proposed graph link between two memories using LLM analysis.
+    ///
+    /// Uses the GraphRelationshipLLM (Qwen2.5-3B ~6GB VRAM) to analyze
+    /// whether a valid relationship exists between the two memories.
+    ///
+    /// # Parameters
+    ///
+    /// - `source_id`: UUID of the source memory (required)
+    /// - `target_id`: UUID of the target memory (required)
+    /// - `expected_relationship_type`: Expected type to validate (optional)
+    pub(crate) async fn call_validate_graph_link(
+        &self,
+        id: Option<JsonRpcId>,
+        args: serde_json::Value,
+    ) -> JsonRpcResponse {
+        // Parse and validate request
+        let request: ValidateGraphLinkRequest = match serde_json::from_value(args.clone()) {
+            Ok(req) => req,
+            Err(e) => {
+                error!(error = %e, "validate_graph_link: Failed to parse request");
+                return self.tool_error(id, &format!("Invalid request: {}", e));
+            }
+        };
+
+        let (source_uuid, target_uuid) = match request.validate() {
+            Ok(uuids) => uuids,
+            Err(e) => {
+                error!(error = %e, "validate_graph_link: Validation failed");
+                return self.tool_error(id, &e);
+            }
+        };
+
+        info!(
+            source_id = %source_uuid,
+            target_id = %target_uuid,
+            expected_type = ?request.expected_relationship_type,
+            "validate_graph_link: Request validated"
+        );
+
+        // Get graph discovery service - GUARANTEED to be available (NO FALLBACKS)
+        let service = self.graph_discovery_service();
+
+        // Fetch content for source memory
+        let source_content = match self.teleological_store.get_content(source_uuid).await {
+            Ok(Some(c)) => c,
+            Ok(None) => {
+                error!(uuid = %source_uuid, "validate_graph_link: Source memory content not found");
+                return self.tool_error(id, &format!("Source memory content not found: {}", source_uuid));
+            }
+            Err(e) => {
+                error!(uuid = %source_uuid, error = %e, "validate_graph_link: Failed to fetch source content");
+                return self.tool_error(id, &format!("Failed to fetch source content: {}", e));
+            }
+        };
+
+        // Fetch content for target memory
+        let target_content = match self.teleological_store.get_content(target_uuid).await {
+            Ok(Some(c)) => c,
+            Ok(None) => {
+                error!(uuid = %target_uuid, "validate_graph_link: Target memory content not found");
+                return self.tool_error(id, &format!("Target memory content not found: {}", target_uuid));
+            }
+            Err(e) => {
+                error!(uuid = %target_uuid, error = %e, "validate_graph_link: Failed to fetch target content");
+                return self.tool_error(id, &format!("Failed to fetch target content: {}", e));
+            }
+        };
+
+        info!(
+            source_len = source_content.len(),
+            target_len = target_content.len(),
+            "validate_graph_link: Content fetched, running LLM analysis"
+        );
+
+        // Use LLM to analyze the relationship
+        let llm = service.llm();
+
+        // If expected_relationship_type is provided, use validation mode
+        // Otherwise, use general analysis mode
+        if let Some(ref expected_type_str) = request.expected_relationship_type {
+            let expected_type = RelationshipType::from_str(expected_type_str);
+
+            match llm
+                .validate_relationship(&source_content, &target_content, expected_type)
+                .await
+            {
+                Ok((is_valid, confidence, explanation)) => {
+                    let response = ValidateGraphLinkResponse {
+                        is_valid,
+                        source_id: source_uuid,
+                        target_id: target_uuid,
+                        relationship_type: if is_valid {
+                            Some(expected_type_str.clone())
+                        } else {
+                            None
+                        },
+                        direction: if is_valid {
+                            Some("a_connects_b".to_string())
+                        } else {
+                            None
+                        },
+                        confidence,
+                        description: explanation,
+                        expected_type_matched: Some(is_valid),
+                    };
+
+                    info!(
+                        is_valid = is_valid,
+                        confidence = confidence,
+                        expected_type = expected_type_str,
+                        "validate_graph_link: Validation complete"
+                    );
+
+                    self.tool_result(id, serde_json::to_value(response).unwrap_or_else(|_| json!({})))
+                }
+                Err(e) => {
+                    error!(error = %e, "validate_graph_link: LLM validation failed");
+                    self.tool_error(id, &format!("LLM validation failed: {}", e))
+                }
+            }
+        } else {
+            // No expected type - use general analysis
+            match llm.analyze_relationship(&source_content, &target_content).await {
+                Ok(analysis) => {
+                    let is_valid = analysis.has_connection && analysis.confidence >= 0.5;
+
+                    let response = ValidateGraphLinkResponse {
+                        is_valid,
+                        source_id: source_uuid,
+                        target_id: target_uuid,
+                        relationship_type: if is_valid {
+                            Some(analysis.relationship_type.as_str().to_string())
+                        } else {
+                            None
+                        },
+                        direction: if is_valid {
+                            Some(analysis.direction.as_str().to_string())
+                        } else {
+                            None
+                        },
+                        confidence: analysis.confidence,
+                        description: analysis.description,
+                        expected_type_matched: None,
+                    };
+
+                    info!(
+                        is_valid = is_valid,
+                        confidence = analysis.confidence,
+                        relationship_type = analysis.relationship_type.as_str(),
+                        "validate_graph_link: Analysis complete"
+                    );
+
+                    self.tool_result(id, serde_json::to_value(response).unwrap_or_else(|_| json!({})))
+                }
+                Err(e) => {
+                    error!(error = %e, "validate_graph_link: LLM analysis failed");
+                    self.tool_error(id, &format!("LLM analysis failed: {}", e))
+                }
+            }
+        }
     }
 }
 

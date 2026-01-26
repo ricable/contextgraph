@@ -1,0 +1,16 @@
+{
+  "total_pairs": 10,
+  "pairs_with_causal_link": 0,
+  "pairs_without_causal_link": 10,
+  "avg_confidence": 0.45,
+  "avg_inference_time_ms": 896.9,
+  "min_inference_time_ms": 283,
+  "max_inference_time_ms": 4721,
+  "total_time_sec": 8.975245917,
+  "throughput_pairs_per_sec": 1.1141755994739948,
+  "direction_distribution": {
+    "NoCausalLink": 9,
+    "Bidirectional": 1
+  },
+  "model_load_time_sec": 2.433574664
+}

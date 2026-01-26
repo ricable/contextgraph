@@ -51,6 +51,13 @@ pub const GET_CAUSAL_CHAIN: &str = "get_causal_chain";
 pub const SEARCH_CONNECTIONS: &str = "search_connections";
 pub const GET_GRAPH_PATH: &str = "get_graph_path";
 
+// ========== GRAPH DISCOVERY TOOLS (LLM-based relationship discovery) ==========
+/// Discover graph relationships between memories using LLM analysis.
+/// Uses the graph-agent with CausalDiscoveryLLM for relationship detection.
+pub const DISCOVER_GRAPH_RELATIONSHIPS: &str = "discover_graph_relationships";
+/// Validate a proposed graph link between two memories using LLM analysis.
+pub const VALIDATE_GRAPH_LINK: &str = "validate_graph_link";
+
 // ========== INTENT TOOLS (E10 Intent/Context Upgrade) ==========
 // Note: search_by_intent now handles both query-based and context-based searches
 // (formerly separate find_contextual_matches tool was merged into search_by_intent)

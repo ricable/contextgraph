@@ -3,21 +3,27 @@
 //! Following the E5 Causal pattern (ARCH-15), this module provides learned
 //! projection matrices for creating asymmetric source/target embeddings.
 //!
+//! # E8 Dimension Upgrade
+//!
+//! E8 has been upgraded from MiniLM (384D) to e5-large-v2 (1024D):
+//! - Shares the model with E1 (no extra VRAM)
+//! - Better semantic understanding for graph relationships
+//!
 //! # Architecture
 //!
-//! The projections transform the base MiniLM embedding into source-role
+//! The projections transform the base e5-large-v2 embedding into source-role
 //! and target-role vectors. They are initialized as perturbed identity
 //! matrices (I + N(0, 0.02)) to create immediate asymmetry without training.
 //!
 //! ```text
-//! base_embedding [384D]
+//! base_embedding [1024D]
 //!        |
 //!    +---+---+
 //!    |       |
 //! W_source  W_target
 //!    |       |
 //! source_vec target_vec
-//! [384D]     [384D]
+//! [1024D]     [1024D]
 //! ```
 //!
 //! # Reference
@@ -41,7 +47,7 @@ const PROJECTION_INIT_STD: f64 = 0.02;
 
 /// Learned projection weights for asymmetric source/target embeddings.
 ///
-/// These projections transform the base MiniLM embedding into
+/// These projections transform the base e5-large-v2 embedding into
 /// source-role and target-role vectors for directional relationships.
 ///
 /// # Source Role
@@ -63,15 +69,15 @@ const PROJECTION_INIT_STD: f64 = 0.02;
 /// 4. **Deterministic**: Same seed produces same weights across runs
 #[derive(Debug)]
 pub struct GraphProjectionWeights {
-    /// Source projection matrix: [384, 384]
+    /// Source projection matrix: [1024, 1024]
     pub source_projection: Tensor,
-    /// Source projection bias: [384]
+    /// Source projection bias: [1024]
     pub source_bias: Tensor,
-    /// Target projection matrix: [384, 384]
+    /// Target projection matrix: [1024, 1024]
     pub target_projection: Tensor,
-    /// Target projection bias: [384]
+    /// Target projection bias: [1024]
     pub target_bias: Tensor,
-    /// Hidden size for validation (384 for MiniLM)
+    /// Hidden size for validation (1024 for e5-large-v2)
     pub hidden_size: usize,
 }
 
@@ -83,7 +89,7 @@ impl GraphProjectionWeights {
     ///
     /// # Arguments
     ///
-    /// * `hidden_size` - Dimension of embeddings (384 for MiniLM)
+    /// * `hidden_size` - Dimension of embeddings (1024 for e5-large-v2)
     /// * `device` - Device to create tensors on
     /// * `seed` - Random seed for reproducibility
     ///
@@ -175,11 +181,11 @@ impl GraphProjectionWeights {
     ///
     /// # Arguments
     ///
-    /// * `embedding` - Input embedding tensor [1, 384]
+    /// * `embedding` - Input embedding tensor [1, 1024]
     ///
     /// # Returns
     ///
-    /// Projected source embedding [1, 384]
+    /// Projected source embedding [1, 1024]
     pub fn project_source(&self, embedding: &Tensor) -> EmbeddingResult<Tensor> {
         let projected = embedding
             .matmul(
@@ -210,11 +216,11 @@ impl GraphProjectionWeights {
     ///
     /// # Arguments
     ///
-    /// * `embedding` - Input embedding tensor [1, 384]
+    /// * `embedding` - Input embedding tensor [1, 1024]
     ///
     /// # Returns
     ///
-    /// Projected target embedding [1, 384]
+    /// Projected target embedding [1, 1024]
     pub fn project_target(&self, embedding: &Tensor) -> EmbeddingResult<Tensor> {
         let projected = embedding
             .matmul(
@@ -242,11 +248,11 @@ impl GraphProjectionWeights {
     ///
     /// # Arguments
     ///
-    /// * `embedding` - Input embedding tensor [1, 384]
+    /// * `embedding` - Input embedding tensor [1, 1024]
     ///
     /// # Returns
     ///
-    /// Tuple of (source_vec, target_vec), each [1, 384]
+    /// Tuple of (source_vec, target_vec), each [1, 1024]
     pub fn project_dual(&self, embedding: &Tensor) -> EmbeddingResult<(Tensor, Tensor)> {
         let source_vec = self.project_source(embedding)?;
         let target_vec = self.project_target(embedding)?;
@@ -258,7 +264,7 @@ impl GraphProjectionWeights {
 ///
 /// # Arguments
 ///
-/// * `size` - Matrix dimension (e.g., 384 for MiniLM)
+/// * `size` - Matrix dimension (e.g., 1024 for e5-large-v2)
 /// * `rng` - Random number generator
 /// * `std` - Standard deviation for perturbation (typically 0.02)
 ///

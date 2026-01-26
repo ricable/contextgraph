@@ -27,6 +27,10 @@ pub enum CausalAgentError {
     #[error("Failed to parse LLM response: {message}")]
     LlmResponseParseError { message: String },
 
+    /// Generic parse error.
+    #[error("Parse error: {message}")]
+    ParseError { message: String },
+
     /// Memory not found in store.
     #[error("Memory not found: {id}")]
     MemoryNotFound { id: Uuid },

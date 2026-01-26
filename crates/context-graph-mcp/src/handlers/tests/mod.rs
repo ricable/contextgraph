@@ -68,6 +68,9 @@ use context_graph_core::stubs::{InMemoryTeleologicalStore, StubMultiArrayProvide
 use context_graph_core::traits::{MultiArrayEmbeddingProvider, TeleologicalMemoryStore};
 use context_graph_storage::teleological::RocksDbTeleologicalStore;
 
+// GRAPH-AGENT: Import stub for testing (enabled via test-utils feature in dev-dependencies)
+use context_graph_graph_agent::create_stub_graph_discovery_service;
+
 // TASK-EMB-016: Import global warm provider for FSV tests (feature-gated)
 #[cfg(feature = "cuda")]
 use context_graph_embeddings::{
@@ -267,20 +270,28 @@ pub(crate) fn extract_mcp_tool_data(result: &serde_json::Value) -> serde_json::V
 /// TASK-S001: Uses TeleologicalMemoryStore and MultiArrayEmbeddingProvider.
 /// TASK-GAP-001: Updated to use Handlers::with_defaults() after PRD v6 refactor.
 /// TASK-INTEG-TOPIC: Uses with_defaults for automatic clustering component creation.
+/// GRAPH-AGENT: Includes stub GraphDiscoveryService that FAILS FAST if called.
 /// NO legacy MemoryStore support.
 ///
-/// Note: GoalHierarchy was removed along with the purpose module. Handlers::with_defaults
-/// now takes 3 arguments.
+/// Note: The GraphDiscoveryService stub has an UNLOADED LLM - any calls to
+/// graph discovery methods will return Err(LlmNotInitialized). This is
+/// appropriate for tests that don't exercise graph discovery functionality.
 pub(crate) fn create_test_handlers() -> Handlers {
     let teleological_store: Arc<dyn TeleologicalMemoryStore> =
         Arc::new(InMemoryTeleologicalStore::new());
     let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
         Arc::new(StubMultiArrayProvider::new());
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
+
+    // GRAPH-AGENT: Create stub service with unloaded LLM
+    // Calls to graph discovery methods will return Err(LlmNotInitialized)
+    let graph_discovery_service = create_stub_graph_discovery_service();
+
     Handlers::with_defaults(
         teleological_store,
         multi_array_provider,
         layer_status_provider,
+        graph_discovery_service,
     )
 }
 
@@ -302,7 +313,7 @@ pub(crate) fn create_test_handlers() -> Handlers {
 ///
 /// - **Storage**: RocksDbTeleologicalStore (17 column families, real persistence)
 /// - **Embeddings**: StubMultiArrayProvider (until GPU embedding ready - FAIL FAST on embed ops)
-/// - **Alignment**: DefaultAlignmentCalculator (real cosine similarity)
+/// - **GraphDiscovery**: Stub service with unloaded LLM (FAIL FAST on graph ops)
 ///
 /// # HNSW Initialization
 ///
@@ -347,11 +358,16 @@ pub(crate) async fn create_test_handlers_with_rocksdb() -> (Handlers, TempDir) {
 
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
+    // GRAPH-AGENT: Create stub service with unloaded LLM
+    // Calls to graph discovery methods will return Err(LlmNotInitialized)
+    let graph_discovery_service = create_stub_graph_discovery_service();
+
     // TASK-INTEG-TOPIC: Use with_defaults for automatic clustering component creation
     let handlers = Handlers::with_defaults(
         teleological_store,
         multi_array_provider,
         layer_status_provider,
+        graph_discovery_service,
     );
 
     (handlers, tempdir)
@@ -408,10 +424,14 @@ pub(crate) async fn create_test_handlers_with_rocksdb_store_access(
 
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
+    // GRAPH-AGENT: Create stub service with unloaded LLM
+    let graph_discovery_service = create_stub_graph_discovery_service();
+
     let handlers = Handlers::with_defaults(
         Arc::clone(&teleological_store),
         multi_array_provider,
         layer_status_provider,
+        graph_discovery_service,
     );
 
     (handlers, teleological_store, tempdir)
@@ -488,10 +508,14 @@ pub(crate) async fn create_test_handlers_with_real_embeddings() -> (Handlers, Te
 
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
+    // GRAPH-AGENT: Create stub service with unloaded LLM
+    let graph_discovery_service = create_stub_graph_discovery_service();
+
     let handlers = Handlers::with_defaults(
         teleological_store,
         multi_array_provider,
         layer_status_provider,
+        graph_discovery_service,
     );
 
     (handlers, tempdir)
@@ -530,10 +554,14 @@ pub(crate) async fn create_test_handlers_with_real_embeddings_store_access(
 
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
+    // GRAPH-AGENT: Create stub service with unloaded LLM
+    let graph_discovery_service = create_stub_graph_discovery_service();
+
     let handlers = Handlers::with_defaults(
         Arc::clone(&teleological_store),
         multi_array_provider,
         layer_status_provider,
+        graph_discovery_service,
     );
 
     (handlers, teleological_store, tempdir)

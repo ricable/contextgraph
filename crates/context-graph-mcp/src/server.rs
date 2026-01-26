@@ -70,6 +70,9 @@ use crate::adapters::LazyMultiArrayProvider;
 use context_graph_storage::teleological::RocksDbTeleologicalStore;
 // TASK-GRAPHLINK: EdgeRepository and BackgroundGraphBuilder for K-NN graph linking
 use context_graph_storage::{BackgroundGraphBuilder, EdgeRepository, GraphBuilderConfig};
+// GRAPH-AGENT: LLM-based relationship discovery
+use context_graph_causal_agent::CausalDiscoveryLLM;
+use context_graph_graph_agent::{GraphDiscoveryConfig, GraphDiscoveryService};
 
 use crate::handlers::Handlers;
 use crate::protocol::{JsonRpcRequest, JsonRpcResponse};
@@ -438,14 +441,56 @@ impl McpServer {
             graph_builder.config().min_batch_size,
         );
 
-        // TASK-GRAPHLINK: Use with_full_graph_linking to enable K-NN graph operations
-        // with background builder support. NO FALLBACKS - EdgeRepository MUST work or tools will error
-        let handlers = Handlers::with_full_graph_linking(
+        // GRAPH-AGENT: Initialize shared LLM for graph relationship discovery
+        // This LLM (Qwen2.5-3B) can also be shared with causal-agent
+        // NO FALLBACKS - LLM MUST load successfully or server startup fails
+        info!("GRAPH-AGENT: Initializing CausalDiscoveryLLM (Qwen2.5-3B) - NO FALLBACKS");
+        let llm = CausalDiscoveryLLM::new().map_err(|e| {
+            error!(
+                "FATAL: Failed to create CausalDiscoveryLLM: {}. \
+                 Graph discovery requires Qwen2.5-3B model (~6GB VRAM). \
+                 Check model files exist and CUDA GPU is available.",
+                e
+            );
+            anyhow::anyhow!(
+                "Failed to create CausalDiscoveryLLM: {}. \
+                 Ensure Qwen2.5-3B model is downloaded and CUDA GPU with 6GB+ VRAM is available.",
+                e
+            )
+        })?;
+
+        info!("Loading CausalDiscoveryLLM (Qwen2.5-3B) into VRAM (~6GB)...");
+        llm.load().await.map_err(|e| {
+            error!(
+                "FATAL: Failed to load CausalDiscoveryLLM: {}. \
+                 Check CUDA GPU has at least 6GB free VRAM.",
+                e
+            );
+            anyhow::anyhow!(
+                "Failed to load CausalDiscoveryLLM: {}. \
+                 Requires ~6GB VRAM. Check GPU memory availability.",
+                e
+            )
+        })?;
+        info!("CausalDiscoveryLLM loaded successfully (~6GB VRAM)");
+
+        let graph_discovery_config = GraphDiscoveryConfig::default();
+        let graph_discovery_service = Arc::new(GraphDiscoveryService::with_config(
+            Arc::new(llm),
+            graph_discovery_config,
+        ));
+
+        // TASK-GRAPHLINK: Use with_graph_discovery to enable K-NN graph operations
+        // with background builder support and LLM-based relationship detection
+        // NO FALLBACKS - All components MUST work or server startup fails
+        info!("Creating Handlers with graph discovery enabled - NO FALLBACKS, LLM required");
+        let handlers = Handlers::with_graph_discovery(
             Arc::clone(&teleological_store),
             lazy_provider,
             layer_status_provider,
             edge_repository,
             Arc::clone(&graph_builder),
+            graph_discovery_service,
         );
         info!("Created Handlers with full graph linking enabled (K-NN edges + background builder, NO FALLBACKS)");
 

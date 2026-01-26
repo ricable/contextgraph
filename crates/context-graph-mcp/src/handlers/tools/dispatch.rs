@@ -115,6 +115,12 @@ impl Handlers {
             tool_names::SEARCH_CONNECTIONS => self.call_search_connections(id, arguments).await,
             tool_names::GET_GRAPH_PATH => self.call_get_graph_path(id, arguments).await,
 
+            // ========== GRAPH DISCOVERY TOOLS (LLM-based relationship discovery) ==========
+            tool_names::DISCOVER_GRAPH_RELATIONSHIPS => {
+                self.call_discover_graph_relationships(id, arguments).await
+            }
+            tool_names::VALIDATE_GRAPH_LINK => self.call_validate_graph_link(id, arguments).await,
+
             // ========== INTENT TOOLS (E10 Intent/Context Upgrade) ==========
             // Note: search_by_intent now handles both query-based and context-based searches
             // (formerly separate find_contextual_matches tool was merged)

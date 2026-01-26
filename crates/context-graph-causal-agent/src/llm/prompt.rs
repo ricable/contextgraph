@@ -1,6 +1,7 @@
 //! Prompt templates for the Causal Discovery LLM.
 //!
-//! Uses Qwen2.5's ChatML format for optimal performance.
+//! Uses Hermes 2 Pro Mistral's ChatML format for optimal function-calling performance.
+//! The model is specifically trained for structured output and JSON generation.
 
 /// Builder for causal analysis prompts.
 #[derive(Debug, Clone)]
@@ -40,23 +41,28 @@ impl CausalPromptBuilder {
     }
 
     /// Build the full analysis prompt for two memories.
+    ///
+    /// Uses Hermes 2 Pro ChatML format with structured output instructions.
+    /// The model will generate valid JSON constrained by GBNF grammar.
     pub fn build_analysis_prompt(&self, memory_a: &str, memory_b: &str) -> String {
         let truncated_a = self.truncate_content(memory_a);
         let truncated_b = self.truncate_content(memory_b);
 
-        // Using format! where {{ becomes a literal {
         format!(
-            "<|im_start|>system\n\
-{}\n\
-<|im_end|>\n\
-<|im_start|>user\n\
-Statement A: \"{}\"\n\
-Statement B: \"{}\"\n\
-\n\
-Output JSON: {{\"causal_link\":true/false,\"direction\":\"A_causes_B\"/\"B_causes_A\"/\"bidirectional\"/\"none\",\"confidence\":0.0-1.0,\"mechanism\":\"brief\"}}\n\
-<|im_end|>\n\
-<|im_start|>assistant\n\
-{{\"causal_link\":",
+            r#"<|im_start|>system
+{}
+<|im_end|>
+<|im_start|>user
+Analyze the causal relationship between these two statements:
+
+Statement A: "{}"
+
+Statement B: "{}"
+
+Determine if there is a causal relationship and respond with JSON.
+<|im_end|>
+<|im_start|>assistant
+"#,
             self.system_prompt, truncated_a, truncated_b
         )
     }
@@ -84,13 +90,10 @@ Analyze these statement pairs for causal relationships:
 
 {}
 
-For each pair, determine if there's a causal relationship and output a JSON array.
-Each element should have: causal_link (bool), direction (string), confidence (float), mechanism (string).
-
-Respond ONLY with a JSON array:
-[{{"causal_link": ..., "direction": ..., "confidence": ..., "mechanism": ...}}, ...]
+For each pair, determine if there's a causal relationship.
 <|im_end|>
-<|im_start|>assistant"#,
+<|im_start|>assistant
+"#,
             self.system_prompt, pairs_text
         )
     }
@@ -110,31 +113,24 @@ Respond ONLY with a JSON array:
         }
     }
 
-    /// Default system prompt optimized for causal analysis.
+    /// Default system prompt optimized for Hermes 2 Pro.
+    ///
+    /// Hermes 2 Pro is trained for function calling and structured output,
+    /// so we keep the prompt focused and direct.
     const fn default_system_prompt() -> &'static str {
-        r#"You are an expert in causal reasoning and analysis. Your task is to identify cause-effect relationships between statements.
+        r#"You are a causal reasoning expert. Analyze statements to identify cause-effect relationships.
 
-Key principles:
-1. CAUSATION requires that one event/state leads to or produces another
-2. CORRELATION is not causation - temporal co-occurrence alone is insufficient
-3. Look for causal language: "because", "therefore", "caused", "led to", "resulted in"
-4. Consider temporal ordering: causes typically precede effects
-5. Identify the mechanism: how does A lead to B?
+Output JSON with these fields:
+- causal_link: true if there is a causal relationship, false otherwise
+- direction: "A_causes_B", "B_causes_A", "bidirectional", or "none"
+- confidence: 0.0 to 1.0 indicating your confidence
+- mechanism: brief explanation of the causal mechanism
 
-Confidence guidelines:
-- 0.9-1.0: Explicit causal statement with clear mechanism
-- 0.7-0.9: Strong causal indicators with plausible mechanism
-- 0.5-0.7: Moderate evidence suggesting causation
-- 0.3-0.5: Weak or ambiguous causal relationship
-- 0.0-0.3: No clear causal relationship
-
-Direction guidelines:
-- "A_causes_B": Statement A is the cause, B is the effect
-- "B_causes_A": Statement B is the cause, A is the effect
-- "bidirectional": Mutual causation (feedback loop)
-- "none": No causal relationship detected
-
-Always respond with valid JSON. Be conservative - only claim causation when evidence supports it."#
+Guidelines:
+- Causation requires one event to lead to or produce another
+- Correlation alone is not causation
+- Consider temporal ordering: causes precede effects
+- Be conservative: only claim causation when evidence supports it"#
     }
 }
 

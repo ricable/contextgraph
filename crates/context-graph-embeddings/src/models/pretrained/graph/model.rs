@@ -1,5 +1,11 @@
 //! Core GraphModel struct and lifecycle management.
 //!
+//! # E8 Dimension Upgrade
+//!
+//! E8 has been upgraded from MiniLM (384D) to e5-large-v2 (1024D):
+//! - Shares the model with E1 (no extra VRAM)
+//! - Better semantic understanding for graph relationships
+//!
 //! # Asymmetric Dual Embeddings
 //!
 //! Following the E5 Causal pattern (ARCH-15), this model supports asymmetric
@@ -27,14 +33,15 @@ use super::forward::gpu_forward;
 use super::projections::{GraphProjectionWeights, GRAPH_PROJECTION_SEED};
 use super::state::ModelState;
 
-/// Graph embedding model using sentence-transformers/paraphrase-MiniLM-L6-v2.
+/// Graph embedding model using e5-large-v2 (shared with E1).
 ///
-/// Produces 384D vectors optimized for knowledge graph embeddings,
+/// Produces 1024D vectors optimized for knowledge graph embeddings,
 /// relation encoding, and graph structure understanding.
 ///
-/// MiniLM is a distilled BERT model optimized for speed while maintaining
-/// good semantic understanding. The paraphrase variant is trained on
-/// paraphrase and semantic similarity data.
+/// E8 has been upgraded from MiniLM (384D) to e5-large-v2 (1024D) to:
+/// - Share the model with E1 (no extra VRAM)
+/// - Provide better semantic understanding for graph relationships
+/// - Support asymmetric source/target embeddings via learned projections
 ///
 /// # Example
 /// ```rust,no_run
@@ -242,7 +249,7 @@ impl GraphModel {
     /// * `content` - Text content to embed as a source
     ///
     /// # Returns
-    /// 384D embedding vector with source-role semantics
+    /// 1024D embedding vector with source-role semantics
     pub async fn embed_as_source(&self, content: &str) -> EmbeddingResult<Vec<f32>> {
         let (source_vec, _) = self.embed_dual(content).await?;
         Ok(source_vec)
@@ -258,7 +265,7 @@ impl GraphModel {
     /// * `content` - Text content to embed as a target
     ///
     /// # Returns
-    /// 384D embedding vector with target-role semantics
+    /// 1024D embedding vector with target-role semantics
     pub async fn embed_as_target(&self, content: &str) -> EmbeddingResult<Vec<f32>> {
         let (_, target_vec) = self.embed_dual(content).await?;
         Ok(target_vec)
@@ -266,7 +273,7 @@ impl GraphModel {
 
     /// Embed text as BOTH source and target roles simultaneously.
     ///
-    /// Produces two distinct 384D vectors from a single encoder pass:
+    /// Produces two distinct 1024D vectors from a single encoder pass:
     /// - source_vec: Base embedding projected through W_source
     /// - target_vec: Base embedding projected through W_target
     ///
@@ -285,14 +292,14 @@ impl GraphModel {
     ///     |                        |
     /// [L2 Normalize]          [L2 Normalize]
     ///     |                        |
-    /// source_vec (384D)       target_vec (384D)
+    /// source_vec (1024D)       target_vec (1024D)
     /// ```
     ///
     /// # Arguments
     /// * `content` - Text content to embed in both roles
     ///
     /// # Returns
-    /// Tuple of (source_vector, target_vector), each 384D
+    /// Tuple of (source_vector, target_vector), each 1024D
     ///
     /// # Performance
     /// Single encoder forward pass + dual projection (efficient).

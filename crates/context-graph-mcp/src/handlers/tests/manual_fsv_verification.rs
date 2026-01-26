@@ -31,8 +31,9 @@ use context_graph_core::monitoring::{LayerStatusProvider, StubLayerStatusProvide
 use context_graph_core::stubs::{InMemoryTeleologicalStore, StubMultiArrayProvider};
 
 // NOTE: create_test_hierarchy was removed along with context_graph_core::purpose module.
-// GoalHierarchy is no longer used - Handlers::with_defaults now takes 3 args.
+// GoalHierarchy is no longer used - Handlers::with_defaults now takes 4 args (including graph_discovery_service).
 use context_graph_core::traits::{MultiArrayEmbeddingProvider, TeleologicalMemoryStore};
+use context_graph_graph_agent::create_stub_graph_discovery_service;
 
 use crate::handlers::Handlers;
 use crate::protocol::{JsonRpcId, JsonRpcRequest};
@@ -92,9 +93,10 @@ async fn manual_fsv_memory_store_physical_verification() {
     let store: Arc<dyn TeleologicalMemoryStore> = Arc::new(InMemoryTeleologicalStore::new());
     let multi_array: Arc<dyn MultiArrayEmbeddingProvider> = Arc::new(StubMultiArrayProvider::new());
     let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
+    let graph_discovery_service = create_stub_graph_discovery_service();
 
-    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 3 args
-    let handlers = Handlers::with_defaults(store.clone(), multi_array, layer_status);
+    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 4 args (including graph_discovery_service)
+    let handlers = Handlers::with_defaults(store.clone(), multi_array, layer_status, graph_discovery_service);
 
     // =========================================================================
     // BEFORE STATE - DIRECT INSPECTION OF SOURCE OF TRUTH
@@ -243,9 +245,10 @@ async fn manual_fsv_edge_case_empty_content() {
     let store: Arc<dyn TeleologicalMemoryStore> = Arc::new(InMemoryTeleologicalStore::new());
     let multi_array: Arc<dyn MultiArrayEmbeddingProvider> = Arc::new(StubMultiArrayProvider::new());
     let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
+    let graph_discovery_service = create_stub_graph_discovery_service();
 
-    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 3 args
-    let handlers = Handlers::with_defaults(store.clone(), multi_array, layer_status);
+    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 4 args (including graph_discovery_service)
+    let handlers = Handlers::with_defaults(store.clone(), multi_array, layer_status, graph_discovery_service);
 
     // BEFORE STATE
     println!("📊 BEFORE STATE:");
@@ -298,9 +301,10 @@ async fn manual_fsv_edge_case_search_empty_store() {
     let store: Arc<dyn TeleologicalMemoryStore> = Arc::new(InMemoryTeleologicalStore::new());
     let multi_array: Arc<dyn MultiArrayEmbeddingProvider> = Arc::new(StubMultiArrayProvider::new());
     let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
+    let graph_discovery_service = create_stub_graph_discovery_service();
 
-    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 3 args
-    let handlers = Handlers::with_defaults(store.clone(), multi_array, layer_status);
+    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 4 args (including graph_discovery_service)
+    let handlers = Handlers::with_defaults(store.clone(), multi_array, layer_status, graph_discovery_service);
 
     // BEFORE STATE - Verify empty
     println!("📊 BEFORE STATE:");
@@ -349,9 +353,10 @@ async fn manual_fsv_edge_case_memetic_status() {
     let store: Arc<dyn TeleologicalMemoryStore> = Arc::new(InMemoryTeleologicalStore::new());
     let multi_array: Arc<dyn MultiArrayEmbeddingProvider> = Arc::new(StubMultiArrayProvider::new());
     let layer_status: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
+    let graph_discovery_service = create_stub_graph_discovery_service();
 
-    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 3 args
-    let handlers = Handlers::with_defaults(store.clone(), multi_array, layer_status);
+    // Note: GoalHierarchy was removed - Handlers::with_defaults now takes 4 args (including graph_discovery_service)
+    let handlers = Handlers::with_defaults(store.clone(), multi_array, layer_status, graph_discovery_service);
 
     // EXECUTE
     println!("📝 EXECUTE: tools/call -> get_memetic_status");
