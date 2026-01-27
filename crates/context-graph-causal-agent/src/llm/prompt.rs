@@ -18,6 +18,9 @@ pub struct CausalPromptBuilder {
     /// System prompt for single-text analysis.
     single_text_system_prompt: String,
 
+    /// System prompt for multi-relationship extraction.
+    multi_relationship_system_prompt: String,
+
     /// Maximum content length per memory (characters).
     max_content_length: usize,
 }
@@ -34,6 +37,8 @@ impl CausalPromptBuilder {
         Self {
             system_prompt: Self::default_system_prompt().to_string(),
             single_text_system_prompt: Self::default_single_text_system_prompt().to_string(),
+            multi_relationship_system_prompt: Self::default_multi_relationship_system_prompt()
+                .to_string(),
             max_content_length: 1500,
         }
     }
@@ -221,6 +226,84 @@ CONFIDENCE:
 - 0.0-0.4: No clear causal content"#
     }
 
+    /// System prompt for extracting ALL causal relationships from text.
+    ///
+    /// Unlike single-text analysis which returns ONE hint, this extracts
+    /// every distinct cause-effect relationship from the content.
+    const fn default_multi_relationship_system_prompt() -> &'static str {
+        r#"You analyze text for ALL cause-effect relationships and generate explanatory paragraphs.
+
+TASK: Extract every distinct cause-effect relationship from the text.
+
+OUTPUT FORMAT (JSON):
+{
+  "relationships": [
+    {
+      "cause": "Brief statement of the cause",
+      "effect": "Brief statement of the effect",
+      "explanation": "1-2 paragraph explanation of HOW and WHY this causal link exists",
+      "confidence": 0.0-1.0,
+      "mechanism_type": "direct" | "mediated" | "feedback" | "temporal"
+    }
+  ],
+  "has_causal_content": true/false
+}
+
+EXPLANATION REQUIREMENTS (CRITICAL):
+- Paragraph 1: State the relationship clearly. "X causes Y because..."
+- Paragraph 2: Explain the mechanism. Evidence, process, or pathway.
+- Use \n to separate paragraphs within the explanation string.
+- Each explanation must be SELF-CONTAINED and SEARCHABLE.
+
+EXTRACT ALL RELATIONSHIPS:
+- If text mentions "A causes B" and "B causes C", extract BOTH relationships
+- If text mentions feedback loops, extract as bidirectional relationship
+- If text has no causal content, return {"relationships": [], "has_causal_content": false}
+
+CONFIDENCE:
+- 0.9-1.0: Explicit causal language ("causes", "leads to", "results in")
+- 0.7-0.8: Strong implicit causation
+- 0.5-0.6: Possible causation, weaker indicators
+- <0.5: Do not include (skip uncertain relationships)
+
+MECHANISM TYPES:
+- "direct": A directly causes B without intermediaries
+- "mediated": A causes X which causes B (indirect pathway)
+- "feedback": A and B mutually reinforce each other (loops)
+- "temporal": A precedes B in a necessary sequence
+
+EXAMPLES:
+
+Input: "High cortisol from chronic stress damages hippocampal neurons, leading to memory problems."
+Output:
+{
+  "relationships": [
+    {
+      "cause": "Chronic stress elevates cortisol levels",
+      "effect": "Elevated cortisol damages hippocampal neurons",
+      "explanation": "Chronic psychological stress triggers sustained activation of the HPA axis, resulting in persistently elevated cortisol levels.\n\nThis glucocorticoid excess causes oxidative stress and reduces synaptic plasticity in hippocampal neurons.",
+      "confidence": 0.85,
+      "mechanism_type": "mediated"
+    },
+    {
+      "cause": "Hippocampal neuron damage",
+      "effect": "Memory impairment",
+      "explanation": "The hippocampus is critical for memory formation and consolidation. When neurons in this region are damaged by cortisol exposure, memory encoding becomes impaired.\n\nThis manifests as difficulty forming new memories and retrieving recent ones.",
+      "confidence": 0.90,
+      "mechanism_type": "direct"
+    }
+  ],
+  "has_causal_content": true
+}
+
+Input: "The sky is blue on clear days."
+Output:
+{
+  "relationships": [],
+  "has_causal_content": false
+}"#
+    }
+
     /// Build prompt for analyzing a SINGLE text for causal nature.
     ///
     /// Used during memory storage to provide hints to the E5 embedder.
@@ -243,6 +326,35 @@ Text: "{}"
 <|im_start|>assistant
 {{"is_causal":"#,
             self.single_text_system_prompt, truncated
+        )
+    }
+
+    /// Build prompt for extracting ALL causal relationships from text.
+    ///
+    /// Unlike [`build_single_text_prompt`](Self::build_single_text_prompt) which
+    /// returns a single hint, this extracts every distinct cause-effect
+    /// relationship from the content, each with its own explanatory paragraph.
+    ///
+    /// # Arguments
+    /// * `content` - The text content to analyze
+    ///
+    /// # Returns
+    /// A ChatML-formatted prompt for multi-relationship extraction.
+    pub fn build_multi_relationship_prompt(&self, content: &str) -> String {
+        let truncated = self.truncate_content(content);
+        format!(
+            r#"<|im_start|>system
+{}
+<|im_end|>
+<|im_start|>user
+Analyze for causal relationships:
+
+"{}"
+<|im_end|>
+<|im_start|>assistant
+"#,
+            self.multi_relationship_system_prompt,
+            truncated.replace('"', "\\\"")
         )
     }
 }

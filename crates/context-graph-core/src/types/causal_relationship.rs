@@ -1,8 +1,9 @@
 //! CausalRelationship type for storing LLM-generated causal descriptions with provenance.
 //!
 //! This module defines the [`CausalRelationship`] struct that stores:
-//! - LLM-generated 1-3 paragraph causal descriptions
-//! - E1 semantic embedding of the description (1024D) for search
+//! - LLM-generated 1-3 paragraph causal explanations
+//! - E5 dual embeddings (as_cause, as_effect) for asymmetric search (768D each)
+//! - E1 semantic embedding for fallback search (1024D)
 //! - Full provenance linking back to source content and fingerprint
 //!
 //! # Storage
@@ -10,44 +11,54 @@
 //! CausalRelationships are stored in dedicated RocksDB column families:
 //! - `CF_CAUSAL_RELATIONSHIPS`: Primary storage by UUID
 //! - `CF_CAUSAL_BY_SOURCE`: Secondary index by source fingerprint ID
+//! - `CF_CAUSAL_E5_CAUSE_INDEX`: HNSW index for e5_as_cause vectors
+//! - `CF_CAUSAL_E5_EFFECT_INDEX`: HNSW index for e5_as_effect vectors
 //!
 //! # Search
 //!
-//! The description_embedding enables "apples-to-apples" semantic search
-//! against other causal descriptions, avoiding the cross-embedder comparison
-//! issues that arise when mixing different embedding types.
+//! E5 dual embeddings enable asymmetric causal search:
+//! - "What caused X?" → Query as effect, search cause index
+//! - "What are effects of X?" → Query as cause, search effect index
+//!
+//! E1 embedding provides fallback semantic search for general queries.
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// A causal relationship identified by LLM analysis.
 ///
-/// Contains the LLM-generated description, its embedding for search,
-/// and full provenance linking back to the source content.
+/// Contains the LLM-generated explanation with E5 dual embeddings for
+/// asymmetric causal search, plus full provenance linking back to source.
 ///
-/// # Fields
+/// # Embeddings
 ///
-/// - `id`: Unique identifier for this causal relationship
-/// - `description`: LLM-generated 1-3 paragraph explanation
-/// - `description_embedding`: E1 1024D embedding for semantic search
-/// - `source_content`: Original text this was derived from (PROVENANCE)
-/// - `source_fingerprint_id`: UUID of the source memory (PROVENANCE)
-/// - `direction`: "cause", "effect", or "bidirectional"
-/// - `confidence`: LLM confidence score [0.0, 1.0]
-/// - `key_phrases`: Causal markers detected in the source
-/// - `created_at`: Unix timestamp when relationship was identified
+/// - `e5_as_cause` (768D): Explanation embedded as a cause
+/// - `e5_as_effect` (768D): Explanation embedded as an effect
+/// - `e1_semantic` (1024D): Fallback semantic embedding
+///
+/// # Search Strategy
+///
+/// For "What caused X?":
+/// - Query X using `embed_as_effect`
+/// - Search `e5_as_cause` index
+/// - Returns relationships where explanation acts as a cause of X
+///
+/// For "What are effects of X?":
+/// - Query X using `embed_as_cause`
+/// - Search `e5_as_effect` index
+/// - Returns relationships where explanation is an effect of X
 ///
 /// # Example
 ///
 /// ```ignore
 /// let rel = CausalRelationship::new(
-///     "High cortisol causes memory impairment...".to_string(),
-///     e1_embedding,
-///     "Chronic stress elevates cortisol...".to_string(),
+///     "Chronic stress elevates cortisol".to_string(),  // cause
+///     "Memory impairment".to_string(),                 // effect
+///     "High cortisol causes memory impairment...".to_string(), // explanation
+///     e5_cause, e5_effect, e1_semantic,
 ///     source_id,
-///     "cause".to_string(),
 ///     0.9,
-///     vec!["causes".to_string(), "leads to".to_string()],
+///     "mediated".to_string(),
 /// );
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,116 +66,164 @@ pub struct CausalRelationship {
     /// Unique ID for this causal relationship.
     pub id: Uuid,
 
-    /// LLM-generated description (1-3 paragraphs).
+    // ===== CAUSAL CONTENT =====
+
+    /// Brief statement of the cause (e.g., "Chronic stress elevates cortisol")
+    pub cause_statement: String,
+
+    /// Brief statement of the effect (e.g., "Memory impairment")
+    pub effect_statement: String,
+
+    /// LLM-generated explanation (1-2 paragraphs).
     ///
     /// Structure:
-    /// - Paragraph 1: What is the causal relationship
+    /// - Paragraph 1: What is the causal relationship and why
     /// - Paragraph 2: Mechanism/evidence details
-    /// - Paragraph 3: Implications/context
-    pub description: String,
+    pub explanation: String,
 
-    /// E1 semantic embedding of the description (1024D).
-    ///
-    /// Enables "apples-to-apples" search against other descriptions.
-    /// Generated using the same E1 embedder as regular memories.
-    pub description_embedding: Vec<f32>,
+    // ===== E5 DUAL EMBEDDINGS (768D each) =====
 
-    /// PROVENANCE: Original source content this was derived from.
+    /// E5 embedding of explanation as a CAUSE (768D).
     ///
-    /// Stored in full to enable verification without additional lookups.
-    pub source_content: String,
+    /// Used when searching for effects: "What does X cause?"
+    pub e5_as_cause: Vec<f32>,
 
-    /// PROVENANCE: Fingerprint ID of the source memory.
+    /// E5 embedding of explanation as an EFFECT (768D).
     ///
-    /// Links to the full 13-embedder TeleologicalFingerprint.
-    pub source_fingerprint_id: Uuid,
+    /// Used when searching for causes: "What caused X?"
+    pub e5_as_effect: Vec<f32>,
 
-    /// Direction: "cause", "effect", or "bidirectional".
+    // ===== E1 SEMANTIC EMBEDDING (1024D) =====
+
+    /// E1 semantic embedding of the explanation (1024D).
     ///
-    /// Indicates the causal direction of the source content:
-    /// - "cause": Source describes something that causes effects
-    /// - "effect": Source describes something that is an effect
-    /// - "bidirectional": Source describes both cause and effect
-    pub direction: String,
+    /// Provides fallback for general semantic search.
+    pub e1_semantic: Vec<f32>,
+
+    // ===== METADATA =====
 
     /// LLM confidence score [0.0, 1.0].
     pub confidence: f32,
 
-    /// Key causal phrases detected in the source.
-    pub key_phrases: Vec<String>,
+    /// Type of causal mechanism: "direct", "mediated", "feedback", "temporal"
+    pub mechanism_type: String,
+
+    // ===== PROVENANCE =====
+
+    /// Original source content this was derived from.
+    pub source_content: String,
+
+    /// Fingerprint ID of the source memory.
+    pub source_fingerprint_id: Uuid,
 
     /// Unix timestamp when relationship was identified.
     pub created_at: i64,
 }
 
 impl CausalRelationship {
-    /// Create a new causal relationship.
+    /// E5 embedding dimension (768D per constitution.yaml).
+    pub const E5_DIM: usize = 768;
+
+    /// E1 embedding dimension (1024D per constitution.yaml).
+    pub const E1_DIM: usize = 1024;
+
+    /// Create a new causal relationship with all embeddings.
     ///
     /// # Arguments
     ///
-    /// * `description` - LLM-generated 1-3 paragraph explanation
-    /// * `description_embedding` - E1 1024D embedding of the description
+    /// * `cause_statement` - Brief statement of the cause
+    /// * `effect_statement` - Brief statement of the effect
+    /// * `explanation` - LLM-generated 1-2 paragraph explanation
+    /// * `e5_as_cause` - E5 768D embedding as cause
+    /// * `e5_as_effect` - E5 768D embedding as effect
+    /// * `e1_semantic` - E1 1024D semantic embedding
     /// * `source_content` - Original text this was derived from
     /// * `source_fingerprint_id` - UUID of the source memory
-    /// * `direction` - "cause", "effect", or "bidirectional"
     /// * `confidence` - LLM confidence score [0.0, 1.0]
-    /// * `key_phrases` - Causal markers detected
+    /// * `mechanism_type` - "direct", "mediated", "feedback", or "temporal"
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        description: String,
-        description_embedding: Vec<f32>,
+        cause_statement: String,
+        effect_statement: String,
+        explanation: String,
+        e5_as_cause: Vec<f32>,
+        e5_as_effect: Vec<f32>,
+        e1_semantic: Vec<f32>,
         source_content: String,
         source_fingerprint_id: Uuid,
-        direction: String,
         confidence: f32,
-        key_phrases: Vec<String>,
+        mechanism_type: String,
     ) -> Self {
         Self {
             id: Uuid::new_v4(),
-            description,
-            description_embedding,
+            cause_statement,
+            effect_statement,
+            explanation,
+            e5_as_cause,
+            e5_as_effect,
+            e1_semantic,
+            confidence: confidence.clamp(0.0, 1.0),
+            mechanism_type,
             source_content,
             source_fingerprint_id,
-            direction,
-            confidence: confidence.clamp(0.0, 1.0),
-            key_phrases,
             created_at: chrono::Utc::now().timestamp(),
         }
     }
 
     /// Create with a specific ID (for testing or migration).
+    #[allow(clippy::too_many_arguments)]
     pub fn with_id(
         id: Uuid,
-        description: String,
-        description_embedding: Vec<f32>,
+        cause_statement: String,
+        effect_statement: String,
+        explanation: String,
+        e5_as_cause: Vec<f32>,
+        e5_as_effect: Vec<f32>,
+        e1_semantic: Vec<f32>,
         source_content: String,
         source_fingerprint_id: Uuid,
-        direction: String,
         confidence: f32,
-        key_phrases: Vec<String>,
+        mechanism_type: String,
     ) -> Self {
         Self {
             id,
-            description,
-            description_embedding,
+            cause_statement,
+            effect_statement,
+            explanation,
+            e5_as_cause,
+            e5_as_effect,
+            e1_semantic,
+            confidence: confidence.clamp(0.0, 1.0),
+            mechanism_type,
             source_content,
             source_fingerprint_id,
-            direction,
-            confidence: confidence.clamp(0.0, 1.0),
-            key_phrases,
             created_at: chrono::Utc::now().timestamp(),
         }
     }
 
-    /// Check if the description embedding has the expected dimension.
+    /// Check if all embeddings have the expected dimensions.
     ///
-    /// E1 embeddings should be 1024D per constitution.yaml.
-    pub fn has_valid_embedding(&self) -> bool {
-        self.description_embedding.len() == 1024
+    /// - E5 embeddings: 768D
+    /// - E1 embedding: 1024D
+    pub fn has_valid_embeddings(&self) -> bool {
+        self.e5_as_cause.len() == Self::E5_DIM
+            && self.e5_as_effect.len() == Self::E5_DIM
+            && self.e1_semantic.len() == Self::E1_DIM
     }
 
-    /// Get the description embedding as a slice.
-    pub fn embedding(&self) -> &[f32] {
-        &self.description_embedding
+    /// Get the E5 cause embedding as a slice.
+    pub fn e5_cause_embedding(&self) -> &[f32] {
+        &self.e5_as_cause
+    }
+
+    /// Get the E5 effect embedding as a slice.
+    pub fn e5_effect_embedding(&self) -> &[f32] {
+        &self.e5_as_effect
+    }
+
+    /// Get the E1 semantic embedding as a slice.
+    pub fn e1_embedding(&self) -> &[f32] {
+        &self.e1_semantic
     }
 
     /// Check if this is a high-confidence relationship (>= 0.7).
@@ -172,13 +231,14 @@ impl CausalRelationship {
         self.confidence >= 0.7
     }
 
-    /// Get the direction as a normalized string.
-    pub fn normalized_direction(&self) -> &str {
-        match self.direction.to_lowercase().as_str() {
-            "cause" | "causes" | "causal" => "cause",
-            "effect" | "effects" | "result" => "effect",
-            "bidirectional" | "both" | "mutual" => "bidirectional",
-            _ => "unknown",
+    /// Get the mechanism type as a normalized string.
+    pub fn normalized_mechanism_type(&self) -> &str {
+        match self.mechanism_type.to_lowercase().as_str() {
+            "direct" => "direct",
+            "mediated" | "indirect" => "mediated",
+            "feedback" | "bidirectional" | "loop" => "feedback",
+            "temporal" | "sequence" => "temporal",
+            _ => "direct",
         }
     }
 }
@@ -187,91 +247,139 @@ impl CausalRelationship {
 mod tests {
     use super::*;
 
+    fn test_embeddings() -> (Vec<f32>, Vec<f32>, Vec<f32>) {
+        (
+            vec![0.0_f32; CausalRelationship::E5_DIM], // e5_as_cause
+            vec![0.0_f32; CausalRelationship::E5_DIM], // e5_as_effect
+            vec![0.0_f32; CausalRelationship::E1_DIM], // e1_semantic
+        )
+    }
+
     #[test]
     fn test_causal_relationship_new() {
-        let embedding = vec![0.0_f32; 1024];
+        let (e5_cause, e5_effect, e1) = test_embeddings();
         let source_id = Uuid::new_v4();
 
         let rel = CausalRelationship::new(
-            "Test description".to_string(),
-            embedding.clone(),
+            "Chronic stress elevates cortisol".to_string(),
+            "Memory impairment".to_string(),
+            "High cortisol causes memory impairment...".to_string(),
+            e5_cause,
+            e5_effect,
+            e1,
             "Source content".to_string(),
             source_id,
-            "cause".to_string(),
             0.9,
-            vec!["causes".to_string()],
+            "mediated".to_string(),
         );
 
         assert!(!rel.id.is_nil());
-        assert_eq!(rel.description, "Test description");
+        assert_eq!(rel.cause_statement, "Chronic stress elevates cortisol");
+        assert_eq!(rel.effect_statement, "Memory impairment");
         assert_eq!(rel.source_fingerprint_id, source_id);
-        assert_eq!(rel.direction, "cause");
+        assert_eq!(rel.mechanism_type, "mediated");
         assert!((rel.confidence - 0.9).abs() < 0.01);
-        assert!(rel.has_valid_embedding());
+        assert!(rel.has_valid_embeddings());
     }
 
     #[test]
     fn test_confidence_clamping() {
-        let embedding = vec![0.0_f32; 1024];
+        let (e5_cause, e5_effect, e1) = test_embeddings();
         let source_id = Uuid::new_v4();
 
         let rel = CausalRelationship::new(
+            "Cause".to_string(),
+            "Effect".to_string(),
             "Test".to_string(),
-            embedding,
+            e5_cause,
+            e5_effect,
+            e1,
             "Source".to_string(),
             source_id,
-            "cause".to_string(),
             1.5, // Exceeds max
-            vec![],
+            "direct".to_string(),
         );
 
         assert_eq!(rel.confidence, 1.0);
     }
 
     #[test]
-    fn test_normalized_direction() {
-        let embedding = vec![0.0_f32; 1024];
+    fn test_normalized_mechanism_type() {
+        let (e5_cause, e5_effect, e1) = test_embeddings();
         let source_id = Uuid::new_v4();
 
         let rel = CausalRelationship::new(
+            "Cause".to_string(),
+            "Effect".to_string(),
             "Test".to_string(),
-            embedding,
+            e5_cause,
+            e5_effect,
+            e1,
             "Source".to_string(),
             source_id,
-            "CAUSES".to_string(), // Different case
             0.8,
-            vec![],
+            "MEDIATED".to_string(), // Different case
         );
 
-        assert_eq!(rel.normalized_direction(), "cause");
+        assert_eq!(rel.normalized_mechanism_type(), "mediated");
     }
 
     #[test]
     fn test_is_high_confidence() {
-        let embedding = vec![0.0_f32; 1024];
+        let (e5_cause1, e5_effect1, e1_1) = test_embeddings();
+        let (e5_cause2, e5_effect2, e1_2) = test_embeddings();
         let source_id = Uuid::new_v4();
 
         let high = CausalRelationship::new(
+            "Cause".to_string(),
+            "Effect".to_string(),
             "Test".to_string(),
-            embedding.clone(),
+            e5_cause1,
+            e5_effect1,
+            e1_1,
             "Source".to_string(),
             source_id,
-            "cause".to_string(),
             0.8,
-            vec![],
+            "direct".to_string(),
         );
 
         let low = CausalRelationship::new(
+            "Cause".to_string(),
+            "Effect".to_string(),
             "Test".to_string(),
-            embedding,
+            e5_cause2,
+            e5_effect2,
+            e1_2,
             "Source".to_string(),
             source_id,
-            "cause".to_string(),
             0.5,
-            vec![],
+            "direct".to_string(),
         );
 
         assert!(high.is_high_confidence());
         assert!(!low.is_high_confidence());
+    }
+
+    #[test]
+    fn test_embedding_accessors() {
+        let (e5_cause, e5_effect, e1) = test_embeddings();
+        let source_id = Uuid::new_v4();
+
+        let rel = CausalRelationship::new(
+            "Cause".to_string(),
+            "Effect".to_string(),
+            "Test".to_string(),
+            e5_cause,
+            e5_effect,
+            e1,
+            "Source".to_string(),
+            source_id,
+            0.8,
+            "direct".to_string(),
+        );
+
+        assert_eq!(rel.e5_cause_embedding().len(), CausalRelationship::E5_DIM);
+        assert_eq!(rel.e5_effect_embedding().len(), CausalRelationship::E5_DIM);
+        assert_eq!(rel.e1_embedding().len(), CausalRelationship::E1_DIM);
     }
 }

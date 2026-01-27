@@ -2,6 +2,13 @@
 //!
 //! Provides the `search_causal_relationships` MCP tool for semantic search
 //! of LLM-generated causal descriptions with full provenance.
+//!
+//! # E5 Asymmetric Search
+//!
+//! Supports directional causal search using E5 dual embeddings:
+//! - `searchMode: "causes"` → "What caused X?" → query as effect, search cause vectors
+//! - `searchMode: "effects"` → "What are effects of X?" → query as cause, search effect vectors
+//! - `searchMode: "semantic"` → Fallback E1 semantic search (default)
 
 use serde_json::json;
 use tracing::{debug, error, info};
@@ -23,15 +30,20 @@ impl Handlers {
     ///
     /// # Arguments (from JSON)
     /// * `query` - Natural language query about causal relationships
-    /// * `direction` - Optional filter: "cause", "effect", or "all" (default: "all")
+    /// * `searchMode` - Search strategy (default: "semantic"):
+    ///   - "causes": Find what caused X (query as effect, search cause vectors)
+    ///   - "effects": Find effects of X (query as cause, search effect vectors)
+    ///   - "semantic": Fallback E1 semantic search
     /// * `topK` - Number of results (1-100, default: 10)
     /// * `includeSource` - Include original source content in results (default: true)
     ///
     /// # Returns
     /// Array of causal relationships with:
     /// - id: Causal relationship UUID
-    /// - description: LLM-generated 1-3 paragraph description
-    /// - direction: "cause" or "effect"
+    /// - causeStatement: Brief statement of the cause
+    /// - effectStatement: Brief statement of the effect
+    /// - explanation: LLM-generated 1-2 paragraph explanation
+    /// - mechanismType: "direct", "mediated", "feedback", or "temporal"
     /// - confidence: LLM confidence score
     /// - sourceContent: Original content (if includeSource=true)
     /// - sourceMemoryId: ID of source memory for provenance
@@ -48,19 +60,19 @@ impl Handlers {
             None => return self.tool_error(id, "Missing 'query' parameter"),
         };
 
-        // Parse direction filter (optional, default: "all")
-        let direction_filter = args
-            .get("direction")
+        // Parse searchMode parameter (optional, default: "semantic")
+        let search_mode = args
+            .get("searchMode")
             .and_then(|v| v.as_str())
-            .unwrap_or("all");
+            .unwrap_or("semantic");
 
-        // Validate direction filter
-        if !matches!(direction_filter, "cause" | "effect" | "all") {
+        // Validate search mode
+        if !matches!(search_mode, "causes" | "effects" | "semantic") {
             return self.tool_error(
                 id,
                 &format!(
-                    "Invalid direction '{}'. Must be 'cause', 'effect', or 'all'",
-                    direction_filter
+                    "Invalid searchMode '{}'. Must be 'causes', 'effects', or 'semantic'",
+                    search_mode
                 ),
             );
         }
@@ -91,42 +103,99 @@ impl Handlers {
 
         info!(
             query_len = query.len(),
-            direction_filter = direction_filter,
+            search_mode = search_mode,
             top_k = top_k,
             include_source = include_source,
             "search_causal_relationships: Starting search"
         );
 
-        // Step 1: Embed the query using E1 (1024D semantic)
-        let query_embedding = match self.multi_array_provider.embed_e1_only(query).await {
-            Ok(embedding) => embedding,
-            Err(e) => {
-                error!(error = %e, "search_causal_relationships: Failed to embed query");
-                return self.tool_error(id, &format!("Failed to embed query: {}", e));
+        // Step 1 & 2: Embed query and search based on mode
+        let search_results = match search_mode {
+            "causes" => {
+                // "What caused X?" → query as effect, search cause vectors
+                let e5_result = self.multi_array_provider.embed_e5_dual(query).await;
+                let (_as_cause, as_effect) = match e5_result {
+                    Ok(dual) => dual,
+                    Err(e) => {
+                        error!(error = %e, "search_causal_relationships: Failed to embed query for E5");
+                        return self.tool_error(id, &format!("Failed to embed query: {}", e));
+                    }
+                };
+
+                debug!(
+                    embedding_dim = as_effect.len(),
+                    mode = "causes",
+                    "search_causal_relationships: Query embedded as effect"
+                );
+
+                match self
+                    .teleological_store
+                    .search_causal_e5(&as_effect, true, top_k)
+                    .await
+                {
+                    Ok(results) => results,
+                    Err(e) => {
+                        error!(error = %e, "search_causal_relationships: E5 search failed");
+                        return self.tool_error(id, &format!("Search failed: {}", e));
+                    }
+                }
             }
-        };
+            "effects" => {
+                // "What are effects of X?" → query as cause, search effect vectors
+                let e5_result = self.multi_array_provider.embed_e5_dual(query).await;
+                let (as_cause, _as_effect) = match e5_result {
+                    Ok(dual) => dual,
+                    Err(e) => {
+                        error!(error = %e, "search_causal_relationships: Failed to embed query for E5");
+                        return self.tool_error(id, &format!("Failed to embed query: {}", e));
+                    }
+                };
 
-        debug!(
-            embedding_dim = query_embedding.len(),
-            "search_causal_relationships: Query embedded"
-        );
+                debug!(
+                    embedding_dim = as_cause.len(),
+                    mode = "effects",
+                    "search_causal_relationships: Query embedded as cause"
+                );
 
-        // Step 2: Search causal relationships by similarity
-        let direction_opt = if direction_filter == "all" {
-            None
-        } else {
-            Some(direction_filter)
-        };
+                match self
+                    .teleological_store
+                    .search_causal_e5(&as_cause, false, top_k)
+                    .await
+                {
+                    Ok(results) => results,
+                    Err(e) => {
+                        error!(error = %e, "search_causal_relationships: E5 search failed");
+                        return self.tool_error(id, &format!("Search failed: {}", e));
+                    }
+                }
+            }
+            _ => {
+                // "semantic" - Fallback E1 semantic search
+                let query_embedding = match self.multi_array_provider.embed_e1_only(query).await {
+                    Ok(embedding) => embedding,
+                    Err(e) => {
+                        error!(error = %e, "search_causal_relationships: Failed to embed query");
+                        return self.tool_error(id, &format!("Failed to embed query: {}", e));
+                    }
+                };
 
-        let search_results = match self
-            .teleological_store
-            .search_causal_relationships(&query_embedding, top_k, direction_opt)
-            .await
-        {
-            Ok(results) => results,
-            Err(e) => {
-                error!(error = %e, "search_causal_relationships: Search failed");
-                return self.tool_error(id, &format!("Search failed: {}", e));
+                debug!(
+                    embedding_dim = query_embedding.len(),
+                    mode = "semantic",
+                    "search_causal_relationships: Query embedded for E1 search"
+                );
+
+                match self
+                    .teleological_store
+                    .search_causal_relationships(&query_embedding, top_k, None)
+                    .await
+                {
+                    Ok(results) => results,
+                    Err(e) => {
+                        error!(error = %e, "search_causal_relationships: Search failed");
+                        return self.tool_error(id, &format!("Search failed: {}", e));
+                    }
+                }
             }
         };
 
@@ -147,10 +216,11 @@ impl Handlers {
                 Ok(Some(rel)) => {
                     let mut result = json!({
                         "id": rel.id.to_string(),
-                        "description": rel.description,
-                        "direction": rel.direction,
+                        "causeStatement": rel.cause_statement,
+                        "effectStatement": rel.effect_statement,
+                        "explanation": rel.explanation,
+                        "mechanismType": rel.mechanism_type,
                         "confidence": rel.confidence,
-                        "keyPhrases": rel.key_phrases,
                         "sourceMemoryId": rel.source_fingerprint_id.to_string(),
                         "similarity": similarity,
                         "createdAt": rel.created_at
@@ -183,7 +253,7 @@ impl Handlers {
 
         info!(
             query_preview = &query[..query.len().min(50)],
-            direction_filter = direction_filter,
+            search_mode = search_mode,
             top_k = top_k,
             results_count = results.len(),
             "search_causal_relationships: Returning results"
@@ -194,7 +264,7 @@ impl Handlers {
             json!({
                 "results": results,
                 "query": query,
-                "directionFilter": direction_filter,
+                "searchMode": search_mode,
                 "topK": top_k
             }),
         )

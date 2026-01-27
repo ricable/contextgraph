@@ -111,7 +111,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
         // discover_graph_relationships - LLM-based relationship discovery
         ToolDefinition::new(
             "discover_graph_relationships",
-            "Discover graph relationships between memories using LLM analysis. \
+            "Discover graph relationships between memories using LLM analysis with asymmetric E8 embeddings. \
              Uses the graph-agent with shared CausalDiscoveryLLM (Qwen2.5-3B) for relationship detection. \
              Supports 20 relationship types across 4 domains: Code (imports, calls, implements), \
              Legal (cites, overrules, interprets), Academic (cites, applies, extends), General. \
@@ -179,7 +179,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
         // validate_graph_link - Single-pair LLM validation
         ToolDefinition::new(
             "validate_graph_link",
-            "Validate a proposed graph link between two memories using LLM analysis. \
+            "Validate a proposed graph link between two memories using LLM analysis with asymmetric E8 embeddings. \
              Uses the graph-agent with shared CausalDiscoveryLLM (Qwen2.5-3B) for validation. \
              Supports 20 relationship types across Code, Legal, Academic, and General domains. \
              Returns validation result with confidence score, detected relationship type, category, and direction.",

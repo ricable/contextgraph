@@ -118,8 +118,8 @@ impl RocksDbTeleologicalStore {
         info!(
             causal_id = %relationship.id,
             source_id = %relationship.source_fingerprint_id,
-            direction = %relationship.direction,
-            desc_len = relationship.description.len(),
+            mechanism_type = %relationship.mechanism_type,
+            explanation_len = relationship.explanation.len(),
             "Stored causal relationship"
         );
 
@@ -358,16 +358,16 @@ impl RocksDbTeleologicalStore {
                 }
             };
 
-            // Apply direction filter if specified
+            // Apply mechanism type filter if specified
             if let Some(filter) = direction_filter {
-                if filter != "all" && relationship.normalized_direction() != filter {
+                if filter != "all" && relationship.normalized_mechanism_type() != filter {
                     continue;
                 }
             }
 
-            // Compute similarity
+            // Compute similarity using E1 semantic embedding
             let similarity =
-                compute_cosine_similarity(query_embedding, &relationship.description_embedding);
+                compute_cosine_similarity(query_embedding, &relationship.e1_semantic);
 
             results.push((relationship.id, similarity));
         }
@@ -384,6 +384,87 @@ impl RocksDbTeleologicalStore {
             results_count = results.len(),
             direction_filter = ?direction_filter,
             "Searched causal relationships"
+        );
+
+        Ok(results)
+    }
+
+    /// Search causal relationships using E5 asymmetric embeddings.
+    ///
+    /// E5 dual embeddings enable directional causal search:
+    /// - "What caused X?" → `search_causes=true`: query is effect, search cause vectors
+    /// - "What are effects of X?" → `search_causes=false`: query is cause, search effect vectors
+    ///
+    /// # Arguments
+    /// * `query_embedding` - E5 768D query embedding
+    /// * `search_causes` - If true, search e5_as_cause vectors; if false, search e5_as_effect vectors
+    /// * `top_k` - Number of results
+    ///
+    /// # Returns
+    /// Vector of (causal_id, similarity) tuples sorted by similarity descending.
+    pub async fn search_causal_e5(
+        &self,
+        query_embedding: &[f32],
+        search_causes: bool,
+        top_k: usize,
+    ) -> CoreResult<Vec<(Uuid, f32)>> {
+        use crate::teleological::rocksdb_store::helpers::compute_cosine_similarity;
+
+        let cf = self.cf_causal_relationships();
+        let iter = self.db.iterator_cf(cf, rocksdb::IteratorMode::Start);
+
+        let mut results: Vec<(Uuid, f32)> = Vec::new();
+
+        for item in iter {
+            let (_key, value) = item.map_err(|e| {
+                error!(
+                    "ROCKSDB ERROR: Failed to iterate causal_relationships: {}",
+                    e
+                );
+                CoreError::StorageError(format!("Failed to iterate causal_relationships: {}", e))
+            })?;
+
+            let relationship: CausalRelationship = match bincode::deserialize(&value) {
+                Ok(r) => r,
+                Err(e) => {
+                    warn!(
+                        "CAUSAL WARNING: Failed to deserialize relationship during E5 search: {}",
+                        e
+                    );
+                    continue;
+                }
+            };
+
+            // Select appropriate E5 vector based on search mode
+            let doc_embedding = if search_causes {
+                // Searching for causes: compare query (effect) against stored cause vectors
+                &relationship.e5_as_cause
+            } else {
+                // Searching for effects: compare query (cause) against stored effect vectors
+                &relationship.e5_as_effect
+            };
+
+            // Skip if E5 embeddings are empty (legacy data with placeholder zeros)
+            if doc_embedding.iter().all(|&v| v == 0.0) {
+                continue;
+            }
+
+            let similarity = compute_cosine_similarity(query_embedding, doc_embedding);
+            results.push((relationship.id, similarity));
+        }
+
+        // Sort by similarity descending
+        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Take top_k
+        results.truncate(top_k);
+
+        debug!(
+            query_dim = query_embedding.len(),
+            search_causes = search_causes,
+            top_k = top_k,
+            results_count = results.len(),
+            "Searched causal relationships using E5"
         );
 
         Ok(results)
@@ -514,8 +595,8 @@ mod tests {
     use context_graph_core::types::CausalRelationship;
     use tempfile::TempDir;
 
-    /// Direction values for rotating through test relationships.
-    const DIRECTIONS: &[&str] = &["cause", "effect", "bidirectional"];
+    /// Mechanism type values for rotating through test relationships.
+    const MECHANISM_TYPES: &[&str] = &["direct", "mediated", "feedback", "temporal"];
 
     /// Test harness providing store and runtime.
     struct TestHarness {
@@ -535,20 +616,23 @@ mod tests {
     }
 
     /// Create a test relationship with realistic data.
-    fn create_test_relationship(source_id: Uuid, direction: &str) -> CausalRelationship {
+    fn create_test_relationship(source_id: Uuid, mechanism_type: &str) -> CausalRelationship {
         CausalRelationship::new(
+            "Chronic stress elevates cortisol levels".to_string(),     // cause_statement
+            "Memory impairment and cognitive decline".to_string(),     // effect_statement
             format!(
                 "This causal relationship describes how chronic stress leads to elevated \
                  cortisol levels. The mechanism involves sustained activation of the HPA axis. \
-                 Direction: {}",
-                direction
-            ),
-            vec![0.1f32; 1024], // E1 1024D embedding
+                 Mechanism type: {}",
+                mechanism_type
+            ),                                                          // explanation
+            vec![0.1f32; CausalRelationship::E5_DIM],                  // e5_as_cause (768D)
+            vec![0.2f32; CausalRelationship::E5_DIM],                  // e5_as_effect (768D)
+            vec![0.3f32; CausalRelationship::E1_DIM],                  // e1_semantic (1024D)
             "Studies show stress hormones damage hippocampal neurons over time.".to_string(),
             source_id,
-            direction.to_string(),
             0.85,
-            vec!["causes".to_string(), "leads to".to_string()],
+            mechanism_type.to_string(),
         )
     }
 
@@ -557,7 +641,7 @@ mod tests {
         let h = TestHarness::new();
 
         let source_id = Uuid::new_v4();
-        let rel = create_test_relationship(source_id, "cause");
+        let rel = create_test_relationship(source_id, "direct");
         let expected_id = rel.id;
 
         // Store
@@ -576,9 +660,11 @@ mod tests {
 
         assert_eq!(retrieved.id, expected_id, "ID mismatch");
         assert_eq!(retrieved.source_fingerprint_id, source_id, "Source ID mismatch");
-        assert_eq!(retrieved.direction, "cause", "Direction mismatch");
+        assert_eq!(retrieved.mechanism_type, "direct", "Mechanism type mismatch");
         assert!((retrieved.confidence - 0.85).abs() < 0.001, "Confidence mismatch");
-        assert_eq!(retrieved.description_embedding.len(), 1024, "Embedding dim mismatch");
+        assert_eq!(retrieved.e5_as_cause.len(), CausalRelationship::E5_DIM, "E5 cause dim mismatch");
+        assert_eq!(retrieved.e5_as_effect.len(), CausalRelationship::E5_DIM, "E5 effect dim mismatch");
+        assert_eq!(retrieved.e1_semantic.len(), CausalRelationship::E1_DIM, "E1 dim mismatch");
 
         // Count
         let count = h
@@ -594,7 +680,7 @@ mod tests {
 
         // Create multiple relationships for same source
         let source_id = Uuid::new_v4();
-        let relationships: Vec<_> = DIRECTIONS
+        let relationships: Vec<_> = MECHANISM_TYPES
             .iter()
             .map(|dir| create_test_relationship(source_id, dir))
             .collect();
@@ -613,7 +699,7 @@ mod tests {
             .block_on(h.store.get_causal_relationships_by_source(source_id))
             .expect("Get by source failed");
 
-        assert_eq!(by_source.len(), 3, "Should find 3 relationships");
+        assert_eq!(by_source.len(), 4, "Should find 4 relationships");
 
         let found_ids: std::collections::HashSet<_> = by_source.iter().map(|r| r.id).collect();
         for id in &expected_ids {
@@ -629,13 +715,14 @@ mod tests {
         h.rt.block_on(async {
             for i in 0..10 {
                 let source_id = Uuid::new_v4();
-                let mut rel = create_test_relationship(source_id, "cause");
-                rel.description_embedding[0] = 0.1 + (i as f32 * 0.01);
+                let mut rel = create_test_relationship(source_id, "direct");
+                // Modify E1 semantic embedding for search differentiation
+                rel.e1_semantic[0] = 0.1 + (i as f32 * 0.01);
                 h.store.store_causal_relationship(&rel).await.unwrap();
             }
         });
 
-        let query_embedding = vec![0.1f32; 1024];
+        let query_embedding = vec![0.3f32; CausalRelationship::E1_DIM];
 
         // Search without filter
         let results = h
@@ -646,13 +733,13 @@ mod tests {
         assert!(!results.is_empty(), "Search should return results");
         assert!(results.len() <= 5, "Should return at most top_k results");
 
-        // Search with direction filter
-        let cause_results = h
+        // Search with mechanism type filter
+        let direct_results = h
             .rt
-            .block_on(h.store.search_causal_relationships(&query_embedding, 5, Some("cause")))
+            .block_on(h.store.search_causal_relationships(&query_embedding, 5, Some("direct")))
             .expect("Search failed");
 
-        assert!(!cause_results.is_empty(), "Filtered search should return results");
+        assert!(!direct_results.is_empty(), "Filtered search should return results");
     }
 
     #[test]
@@ -735,7 +822,7 @@ mod tests {
         h.rt.block_on(async {
             for i in 0..BATCH_SIZE {
                 let source_id = Uuid::new_v4();
-                let direction = DIRECTIONS[i % DIRECTIONS.len()];
+                let direction = MECHANISM_TYPES[i % MECHANISM_TYPES.len()];
                 let rel = create_test_relationship(source_id, direction);
                 h.store.store_causal_relationship(&rel).await.unwrap();
             }

@@ -1,0 +1,95 @@
+{
+  "timestamp": "2026-01-27T12:25:05.786958407+00:00",
+  "config": {
+    "max_memories": 20,
+    "max_pairs": 10,
+    "min_confidence": 0.7,
+    "num_iterations": 2,
+    "dry_run_only": false
+  },
+  "trigger_discovery": {
+    "dry_run_latency_ms": {
+      "min_ms": 0.003307,
+      "max_ms": 0.038188,
+      "avg_ms": 0.0207475,
+      "median_ms": 0.038188,
+      "p95_ms": 0.038188,
+      "p99_ms": 0.038188,
+      "samples": 2
+    },
+    "full_execution_latency_ms": {
+      "min_ms": 0.0030960000000000002,
+      "max_ms": 0.008078,
+      "avg_ms": 0.005587,
+      "median_ms": 0.008078,
+      "p95_ms": 0.008078,
+      "p99_ms": 0.008078,
+      "samples": 2
+    },
+    "memory_fetch_overhead_ms": 0.0,
+    "pairs_analyzed": [
+      0,
+      0
+    ],
+    "relationships_found": [
+      0,
+      0
+    ],
+    "avg_confidence": 0.0,
+    "errors": 0
+  },
+  "get_status": {
+    "latency_ms": {
+      "min_ms": 0.002303,
+      "max_ms": 0.015805,
+      "avg_ms": 0.009054,
+      "median_ms": 0.015805,
+      "p95_ms": 0.015805,
+      "p99_ms": 0.015805,
+      "samples": 2
+    },
+    "response_size_bytes": 390,
+    "fields_returned": [
+      "agentStatus",
+      "estimatedVramMb",
+      "graphStats",
+      "lastCycle",
+      "llmAvailable",
+      "modelName",
+      "pairsAnalyzedTotal"
+    ]
+  },
+  "graph_service": {
+    "cycle_duration_ms": {
+      "min_ms": 0.0030960000000000002,
+      "max_ms": 0.008078,
+      "avg_ms": 0.005587,
+      "median_ms": 0.008078,
+      "p95_ms": 0.008078,
+      "p99_ms": 0.008078,
+      "samples": 2
+    },
+    "llm_inference_per_pair_ms": {
+      "min_ms": 0.0,
+      "max_ms": 0.0,
+      "avg_ms": 0.0,
+      "median_ms": 0.0,
+      "p95_ms": 0.0,
+      "p99_ms": 0.0,
+      "samples": 0
+    },
+    "edge_creation_rate": 0.0,
+    "embedding_generation_rate": 0.0,
+    "scanner_hit_rate": 0.0,
+    "activator_confirmation_rate": 0.0
+  },
+  "performance_targets": {
+    "dry_run_target_met": true,
+    "get_status_target_met": true,
+    "full_execution_target_met": true,
+    "llm_inference_target_met": true
+  },
+  "recommendations": [
+    "All performance targets met!"
+  ]
+}

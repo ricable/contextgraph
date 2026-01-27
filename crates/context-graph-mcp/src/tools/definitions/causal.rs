@@ -15,7 +15,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
         // search_causal_relationships - Search LLM-generated causal descriptions with provenance
         ToolDefinition::new(
             "search_causal_relationships",
-            "Search for causal relationships by semantic similarity to query. \
+            "Search for causal relationships using E5 asymmetric similarity. \
              Returns LLM-generated 1-3 paragraph descriptions explaining causal mechanisms, \
              with full provenance linking to source memories. Use for understanding causal \
              relationships with rich explanations and evidence.",

@@ -187,6 +187,91 @@ impl MechanismType {
     }
 }
 
+// ============================================================================
+// MULTI-RELATIONSHIP EXTRACTION TYPES
+// ============================================================================
+
+/// A single causal relationship extracted from content.
+///
+/// Unlike [`CausalHint`] which describes whether text IS causal,
+/// this represents a specific cause-effect relationship found within the text.
+/// Each relationship gets its own explanatory paragraph for E5 embedding.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtractedCausalRelationship {
+    /// Brief statement of the cause (e.g., "Chronic stress elevates cortisol")
+    pub cause: String,
+
+    /// Brief statement of the effect (e.g., "Elevated cortisol damages neurons")
+    pub effect: String,
+
+    /// 1-2 paragraph explanation of HOW and WHY this causal link exists.
+    /// This is embedded for semantic search.
+    pub explanation: String,
+
+    /// Confidence score [0.0, 1.0] from the LLM.
+    pub confidence: f32,
+
+    /// Type of causal mechanism.
+    pub mechanism_type: MechanismType,
+}
+
+impl ExtractedCausalRelationship {
+    /// Create a new extracted relationship with validation.
+    pub fn new(
+        cause: String,
+        effect: String,
+        explanation: String,
+        confidence: f32,
+        mechanism_type: MechanismType,
+    ) -> Self {
+        Self {
+            cause,
+            effect,
+            explanation,
+            confidence: confidence.clamp(0.0, 1.0),
+            mechanism_type,
+        }
+    }
+
+    /// Check if this relationship meets the minimum confidence threshold.
+    pub fn is_confident(&self, threshold: f32) -> bool {
+        self.confidence >= threshold
+    }
+}
+
+/// Result of multi-relationship extraction from a piece of content.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiRelationshipResult {
+    /// All causal relationships extracted from the content.
+    pub relationships: Vec<ExtractedCausalRelationship>,
+
+    /// Whether the content had any causal language at all.
+    pub has_causal_content: bool,
+}
+
+impl MultiRelationshipResult {
+    /// Create an empty result for non-causal content.
+    pub fn not_causal() -> Self {
+        Self {
+            relationships: Vec::new(),
+            has_causal_content: false,
+        }
+    }
+
+    /// Check if any relationships were found.
+    pub fn has_relationships(&self) -> bool {
+        !self.relationships.is_empty()
+    }
+
+    /// Get only relationships above a confidence threshold.
+    pub fn confident_relationships(&self, threshold: f32) -> Vec<&ExtractedCausalRelationship> {
+        self.relationships
+            .iter()
+            .filter(|r| r.is_confident(threshold))
+            .collect()
+    }
+}
+
 /// Direction of a causal relationship between two memories.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

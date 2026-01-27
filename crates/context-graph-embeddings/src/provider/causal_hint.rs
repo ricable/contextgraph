@@ -43,13 +43,18 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use context_graph_core::traits::CausalHint;
+use context_graph_core::traits::{CausalHint, ExtractedCausalRelationship};
 
-/// Provider for LLM-based causal hints.
+/// Provider for LLM-based causal hints and multi-relationship extraction.
 ///
 /// Used during memory storage to obtain direction hints for E5 embedding
 /// enhancement. Implementations should handle timeouts gracefully and
 /// return `None` rather than blocking the storage pipeline.
+///
+/// # Methods
+///
+/// - [`get_hint`](Self::get_hint): Get a single causal hint (legacy, for E5 enhancement)
+/// - [`extract_all_relationships`](Self::extract_all_relationships): Extract ALL cause-effect relationships
 #[async_trait]
 pub trait CausalHintProvider: Send + Sync {
     /// Get causal hint for content with built-in timeout.
@@ -69,6 +74,34 @@ pub trait CausalHintProvider: Send + Sync {
     ///
     /// Target latency: <100ms to avoid blocking storage pipeline.
     async fn get_hint(&self, content: &str) -> Option<CausalHint>;
+
+    /// Extract ALL causal relationships from content.
+    ///
+    /// Unlike [`get_hint`](Self::get_hint) which returns a single hint describing
+    /// whether content IS causal, this method extracts every distinct cause-effect
+    /// relationship found within the content.
+    ///
+    /// Each extracted relationship includes:
+    /// - Brief cause and effect statements
+    /// - A 1-2 paragraph explanation for E5 embedding
+    /// - Confidence score and mechanism type
+    ///
+    /// # Arguments
+    ///
+    /// * `content` - The text content to analyze
+    ///
+    /// # Returns
+    ///
+    /// A vector of [`ExtractedCausalRelationship`] instances. Returns an empty
+    /// vector if:
+    /// - LLM is not available
+    /// - Content has no causal relationships
+    /// - Extraction times out
+    ///
+    /// # Performance
+    ///
+    /// Target latency: <200ms (longer than get_hint due to multi-extraction).
+    async fn extract_all_relationships(&self, content: &str) -> Vec<ExtractedCausalRelationship>;
 
     /// Check if the LLM is available for hint generation.
     ///
@@ -101,6 +134,10 @@ impl Default for NoOpCausalHintProvider {
 impl CausalHintProvider for NoOpCausalHintProvider {
     async fn get_hint(&self, _content: &str) -> Option<CausalHint> {
         None
+    }
+
+    async fn extract_all_relationships(&self, _content: &str) -> Vec<ExtractedCausalRelationship> {
+        Vec::new()
     }
 
     fn is_available(&self) -> bool {

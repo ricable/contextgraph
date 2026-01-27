@@ -37,7 +37,10 @@ use serde::Deserialize;
 use tracing::{debug, info, warn};
 
 use crate::error::{CausalAgentError, CausalAgentResult};
-use crate::types::{CausalAnalysisResult, CausalDirectionHint, CausalHint, CausalLinkDirection};
+use crate::types::{
+    CausalAnalysisResult, CausalDirectionHint, CausalHint, CausalLinkDirection,
+    ExtractedCausalRelationship, MechanismType, MultiRelationshipResult,
+};
 
 pub use prompt::CausalPromptBuilder;
 
@@ -108,6 +111,8 @@ pub enum GrammarType {
     Validation,
     /// Single-text causal hint analysis (for E5 enhancement).
     SingleText,
+    /// Multi-relationship extraction (extracts ALL cause-effect relationships).
+    MultiRelationship,
 }
 
 /// Internal state of the LLM.
@@ -170,6 +175,7 @@ pub struct CausalDiscoveryLLM {
     graph_grammar: String,
     validation_grammar: String,
     single_text_grammar: String,
+    multi_relationship_grammar: String,
 }
 
 impl CausalDiscoveryLLM {
@@ -196,8 +202,9 @@ impl CausalDiscoveryLLM {
         let causal_grammar = Self::load_grammar_file(&config.causal_grammar_path)?;
         let graph_grammar = Self::load_grammar_file(&config.graph_grammar_path)?;
         let validation_grammar = Self::load_grammar_file(&config.validation_grammar_path)?;
-        // Single-text grammar uses embedded default (simpler than pair analysis)
+        // Single-text and multi-relationship grammars use embedded defaults
         let single_text_grammar = Self::default_single_text_grammar().to_string();
+        let multi_relationship_grammar = Self::default_multi_relationship_grammar().to_string();
 
         Ok(Self {
             config,
@@ -208,6 +215,7 @@ impl CausalDiscoveryLLM {
             graph_grammar,
             validation_grammar,
             single_text_grammar,
+            multi_relationship_grammar,
         })
     }
 
@@ -256,6 +264,28 @@ direction-value ::= "\"cause\"" | "\"effect\"" | "\"neutral\""
 boolean ::= "true" | "false"
 number ::= "0" ("." [0-9] [0-9]?)? | "1" ("." "0" "0"?)?
 phrase-array ::= "[" ws (string (ws "," ws string)*)? ws "]"
+string ::= "\"" ([^"\\] | "\\" .)* "\""
+ws ::= [ \t\n\r]*"#
+    }
+
+    /// Default embedded grammar for multi-relationship extraction.
+    ///
+    /// Extracts an array of relationships, each with cause, effect, explanation,
+    /// confidence, and mechanism_type fields.
+    const fn default_multi_relationship_grammar() -> &'static str {
+        r#"root ::= "{" ws relationships-field "," ws has-causal-field ws "}"
+relationships-field ::= "\"relationships\"" ws ":" ws relationship-array
+has-causal-field ::= "\"has_causal_content\"" ws ":" ws boolean
+relationship-array ::= "[" ws (relationship (ws "," ws relationship)*)? ws "]"
+relationship ::= "{" ws cause-field "," ws effect-field "," ws explanation-field "," ws confidence-field "," ws mechanism-field ws "}"
+cause-field ::= "\"cause\"" ws ":" ws string
+effect-field ::= "\"effect\"" ws ":" ws string
+explanation-field ::= "\"explanation\"" ws ":" ws string
+confidence-field ::= "\"confidence\"" ws ":" ws number
+mechanism-field ::= "\"mechanism_type\"" ws ":" ws mechanism-value
+mechanism-value ::= "\"direct\"" | "\"mediated\"" | "\"feedback\"" | "\"temporal\""
+boolean ::= "true" | "false"
+number ::= "0" ("." [0-9] [0-9]?)? | "1" ("." "0" "0"?)?
 string ::= "\"" ([^"\\] | "\\" .)* "\""
 ws ::= [ \t\n\r]*"#
     }
@@ -552,6 +582,196 @@ ws ::= [ \t\n\r]*"#
         Ok(hint)
     }
 
+    // =========================================================================
+    // MULTI-RELATIONSHIP EXTRACTION
+    // =========================================================================
+
+    /// Extract ALL causal relationships from text.
+    ///
+    /// Unlike [`analyze_single_text`](Self::analyze_single_text) which returns a
+    /// single [`CausalHint`] describing whether text IS causal, this method extracts
+    /// every distinct cause-effect relationship found within the content.
+    ///
+    /// Each extracted relationship includes:
+    /// - Brief cause and effect statements
+    /// - A 1-2 paragraph explanation for E5 embedding
+    /// - Confidence score and mechanism type
+    ///
+    /// # Arguments
+    ///
+    /// * `content` - The text content to analyze
+    ///
+    /// # Returns
+    ///
+    /// A [`MultiRelationshipResult`] containing all extracted relationships.
+    /// For non-causal content, returns an empty result.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let result = llm.extract_causal_relationships(
+    ///     "High cortisol from stress damages neurons, leading to memory problems."
+    /// ).await?;
+    ///
+    /// // Returns 2 relationships:
+    /// // 1. Stress → cortisol → neuron damage
+    /// // 2. Neuron damage → memory problems
+    /// assert_eq!(result.relationships.len(), 2);
+    /// ```
+    pub async fn extract_causal_relationships(
+        &self,
+        content: &str,
+    ) -> CausalAgentResult<MultiRelationshipResult> {
+        if !self.is_loaded() {
+            return Err(CausalAgentError::LlmNotInitialized);
+        }
+
+        // Build prompt for multi-relationship extraction
+        let prompt = self.prompt_builder.build_multi_relationship_prompt(content);
+
+        debug!(
+            prompt_len = prompt.len(),
+            content_len = content.len(),
+            "Extracting causal relationships"
+        );
+
+        // Generate response with grammar constraint
+        let response = self
+            .generate_with_grammar(&prompt, GrammarType::MultiRelationship)
+            .await?;
+
+        // Parse and return
+        self.parse_multi_relationship_response(&response)
+    }
+
+    /// Parse multi-relationship extraction response into [`MultiRelationshipResult`].
+    fn parse_multi_relationship_response(
+        &self,
+        response: &str,
+    ) -> CausalAgentResult<MultiRelationshipResult> {
+        // Response format (guaranteed by grammar):
+        // {"relationships":[...],"has_causal_content":true/false}
+
+        #[derive(Deserialize)]
+        struct RawResponse {
+            relationships: Vec<RawRelationship>,
+            has_causal_content: bool,
+        }
+
+        #[derive(Deserialize)]
+        struct RawRelationship {
+            cause: String,
+            effect: String,
+            explanation: String,
+            confidence: f32,
+            mechanism_type: String,
+        }
+
+        // Try JSON parsing (should work due to grammar constraint)
+        match serde_json::from_str::<RawResponse>(response) {
+            Ok(parsed) => {
+                let relationships: Vec<ExtractedCausalRelationship> = parsed
+                    .relationships
+                    .into_iter()
+                    .filter(|r| r.confidence >= 0.5) // Filter low confidence
+                    .map(|r| {
+                        ExtractedCausalRelationship::new(
+                            r.cause,
+                            r.effect,
+                            // Unescape the explanation string
+                            r.explanation.replace("\\n", "\n"),
+                            r.confidence,
+                            MechanismType::from_str(&r.mechanism_type).unwrap_or(MechanismType::Direct),
+                        )
+                    })
+                    .collect();
+
+                debug!(
+                    relationship_count = relationships.len(),
+                    has_causal = parsed.has_causal_content,
+                    "Parsed multi-relationship response"
+                );
+
+                Ok(MultiRelationshipResult {
+                    relationships,
+                    has_causal_content: parsed.has_causal_content,
+                })
+            }
+            Err(e) => {
+                warn!(
+                    response = response,
+                    error = %e,
+                    "Failed to parse multi-relationship response, using fallback"
+                );
+                // Fallback: try regex extraction
+                self.parse_multi_relationship_fallback(response)
+            }
+        }
+    }
+
+    /// Fallback parsing for multi-relationship extraction using regex.
+    fn parse_multi_relationship_fallback(
+        &self,
+        response: &str,
+    ) -> CausalAgentResult<MultiRelationshipResult> {
+        use regex::Regex;
+
+        // Extract has_causal_content
+        let has_causal_re = Regex::new(r#""has_causal_content"\s*:\s*(true|false)"#).unwrap();
+        let has_causal_content = has_causal_re
+            .captures(response)
+            .and_then(|c| c.get(1))
+            .map(|m| m.as_str() == "true")
+            .unwrap_or(false);
+
+        // Extract individual relationships using pattern matching
+        // This is a best-effort fallback
+        let rel_re = Regex::new(
+            r#"\{\s*"cause"\s*:\s*"([^"]+)"\s*,\s*"effect"\s*:\s*"([^"]+)"\s*,\s*"explanation"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"confidence"\s*:\s*([0-9.]+)\s*,\s*"mechanism_type"\s*:\s*"(\w+)"\s*\}"#,
+        )
+        .unwrap();
+
+        let relationships: Vec<ExtractedCausalRelationship> = rel_re
+            .captures_iter(response)
+            .filter_map(|cap| {
+                let cause = cap.get(1)?.as_str().to_string();
+                let effect = cap.get(2)?.as_str().to_string();
+                let explanation = cap
+                    .get(3)?
+                    .as_str()
+                    .replace("\\n", "\n")
+                    .replace("\\\"", "\"")
+                    .replace("\\\\", "\\");
+                let confidence: f32 = cap.get(4)?.as_str().parse().ok()?;
+                let mechanism_type =
+                    MechanismType::from_str(cap.get(5)?.as_str()).unwrap_or(MechanismType::Direct);
+
+                if confidence >= 0.5 {
+                    Some(ExtractedCausalRelationship::new(
+                        cause,
+                        effect,
+                        explanation,
+                        confidence,
+                        mechanism_type,
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        debug!(
+            relationship_count = relationships.len(),
+            has_causal = has_causal_content,
+            "Parsed multi-relationship response (fallback)"
+        );
+
+        Ok(MultiRelationshipResult {
+            relationships,
+            has_causal_content,
+        })
+    }
+
     /// Generate text from a custom prompt.
     ///
     /// This is a public wrapper for the internal `generate` method,
@@ -632,6 +852,7 @@ ws ::= [ \t\n\r]*"#
             GrammarType::Graph => &self.graph_grammar,
             GrammarType::Validation => &self.validation_grammar,
             GrammarType::SingleText => &self.single_text_grammar,
+            GrammarType::MultiRelationship => &self.multi_relationship_grammar,
         };
 
         // Create sampler chain with grammar constraint

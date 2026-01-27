@@ -98,9 +98,12 @@ mod tests {
 
     #[test]
     fn test_total_tool_count() {
-        // 45 tools: 32 base + 4 embedder-first + 2 temporal + 1 robustness + 4 graph linking + 2 causal discovery
+        // 49 tools:
+        // core: 4, merge: 1, curation: 2, topic: 4, file_watcher: 4, sequence: 4,
+        // causal: 4, causal_discovery: 2, keyword: 1, code: 1, graph: 4,
+        // robustness: 1, intent: 1, entity: 6, embedder: 4, temporal: 2, graph_link: 4
         // (Note: find_contextual_matches merged into search_by_intent, inject_context merged into store_memory)
-        assert_eq!(get_tool_definitions().len(), 45);
+        assert_eq!(get_tool_definitions().len(), 49);
     }
 
     #[test]
@@ -212,11 +215,11 @@ mod tests {
         assert_eq!(topic::definitions().len(), 4);
         assert_eq!(file_watcher::definitions().len(), 4);
         assert_eq!(sequence::definitions().len(), 4);
-        assert_eq!(causal::definitions().len(), 2);
+        assert_eq!(causal::definitions().len(), 4); // search_causal_relationships, search_causes, search_effects, get_causal_chain
         assert_eq!(causal_discovery::definitions().len(), 2); // E5 LLM-based relationship discovery
         assert_eq!(keyword::definitions().len(), 1);
         assert_eq!(code::definitions().len(), 1);
-        assert_eq!(graph::definitions().len(), 2);
+        assert_eq!(graph::definitions().len(), 4); // search_connections, get_graph_path, discover_graph_relationships, validate_graph_link
         assert_eq!(robustness::definitions().len(), 1); // E9 typo-tolerant search
         assert_eq!(intent::definitions().len(), 1); // find_contextual_matches merged into search_by_intent
         assert_eq!(entity::definitions().len(), 6);

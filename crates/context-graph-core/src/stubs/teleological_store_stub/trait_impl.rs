@@ -458,15 +458,15 @@ impl TeleologicalMemoryStore for InMemoryTeleologicalStore {
         for entry in self.causal_relationships.iter() {
             let rel = entry.value();
 
-            // Apply direction filter if specified
+            // Apply mechanism type filter if specified
             if let Some(filter) = direction_filter {
-                if filter != "all" && rel.normalized_direction() != filter {
+                if filter != "all" && rel.normalized_mechanism_type() != filter {
                     continue;
                 }
             }
 
-            // Compute cosine similarity
-            let similarity = compute_cosine_similarity(query_embedding, &rel.description_embedding);
+            // Compute cosine similarity using E1 semantic embedding
+            let similarity = compute_cosine_similarity(query_embedding, &rel.e1_semantic);
             results.push((rel.id, similarity));
         }
 
@@ -482,6 +482,50 @@ impl TeleologicalMemoryStore for InMemoryTeleologicalStore {
             results_count = results.len(),
             direction_filter = ?direction_filter,
             "Searched causal relationships in in-memory store"
+        );
+
+        Ok(results)
+    }
+
+    async fn search_causal_e5(
+        &self,
+        query_embedding: &[f32],
+        search_causes: bool,
+        top_k: usize,
+    ) -> CoreResult<Vec<(Uuid, f32)>> {
+        let mut results: Vec<(Uuid, f32)> = Vec::new();
+
+        for entry in self.causal_relationships.iter() {
+            let rel = entry.value();
+
+            // Select appropriate E5 vector based on search mode
+            let doc_embedding = if search_causes {
+                &rel.e5_as_cause
+            } else {
+                &rel.e5_as_effect
+            };
+
+            // Skip if E5 embeddings are empty (legacy data with placeholder zeros)
+            if doc_embedding.iter().all(|&v| v == 0.0) {
+                continue;
+            }
+
+            let similarity = compute_cosine_similarity(query_embedding, doc_embedding);
+            results.push((rel.id, similarity));
+        }
+
+        // Sort by similarity descending
+        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Take top_k
+        results.truncate(top_k);
+
+        debug!(
+            query_dim = query_embedding.len(),
+            search_causes = search_causes,
+            top_k = top_k,
+            results_count = results.len(),
+            "Searched causal relationships using E5 in in-memory store"
         );
 
         Ok(results)

@@ -355,6 +355,133 @@ impl CausalHint {
 }
 
 // ============================================================================
+// MULTI-RELATIONSHIP EXTRACTION TYPES
+// ============================================================================
+
+/// Type of causal mechanism connecting cause and effect.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MechanismType {
+    /// A directly causes B without intermediaries.
+    #[default]
+    Direct,
+    /// A causes X which causes B (indirect pathway).
+    Mediated,
+    /// A and B mutually reinforce each other (feedback loops).
+    Feedback,
+    /// A precedes B in a necessary sequence.
+    Temporal,
+}
+
+impl MechanismType {
+    /// Parse from string (for LLM output parsing).
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "direct" => Some(Self::Direct),
+            "mediated" => Some(Self::Mediated),
+            "feedback" => Some(Self::Feedback),
+            "temporal" => Some(Self::Temporal),
+            _ => None,
+        }
+    }
+
+    /// Convert to string for serialization.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Direct => "direct",
+            Self::Mediated => "mediated",
+            Self::Feedback => "feedback",
+            Self::Temporal => "temporal",
+        }
+    }
+}
+
+/// A single causal relationship extracted from content.
+///
+/// Unlike [`CausalHint`] which describes whether text IS causal,
+/// this represents a specific cause-effect relationship found within the text.
+/// Multiple `ExtractedCausalRelationship` instances can be extracted from
+/// a single piece of content.
+///
+/// Each relationship includes an explanatory paragraph that is embedded
+/// using E5 dual vectors (as_cause and as_effect) for asymmetric search.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ExtractedCausalRelationship {
+    /// Brief statement of the cause (e.g., "Chronic stress elevates cortisol")
+    pub cause: String,
+
+    /// Brief statement of the effect (e.g., "Elevated cortisol damages neurons")
+    pub effect: String,
+
+    /// 1-2 paragraph explanation of HOW and WHY this causal link exists.
+    /// This is embedded for semantic search.
+    pub explanation: String,
+
+    /// Confidence score [0.0, 1.0] from the LLM.
+    pub confidence: f32,
+
+    /// Type of causal mechanism.
+    pub mechanism_type: MechanismType,
+}
+
+impl ExtractedCausalRelationship {
+    /// Create a new extracted relationship with validation.
+    pub fn new(
+        cause: String,
+        effect: String,
+        explanation: String,
+        confidence: f32,
+        mechanism_type: MechanismType,
+    ) -> Self {
+        Self {
+            cause,
+            effect,
+            explanation,
+            confidence: confidence.clamp(0.0, 1.0),
+            mechanism_type,
+        }
+    }
+
+    /// Check if this relationship meets the minimum confidence threshold.
+    pub fn is_confident(&self, threshold: f32) -> bool {
+        self.confidence >= threshold
+    }
+}
+
+/// Result of multi-relationship extraction from a piece of content.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct MultiRelationshipResult {
+    /// All causal relationships extracted from the content.
+    pub relationships: Vec<ExtractedCausalRelationship>,
+
+    /// Whether the content had any causal language at all.
+    pub has_causal_content: bool,
+}
+
+impl MultiRelationshipResult {
+    /// Create an empty result for non-causal content.
+    pub fn not_causal() -> Self {
+        Self {
+            relationships: Vec::new(),
+            has_causal_content: false,
+        }
+    }
+
+    /// Check if any relationships were found.
+    pub fn has_relationships(&self) -> bool {
+        !self.relationships.is_empty()
+    }
+
+    /// Get only relationships above a confidence threshold.
+    pub fn confident_relationships(&self, threshold: f32) -> Vec<&ExtractedCausalRelationship> {
+        self.relationships
+            .iter()
+            .filter(|r| r.is_confident(threshold))
+            .collect()
+    }
+}
+
+// ============================================================================
 // EMBEDDING METADATA
 // ============================================================================
 
@@ -637,6 +764,31 @@ pub trait MultiArrayEmbeddingProvider: Send + Sync {
     async fn embed_e1_only(&self, content: &str) -> CoreResult<Vec<f32>> {
         let output = self.embed_all(content).await?;
         Ok(output.fingerprint.e1_semantic)
+    }
+
+    /// Embed content using only E5 (causal) embedder to get dual vectors.
+    ///
+    /// Returns (as_cause, as_effect) E5 dual embeddings (768D each).
+    /// Used for storing CausalRelationship with E5 asymmetric search capability.
+    ///
+    /// # Arguments
+    ///
+    /// * `content` - Text to embed (typically a causal explanation paragraph)
+    ///
+    /// # Returns
+    ///
+    /// A tuple of (e5_as_cause, e5_as_effect) vectors, each 768D.
+    ///
+    /// # Default Implementation
+    ///
+    /// Falls back to `embed_all` and extracts E5 dual vectors.
+    /// Implementations should override for efficiency.
+    async fn embed_e5_dual(&self, content: &str) -> CoreResult<(Vec<f32>, Vec<f32>)> {
+        let output = self.embed_all(content).await?;
+        Ok((
+            output.fingerprint.e5_causal_as_cause,
+            output.fingerprint.e5_causal_as_effect,
+        ))
     }
 
     /// Get expected dimensions for each embedder.

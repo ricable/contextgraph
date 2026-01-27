@@ -115,6 +115,14 @@ impl Handlers {
                 self.call_search_causal_relationships(id, arguments).await
             }
 
+            // ========== CAUSAL DISCOVERY TOOLS (LLM-based causal analysis) ==========
+            tool_names::TRIGGER_CAUSAL_DISCOVERY => {
+                self.call_trigger_causal_discovery(id, arguments).await
+            }
+            tool_names::GET_CAUSAL_DISCOVERY_STATUS => {
+                self.call_get_causal_discovery_status(id, arguments).await
+            }
+
             // ========== GRAPH TOOLS (E8 Upgrade - Phase 4) ==========
             tool_names::SEARCH_CONNECTIONS => self.call_search_connections(id, arguments).await,
             tool_names::GET_GRAPH_PATH => self.call_get_graph_path(id, arguments).await,

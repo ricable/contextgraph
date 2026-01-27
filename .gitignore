@@ -124,3 +124,4 @@ contextgraph_data/
 
 # RocksDB runtime data
 data/
+contextgraph_data_incompatible_*/

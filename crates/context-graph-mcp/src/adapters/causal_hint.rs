@@ -33,9 +33,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use context_graph_causal_agent::CausalDiscoveryLLM;
-use context_graph_core::traits::CausalHint;
+use context_graph_core::traits::{CausalHint, ExtractedCausalRelationship};
 use context_graph_embeddings::provider::CausalHintProvider;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 /// Production implementation wrapping CausalDiscoveryLLM.
 ///
@@ -141,6 +141,73 @@ impl CausalHintProvider for LlmCausalHintProvider {
                     "LlmCausalHintProvider: Analysis timed out"
                 );
                 None
+            }
+        }
+    }
+
+    async fn extract_all_relationships(&self, content: &str) -> Vec<ExtractedCausalRelationship> {
+        // Check if LLM is ready
+        if !self.llm.is_loaded() {
+            debug!("LlmCausalHintProvider: LLM not loaded, skipping relationship extraction");
+            return Vec::new();
+        }
+
+        // Use longer timeout for multi-extraction (2x single hint timeout)
+        let multi_timeout = self.timeout_duration * 2;
+
+        // Run extraction with timeout
+        let result = tokio::time::timeout(
+            multi_timeout,
+            self.llm.extract_causal_relationships(content),
+        )
+        .await;
+
+        match result {
+            Ok(Ok(multi_result)) => {
+                if multi_result.relationships.is_empty() {
+                    debug!(
+                        has_causal = multi_result.has_causal_content,
+                        "LlmCausalHintProvider: No relationships found in content"
+                    );
+                } else {
+                    info!(
+                        count = multi_result.relationships.len(),
+                        has_causal = multi_result.has_causal_content,
+                        "LlmCausalHintProvider: Extracted causal relationships"
+                    );
+                }
+
+                // Convert from causal-agent types to core types
+                multi_result
+                    .relationships
+                    .into_iter()
+                    .map(|r| {
+                        ExtractedCausalRelationship::new(
+                            r.cause,
+                            r.effect,
+                            r.explanation,
+                            r.confidence,
+                            context_graph_core::traits::MechanismType::from_str(
+                                r.mechanism_type.as_str(),
+                            )
+                            .unwrap_or_default(),
+                        )
+                    })
+                    .collect()
+            }
+            Ok(Err(e)) => {
+                warn!(
+                    error = %e,
+                    "LlmCausalHintProvider: Relationship extraction failed"
+                );
+                Vec::new()
+            }
+            Err(_) => {
+                warn!(
+                    timeout_ms = multi_timeout.as_millis(),
+                    "LlmCausalHintProvider: Relationship extraction timed out"
+                );
+                Vec::new()
             }
         }
     }

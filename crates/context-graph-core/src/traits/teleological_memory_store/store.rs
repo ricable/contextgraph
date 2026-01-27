@@ -593,7 +593,7 @@ pub trait TeleologicalMemoryStore: Send + Sync {
         source_id: Uuid,
     ) -> CoreResult<Vec<crate::types::CausalRelationship>>;
 
-    /// Search causal relationships by description similarity.
+    /// Search causal relationships by description similarity (E1-based fallback).
     ///
     /// # Arguments
     /// * `query_embedding` - E1 1024D query embedding
@@ -607,5 +607,26 @@ pub trait TeleologicalMemoryStore: Send + Sync {
         query_embedding: &[f32],
         top_k: usize,
         direction_filter: Option<&str>,
+    ) -> CoreResult<Vec<(Uuid, f32)>>;
+
+    /// Search causal relationships using E5 asymmetric embeddings.
+    ///
+    /// E5 dual embeddings enable directional causal search:
+    /// - "What caused X?" → Query as effect (768D), search cause index
+    /// - "What are effects of X?" → Query as cause (768D), search effect index
+    ///
+    /// # Arguments
+    /// * `query_embedding` - E5 768D query embedding (either as_cause or as_effect)
+    /// * `search_causes` - If true, query was embedded as effect, search cause vectors.
+    ///                     If false, query was embedded as cause, search effect vectors.
+    /// * `top_k` - Number of results
+    ///
+    /// # Returns
+    /// Vector of (causal_id, similarity) tuples sorted by similarity descending.
+    async fn search_causal_e5(
+        &self,
+        query_embedding: &[f32],
+        search_causes: bool,
+        top_k: usize,
     ) -> CoreResult<Vec<(Uuid, f32)>>;
 }

@@ -280,10 +280,6 @@ impl Handlers {
             }
         });
 
-        // CAUSAL-RELATIONSHIP: Clone the hint before it moves into metadata
-        // We need the hint later to store the causal relationship with provenance
-        let causal_hint_for_storage = causal_hint.clone();
-
         let metadata = EmbeddingMetadata {
             session_id: session_id.clone(),
             session_sequence: Some(session_sequence),
@@ -434,65 +430,101 @@ impl Handlers {
                     );
                 }
 
-                // CAUSAL-RELATIONSHIP: Store LLM-generated causal description with provenance
-                // Per plan: When confidence >= 0.5, embed description and store in CF_CAUSAL_RELATIONSHIPS
-                // Use the causal_hint_for_storage we cloned earlier (before it moved into metadata)
-                if let Some(ref hint) = causal_hint_for_storage {
-                    if hint.is_useful() {
-                        if let Some(ref description) = hint.description {
-                            // Embed the description using E1 (1024D semantic)
-                            match self
-                                .multi_array_provider
-                                .embed_e1_only(description)
-                                .await
-                            {
-                                Ok(desc_embedding) => {
-                                    // Create causal relationship with PROVENANCE
-                                    let causal_rel = context_graph_core::types::CausalRelationship::new(
-                                        description.clone(),
-                                        desc_embedding,
-                                        content.clone(),              // Original source content
-                                        fingerprint_id,               // Source memory ID
-                                        match hint.direction_hint {
-                                            context_graph_core::traits::CausalDirectionHint::Cause => "cause".to_string(),
-                                            context_graph_core::traits::CausalDirectionHint::Effect => "effect".to_string(),
-                                            context_graph_core::traits::CausalDirectionHint::Neutral => "neutral".to_string(),
-                                        },
-                                        hint.confidence,
-                                        hint.key_phrases.clone(),
-                                    );
+                // ===== MULTI-RELATIONSHIP CAUSAL EXTRACTION =====
+                // Per plan: Extract ALL causal relationships from content, generate E5 dual
+                // embeddings for each, and store in CF_CAUSAL_RELATIONSHIPS with full provenance.
+                if let Some(ref provider) = self.causal_hint_provider {
+                    if provider.is_available() {
+                        debug!("store_memory: Extracting all causal relationships via LLM");
 
-                                    // Store in dedicated CF
-                                    match self.teleological_store
-                                        .store_causal_relationship(&causal_rel)
-                                        .await
-                                    {
-                                        Ok(causal_id) => {
-                                            info!(
-                                                causal_id = %causal_id,
-                                                source_id = %fingerprint_id,
-                                                direction = %causal_rel.direction,
-                                                desc_len = description.len(),
-                                                "store_memory: Stored causal relationship with provenance"
-                                            );
-                                        }
-                                        Err(e) => {
-                                            // Non-fatal: fingerprint is stored, causal relationship is optional
-                                            warn!(
-                                                fingerprint_id = %fingerprint_id,
-                                                error = %e,
-                                                "store_memory: Failed to store causal relationship (fingerprint saved successfully)"
-                                            );
-                                        }
+                        let extracted = provider.extract_all_relationships(&content).await;
+
+                        if extracted.is_empty() {
+                            debug!("store_memory: No causal relationships found in content");
+                        } else {
+                            info!(
+                                count = extracted.len(),
+                                "store_memory: Found causal relationships, generating embeddings"
+                            );
+
+                            for relationship in extracted {
+                                // Generate E5 dual embeddings for the explanation (768D each)
+                                let e5_result = self
+                                    .multi_array_provider
+                                    .embed_e5_dual(&relationship.explanation)
+                                    .await;
+
+                                let (e5_cause, e5_effect) = match e5_result {
+                                    Ok(dual) => dual,
+                                    Err(e) => {
+                                        warn!(
+                                            fingerprint_id = %fingerprint_id,
+                                            error = %e,
+                                            cause = %relationship.cause,
+                                            "store_memory: Failed to generate E5 dual embeddings for causal relationship"
+                                        );
+                                        continue;
                                     }
-                                }
-                                Err(e) => {
-                                    // Non-fatal: E1 embedding for description failed
-                                    warn!(
-                                        fingerprint_id = %fingerprint_id,
-                                        error = %e,
-                                        "store_memory: Failed to embed causal description (fingerprint saved successfully)"
-                                    );
+                                };
+
+                                // Generate E1 semantic embedding for fallback search (1024D)
+                                let e1_result = self
+                                    .multi_array_provider
+                                    .embed_e1_only(&relationship.explanation)
+                                    .await;
+
+                                let e1_semantic = match e1_result {
+                                    Ok(emb) => emb,
+                                    Err(e) => {
+                                        warn!(
+                                            fingerprint_id = %fingerprint_id,
+                                            error = %e,
+                                            cause = %relationship.cause,
+                                            "store_memory: Failed to generate E1 embedding for causal relationship"
+                                        );
+                                        continue;
+                                    }
+                                };
+
+                                // Create causal relationship with full E5 dual embeddings
+                                let causal_rel = context_graph_core::types::CausalRelationship::new(
+                                    relationship.cause.clone(),       // cause_statement
+                                    relationship.effect.clone(),      // effect_statement
+                                    relationship.explanation.clone(), // explanation
+                                    e5_cause,                         // e5_as_cause (768D)
+                                    e5_effect,                        // e5_as_effect (768D)
+                                    e1_semantic,                      // e1_semantic (1024D)
+                                    content.clone(),                  // source_content
+                                    fingerprint_id,                   // source_fingerprint_id
+                                    relationship.confidence,          // confidence
+                                    relationship.mechanism_type.as_str().to_string(), // mechanism_type
+                                );
+
+                                // Store in dedicated CF
+                                match self
+                                    .teleological_store
+                                    .store_causal_relationship(&causal_rel)
+                                    .await
+                                {
+                                    Ok(causal_id) => {
+                                        debug!(
+                                            causal_id = %causal_id,
+                                            source_id = %fingerprint_id,
+                                            cause = %causal_rel.cause_statement,
+                                            effect = %causal_rel.effect_statement,
+                                            mechanism_type = %causal_rel.mechanism_type,
+                                            "store_memory: Stored causal relationship"
+                                        );
+                                    }
+                                    Err(e) => {
+                                        // Non-fatal: fingerprint is stored, causal relationship is optional
+                                        warn!(
+                                            fingerprint_id = %fingerprint_id,
+                                            error = %e,
+                                            cause = %causal_rel.cause_statement,
+                                            "store_memory: Failed to store causal relationship"
+                                        );
+                                    }
                                 }
                             }
                         }
