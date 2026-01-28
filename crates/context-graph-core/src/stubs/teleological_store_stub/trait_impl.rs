@@ -590,6 +590,200 @@ impl TeleologicalMemoryStore for InMemoryTeleologicalStore {
 
         Ok(results)
     }
+
+    async fn search_causal_e8(
+        &self,
+        query_embedding: &[f32],
+        search_sources: bool,
+        top_k: usize,
+    ) -> CoreResult<Vec<(Uuid, f32)>> {
+        let mut results: Vec<(Uuid, f32)> = Vec::new();
+
+        for entry in self.causal_relationships.iter() {
+            let rel = entry.value();
+
+            // Select E8 vector based on search mode
+            let doc_embedding = if search_sources {
+                &rel.e8_graph_source
+            } else {
+                &rel.e8_graph_target
+            };
+
+            // Skip if E8 embeddings are empty
+            if doc_embedding.is_empty() || doc_embedding.iter().all(|&v| v == 0.0) {
+                continue;
+            }
+
+            let similarity = compute_cosine_similarity(query_embedding, doc_embedding);
+            results.push((rel.id, similarity));
+        }
+
+        // Sort by similarity descending
+        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Take top_k
+        results.truncate(top_k);
+
+        debug!(
+            query_dim = query_embedding.len(),
+            search_sources = search_sources,
+            top_k = top_k,
+            results_count = results.len(),
+            "Searched causal relationships using E8 in in-memory store"
+        );
+
+        Ok(results)
+    }
+
+    async fn search_causal_e11(
+        &self,
+        query_embedding: &[f32],
+        top_k: usize,
+    ) -> CoreResult<Vec<(Uuid, f32)>> {
+        let mut results: Vec<(Uuid, f32)> = Vec::new();
+
+        for entry in self.causal_relationships.iter() {
+            let rel = entry.value();
+
+            // Use e1_semantic as fallback for E11 entity search in stub
+            // (Real impl would use entity-specific embeddings)
+            if rel.e1_semantic.is_empty() || rel.e1_semantic.iter().all(|&v| v == 0.0) {
+                continue;
+            }
+
+            let similarity = compute_cosine_similarity(query_embedding, &rel.e1_semantic);
+            results.push((rel.id, similarity));
+        }
+
+        // Sort by similarity descending
+        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Take top_k
+        results.truncate(top_k);
+
+        debug!(
+            query_dim = query_embedding.len(),
+            top_k = top_k,
+            results_count = results.len(),
+            "Searched causal relationships using E11 in in-memory store"
+        );
+
+        Ok(results)
+    }
+
+    async fn search_causal_multi_embedder(
+        &self,
+        e1_embedding: &[f32],
+        e5_embedding: &[f32],
+        e8_embedding: &[f32],
+        e11_embedding: &[f32],
+        search_causes: bool,
+        top_k: usize,
+        config: &crate::types::MultiEmbedderConfig,
+    ) -> CoreResult<Vec<crate::types::CausalSearchResult>> {
+        use crate::types::CausalSearchResult;
+
+        // Parallel search across all embedders
+        let e1_results = self.search_causal_relationships(e1_embedding, top_k * 3, None).await?;
+        let e5_results = self.search_causal_e5_hybrid(
+            e5_embedding,
+            search_causes,
+            top_k * 3,
+            0.6,
+            0.4,
+        ).await?;
+        let e8_results = self.search_causal_e8(e8_embedding, !search_causes, top_k * 3).await?;
+        let e11_results = self.search_causal_e11(e11_embedding, top_k * 3).await?;
+
+        // Build score maps for each embedder
+        use std::collections::HashMap;
+        let e1_scores: HashMap<Uuid, f32> = e1_results.into_iter().collect();
+        let e5_scores: HashMap<Uuid, f32> = e5_results.into_iter().collect();
+        let e8_scores: HashMap<Uuid, f32> = e8_results.into_iter().collect();
+        let e11_scores: HashMap<Uuid, f32> = e11_results.into_iter().collect();
+
+        // Collect all unique IDs
+        let mut all_ids: std::collections::HashSet<Uuid> = std::collections::HashSet::new();
+        all_ids.extend(e1_scores.keys().cloned());
+        all_ids.extend(e5_scores.keys().cloned());
+        all_ids.extend(e8_scores.keys().cloned());
+        all_ids.extend(e11_scores.keys().cloned());
+
+        // Compute RRF scores for each candidate
+        let k = 60.0f32;
+        let mut rrf_scores: Vec<(Uuid, f32)> = Vec::new();
+
+        // Build rank maps
+        let e1_ranks: HashMap<Uuid, usize> = e1_scores.iter()
+            .enumerate()
+            .map(|(rank, (id, _))| (*id, rank))
+            .collect();
+        let e5_ranks: HashMap<Uuid, usize> = e5_scores.iter()
+            .enumerate()
+            .map(|(rank, (id, _))| (*id, rank))
+            .collect();
+        let e8_ranks: HashMap<Uuid, usize> = e8_scores.iter()
+            .enumerate()
+            .map(|(rank, (id, _))| (*id, rank))
+            .collect();
+        let e11_ranks: HashMap<Uuid, usize> = e11_scores.iter()
+            .enumerate()
+            .map(|(rank, (id, _))| (*id, rank))
+            .collect();
+
+        for id in all_ids {
+            let mut rrf_score = 0.0f32;
+
+            if let Some(&rank) = e1_ranks.get(&id) {
+                rrf_score += config.e1_weight / (k + rank as f32 + 1.0);
+            }
+            if let Some(&rank) = e5_ranks.get(&id) {
+                rrf_score += config.e5_weight / (k + rank as f32 + 1.0);
+            }
+            if let Some(&rank) = e8_ranks.get(&id) {
+                rrf_score += config.e8_weight / (k + rank as f32 + 1.0);
+            }
+            if let Some(&rank) = e11_ranks.get(&id) {
+                rrf_score += config.e11_weight / (k + rank as f32 + 1.0);
+            }
+
+            rrf_scores.push((id, rrf_score));
+        }
+
+        // Sort by RRF score descending
+        rrf_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Take top_k and build results
+        let mut results = Vec::with_capacity(top_k.min(rrf_scores.len()));
+        for (id, rrf_score) in rrf_scores.into_iter().take(top_k) {
+            let relationship = self.causal_relationships.get(&id).map(|r| r.clone());
+
+            let mut result = CausalSearchResult {
+                id,
+                relationship,
+                e1_score: e1_scores.get(&id).cloned().unwrap_or(0.0),
+                e5_score: e5_scores.get(&id).cloned().unwrap_or(0.0),
+                e8_score: e8_scores.get(&id).cloned().unwrap_or(0.0),
+                e11_score: e11_scores.get(&id).cloned().unwrap_or(0.0),
+                rrf_score,
+                maxsim_score: None,
+                transe_confidence: 0.0,
+                consensus_score: 0.0,
+                direction_confidence: 0.0,
+            };
+
+            result.compute_consensus();
+            results.push(result);
+        }
+
+        debug!(
+            top_k = top_k,
+            results_count = results.len(),
+            "Multi-embedder causal search in in-memory store"
+        );
+
+        Ok(results)
+    }
 }
 
 /// Compute cosine similarity between two vectors.

@@ -209,6 +209,38 @@ pub struct CausalRelationship {
     /// Provides fallback for general semantic search.
     pub e1_semantic: Vec<f32>,
 
+    // ===== E8 GRAPH EMBEDDINGS (1024D each) =====
+    //
+    // E8 graph embeddings enable graph structure search for causal relationships.
+    // These use the same directional approach as E5 (asymmetric similarity):
+    // - e8_graph_source: "What does this cause?" (relationship as source)
+    // - e8_graph_target: "What causes this?" (relationship as target)
+
+    /// E8 embedding of causal structure as a SOURCE (1024D).
+    ///
+    /// Used when searching for targets: "What does X cause?"
+    #[serde(default)]
+    pub e8_graph_source: Vec<f32>,
+
+    /// E8 embedding of causal structure as a TARGET (1024D).
+    ///
+    /// Used when searching for sources: "What causes X?"
+    #[serde(default)]
+    pub e8_graph_target: Vec<f32>,
+
+    // ===== E11 ENTITY EMBEDDING (768D) =====
+    //
+    // E11 KEPLER embeddings enable entity-based search using TransE knowledge
+    // graph operations. KEPLER is RoBERTa-base trained with TransE on Wikidata5M.
+    // Unlike E1, KEPLER knows that "Diesel" is a Rust database ORM, not fuel.
+
+    /// E11 KEPLER entity embedding (768D).
+    ///
+    /// Uses concatenated cause|effect|explanation for entity context.
+    /// Enables entity-based search (e.g., "Diesel" → "Rust database ORM").
+    #[serde(default)]
+    pub e11_entity: Vec<f32>,
+
     // ===== METADATA =====
 
     /// LLM confidence score [0.0, 1.0].
@@ -240,6 +272,12 @@ impl CausalRelationship {
 
     /// E1 embedding dimension (1024D per constitution.yaml).
     pub const E1_DIM: usize = 1024;
+
+    /// E8 embedding dimension (1024D per constitution.yaml upgrade).
+    pub const E8_DIM: usize = 1024;
+
+    /// E11 entity embedding dimension (768D KEPLER per constitution.yaml).
+    pub const E11_DIM: usize = 768;
 
     /// Create a new causal relationship with all embeddings.
     ///
@@ -278,6 +316,9 @@ impl CausalRelationship {
             e5_source_cause: Vec::new(),
             e5_source_effect: Vec::new(),
             e1_semantic,
+            e8_graph_source: Vec::new(),
+            e8_graph_target: Vec::new(),
+            e11_entity: Vec::new(),
             confidence: confidence.clamp(0.0, 1.0),
             mechanism_type,
             source_content,
@@ -312,6 +353,9 @@ impl CausalRelationship {
             e5_source_cause: Vec::new(),
             e5_source_effect: Vec::new(),
             e1_semantic,
+            e8_graph_source: Vec::new(),
+            e8_graph_target: Vec::new(),
+            e11_entity: Vec::new(),
             confidence: confidence.clamp(0.0, 1.0),
             mechanism_type,
             source_content,
@@ -346,6 +390,9 @@ impl CausalRelationship {
             e5_source_cause: Vec::new(),
             e5_source_effect: Vec::new(),
             e1_semantic,
+            e8_graph_source: Vec::new(),
+            e8_graph_target: Vec::new(),
+            e11_entity: Vec::new(),
             confidence: confidence.clamp(0.0, 1.0),
             mechanism_type,
             source_content,
@@ -423,6 +470,84 @@ impl CausalRelationship {
             "{} {} causes {}.",
             source_truncated, self.cause_statement, self.effect_statement
         )
+    }
+
+    /// Add E8 graph embeddings to an existing relationship.
+    ///
+    /// E8 graph embeddings enable graph structure search using asymmetric similarity
+    /// (similar to E5 causal embeddings).
+    ///
+    /// # Arguments
+    /// * `graph_source` - E8 1024D embedding as graph source
+    /// * `graph_target` - E8 1024D embedding as graph target
+    pub fn with_graph_embeddings(mut self, graph_source: Vec<f32>, graph_target: Vec<f32>) -> Self {
+        self.e8_graph_source = graph_source;
+        self.e8_graph_target = graph_target;
+        self
+    }
+
+    /// Set E8 graph embeddings in place.
+    ///
+    /// Mutates the relationship to add graph embeddings.
+    pub fn set_graph_embeddings(&mut self, graph_source: Vec<f32>, graph_target: Vec<f32>) {
+        self.e8_graph_source = graph_source;
+        self.e8_graph_target = graph_target;
+    }
+
+    /// Check if E8 graph embeddings are present and valid.
+    ///
+    /// Returns true if both e8_graph_source and e8_graph_target have
+    /// the expected 1024D dimensionality.
+    pub fn has_graph_embeddings(&self) -> bool {
+        self.e8_graph_source.len() == Self::E8_DIM && self.e8_graph_target.len() == Self::E8_DIM
+    }
+
+    /// Get the E8 graph source embedding as a slice.
+    ///
+    /// Returns an empty slice if graph embeddings are not set.
+    pub fn e8_graph_source_embedding(&self) -> &[f32] {
+        &self.e8_graph_source
+    }
+
+    /// Get the E8 graph target embedding as a slice.
+    ///
+    /// Returns an empty slice if graph embeddings are not set.
+    pub fn e8_graph_target_embedding(&self) -> &[f32] {
+        &self.e8_graph_target
+    }
+
+    /// Add E11 KEPLER entity embedding to an existing relationship.
+    ///
+    /// E11 (KEPLER) enables entity-based search using TransE knowledge graph
+    /// operations. KEPLER is trained on Wikidata5M and knows entity relationships
+    /// that E1 misses (e.g., "Diesel" = Rust database ORM, not fuel).
+    ///
+    /// # Arguments
+    /// * `e11_entity` - E11 768D entity embedding
+    pub fn with_entity_embedding(mut self, e11_entity: Vec<f32>) -> Self {
+        self.e11_entity = e11_entity;
+        self
+    }
+
+    /// Set E11 entity embedding in place.
+    ///
+    /// Mutates the relationship to add entity embedding.
+    pub fn set_entity_embedding(&mut self, e11_entity: Vec<f32>) {
+        self.e11_entity = e11_entity;
+    }
+
+    /// Check if E11 entity embedding is present and valid.
+    ///
+    /// Returns true if e11_entity has the expected 768D dimensionality.
+    pub fn has_entity_embedding(&self) -> bool {
+        self.e11_entity.len() == Self::E11_DIM
+    }
+
+    /// Get the E11 entity embedding as a slice.
+    ///
+    /// Returns an empty slice if entity embedding is not set.
+    pub fn e11_embedding(&self) -> &[f32] {
+        &self.e11_entity
     }
 
     /// Check if all embeddings have the expected dimensions.
@@ -508,6 +633,231 @@ impl CausalRelationship {
     /// Get the "full" span(s).
     pub fn full_spans(&self) -> Vec<&CausalSourceSpan> {
         self.spans_of_type("full")
+    }
+}
+
+// ============================================================================
+// CAUSAL SEARCH RESULT (Multi-Embedder Search Output)
+// ============================================================================
+
+/// Configuration for multi-embedder causal search.
+///
+/// Controls which embedders to use and their relative weights in RRF fusion.
+#[derive(Debug, Clone)]
+pub struct MultiEmbedderConfig {
+    /// Weight for E1 semantic search (default: 0.30)
+    pub e1_weight: f32,
+    /// Weight for E5 causal search (default: 0.35 - highest for causal queries)
+    pub e5_weight: f32,
+    /// Weight for E8 graph structure search (default: 0.15)
+    pub e8_weight: f32,
+    /// Weight for E11 entity search (default: 0.20)
+    pub e11_weight: f32,
+    /// Enable E12 MaxSim reranking (default: false for speed)
+    pub enable_e12_rerank: bool,
+    /// Minimum consensus threshold (0.0-1.0) for result inclusion
+    pub min_consensus: f32,
+}
+
+impl Default for MultiEmbedderConfig {
+    fn default() -> Self {
+        Self {
+            e1_weight: 0.30,
+            e5_weight: 0.35,
+            e8_weight: 0.15,
+            e11_weight: 0.20,
+            enable_e12_rerank: false,
+            min_consensus: 0.0,
+        }
+    }
+}
+
+impl MultiEmbedderConfig {
+    /// Create a new config with default weights optimized for causal search accuracy.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Create config with custom weights.
+    pub fn with_weights(e1: f32, e5: f32, e8: f32, e11: f32) -> Self {
+        Self {
+            e1_weight: e1,
+            e5_weight: e5,
+            e8_weight: e8,
+            e11_weight: e11,
+            ..Self::default()
+        }
+    }
+
+    /// Enable E12 MaxSim reranking for maximum precision (slower).
+    pub fn with_e12_rerank(mut self) -> Self {
+        self.enable_e12_rerank = true;
+        self
+    }
+
+    /// Set minimum consensus threshold.
+    pub fn with_min_consensus(mut self, threshold: f32) -> Self {
+        self.min_consensus = threshold.clamp(0.0, 1.0);
+        self
+    }
+}
+
+/// Result from multi-embedder causal search.
+///
+/// Contains the causal relationship with per-embedder scores,
+/// fusion scores, and consensus metrics.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CausalSearchResult {
+    /// The causal relationship ID.
+    pub id: Uuid,
+
+    /// The full causal relationship (optional, populated on demand).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relationship: Option<CausalRelationship>,
+
+    // ===== PER-EMBEDDER SCORES =====
+
+    /// E1 semantic similarity score [0.0, 1.0].
+    pub e1_score: f32,
+
+    /// E5 causal similarity score [0.0, 1.0] (directional).
+    pub e5_score: f32,
+
+    /// E8 graph structure similarity score [0.0, 1.0].
+    pub e8_score: f32,
+
+    /// E11 entity similarity score [0.0, 1.0].
+    pub e11_score: f32,
+
+    // ===== FUSION SCORES =====
+
+    /// Weighted RRF fusion score (per ARCH-21).
+    pub rrf_score: f32,
+
+    /// E12 MaxSim reranking score (if reranking enabled).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maxsim_score: Option<f32>,
+
+    // ===== VALIDATION SCORES =====
+
+    /// TransE knowledge graph validation score.
+    /// More negative = more valid relationship.
+    pub transe_confidence: f32,
+
+    // ===== CONSENSUS METRICS =====
+
+    /// Consensus score: fraction of embedders that agree this is a good match.
+    /// Range [0.0, 1.0] where 1.0 = all 4 embedders agree.
+    pub consensus_score: f32,
+
+    /// Direction confidence: how confident we are in the cause→effect direction.
+    /// Higher = more confident in directionality.
+    pub direction_confidence: f32,
+}
+
+impl CausalSearchResult {
+    /// Create a new search result with per-embedder scores.
+    pub fn new(id: Uuid, e1: f32, e5: f32, e8: f32, e11: f32) -> Self {
+        Self {
+            id,
+            relationship: None,
+            e1_score: e1,
+            e5_score: e5,
+            e8_score: e8,
+            e11_score: e11,
+            rrf_score: 0.0,
+            maxsim_score: None,
+            transe_confidence: 0.0,
+            consensus_score: 0.0,
+            direction_confidence: 0.0,
+        }
+    }
+
+    /// Compute consensus: how many embedders ranked this highly.
+    ///
+    /// Uses a threshold of 0.5 to determine if an embedder "agrees".
+    pub fn compute_consensus(&mut self) {
+        let high_threshold = 0.5;
+        let embedders_agree = [
+            self.e1_score > high_threshold,
+            self.e5_score > high_threshold,
+            self.e8_score > high_threshold,
+            self.e11_score > high_threshold,
+        ]
+        .iter()
+        .filter(|&&x| x)
+        .count();
+
+        self.consensus_score = embedders_agree as f32 / 4.0;
+    }
+
+    /// Compute consensus with a custom threshold.
+    pub fn compute_consensus_with_threshold(&mut self, threshold: f32) {
+        let embedders_agree = [
+            self.e1_score > threshold,
+            self.e5_score > threshold,
+            self.e8_score > threshold,
+            self.e11_score > threshold,
+        ]
+        .iter()
+        .filter(|&&x| x)
+        .count();
+
+        self.consensus_score = embedders_agree as f32 / 4.0;
+    }
+
+    /// Compute direction confidence from E5 asymmetric scores.
+    ///
+    /// # Arguments
+    /// * `as_cause_score` - Score when treating query as cause
+    /// * `as_effect_score` - Score when treating query as effect
+    pub fn compute_direction_confidence(&mut self, as_cause_score: f32, as_effect_score: f32) {
+        // High confidence when one direction much stronger than other
+        self.direction_confidence = (as_cause_score - as_effect_score).abs();
+    }
+
+    /// Set the RRF fusion score.
+    pub fn with_rrf_score(mut self, score: f32) -> Self {
+        self.rrf_score = score;
+        self
+    }
+
+    /// Set the TransE confidence score.
+    pub fn with_transe_confidence(mut self, score: f32) -> Self {
+        self.transe_confidence = score;
+        self
+    }
+
+    /// Set the MaxSim reranking score.
+    pub fn with_maxsim_score(mut self, score: f32) -> Self {
+        self.maxsim_score = Some(score);
+        self
+    }
+
+    /// Attach the full relationship data.
+    pub fn with_relationship(mut self, rel: CausalRelationship) -> Self {
+        self.relationship = Some(rel);
+        self
+    }
+
+    /// Get all per-embedder scores as a map (for JSON serialization).
+    pub fn per_embedder_scores(&self) -> std::collections::HashMap<&'static str, f32> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("e1", self.e1_score);
+        map.insert("e5", self.e5_score);
+        map.insert("e8", self.e8_score);
+        map.insert("e11", self.e11_score);
+        map
+    }
+
+    /// Check if this result has high consensus (3+ embedders agree).
+    pub fn has_high_consensus(&self) -> bool {
+        self.consensus_score >= 0.75
+    }
+
+    /// Check if this result has strong direction confidence.
+    pub fn has_strong_direction(&self) -> bool {
+        self.direction_confidence >= 0.3
     }
 }
 

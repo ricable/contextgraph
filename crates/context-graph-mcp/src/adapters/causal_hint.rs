@@ -28,13 +28,14 @@
 //! }
 //! ```
 
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use context_graph_causal_agent::CausalDiscoveryLLM;
 use context_graph_core::traits::{CausalHint, ExtractedCausalRelationship};
-use context_graph_embeddings::provider::CausalHintProvider;
+use context_graph_embeddings::provider::{CausalHintProvider, ExtractionStatus};
 use tracing::{debug, info, warn};
 
 /// Production implementation wrapping CausalDiscoveryLLM.
@@ -48,6 +49,8 @@ pub struct LlmCausalHintProvider {
     timeout_duration: Duration,
     /// Minimum confidence threshold for useful hints.
     min_confidence: f32,
+    /// Status of the last extraction attempt (atomic for thread safety).
+    last_status: AtomicU8,
 }
 
 impl LlmCausalHintProvider {
@@ -57,6 +60,14 @@ impl LlmCausalHintProvider {
 
     /// Default minimum confidence threshold.
     pub const DEFAULT_MIN_CONFIDENCE: f32 = 0.5;
+
+    // Status encoding for AtomicU8
+    const STATUS_UNKNOWN: u8 = 0;
+    const STATUS_SUCCESS: u8 = 1;
+    const STATUS_NO_CONTENT: u8 = 2;
+    const STATUS_UNAVAILABLE: u8 = 3;
+    const STATUS_TIMEOUT: u8 = 4;
+    const STATUS_ERROR: u8 = 5;
 
     /// Create a new LLM-based hint provider.
     ///
@@ -69,6 +80,7 @@ impl LlmCausalHintProvider {
             llm,
             timeout_duration: Duration::from_millis(timeout_ms),
             min_confidence: Self::DEFAULT_MIN_CONFIDENCE,
+            last_status: AtomicU8::new(Self::STATUS_UNKNOWN),
         }
     }
 
@@ -148,6 +160,8 @@ impl CausalHintProvider for LlmCausalHintProvider {
     async fn extract_all_relationships(&self, content: &str) -> Vec<ExtractedCausalRelationship> {
         // Check if LLM is ready
         if !self.llm.is_loaded() {
+            self.last_status
+                .store(Self::STATUS_UNAVAILABLE, Ordering::SeqCst);
             debug!("LlmCausalHintProvider: LLM not loaded, skipping relationship extraction");
             return Vec::new();
         }
@@ -165,11 +179,15 @@ impl CausalHintProvider for LlmCausalHintProvider {
         match result {
             Ok(Ok(multi_result)) => {
                 if multi_result.relationships.is_empty() {
+                    self.last_status
+                        .store(Self::STATUS_NO_CONTENT, Ordering::SeqCst);
                     debug!(
                         has_causal = multi_result.has_causal_content,
                         "LlmCausalHintProvider: No relationships found in content"
                     );
                 } else {
+                    self.last_status
+                        .store(Self::STATUS_SUCCESS, Ordering::SeqCst);
                     info!(
                         count = multi_result.relationships.len(),
                         has_causal = multi_result.has_causal_content,
@@ -196,6 +214,8 @@ impl CausalHintProvider for LlmCausalHintProvider {
                     .collect()
             }
             Ok(Err(e)) => {
+                self.last_status
+                    .store(Self::STATUS_ERROR, Ordering::SeqCst);
                 warn!(
                     error = %e,
                     "LlmCausalHintProvider: Relationship extraction failed"
@@ -203,6 +223,8 @@ impl CausalHintProvider for LlmCausalHintProvider {
                 Vec::new()
             }
             Err(_) => {
+                self.last_status
+                    .store(Self::STATUS_TIMEOUT, Ordering::SeqCst);
                 warn!(
                     timeout_ms = multi_timeout.as_millis(),
                     "LlmCausalHintProvider: Relationship extraction timed out"
@@ -218,6 +240,17 @@ impl CausalHintProvider for LlmCausalHintProvider {
 
     fn timeout(&self) -> Duration {
         self.timeout_duration
+    }
+
+    fn last_extraction_status(&self) -> ExtractionStatus {
+        match self.last_status.load(Ordering::SeqCst) {
+            Self::STATUS_SUCCESS => ExtractionStatus::Success,
+            Self::STATUS_NO_CONTENT => ExtractionStatus::NoContent,
+            Self::STATUS_UNAVAILABLE => ExtractionStatus::Unavailable,
+            Self::STATUS_TIMEOUT => ExtractionStatus::Timeout,
+            Self::STATUS_ERROR => ExtractionStatus::Error,
+            _ => ExtractionStatus::Unknown,
+        }
     }
 }
 

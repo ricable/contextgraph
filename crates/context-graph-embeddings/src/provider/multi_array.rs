@@ -1447,6 +1447,32 @@ impl MultiArrayEmbeddingProvider for ProductionMultiArrayProvider {
             self.e13_splade.is_ready(),
         ]
     }
+
+    /// Efficient E8 dual embedding without running all 13 embedders.
+    ///
+    /// Returns (as_source, as_target) E8 dual embeddings (1024D each).
+    async fn embed_e8_dual(&self, content: &str) -> CoreResult<(Vec<f32>, Vec<f32>)> {
+        if content.is_empty() {
+            return Err(CoreError::ValidationError {
+                field: "content".to_string(),
+                message: "Content cannot be empty".to_string(),
+            });
+        }
+        self.e8_graph.embed_dual(content).await
+    }
+
+    /// Efficient E11 embedding without running all 13 embedders.
+    ///
+    /// Returns E11 entity embedding (768D).
+    async fn embed_e11_only(&self, content: &str) -> CoreResult<Vec<f32>> {
+        if content.is_empty() {
+            return Err(CoreError::ValidationError {
+                field: "content".to_string(),
+                message: "Content cannot be empty".to_string(),
+            });
+        }
+        self.e11_entity.embed(content).await
+    }
 }
 
 // Safety: ProductionMultiArrayProvider is Send + Sync because all fields are Arc<dyn Trait + Send + Sync>

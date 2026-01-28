@@ -9,9 +9,21 @@
 //! - `searchMode: "causes"` → "What caused X?" → query as effect, search cause vectors
 //! - `searchMode: "effects"` → "What are effects of X?" → query as cause, search effect vectors
 //! - `searchMode: "semantic"` → Fallback E1 semantic search (default)
+//!
+//! # Multi-Embedder Search (Maximum Accuracy)
+//!
+//! When `multiEmbedder: true`, uses 4 embedders for maximum accuracy:
+//! - E1: Semantic foundation
+//! - E5: Causal (asymmetric, directional)
+//! - E8: Graph structure
+//! - E11: Entity knowledge graph
+//!
+//! Results include consensus scores and per-embedder scores.
 
 use serde_json::json;
 use tracing::{debug, error, info};
+
+use context_graph_core::types::MultiEmbedderConfig;
 
 use crate::protocol::{JsonRpcId, JsonRpcResponse};
 
@@ -26,6 +38,12 @@ const DEFAULT_TOP_K: u64 = 10;
 /// Source-anchored embeddings prevent LLM output clustering
 const DEFAULT_SOURCE_WEIGHT: f32 = 0.6;
 const DEFAULT_EXPLANATION_WEIGHT: f32 = 0.4;
+
+/// Default multi-embedder weights (optimized for causal search accuracy)
+const DEFAULT_E1_WEIGHT: f32 = 0.30;
+const DEFAULT_E5_WEIGHT: f32 = 0.35;
+const DEFAULT_E8_WEIGHT: f32 = 0.15;
+const DEFAULT_E11_WEIGHT: f32 = 0.20;
 
 impl Handlers {
     /// search_causal_relationships tool implementation.
@@ -129,6 +147,44 @@ impl Handlers {
             );
         }
 
+        // Parse multiEmbedder parameter (optional, default: false for backwards compatibility)
+        let multi_embedder = args
+            .get("multiEmbedder")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // Parse multi-embedder weight parameters
+        let e1_weight = args
+            .get("e1Weight")
+            .and_then(|v| v.as_f64())
+            .map(|v| v as f32)
+            .unwrap_or(DEFAULT_E1_WEIGHT);
+
+        let e5_weight = args
+            .get("e5Weight")
+            .and_then(|v| v.as_f64())
+            .map(|v| v as f32)
+            .unwrap_or(DEFAULT_E5_WEIGHT);
+
+        let e8_weight = args
+            .get("e8Weight")
+            .and_then(|v| v.as_f64())
+            .map(|v| v as f32)
+            .unwrap_or(DEFAULT_E8_WEIGHT);
+
+        let e11_weight = args
+            .get("e11Weight")
+            .and_then(|v| v.as_f64())
+            .map(|v| v as f32)
+            .unwrap_or(DEFAULT_E11_WEIGHT);
+
+        // Parse minimum consensus threshold for multi-embedder search
+        let min_consensus = args
+            .get("minConsensus")
+            .and_then(|v| v.as_f64())
+            .map(|v| (v as f32).clamp(0.0, 1.0))
+            .unwrap_or(0.0);
+
         info!(
             query_len = query.len(),
             search_mode = search_mode,
@@ -136,10 +192,169 @@ impl Handlers {
             include_source = include_source,
             source_weight = source_weight,
             explanation_weight = explanation_weight,
+            multi_embedder = multi_embedder,
             "search_causal_relationships: Starting search"
         );
 
-        // Step 1 & 2: Embed query and search based on mode
+        // Multi-embedder search path for maximum accuracy
+        if multi_embedder && matches!(search_mode, "causes" | "effects") {
+            let search_causes = search_mode == "causes";
+
+            // Build multi-embedder config
+            let config = MultiEmbedderConfig {
+                e1_weight,
+                e5_weight,
+                e8_weight,
+                e11_weight,
+                enable_e12_rerank: false, // Not implemented yet
+                min_consensus,
+            };
+
+            // Generate all embeddings in parallel
+            // E1: semantic, E5: causal dual, E8: graph dual, E11: entity
+            let e1_result = self.multi_array_provider.embed_e1_only(query).await;
+            let e5_result = self.multi_array_provider.embed_e5_dual(query).await;
+            let e8_result = self.multi_array_provider.embed_e8_dual(query).await;
+            let e11_result = self.multi_array_provider.embed_e11_only(query).await;
+
+            let e1_embedding = match e1_result {
+                Ok(e) => e,
+                Err(e) => {
+                    error!(error = %e, "multi-embedder: Failed to embed E1");
+                    return self.tool_error(id, &format!("Failed to embed query: {}", e));
+                }
+            };
+
+            let (e5_cause, e5_effect) = match e5_result {
+                Ok(dual) => dual,
+                Err(e) => {
+                    error!(error = %e, "multi-embedder: Failed to embed E5");
+                    return self.tool_error(id, &format!("Failed to embed query: {}", e));
+                }
+            };
+
+            // Select E5 embedding based on search direction
+            let e5_embedding = if search_causes {
+                e5_effect // Query as effect, looking for causes
+            } else {
+                e5_cause // Query as cause, looking for effects
+            };
+
+            let (e8_source, e8_target) = match e8_result {
+                Ok(dual) => dual,
+                Err(e) => {
+                    error!(error = %e, "multi-embedder: Failed to embed E8");
+                    return self.tool_error(id, &format!("Failed to embed query: {}", e));
+                }
+            };
+
+            // Select E8 embedding based on search direction
+            let e8_embedding = if search_causes {
+                e8_target // Query as target, looking for sources
+            } else {
+                e8_source // Query as source, looking for targets
+            };
+
+            let e11_embedding = match e11_result {
+                Ok(e) => e,
+                Err(e) => {
+                    error!(error = %e, "multi-embedder: Failed to embed E11");
+                    return self.tool_error(id, &format!("Failed to embed query: {}", e));
+                }
+            };
+
+            debug!(
+                e1_dim = e1_embedding.len(),
+                e5_dim = e5_embedding.len(),
+                e8_dim = e8_embedding.len(),
+                e11_dim = e11_embedding.len(),
+                search_causes = search_causes,
+                "multi-embedder: All embeddings generated"
+            );
+
+            // Run multi-embedder search
+            let multi_results = match self
+                .teleological_store
+                .search_causal_multi_embedder(
+                    &e1_embedding,
+                    &e5_embedding,
+                    &e8_embedding,
+                    &e11_embedding,
+                    search_causes,
+                    top_k,
+                    &config,
+                )
+                .await
+            {
+                Ok(results) => results,
+                Err(e) => {
+                    error!(error = %e, "multi-embedder: Search failed");
+                    return self.tool_error(id, &format!("Search failed: {}", e));
+                }
+            };
+
+            debug!(
+                results_count = multi_results.len(),
+                "multi-embedder: Search complete"
+            );
+
+            // Build response with multi-embedder scores
+            let mut results = Vec::with_capacity(multi_results.len());
+
+            for search_result in multi_results {
+                if let Some(rel) = &search_result.relationship {
+                    let mut result = json!({
+                        "id": rel.id.to_string(),
+                        "causeStatement": rel.cause_statement,
+                        "effectStatement": rel.effect_statement,
+                        "explanation": rel.explanation,
+                        "mechanismType": rel.mechanism_type,
+                        "confidence": rel.confidence,
+                        "sourceMemoryId": rel.source_fingerprint_id.to_string(),
+                        "similarity": search_result.rrf_score,
+                        "createdAt": rel.created_at,
+                        // Multi-embedder specific fields
+                        "consensusScore": search_result.consensus_score,
+                        "directionConfidence": search_result.direction_confidence,
+                        "perEmbedderScores": search_result.per_embedder_scores()
+                    });
+
+                    // Include source content if requested
+                    if include_source {
+                        result["sourceContent"] = json!(rel.source_content);
+                    }
+
+                    // Fetch source metadata for provenance tracking
+                    if let Ok(Some(source_meta)) = self
+                        .teleological_store
+                        .get_source_metadata(rel.source_fingerprint_id)
+                        .await
+                    {
+                        let provenance = json!({
+                            "filePath": source_meta.file_path.as_deref().unwrap_or("unknown"),
+                            "lineStart": source_meta.start_line.unwrap_or(0),
+                            "lineEnd": source_meta.end_line.unwrap_or(0),
+                            "sourceType": format!("{:?}", source_meta.source_type),
+                        });
+                        result["provenance"] = provenance;
+                    }
+
+                    results.push(result);
+                }
+            }
+
+            return JsonRpcResponse::success(
+                id,
+                json!({
+                    "results": results,
+                    "totalFound": results.len(),
+                    "searchMode": search_mode,
+                    "multiEmbedder": true,
+                }),
+            );
+        }
+
+        // Step 1 & 2: Embed query and search based on mode (single-embedder path)
         let search_results = match search_mode {
             "causes" => {
                 // "What caused X?" → query as effect, search cause vectors

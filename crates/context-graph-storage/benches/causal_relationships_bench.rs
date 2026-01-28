@@ -39,6 +39,12 @@ const E1_DIM: usize = 1024;
 /// E5 embedding dimension per constitution.yaml
 const E5_DIM: usize = 768;
 
+/// E8 graph embedding dimension per constitution.yaml (1024D after upgrade)
+const E8_DIM: usize = 1024;
+
+/// E11 entity embedding dimension (768D KEPLER per constitution.yaml)
+const E11_DIM: usize = 768;
+
 // ============================================================================
 // TEST DATA GENERATION (Real data, no mocks)
 // ============================================================================
@@ -60,6 +66,32 @@ fn generate_e1_embedding(rng: &mut StdRng) -> Vec<f32> {
 /// Generate a random normalized E5 embedding (768D).
 fn generate_e5_embedding(rng: &mut StdRng) -> Vec<f32> {
     let mut embedding: Vec<f32> = (0..E5_DIM).map(|_| rng.gen::<f32>() - 0.5).collect();
+
+    // Normalize to unit length
+    let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm > 0.0 {
+        embedding.iter_mut().for_each(|x| *x /= norm);
+    }
+
+    embedding
+}
+
+/// Generate a random normalized E8 embedding (1024D).
+fn generate_e8_embedding(rng: &mut StdRng) -> Vec<f32> {
+    let mut embedding: Vec<f32> = (0..E8_DIM).map(|_| rng.gen::<f32>() - 0.5).collect();
+
+    // Normalize to unit length
+    let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm > 0.0 {
+        embedding.iter_mut().for_each(|x| *x /= norm);
+    }
+
+    embedding
+}
+
+/// Generate a random normalized E11 embedding (768D KEPLER).
+fn generate_e11_embedding(rng: &mut StdRng) -> Vec<f32> {
+    let mut embedding: Vec<f32> = (0..E11_DIM).map(|_| rng.gen::<f32>() - 0.5).collect();
 
     // Normalize to unit length
     let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -151,6 +183,27 @@ fn create_test_relationship_with_source_embeddings(
 ) -> CausalRelationship {
     create_test_relationship(rng, source_id, index)
         .with_source_embeddings(generate_e5_embedding(rng), generate_e5_embedding(rng))
+}
+
+/// Create a test CausalRelationship WITH E11 entity embedding.
+fn create_test_relationship_with_e11(
+    rng: &mut StdRng,
+    source_id: Uuid,
+    index: usize,
+) -> CausalRelationship {
+    create_test_relationship(rng, source_id, index).with_entity_embedding(generate_e11_embedding(rng))
+}
+
+/// Create a relationship with ALL embeddings (E5 source + E8 graph + E11 entity).
+fn create_test_relationship_full(
+    rng: &mut StdRng,
+    source_id: Uuid,
+    index: usize,
+) -> CausalRelationship {
+    create_test_relationship(rng, source_id, index)
+        .with_source_embeddings(generate_e5_embedding(rng), generate_e5_embedding(rng))
+        .with_graph_embeddings(generate_e8_embedding(rng), generate_e8_embedding(rng))
+        .with_entity_embedding(generate_e11_embedding(rng))
 }
 
 // ============================================================================
@@ -579,6 +632,273 @@ fn bench_hybrid_weight_variations(c: &mut Criterion) {
 }
 
 // ============================================================================
+// BENCHMARKS - E11 Entity Search
+// ============================================================================
+
+/// Benchmark: E11 entity search performance.
+/// Target: < 15ms for 500 relationships (brute force scan)
+fn bench_e11_search(c: &mut Criterion) {
+    let temp_dir = TempDir::new().expect("BENCH ERROR: Failed to create temp directory");
+    let store = RocksDbTeleologicalStore::open(temp_dir.path())
+        .expect("BENCH ERROR: Failed to open RocksDB store");
+
+    let rt = tokio::runtime::Runtime::new().expect("BENCH ERROR: Failed to create tokio runtime");
+    let mut rng = StdRng::seed_from_u64(42);
+
+    // Pre-populate with 500 relationships WITH E11 embeddings
+    println!("Populating 500 causal relationships with E11 embeddings...");
+    for i in 0..500 {
+        let source_id = Uuid::new_v4();
+        let rel = create_test_relationship_with_e11(&mut rng, source_id, i);
+        rt.block_on(async { store.store_causal_relationship(&rel).await })
+            .expect("BENCH ERROR: Failed to pre-store relationship");
+    }
+
+    let query_embedding = generate_e11_embedding(&mut rng);
+
+    c.bench_function("causal/e11_entity_search_500", |b| {
+        b.iter(|| {
+            rt.block_on(async {
+                let results = store
+                    .search_causal_e11(black_box(&query_embedding), 10)
+                    .await
+                    .expect("BENCH ERROR: search_causal_e11 failed");
+                black_box(results)
+            })
+        })
+    });
+
+    // Verify: Search returns results
+    let results = rt
+        .block_on(async { store.search_causal_e11(&query_embedding, 10).await })
+        .expect("VERIFICATION FAILED: e11 search failed");
+    println!(
+        "VERIFICATION: E11 search returned {} results, top similarity: {:.4}",
+        results.len(),
+        results.first().map(|r| r.1).unwrap_or(0.0),
+    );
+}
+
+/// Benchmark: E11 search scaling behavior.
+fn bench_e11_search_scaling(c: &mut Criterion) {
+    let tiers = [100, 500, 1000, 5000];
+
+    let mut group = c.benchmark_group("causal/e11_search_scaling");
+    group.sample_size(20);
+
+    for tier_size in tiers {
+        let temp_dir = TempDir::new().expect("BENCH ERROR: Failed to create temp directory");
+        let store = RocksDbTeleologicalStore::open(temp_dir.path())
+            .expect("BENCH ERROR: Failed to open RocksDB store");
+
+        let rt =
+            tokio::runtime::Runtime::new().expect("BENCH ERROR: Failed to create tokio runtime");
+        let mut rng = StdRng::seed_from_u64(42);
+
+        println!("Populating {} causal relationships with E11...", tier_size);
+        for i in 0..tier_size {
+            let source_id = Uuid::new_v4();
+            let rel = create_test_relationship_with_e11(&mut rng, source_id, i);
+            rt.block_on(async { store.store_causal_relationship(&rel).await })
+                .expect("BENCH ERROR: Failed to pre-store relationship");
+        }
+
+        let query_embedding = generate_e11_embedding(&mut rng);
+
+        group.throughput(Throughput::Elements(tier_size as u64));
+        group.bench_with_input(
+            BenchmarkId::new("e11_brute_force", tier_size),
+            &tier_size,
+            |b, _| {
+                b.iter(|| {
+                    rt.block_on(async {
+                        let results = store
+                            .search_causal_e11(black_box(&query_embedding), 10)
+                            .await
+                            .expect("BENCH ERROR: search_causal_e11 failed");
+                        black_box(results)
+                    })
+                })
+            },
+        );
+    }
+
+    group.finish();
+}
+
+/// Benchmark: Compare E11 vs E1 search performance.
+fn bench_e11_vs_e1_comparison(c: &mut Criterion) {
+    let temp_dir = TempDir::new().expect("BENCH ERROR: Failed to create temp directory");
+    let store = RocksDbTeleologicalStore::open(temp_dir.path())
+        .expect("BENCH ERROR: Failed to open RocksDB store");
+
+    let rt = tokio::runtime::Runtime::new().expect("BENCH ERROR: Failed to create tokio runtime");
+    let mut rng = StdRng::seed_from_u64(42);
+
+    // Pre-populate with 500 relationships with ALL embeddings
+    for i in 0..500 {
+        let source_id = Uuid::new_v4();
+        let rel = create_test_relationship_with_e11(&mut rng, source_id, i);
+        rt.block_on(async { store.store_causal_relationship(&rel).await })
+            .expect("BENCH ERROR: Failed to pre-store relationship");
+    }
+
+    let e1_query = generate_e1_embedding(&mut rng);
+    let e11_query = generate_e11_embedding(&mut rng);
+
+    let mut group = c.benchmark_group("causal/e11_vs_e1");
+
+    group.bench_function("e1_semantic_500", |b| {
+        b.iter(|| {
+            rt.block_on(async {
+                let results = store
+                    .search_causal_relationships(black_box(&e1_query), 10, None)
+                    .await
+                    .expect("BENCH ERROR: search failed");
+                black_box(results)
+            })
+        })
+    });
+
+    group.bench_function("e11_entity_500", |b| {
+        b.iter(|| {
+            rt.block_on(async {
+                let results = store
+                    .search_causal_e11(black_box(&e11_query), 10)
+                    .await
+                    .expect("BENCH ERROR: search_causal_e11 failed");
+                black_box(results)
+            })
+        })
+    });
+
+    group.finish();
+}
+
+// ============================================================================
+// BENCHMARKS - Multi-Embedder Fusion with E11
+// ============================================================================
+
+/// Benchmark: Full multi-embedder search (E1 + E5 + E8 + E11).
+/// Target: < 50ms for 500 relationships
+fn bench_multi_embedder_search(c: &mut Criterion) {
+    let temp_dir = TempDir::new().expect("BENCH ERROR: Failed to create temp directory");
+    let store = RocksDbTeleologicalStore::open(temp_dir.path())
+        .expect("BENCH ERROR: Failed to open RocksDB store");
+
+    let rt = tokio::runtime::Runtime::new().expect("BENCH ERROR: Failed to create tokio runtime");
+    let mut rng = StdRng::seed_from_u64(42);
+
+    // Pre-populate with 500 relationships with ALL embeddings
+    println!("Populating 500 relationships with full embeddings...");
+    for i in 0..500 {
+        let source_id = Uuid::new_v4();
+        let rel = create_test_relationship_full(&mut rng, source_id, i);
+        rt.block_on(async { store.store_causal_relationship(&rel).await })
+            .expect("BENCH ERROR: Failed to pre-store relationship");
+    }
+
+    let e1_query = generate_e1_embedding(&mut rng);
+    let e5_query = generate_e5_embedding(&mut rng);
+    let e8_query = generate_e8_embedding(&mut rng);
+    let e11_query = generate_e11_embedding(&mut rng);
+    let config = context_graph_core::types::MultiEmbedderConfig::new();
+
+    c.bench_function("causal/multi_embedder_search_500", |b| {
+        b.iter(|| {
+            rt.block_on(async {
+                let results = store
+                    .search_causal_multi_embedder(
+                        black_box(&e1_query),
+                        black_box(&e5_query),
+                        black_box(&e8_query),
+                        black_box(&e11_query),
+                        true, // search_causes
+                        10,
+                        black_box(&config),
+                    )
+                    .await
+                    .expect("BENCH ERROR: multi_embedder search failed");
+                black_box(results)
+            })
+        })
+    });
+
+    // Verify: Search returns results
+    let results = rt
+        .block_on(async {
+            store
+                .search_causal_multi_embedder(&e1_query, &e5_query, &e8_query, &e11_query, true, 10, &config)
+                .await
+        })
+        .expect("VERIFICATION FAILED: multi_embedder search failed");
+    println!(
+        "VERIFICATION: Multi-embedder search returned {} results, top RRF score: {:.4}",
+        results.len(),
+        results.first().map(|r| r.rrf_score).unwrap_or(0.0),
+    );
+}
+
+/// Benchmark: E11 weight sensitivity analysis.
+fn bench_e11_weight_sensitivity(c: &mut Criterion) {
+    let temp_dir = TempDir::new().expect("BENCH ERROR: Failed to create temp directory");
+    let store = RocksDbTeleologicalStore::open(temp_dir.path())
+        .expect("BENCH ERROR: Failed to open RocksDB store");
+
+    let rt = tokio::runtime::Runtime::new().expect("BENCH ERROR: Failed to create tokio runtime");
+    let mut rng = StdRng::seed_from_u64(42);
+
+    // Pre-populate
+    for i in 0..500 {
+        let source_id = Uuid::new_v4();
+        let rel = create_test_relationship_full(&mut rng, source_id, i);
+        rt.block_on(async { store.store_causal_relationship(&rel).await })
+            .expect("BENCH ERROR: Failed to pre-store relationship");
+    }
+
+    let e1_query = generate_e1_embedding(&mut rng);
+    let e5_query = generate_e5_embedding(&mut rng);
+    let e8_query = generate_e8_embedding(&mut rng);
+    let e11_query = generate_e11_embedding(&mut rng);
+
+    let mut group = c.benchmark_group("causal/e11_weight_sensitivity");
+
+    let weights = [
+        ("e11_0.00", 0.40, 0.40, 0.20, 0.00),
+        ("e11_0.10", 0.35, 0.35, 0.20, 0.10),
+        ("e11_0.20", 0.30, 0.35, 0.15, 0.20), // default
+        ("e11_0.30", 0.25, 0.30, 0.15, 0.30),
+    ];
+
+    for (name, e1_w, e5_w, e8_w, e11_w) in weights {
+        let config =
+            context_graph_core::types::MultiEmbedderConfig::with_weights(e1_w, e5_w, e8_w, e11_w);
+
+        group.bench_function(name, |b| {
+            b.iter(|| {
+                rt.block_on(async {
+                    let results = store
+                        .search_causal_multi_embedder(
+                            black_box(&e1_query),
+                            black_box(&e5_query),
+                            black_box(&e8_query),
+                            black_box(&e11_query),
+                            true,
+                            10,
+                            black_box(&config),
+                        )
+                        .await
+                        .expect("BENCH ERROR: multi_embedder search failed");
+                    black_box(results)
+                })
+            })
+        });
+    }
+
+    group.finish();
+}
+
+// ============================================================================
 // BENCHMARKS - Delete Operations
 // ============================================================================
 
@@ -637,5 +957,12 @@ criterion_group!(
     bench_e5_search_comparison,
     bench_hybrid_weight_variations,
     bench_delete_causal_relationship,
+    // E11 Entity Search benchmarks
+    bench_e11_search,
+    bench_e11_search_scaling,
+    bench_e11_vs_e1_comparison,
+    // Multi-Embedder Fusion benchmarks
+    bench_multi_embedder_search,
+    bench_e11_weight_sensitivity,
 );
 criterion_main!(benches);

@@ -287,4 +287,43 @@ impl TeleologicalMemoryStore for RocksDbTeleologicalStore {
             explanation_weight,
         ).await
     }
+
+    async fn search_causal_e8(
+        &self,
+        query_embedding: &[f32],
+        search_sources: bool,
+        top_k: usize,
+    ) -> CoreResult<Vec<(Uuid, f32)>> {
+        RocksDbTeleologicalStore::search_causal_e8(self, query_embedding, search_sources, top_k).await
+    }
+
+    async fn search_causal_e11(
+        &self,
+        query_embedding: &[f32],
+        top_k: usize,
+    ) -> CoreResult<Vec<(Uuid, f32)>> {
+        RocksDbTeleologicalStore::search_causal_e11(self, query_embedding, top_k).await
+    }
+
+    async fn search_causal_multi_embedder(
+        &self,
+        e1_embedding: &[f32],
+        e5_embedding: &[f32],
+        e8_embedding: &[f32],
+        e11_embedding: &[f32],
+        search_causes: bool,
+        top_k: usize,
+        config: &context_graph_core::types::MultiEmbedderConfig,
+    ) -> CoreResult<Vec<context_graph_core::types::CausalSearchResult>> {
+        RocksDbTeleologicalStore::search_causal_multi_embedder(
+            self,
+            e1_embedding,
+            e5_embedding,
+            e8_embedding,
+            e11_embedding,
+            search_causes,
+            top_k,
+            config,
+        ).await
+    }
 }

@@ -656,4 +656,64 @@ pub trait TeleologicalMemoryStore: Send + Sync {
         source_weight: f32,
         explanation_weight: f32,
     ) -> CoreResult<Vec<(Uuid, f32)>>;
+
+    /// Search causal relationships using E8 graph embeddings.
+    ///
+    /// # Arguments
+    /// * `query_embedding` - E8 1024D query embedding
+    /// * `search_sources` - If true, search for graph sources; if false, targets
+    /// * `top_k` - Number of results
+    ///
+    /// # Returns
+    /// Vector of (causal_id, similarity) tuples sorted by similarity descending.
+    async fn search_causal_e8(
+        &self,
+        query_embedding: &[f32],
+        search_sources: bool,
+        top_k: usize,
+    ) -> CoreResult<Vec<(Uuid, f32)>>;
+
+    /// Search causal relationships using E11 entity embeddings.
+    ///
+    /// # Arguments
+    /// * `query_embedding` - E11 768D query embedding
+    /// * `top_k` - Number of results
+    ///
+    /// # Returns
+    /// Vector of (causal_id, similarity) tuples sorted by similarity descending.
+    async fn search_causal_e11(
+        &self,
+        query_embedding: &[f32],
+        top_k: usize,
+    ) -> CoreResult<Vec<(Uuid, f32)>>;
+
+    /// Search causal relationships using all 4 embedders for maximum accuracy.
+    ///
+    /// Implements multi-embedder search with Weighted RRF fusion:
+    /// - E1: Semantic foundation
+    /// - E5: Causal (asymmetric, directional)
+    /// - E8: Graph structure
+    /// - E11: Entity knowledge graph
+    ///
+    /// # Arguments
+    /// * `e1_embedding` - E1 1024D semantic embedding
+    /// * `e5_embedding` - E5 768D causal embedding (already directional)
+    /// * `e8_embedding` - E8 1024D graph embedding
+    /// * `e11_embedding` - E11 768D entity embedding
+    /// * `search_causes` - If true, searching for causes (query is effect)
+    /// * `top_k` - Number of final results
+    /// * `config` - Multi-embedder configuration with weights
+    ///
+    /// # Returns
+    /// Vector of CausalSearchResult with per-embedder scores and consensus metrics.
+    async fn search_causal_multi_embedder(
+        &self,
+        e1_embedding: &[f32],
+        e5_embedding: &[f32],
+        e8_embedding: &[f32],
+        e11_embedding: &[f32],
+        search_causes: bool,
+        top_k: usize,
+        config: &crate::types::MultiEmbedderConfig,
+    ) -> CoreResult<Vec<crate::types::CausalSearchResult>>;
 }

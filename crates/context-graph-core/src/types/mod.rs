@@ -8,7 +8,9 @@ mod graph_edge;
 mod memory_node;
 mod source_metadata;
 
-pub use causal_relationship::CausalRelationship;
+pub use causal_relationship::{
+    CausalRelationship, CausalSearchResult, CausalSourceSpan, MultiEmbedderConfig,
+};
 pub use code_entity::{
     CodeEntity, CodeEntityType, CodeFileIndexEntry, CodeLanguage, CodeStats, Visibility,
 };

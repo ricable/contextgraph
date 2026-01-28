@@ -483,7 +483,14 @@ impl Handlers {
 
         let mut memories_analyzed = 0;
         let mut total_relationships = 0;
-        let mut errors = 0;
+        let mut content_fetch_errors = 0;
+        let mut embedding_errors = 0;
+        let mut fingerprint_errors = 0;
+        let mut storage_errors = 0;
+        // Track fallbacks (stored with degraded embeddings, not blocking errors)
+        let mut source_e5_fallback_count = 0;
+        let mut e8_fallback_count = 0;
+        let mut e11_fallback_count = 0;
         let start_time = std::time::Instant::now();
 
         for memory_id in &memory_ids {
@@ -491,7 +498,7 @@ impl Handlers {
             let content = match self.teleological_store.get_content(*memory_id).await {
                 Ok(Some(c)) => c,
                 _ => {
-                    errors += 1;
+                    content_fetch_errors += 1;
                     continue;
                 }
             };
@@ -528,7 +535,7 @@ impl Handlers {
                             error = %e,
                             "trigger_causal_discovery_extract: Failed to generate E5 embeddings"
                         );
-                        errors += 1;
+                        embedding_errors += 1;
                         continue;
                     }
                 };
@@ -547,7 +554,7 @@ impl Handlers {
                             error = %e,
                             "trigger_causal_discovery_extract: Failed to generate E1 embedding"
                         );
-                        errors += 1;
+                        embedding_errors += 1;
                         continue;
                     }
                 };
@@ -574,12 +581,60 @@ impl Handlers {
                             error = %e,
                             "trigger_causal_discovery_extract: Failed to generate source-anchored E5 embeddings"
                         );
+                        source_e5_fallback_count += 1;
                         // Fall back to empty vectors - search will use explanation embeddings only
                         (Vec::new(), Vec::new())
                     }
                 };
 
-                // Create and store the causal relationship with source-anchored embeddings
+                // Generate E8 graph embeddings for causal structure search
+                // Uses explanation text like E5, but captures graph connectivity patterns
+                let (e8_graph_source, e8_graph_target) = match self
+                    .multi_array_provider
+                    .embed_e8_dual(&relationship.explanation)
+                    .await
+                {
+                    Ok(dual) => dual,
+                    Err(e) => {
+                        warn!(
+                            memory_id = %memory_id,
+                            error = %e,
+                            "trigger_causal_discovery_extract: Failed to generate E8 embeddings"
+                        );
+                        e8_fallback_count += 1;
+                        // Fall back to empty - E8 is optional enhancement, not blocking
+                        (Vec::new(), Vec::new())
+                    }
+                };
+
+                // Generate E11 KEPLER entity embedding for knowledge graph search
+                // Concatenates cause|effect|explanation for entity context
+                // KEPLER knows entity relationships that E1 misses (e.g., "Diesel" = Rust ORM)
+                let e11_entity_text = format!(
+                    "{} | {} | {}",
+                    relationship.cause,
+                    relationship.effect,
+                    relationship.explanation
+                );
+                let e11_entity = match self
+                    .multi_array_provider
+                    .embed_e11_only(&e11_entity_text)
+                    .await
+                {
+                    Ok(emb) => emb,
+                    Err(e) => {
+                        warn!(
+                            memory_id = %memory_id,
+                            error = %e,
+                            "trigger_causal_discovery_extract: Failed to generate E11 embedding"
+                        );
+                        e11_fallback_count += 1;
+                        // Fall back to empty - E11 is optional enhancement, not blocking
+                        Vec::new()
+                    }
+                };
+
+                // Create and store the causal relationship with source-anchored, graph, and entity embeddings
                 let causal_rel = context_graph_core::types::CausalRelationship::new(
                     relationship.cause.clone(),
                     relationship.effect.clone(),
@@ -592,7 +647,9 @@ impl Handlers {
                     relationship.confidence,
                     relationship.mechanism_type.as_str().to_string(),
                 )
-                .with_source_embeddings(e5_source_cause, e5_source_effect);
+                .with_source_embeddings(e5_source_cause, e5_source_effect)
+                .with_graph_embeddings(e8_graph_source, e8_graph_target)
+                .with_entity_embedding(e11_entity);
 
                 match self
                     .teleological_store
@@ -688,7 +745,7 @@ impl Handlers {
                                             error = %e,
                                             "Failed to store 13-embedder fingerprint"
                                         );
-                                        // Don't count as error - CausalRelationship was stored
+                                        fingerprint_errors += 1;
                                     }
                                 }
                             }
@@ -710,21 +767,45 @@ impl Handlers {
                             error = %e,
                             "trigger_causal_discovery_extract: Failed to store relationship"
                         );
-                        errors += 1;
+                        storage_errors += 1;
                     }
                 }
             }
         }
 
         let duration = start_time.elapsed();
+        let total_errors =
+            content_fetch_errors + embedding_errors + fingerprint_errors + storage_errors;
 
         info!(
             memories_analyzed = memories_analyzed,
             relationships_found = total_relationships,
-            errors = errors,
+            content_fetch_errors = content_fetch_errors,
+            embedding_errors = embedding_errors,
+            fingerprint_errors = fingerprint_errors,
+            storage_errors = storage_errors,
+            total_errors = total_errors,
+            source_e5_fallbacks = source_e5_fallback_count,
+            e8_fallbacks = e8_fallback_count,
+            e11_fallbacks = e11_fallback_count,
             duration_ms = duration.as_millis(),
             "trigger_causal_discovery_extract: Complete"
         );
+
+        // Get LLM status from provider
+        let llm_status = match &self.causal_hint_provider {
+            Some(p) => {
+                let status = p.last_extraction_status();
+                json!({
+                    "available": p.is_available(),
+                    "lastStatus": status.as_str(),
+                })
+            }
+            None => json!({
+                "available": false,
+                "lastStatus": "NoProvider",
+            }),
+        };
 
         self.tool_result(
             id,
@@ -734,7 +815,20 @@ impl Handlers {
                 "memoriesAnalyzed": memories_analyzed,
                 "relationshipsFound": total_relationships,
                 "minConfidence": min_confidence,
-                "errors": errors,
+                "errorBreakdown": {
+                    "contentFetch": content_fetch_errors,
+                    "embedding": embedding_errors,
+                    "fingerprint": fingerprint_errors,
+                    "storage": storage_errors,
+                    "total": total_errors
+                },
+                "degradedEmbeddings": {
+                    "sourceE5Fallbacks": source_e5_fallback_count,
+                    "e8Fallbacks": e8_fallback_count,
+                    "e11Fallbacks": e11_fallback_count,
+                    "total": source_e5_fallback_count + e8_fallback_count + e11_fallback_count
+                },
+                "llmStatus": llm_status,
                 "durationMs": duration.as_millis(),
                 "dryRun": false
             }),

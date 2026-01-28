@@ -791,6 +791,53 @@ pub trait MultiArrayEmbeddingProvider: Send + Sync {
         ))
     }
 
+    /// Embed content using only E8 (graph) embedder to get dual vectors.
+    ///
+    /// Returns (as_source, as_target) E8 dual embeddings (1024D each).
+    /// Used for graph structure search in causal relationships.
+    ///
+    /// # Arguments
+    ///
+    /// * `content` - Text to embed (typically a causal relationship description)
+    ///
+    /// # Returns
+    ///
+    /// A tuple of (e8_as_source, e8_as_target) vectors, each 1024D.
+    ///
+    /// # Default Implementation
+    ///
+    /// Falls back to `embed_all` and extracts E8 dual vectors.
+    /// Implementations should override for efficiency.
+    async fn embed_e8_dual(&self, content: &str) -> CoreResult<(Vec<f32>, Vec<f32>)> {
+        let output = self.embed_all(content).await?;
+        Ok((
+            output.fingerprint.e8_graph_as_source,
+            output.fingerprint.e8_graph_as_target,
+        ))
+    }
+
+    /// Embed content using only E11 (entity/KEPLER) embedder.
+    ///
+    /// Returns E11 entity embedding (768D).
+    /// Used for entity-based search with TransE operations.
+    ///
+    /// # Arguments
+    ///
+    /// * `content` - Text to embed
+    ///
+    /// # Returns
+    ///
+    /// E11 entity vector (768D).
+    ///
+    /// # Default Implementation
+    ///
+    /// Falls back to `embed_all` and extracts E11.
+    /// Implementations should override for efficiency.
+    async fn embed_e11_only(&self, content: &str) -> CoreResult<Vec<f32>> {
+        let output = self.embed_all(content).await?;
+        Ok(output.fingerprint.e11_entity)
+    }
+
     /// Get expected dimensions for each embedder.
     ///
     /// Returns array where index matches embedder number:

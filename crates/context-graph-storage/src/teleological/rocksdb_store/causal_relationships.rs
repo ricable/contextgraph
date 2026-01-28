@@ -574,6 +574,293 @@ impl RocksDbTeleologicalStore {
         Ok(results)
     }
 
+    /// Search causal relationships using E8 graph structure embeddings.
+    ///
+    /// E8 embeddings capture the graph structure of causal relationships.
+    /// This enables finding relationships with similar connectivity patterns.
+    ///
+    /// # Arguments
+    /// * `query_embedding` - E8 1024D query embedding
+    /// * `search_sources` - If true, query as target, search source vectors
+    ///                     If false, query as source, search target vectors
+    /// * `top_k` - Number of results
+    ///
+    /// # Returns
+    /// Vector of (causal_id, similarity) tuples sorted by similarity descending.
+    pub async fn search_causal_e8(
+        &self,
+        query_embedding: &[f32],
+        search_sources: bool,
+        top_k: usize,
+    ) -> CoreResult<Vec<(Uuid, f32)>> {
+        use crate::teleological::rocksdb_store::helpers::compute_cosine_similarity;
+
+        let cf = self.cf_causal_relationships();
+        let iter = self.db.iterator_cf(cf, rocksdb::IteratorMode::Start);
+
+        let mut results: Vec<(Uuid, f32)> = Vec::new();
+
+        for item in iter {
+            let (_key, value) = item.map_err(|e| {
+                error!(
+                    "ROCKSDB ERROR: Failed to iterate causal_relationships: {}",
+                    e
+                );
+                CoreError::StorageError(format!("Failed to iterate causal_relationships: {}", e))
+            })?;
+
+            let relationship: CausalRelationship = match bincode::deserialize(&value) {
+                Ok(r) => r,
+                Err(e) => {
+                    warn!(
+                        "CAUSAL WARNING: Failed to deserialize relationship during E8 search: {}",
+                        e
+                    );
+                    continue;
+                }
+            };
+
+            // Skip if E8 embeddings are not set
+            if !relationship.has_graph_embeddings() {
+                continue;
+            }
+
+            // Select appropriate E8 vector based on search mode
+            let doc_embedding = if search_sources {
+                // Searching for sources: compare query (target) against stored source vectors
+                relationship.e8_graph_source_embedding()
+            } else {
+                // Searching for targets: compare query (source) against stored target vectors
+                relationship.e8_graph_target_embedding()
+            };
+
+            let similarity = compute_cosine_similarity(query_embedding, doc_embedding);
+            results.push((relationship.id, similarity));
+        }
+
+        // Sort by similarity descending
+        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Take top_k
+        results.truncate(top_k);
+
+        debug!(
+            query_dim = query_embedding.len(),
+            search_sources = search_sources,
+            top_k = top_k,
+            results_count = results.len(),
+            "Searched causal relationships using E8 graph embeddings"
+        );
+
+        Ok(results)
+    }
+
+    /// Search causal relationships using E11 KEPLER entity embeddings.
+    ///
+    /// E11 (KEPLER) embeddings enable entity-based search using TransE knowledge
+    /// graph operations. This finds relationships containing similar entities.
+    /// KEPLER knows entity relationships that E1 misses (e.g., "Diesel" = Rust ORM).
+    ///
+    /// # Arguments
+    /// * `query_embedding` - E11 768D KEPLER query embedding
+    /// * `top_k` - Number of results
+    ///
+    /// # Returns
+    /// Vector of (causal_id, similarity) tuples sorted by similarity descending.
+    ///
+    /// # Note
+    /// Only relationships with valid E11 embeddings are searched. Older relationships
+    /// stored without E11 embeddings are skipped. Use `search_causal_relationships()`
+    /// for E1 semantic search as a fallback.
+    pub async fn search_causal_e11(
+        &self,
+        query_embedding: &[f32],
+        top_k: usize,
+    ) -> CoreResult<Vec<(Uuid, f32)>> {
+        use crate::teleological::rocksdb_store::helpers::compute_cosine_similarity;
+
+        let cf = self.cf_causal_relationships();
+        let iter = self.db.iterator_cf(cf, rocksdb::IteratorMode::Start);
+
+        let mut results: Vec<(Uuid, f32)> = Vec::new();
+
+        for item in iter {
+            let (_key, value) = item.map_err(|e| {
+                error!(
+                    "ROCKSDB ERROR: Failed to iterate causal_relationships: {}",
+                    e
+                );
+                CoreError::StorageError(format!("Failed to iterate causal_relationships: {}", e))
+            })?;
+
+            let relationship: CausalRelationship = match bincode::deserialize(&value) {
+                Ok(r) => r,
+                Err(e) => {
+                    warn!(
+                        "CAUSAL WARNING: Failed to deserialize relationship during E11 search: {}",
+                        e
+                    );
+                    continue;
+                }
+            };
+
+            // Only search relationships that have E11 embeddings (FIXED: was using E1 as proxy)
+            if !relationship.has_entity_embedding() {
+                continue;
+            }
+
+            let doc_embedding = relationship.e11_embedding(); // FIXED: Use real E11 (768D)
+
+            // Validate dimension match (768D)
+            if query_embedding.len() != doc_embedding.len() {
+                warn!(
+                    expected = query_embedding.len(),
+                    actual = doc_embedding.len(),
+                    relationship_id = %relationship.id,
+                    "E11 dimension mismatch - skipping relationship"
+                );
+                continue;
+            }
+
+            let similarity = compute_cosine_similarity(query_embedding, doc_embedding);
+            results.push((relationship.id, similarity));
+        }
+
+        // Sort by similarity descending
+        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        results.truncate(top_k);
+
+        debug!(
+            query_dim = query_embedding.len(),
+            top_k = top_k,
+            results_count = results.len(),
+            "Searched causal relationships using E11 KEPLER entity embeddings"
+        );
+
+        Ok(results)
+    }
+
+    /// Search causal relationships using all 4 embedders for maximum accuracy.
+    ///
+    /// Implements the 6-stage multi-embedder pipeline:
+    /// 1. E1 semantic search (foundation)
+    /// 2. E5 causal search (asymmetric, directional)
+    /// 3. E8 graph search (connectivity)
+    /// 4. E11 entity search (knowledge graph)
+    /// 5. Weighted RRF fusion (per ARCH-21)
+    /// 6. Consensus scoring and direction confidence
+    ///
+    /// # Arguments
+    /// * `e1_embedding` - E1 1024D semantic embedding
+    /// * `e5_embedding` - E5 768D causal embedding (already directional)
+    /// * `e8_embedding` - E8 1024D graph embedding
+    /// * `e11_embedding` - E11 768D entity embedding
+    /// * `search_causes` - If true, searching for causes (query is effect)
+    /// * `top_k` - Number of final results
+    /// * `config` - Multi-embedder configuration with weights
+    ///
+    /// # Returns
+    /// Vector of CausalSearchResult with per-embedder scores and consensus metrics.
+    pub async fn search_causal_multi_embedder(
+        &self,
+        e1_embedding: &[f32],
+        e5_embedding: &[f32],
+        e8_embedding: &[f32],
+        e11_embedding: &[f32],
+        search_causes: bool,
+        top_k: usize,
+        config: &context_graph_core::types::MultiEmbedderConfig,
+    ) -> CoreResult<Vec<context_graph_core::types::CausalSearchResult>> {
+        use crate::teleological::rocksdb_store::fusion::{weighted_rrf_fusion_with_scores, RRF_K};
+        use context_graph_core::types::CausalSearchResult;
+
+        // Over-fetch factor for RRF (3x to ensure enough candidates)
+        let fetch_k = top_k * 3;
+
+        // Stage 1-4: Search all embedders in parallel
+        info!(
+            top_k = top_k,
+            fetch_k = fetch_k,
+            search_causes = search_causes,
+            "Starting multi-embedder causal search"
+        );
+
+        // Run all 4 searches (not using tokio::join! since we're on sync iterator)
+        let e1_results = self
+            .search_causal_relationships(e1_embedding, fetch_k, None)
+            .await?;
+
+        let e5_results = self
+            .search_causal_e5_hybrid(
+                e5_embedding,
+                search_causes,
+                fetch_k,
+                0.6, // source_weight
+                0.4, // explanation_weight
+            )
+            .await?;
+
+        let e8_results = self
+            .search_causal_e8(e8_embedding, search_causes, fetch_k)
+            .await?;
+
+        let e11_results = self.search_causal_e11(e11_embedding, fetch_k).await?;
+
+        debug!(
+            e1_count = e1_results.len(),
+            e5_count = e5_results.len(),
+            e8_count = e8_results.len(),
+            e11_count = e11_results.len(),
+            "Multi-embedder search complete, starting RRF fusion"
+        );
+
+        // Stage 5: Weighted RRF fusion
+        let fused = weighted_rrf_fusion_with_scores(
+            vec![
+                (e1_results, config.e1_weight, "e1"),
+                (e5_results, config.e5_weight, "e5"),
+                (e8_results, config.e8_weight, "e8"),
+                (e11_results, config.e11_weight, "e11"),
+            ],
+            RRF_K as i32,
+        );
+
+        // Stage 6: Build results with consensus scoring
+        let mut results = Vec::with_capacity(fused.len().min(top_k));
+
+        for (id, rrf_score, embedder_scores) in fused.into_iter().take(top_k) {
+            let e1_score = *embedder_scores.get("e1").unwrap_or(&0.0);
+            let e5_score = *embedder_scores.get("e5").unwrap_or(&0.0);
+            let e8_score = *embedder_scores.get("e8").unwrap_or(&0.0);
+            let e11_score = *embedder_scores.get("e11").unwrap_or(&0.0);
+
+            let mut result = CausalSearchResult::new(id, e1_score, e5_score, e8_score, e11_score)
+                .with_rrf_score(rrf_score);
+
+            // Compute consensus
+            result.compute_consensus();
+
+            // Filter by minimum consensus if configured
+            if result.consensus_score < config.min_consensus {
+                continue;
+            }
+
+            // Fetch full relationship if needed
+            if let Ok(Some(rel)) = self.get_causal_relationship(id).await {
+                result = result.with_relationship(rel);
+            }
+
+            results.push(result);
+        }
+
+        info!(
+            results_count = results.len(),
+            "Multi-embedder causal search complete"
+        );
+
+        Ok(results)
+    }
+
     /// Get total count of causal relationships.
     pub async fn count_causal_relationships(&self) -> CoreResult<usize> {
         let cf = self.cf_causal_relationships();

@@ -45,6 +45,41 @@ use std::time::Duration;
 use async_trait::async_trait;
 use context_graph_core::traits::{CausalHint, ExtractedCausalRelationship};
 
+/// Status of causal relationship extraction.
+///
+/// Used to track what happened during the last extraction attempt,
+/// enabling better error reporting and debugging.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ExtractionStatus {
+    /// Extraction completed successfully with relationships found.
+    Success,
+    /// Content analyzed but no causal relationships found.
+    NoContent,
+    /// LLM is not loaded/available.
+    Unavailable,
+    /// Extraction timed out.
+    Timeout,
+    /// LLM inference error occurred.
+    Error,
+    /// Status not yet determined.
+    #[default]
+    Unknown,
+}
+
+impl ExtractionStatus {
+    /// Convert status to a display string.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Success => "Success",
+            Self::NoContent => "NoContent",
+            Self::Unavailable => "Unavailable",
+            Self::Timeout => "Timeout",
+            Self::Error => "Error",
+            Self::Unknown => "Unknown",
+        }
+    }
+}
+
 /// Provider for LLM-based causal hints and multi-relationship extraction.
 ///
 /// Used during memory storage to obtain direction hints for E5 embedding
@@ -110,6 +145,18 @@ pub trait CausalHintProvider: Send + Sync {
 
     /// Get the timeout duration for hint generation.
     fn timeout(&self) -> Duration;
+
+    /// Get status of last extraction attempt.
+    ///
+    /// Returns the status of the most recent `extract_all_relationships` call.
+    /// Useful for distinguishing between "no relationships found" vs "LLM error".
+    ///
+    /// # Default Implementation
+    ///
+    /// Returns `ExtractionStatus::Unknown` for backward compatibility.
+    fn last_extraction_status(&self) -> ExtractionStatus {
+        ExtractionStatus::Unknown
+    }
 }
 
 /// No-op implementation for when LLM is not available.
@@ -146,6 +193,10 @@ impl CausalHintProvider for NoOpCausalHintProvider {
 
     fn timeout(&self) -> Duration {
         Duration::ZERO
+    }
+
+    fn last_extraction_status(&self) -> ExtractionStatus {
+        ExtractionStatus::Unavailable
     }
 }
 

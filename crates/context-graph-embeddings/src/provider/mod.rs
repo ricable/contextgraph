@@ -31,7 +31,7 @@
 mod causal_hint;
 mod multi_array;
 
-pub use causal_hint::{CausalHintProvider, NoOpCausalHintProvider};
+pub use causal_hint::{CausalHintProvider, ExtractionStatus, NoOpCausalHintProvider};
 pub use multi_array::ProductionMultiArrayProvider;
 
 use async_trait::async_trait;
