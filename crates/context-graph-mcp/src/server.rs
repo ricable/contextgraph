@@ -406,7 +406,6 @@ impl McpServer {
         // 1. Set CODE_PIPELINE_ENABLED=true environment variable
         // 2. Ensure CODE_STORE_PATH is set (defaults to db_path/code_store)
         //
-        // TODO: Add to Config struct for proper configuration management
         let _code_pipeline_enabled =
             std::env::var("CODE_PIPELINE_ENABLED").map_or(false, |v| v == "true");
 

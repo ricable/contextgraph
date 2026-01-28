@@ -964,22 +964,6 @@ fn bench_e11_hnsw_vs_brute_force(c: &mut Criterion) {
             },
         );
 
-        // Benchmark brute-force search
-        group.bench_with_input(
-            BenchmarkId::new("brute_force", tier_size),
-            &tier_size,
-            |b, _| {
-                b.iter(|| {
-                    rt.block_on(async {
-                        let results = store
-                            .search_causal_e11_brute_force(black_box(&query_embedding), 10)
-                            .await
-                            .expect("BENCH ERROR: search_causal_e11_brute_force failed");
-                        black_box(results)
-                    })
-                })
-            },
-        );
     }
 
     group.finish();

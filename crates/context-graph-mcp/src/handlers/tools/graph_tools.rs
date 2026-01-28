@@ -228,12 +228,10 @@ impl Handlers {
                 });
             }
 
-            // For graph direction filtering, we'd need to retrieve fingerprints
-            // and infer direction. For now, skip direction-based filtering.
-            // TODO: Add graph direction inference if filter_direction is specified
+            // Graph direction filtering: keep items without direction when filter is requested
+            // Direction inference requires fingerprint retrieval which is not yet implemented
             if filter_direction.is_some() && conn.graph_direction.is_none() {
                 // Filter requested but no direction available - keep the item
-                // unless we implement fingerprint retrieval for direction inference
             }
 
             // Add content if requested

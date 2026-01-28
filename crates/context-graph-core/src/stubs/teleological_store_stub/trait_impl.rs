@@ -246,86 +246,136 @@ impl TeleologicalMemoryStore for InMemoryTeleologicalStore {
     // In-memory stub implementation uses source_metadata scanning as fallback
 
     async fn list_indexed_files(&self) -> CoreResult<Vec<crate::types::FileIndexEntry>> {
-        use std::collections::HashMap;
         use crate::types::FileIndexEntry;
 
-        // Build file entries from source_metadata (fallback scan approach)
-        let mut file_map: HashMap<String, Vec<Uuid>> = HashMap::new();
-        for entry in self.source_metadata.iter() {
-            if let Some(ref path) = entry.value().file_path {
-                file_map.entry(path.clone()).or_default().push(*entry.key());
-            }
-        }
-
-        let entries: Vec<FileIndexEntry> = file_map
-            .into_iter()
-            .map(|(path, ids)| {
-                let mut entry = FileIndexEntry::new(path);
-                for id in ids {
-                    entry.add_fingerprint(id);
+        // Use file_index as primary source (proper implementation)
+        let entries: Vec<FileIndexEntry> = self
+            .file_index
+            .iter()
+            .map(|entry| {
+                let mut file_entry = FileIndexEntry::new(entry.key().clone());
+                for id in entry.value().iter() {
+                    file_entry.add_fingerprint(*id);
                 }
-                entry
+                file_entry
             })
             .collect();
 
-        debug!("Listed {} indexed files from in-memory store", entries.len());
+        debug!(
+            indexed_file_count = entries.len(),
+            "Listed indexed files from in-memory store"
+        );
         Ok(entries)
     }
 
     async fn get_fingerprints_for_file(&self, file_path: &str) -> CoreResult<Vec<Uuid>> {
-        // Delegate to find_fingerprints_by_file_path (same behavior for stub)
-        self.find_fingerprints_by_file_path(file_path).await
+        // Use file_index as primary source (proper implementation)
+        let ids = self
+            .file_index
+            .get(file_path)
+            .map(|entry| entry.value().clone())
+            .unwrap_or_default();
+
+        debug!(
+            file_path = %file_path,
+            fingerprint_count = ids.len(),
+            "Retrieved fingerprints for file"
+        );
+        Ok(ids)
     }
 
     async fn index_file_fingerprint(&self, file_path: &str, fingerprint_id: Uuid) -> CoreResult<()> {
-        // In-memory stub: No-op, source_metadata is already tracking by file_path
-        debug!(
-            "index_file_fingerprint called for '{}' with {} (no-op in stub)",
-            file_path, fingerprint_id
+        // Proper implementation: maintain file_index DashMap
+        let mut entry = self.file_index.entry(file_path.to_string()).or_insert_with(Vec::new);
+        if !entry.contains(&fingerprint_id) {
+            entry.push(fingerprint_id);
+        }
+        info!(
+            file_path = %file_path,
+            fingerprint_id = %fingerprint_id,
+            total_count = entry.len(),
+            "Indexed fingerprint for file"
         );
         Ok(())
     }
 
     async fn unindex_file_fingerprint(&self, file_path: &str, fingerprint_id: Uuid) -> CoreResult<bool> {
-        // In-memory stub: No-op, source_metadata will be cleaned up by delete operations
-        debug!(
-            "unindex_file_fingerprint called for '{}' with {} (no-op in stub)",
-            file_path, fingerprint_id
-        );
-        Ok(false)
+        // Proper implementation: remove from file_index DashMap
+        let removed = if let Some(mut entry) = self.file_index.get_mut(file_path) {
+            let before_len = entry.len();
+            entry.retain(|&id| id != fingerprint_id);
+            let removed = entry.len() < before_len;
+            if removed {
+                info!(
+                    file_path = %file_path,
+                    fingerprint_id = %fingerprint_id,
+                    remaining = entry.len(),
+                    "Unindexed fingerprint from file"
+                );
+            }
+            removed
+        } else {
+            debug!(
+                file_path = %file_path,
+                fingerprint_id = %fingerprint_id,
+                "No index entry for file, nothing to unindex"
+            );
+            false
+        };
+
+        // Clean up empty entries
+        if let Some(entry) = self.file_index.get(file_path) {
+            if entry.is_empty() {
+                drop(entry);
+                self.file_index.remove(file_path);
+                debug!(file_path = %file_path, "Removed empty file index entry");
+            }
+        }
+
+        Ok(removed)
     }
 
     async fn clear_file_index(&self, file_path: &str) -> CoreResult<usize> {
-        // In-memory stub: Count matching entries but don't maintain separate index
-        let count = self.find_fingerprints_by_file_path(file_path).await?.len();
-        debug!(
-            "clear_file_index called for '{}': {} entries (no-op in stub)",
-            file_path, count
-        );
+        // Proper implementation: remove entry from file_index DashMap and return count
+        let count = if let Some((_, ids)) = self.file_index.remove(file_path) {
+            let count = ids.len();
+            info!(
+                file_path = %file_path,
+                fingerprints_removed = count,
+                "Cleared file index"
+            );
+            count
+        } else {
+            debug!(file_path = %file_path, "No index entry for file, nothing to clear");
+            0
+        };
         Ok(count)
     }
 
     async fn get_file_watcher_stats(&self) -> CoreResult<crate::types::FileWatcherStats> {
-        use std::collections::HashMap;
-
-        // Build stats from source_metadata
-        let mut file_chunks: HashMap<String, usize> = HashMap::new();
-        for entry in self.source_metadata.iter() {
-            if let Some(ref path) = entry.value().file_path {
-                *file_chunks.entry(path.clone()).or_default() += 1;
-            }
-        }
-
-        if file_chunks.is_empty() {
+        // Use file_index as primary source (proper implementation)
+        if self.file_index.is_empty() {
             return Ok(crate::types::FileWatcherStats::default());
         }
 
-        let total_files = file_chunks.len();
-        let chunk_counts: Vec<usize> = file_chunks.values().cloned().collect();
+        let chunk_counts: Vec<usize> = self
+            .file_index
+            .iter()
+            .map(|entry| entry.value().len())
+            .collect();
+
+        let total_files = chunk_counts.len();
         let total_chunks: usize = chunk_counts.iter().sum();
         let min_chunks = *chunk_counts.iter().min().unwrap_or(&0);
         let max_chunks = *chunk_counts.iter().max().unwrap_or(&0);
         let avg_chunks_per_file = total_chunks as f64 / total_files as f64;
+
+        debug!(
+            total_files = total_files,
+            total_chunks = total_chunks,
+            avg_chunks = avg_chunks_per_file,
+            "Computed file watcher stats"
+        );
 
         Ok(crate::types::FileWatcherStats {
             total_files,
@@ -641,18 +691,38 @@ impl TeleologicalMemoryStore for InMemoryTeleologicalStore {
         query_embedding: &[f32],
         top_k: usize,
     ) -> CoreResult<Vec<(Uuid, f32)>> {
+        use crate::types::CausalRelationship;
+
+        // Validate query embedding dimension (E11 KEPLER is 768D)
+        if query_embedding.len() != CausalRelationship::E11_DIM {
+            error!(
+                "E11 query embedding dimension mismatch: expected {}, got {}",
+                CausalRelationship::E11_DIM,
+                query_embedding.len()
+            );
+            return Err(CoreError::ValidationError {
+                field: "query_embedding".to_string(),
+                message: format!(
+                    "E11 query embedding must be {}D (KEPLER), got {}D",
+                    CausalRelationship::E11_DIM,
+                    query_embedding.len()
+                ),
+            });
+        }
+
         let mut results: Vec<(Uuid, f32)> = Vec::new();
 
         for entry in self.causal_relationships.iter() {
             let rel = entry.value();
 
-            // Use e1_semantic as fallback for E11 entity search in stub
-            // (Real impl would use entity-specific embeddings)
-            if rel.e1_semantic.is_empty() || rel.e1_semantic.iter().all(|&v| v == 0.0) {
+            // Use e11_entity for E11 entity search - ARCH-02: apples-to-apples comparison
+            // E11 (KEPLER) finds entity relationships that E1 misses (e.g., "Diesel" = Rust ORM)
+            if !rel.has_entity_embedding() {
+                // Skip relationships without E11 embeddings
                 continue;
             }
 
-            let similarity = compute_cosine_similarity(query_embedding, &rel.e1_semantic);
+            let similarity = compute_cosine_similarity(query_embedding, rel.e11_embedding());
             results.push((rel.id, similarity));
         }
 
@@ -666,7 +736,7 @@ impl TeleologicalMemoryStore for InMemoryTeleologicalStore {
             query_dim = query_embedding.len(),
             top_k = top_k,
             results_count = results.len(),
-            "Searched causal relationships using E11 in in-memory store"
+            "Searched causal relationships using E11 (KEPLER entity embeddings) in in-memory store"
         );
 
         Ok(results)

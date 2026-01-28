@@ -77,8 +77,6 @@ pub struct GraphProjectionWeights {
     pub target_projection: Tensor,
     /// Target projection bias: [1024]
     pub target_bias: Tensor,
-    /// Hidden size for validation (1024 for e5-large-v2)
-    pub hidden_size: usize,
 }
 
 impl GraphProjectionWeights {
@@ -168,7 +166,6 @@ impl GraphProjectionWeights {
             source_bias,
             target_projection,
             target_bias,
-            hidden_size,
         })
     }
 
@@ -242,22 +239,6 @@ impl GraphProjectionWeights {
             })
     }
 
-    /// Project an embedding to both source and target vectors in one pass.
-    ///
-    /// Efficient method that applies both projections at once.
-    ///
-    /// # Arguments
-    ///
-    /// * `embedding` - Input embedding tensor [1, 1024]
-    ///
-    /// # Returns
-    ///
-    /// Tuple of (source_vec, target_vec), each [1, 1024]
-    pub fn project_dual(&self, embedding: &Tensor) -> EmbeddingResult<(Tensor, Tensor)> {
-        let source_vec = self.project_source(embedding)?;
-        let target_vec = self.project_target(embedding)?;
-        Ok((source_vec, target_vec))
-    }
 }
 
 /// Create a perturbed identity matrix: I + N(0, std)

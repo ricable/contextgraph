@@ -19,8 +19,6 @@ pub type GraphResult<T> = Result<T, GraphError>;
 ///
 /// Each variant includes context for debugging and error recovery.
 /// All errors are designed to fail fast with clear messages.
-///
-/// TODO: M04-T08 will add additional variants as needed
 #[derive(Error, Debug)]
 pub enum GraphError {
     // ========== FAISS Index Errors ==========

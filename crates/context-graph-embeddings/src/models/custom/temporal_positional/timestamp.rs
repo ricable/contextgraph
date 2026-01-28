@@ -70,16 +70,6 @@ pub struct HybridPositionInfo {
 }
 
 impl HybridPositionInfo {
-    /// Create a new hybrid position with all components.
-    #[must_use]
-    pub fn new(position: i64, is_sequence: bool, session_id: Option<String>) -> Self {
-        Self {
-            position,
-            is_sequence,
-            session_id,
-        }
-    }
-
     /// Create from a PositionInfo with optional session.
     #[must_use]
     pub fn from_position_info(pos: PositionInfo, session_id: Option<String>) -> Self {
@@ -87,16 +77,6 @@ impl HybridPositionInfo {
             position: pos.position,
             is_sequence: pos.is_sequence,
             session_id,
-        }
-    }
-
-    /// Create a hybrid position with session and sequence.
-    #[must_use]
-    pub fn with_session_sequence(session_id: &str, seq: u64) -> Self {
-        Self {
-            position: seq as i64,
-            is_sequence: true,
-            session_id: Some(session_id.to_string()),
         }
     }
 
@@ -409,12 +389,6 @@ mod tests {
 
     #[test]
     fn test_hybrid_position_info_constructors() {
-        // Test with_session_sequence
-        let hybrid = HybridPositionInfo::with_session_sequence("test-session", 123);
-        assert_eq!(hybrid.session_id, Some("test-session".to_string()));
-        assert_eq!(hybrid.position, 123);
-        assert!(hybrid.is_sequence);
-
         // Test without_session
         let hybrid = HybridPositionInfo::without_session(100, true);
         assert_eq!(hybrid.session_id, None);

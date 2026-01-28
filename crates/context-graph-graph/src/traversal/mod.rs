@@ -93,13 +93,5 @@ pub use astar::{
     astar_bidirectional, astar_domain_path, astar_path, astar_search, AstarParams, AstarResult,
 };
 
-// M04-T17 COMPLETE: DFS implemented in dfs.rs (iterative, NOT recursive)
-// M04-T17a COMPLETE: A* implemented in astar.rs with hyperbolic heuristic
-
-// TODO: M04-T22 - Implement traversal utilities
-// pub struct EdgeFilter {
-//     pub edge_types: Option<Vec<EdgeType>>,
-//     pub min_weight: f32,
-//     pub domain: Option<Domain>,
-// }
-// pub fn get_modulated_weight(edge: &GraphEdge, domain: Domain) -> f32
+// DFS implemented in dfs.rs (iterative, NOT recursive)
+// A* implemented in astar.rs with hyperbolic heuristic

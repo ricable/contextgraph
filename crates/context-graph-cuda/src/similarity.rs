@@ -203,8 +203,6 @@ impl BatchedQueryContext {
 /// - Pre-normalized query (no redundant norm computation)
 /// - Cache-friendly sequential memory access
 /// - Potential auto-vectorization by LLVM
-///
-/// TODO: Migrate to GPU when candle-core supports CUDA 13.1
 pub fn compute_batch_cosine_similarity(
     query_ctx: &BatchedQueryContext,
     candidate_vectors: &[[&[f32]; 10]],

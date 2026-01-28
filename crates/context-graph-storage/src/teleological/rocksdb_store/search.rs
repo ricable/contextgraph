@@ -103,24 +103,9 @@ fn compute_scores_sequential(
 }
 
 // =============================================================================
-// SEMANTIC EMBEDDER INDICES (for multi-space scoring)
+// SEMANTIC EMBEDDER WEIGHTS
 // Per constitution: Temporal (E2-E4) have weight 0.0 in semantic search
 // =============================================================================
-
-/// Semantic embedder indices that contribute to similarity scoring.
-/// Per constitution (ARCH-13, AP-71, AP-73, AP-74):
-/// - E2-E4 (temporal) are EXCLUDED - used for post-retrieval boosts
-/// - E12 (ColBERT) is EXCLUDED - used in Stage 3 rerank only (AP-73)
-/// - E13 (SPLADE) is EXCLUDED - used in Stage 1 recall only (AP-74)
-#[allow(dead_code)]
-const SEMANTIC_EMBEDDER_INDICES: [usize; 6] = [
-    0,  // E1 - Semantic
-    4,  // E5 - Causal (asymmetric per ARCH-15)
-    5,  // E6 - Sparse
-    6,  // E7 - Code (query-type aware per ARCH-16)
-    9,  // E10 - Multimodal
-    10, // E11 - Entity (with entity linking per ARCH-17)
-];
 
 /// Default weights for semantic search profile.
 /// Sum of non-zero weights = 1.0

@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::error::{EmbeddingError, EmbeddingResult};
 use crate::gpu::{init_gpu, GpuModelLoader};
-use crate::traits::{EmbeddingModel, SingleModelConfig};
+use crate::traits::SingleModelConfig;
 use crate::types::{InputType, ModelEmbedding, ModelId, ModelInput};
 
 use super::types::{KeplerModel, ModelState, KEPLER_DIMENSION};

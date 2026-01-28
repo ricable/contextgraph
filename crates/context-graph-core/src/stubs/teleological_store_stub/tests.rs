@@ -250,3 +250,99 @@ async fn test_content_nonexistent_id() {
     let deleted = store.delete_content(random_id).await.unwrap();
     assert!(!deleted);
 }
+
+// ============================================================================
+// FILE INDEX TESTS - Verify proper implementation (not no-ops)
+// ============================================================================
+
+#[tokio::test]
+async fn test_file_index_operations() {
+    let store = InMemoryTeleologicalStore::new();
+    let id1 = Uuid::new_v4();
+    let id2 = Uuid::new_v4();
+    let file_path = "/test/file.md";
+
+    // Test index_file_fingerprint
+    store.index_file_fingerprint(file_path, id1).await.unwrap();
+    store.index_file_fingerprint(file_path, id2).await.unwrap();
+
+    // Verify get_fingerprints_for_file returns indexed IDs
+    let ids = store.get_fingerprints_for_file(file_path).await.unwrap();
+    assert_eq!(ids.len(), 2, "Should have 2 indexed fingerprints");
+    assert!(ids.contains(&id1), "Should contain id1");
+    assert!(ids.contains(&id2), "Should contain id2");
+
+    // Test list_indexed_files
+    let files = store.list_indexed_files().await.unwrap();
+    assert_eq!(files.len(), 1, "Should have 1 indexed file");
+    assert_eq!(files[0].file_path, file_path);
+    assert_eq!(files[0].fingerprint_count(), 2);
+
+    // Test unindex_file_fingerprint
+    let removed = store.unindex_file_fingerprint(file_path, id1).await.unwrap();
+    assert!(removed, "Should return true when fingerprint was removed");
+
+    let ids_after = store.get_fingerprints_for_file(file_path).await.unwrap();
+    assert_eq!(ids_after.len(), 1, "Should have 1 fingerprint after unindex");
+    assert!(!ids_after.contains(&id1), "Should NOT contain id1 anymore");
+    assert!(ids_after.contains(&id2), "Should still contain id2");
+
+    // Test unindex returns false for non-existent
+    let removed_again = store.unindex_file_fingerprint(file_path, id1).await.unwrap();
+    assert!(!removed_again, "Should return false for already-removed fingerprint");
+
+    // Test clear_file_index
+    store.index_file_fingerprint(file_path, id1).await.unwrap(); // Re-add id1
+    let count = store.clear_file_index(file_path).await.unwrap();
+    assert_eq!(count, 2, "Should return count of cleared fingerprints");
+
+    let ids_cleared = store.get_fingerprints_for_file(file_path).await.unwrap();
+    assert!(ids_cleared.is_empty(), "Should be empty after clear");
+}
+
+#[tokio::test]
+async fn test_file_index_duplicate_prevention() {
+    let store = InMemoryTeleologicalStore::new();
+    let id = Uuid::new_v4();
+    let file_path = "/test/duplicate.md";
+
+    // Index same fingerprint twice
+    store.index_file_fingerprint(file_path, id).await.unwrap();
+    store.index_file_fingerprint(file_path, id).await.unwrap();
+
+    // Should only have 1 entry (no duplicates)
+    let ids = store.get_fingerprints_for_file(file_path).await.unwrap();
+    assert_eq!(ids.len(), 1, "Should prevent duplicates");
+}
+
+#[tokio::test]
+async fn test_file_index_multiple_files() {
+    let store = InMemoryTeleologicalStore::new();
+    let id1 = Uuid::new_v4();
+    let id2 = Uuid::new_v4();
+
+    // Index to different files
+    store.index_file_fingerprint("/file1.md", id1).await.unwrap();
+    store.index_file_fingerprint("/file2.md", id2).await.unwrap();
+
+    // Verify stats
+    let stats = store.get_file_watcher_stats().await.unwrap();
+    assert_eq!(stats.total_files, 2, "Should have 2 files");
+    assert_eq!(stats.total_chunks, 2, "Should have 2 total chunks");
+    assert_eq!(stats.min_chunks, 1);
+    assert_eq!(stats.max_chunks, 1);
+}
+
+#[tokio::test]
+async fn test_file_index_empty_after_clear() {
+    let store = InMemoryTeleologicalStore::new();
+    let file_path = "/test/clear_me.md";
+
+    // Clear non-existent file should return 0
+    let count = store.clear_file_index(file_path).await.unwrap();
+    assert_eq!(count, 0, "Clearing non-existent file should return 0");
+
+    // Empty file index should not appear in list
+    let files = store.list_indexed_files().await.unwrap();
+    assert!(files.is_empty(), "Should have no indexed files");
+}

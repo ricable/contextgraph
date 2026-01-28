@@ -712,14 +712,29 @@ pub trait MultiArrayEmbeddingProvider: Send + Sync {
     ///
     /// # Default Implementation
     ///
-    /// Delegates to `embed_all()`, ignoring metadata. Override to use metadata.
+    /// **WARNING**: The default implementation ignores metadata and logs a warning.
+    /// Implementations MUST override this method to properly support E4 (V_ordering)
+    /// temporal-positional embeddings. Failure to do so means E4 will not work correctly.
+    ///
+    /// The default exists only for backward compatibility during migration.
     async fn embed_all_with_metadata(
         &self,
         content: &str,
-        _metadata: EmbeddingMetadata,
+        metadata: EmbeddingMetadata,
     ) -> CoreResult<MultiArrayEmbeddingOutput> {
-        // Default: ignore metadata and delegate to embed_all
-        // Implementations should override to use metadata for E4
+        // Log warning when metadata is discarded - this is a CRITICAL issue
+        // E4 temporal-positional embeddings will NOT work without proper metadata handling
+        if metadata.session_sequence.is_some() || metadata.causal_hint.is_some() {
+            tracing::warn!(
+                session_id = ?metadata.session_id,
+                session_sequence = ?metadata.session_sequence,
+                has_causal_hint = metadata.causal_hint.is_some(),
+                "embed_all_with_metadata: METADATA DISCARDED - implementation does not override default. \
+                 E4 temporal-positional embeddings will be incorrect. \
+                 Override this method to properly handle metadata."
+            );
+        }
+        // Default: delegate to embed_all (metadata ignored - see warning above)
         self.embed_all(content).await
     }
 
@@ -1144,24 +1159,33 @@ mod tests {
     /// Test that dimensions() returns correct values for all 13 embedders.
     #[test]
     fn test_dimensions_returns_correct_values() {
+        use crate::error::CoreError;
         // Create a mock implementation to test default
+        // NOTE: MockProvider returns errors instead of using unimplemented!()
+        // to avoid panics - per fail-fast philosophy, errors are preferable to panics.
         struct MockProvider;
 
         #[async_trait]
         impl MultiArrayEmbeddingProvider for MockProvider {
             async fn embed_all(&self, _: &str) -> CoreResult<MultiArrayEmbeddingOutput> {
-                unimplemented!()
+                Err(CoreError::Internal(
+                    "MockProvider.embed_all() is not implemented - this is a test mock".to_string(),
+                ))
             }
             async fn embed_batch_all(
                 &self,
                 _: &[String],
             ) -> CoreResult<Vec<MultiArrayEmbeddingOutput>> {
-                unimplemented!()
+                Err(CoreError::Internal(
+                    "MockProvider.embed_batch_all() is not implemented - this is a test mock"
+                        .to_string(),
+                ))
             }
             fn model_ids(&self) -> [&str; NUM_EMBEDDERS] {
-                [""; NUM_EMBEDDERS]
+                ["mock"; NUM_EMBEDDERS]
             }
             fn is_ready(&self) -> bool {
+                // MockProvider is always "ready" for testing dimensions()
                 true
             }
             fn health_status(&self) -> [bool; NUM_EMBEDDERS] {

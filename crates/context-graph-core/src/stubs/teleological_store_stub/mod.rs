@@ -76,6 +76,8 @@ pub struct InMemoryTeleologicalStore {
     pub(crate) causal_relationships: DashMap<Uuid, CausalRelationship>,
     /// Causal by source index: source_fingerprint_id -> Vec<causal_id>
     pub(crate) causal_by_source: DashMap<Uuid, Vec<Uuid>>,
+    /// File index: file_path -> Vec<fingerprint_id> (proper implementation, not no-op)
+    pub(crate) file_index: DashMap<String, Vec<Uuid>>,
     /// Running size estimate in bytes
     pub(crate) size_bytes: AtomicUsize,
 }
@@ -92,6 +94,7 @@ impl InMemoryTeleologicalStore {
             topic_portfolios: DashMap::new(),
             causal_relationships: DashMap::new(),
             causal_by_source: DashMap::new(),
+            file_index: DashMap::new(),
             size_bytes: AtomicUsize::new(0),
         }
     }
@@ -110,6 +113,7 @@ impl InMemoryTeleologicalStore {
             topic_portfolios: DashMap::new(),
             causal_relationships: DashMap::new(),
             causal_by_source: DashMap::new(),
+            file_index: DashMap::new(),
             size_bytes: AtomicUsize::new(0),
         }
     }

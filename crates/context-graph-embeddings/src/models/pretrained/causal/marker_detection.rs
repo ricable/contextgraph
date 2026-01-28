@@ -97,10 +97,6 @@ impl CausalMarkerResult {
         weights
     }
 
-    /// Check if meaningful causal content was detected.
-    pub fn has_causal_content(&self) -> bool {
-        !self.cause_marker_indices.is_empty() || !self.effect_marker_indices.is_empty()
-    }
 }
 
 /// Direction of causal relationship detected in text.
@@ -446,97 +442,6 @@ pub fn detect_causal_markers(text: &str, encoding: &Encoding) -> CausalMarkerRes
     }
 }
 
-/// Create global attention indices for cause-focused embedding.
-///
-/// Returns token indices that should receive global attention when
-/// embedding text as a potential CAUSE:
-/// - CLS token (index 0)
-/// - All cause indicator tokens
-/// - First few tokens (captures subject/agent)
-///
-/// # Arguments
-///
-/// * `markers` - Detected causal markers
-/// * `seq_len` - Sequence length
-///
-/// # Returns
-///
-/// Vector of token indices for global attention
-pub fn cause_global_attention_indices(markers: &CausalMarkerResult, seq_len: usize) -> Vec<usize> {
-    let mut indices = vec![0]; // CLS token always gets global attention
-
-    // Add cause markers
-    indices.extend(&markers.cause_marker_indices);
-
-    // Add first few content tokens (often contain subject)
-    for i in 1..4.min(seq_len) {
-        if !indices.contains(&i) {
-            indices.push(i);
-        }
-    }
-
-    // Add some context around cause markers
-    for &marker_idx in &markers.cause_marker_indices {
-        // Token before marker (if exists)
-        if marker_idx > 0 && !indices.contains(&(marker_idx - 1)) {
-            indices.push(marker_idx - 1);
-        }
-        // Token after marker (if exists)
-        if marker_idx + 1 < seq_len && !indices.contains(&(marker_idx + 1)) {
-            indices.push(marker_idx + 1);
-        }
-    }
-
-    indices.sort_unstable();
-    indices.dedup();
-    indices
-}
-
-/// Create global attention indices for effect-focused embedding.
-///
-/// Returns token indices that should receive global attention when
-/// embedding text as a potential EFFECT:
-/// - CLS token (index 0)
-/// - All effect indicator tokens
-/// - Last few tokens (captures conclusion/outcome)
-///
-/// # Arguments
-///
-/// * `markers` - Detected causal markers
-/// * `seq_len` - Sequence length
-///
-/// # Returns
-///
-/// Vector of token indices for global attention
-pub fn effect_global_attention_indices(markers: &CausalMarkerResult, seq_len: usize) -> Vec<usize> {
-    let mut indices = vec![0]; // CLS token always gets global attention
-
-    // Add effect markers
-    indices.extend(&markers.effect_marker_indices);
-
-    // Add last few content tokens (often contain outcome)
-    let last_content = seq_len.saturating_sub(2); // Exclude [SEP] if present
-    for i in last_content.saturating_sub(3)..last_content {
-        if !indices.contains(&i) {
-            indices.push(i);
-        }
-    }
-
-    // Add some context around effect markers
-    for &marker_idx in &markers.effect_marker_indices {
-        if marker_idx > 0 && !indices.contains(&(marker_idx - 1)) {
-            indices.push(marker_idx - 1);
-        }
-        if marker_idx + 1 < seq_len && !indices.contains(&(marker_idx + 1)) {
-            indices.push(marker_idx + 1);
-        }
-    }
-
-    indices.sort_unstable();
-    indices.dedup();
-    indices
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -566,36 +471,5 @@ mod tests {
         assert!(result.all_marker_indices.is_empty());
         assert_eq!(result.detected_direction, CausalDirection::Unknown);
         assert_eq!(result.causal_strength, 0.0);
-    }
-
-    #[test]
-    fn test_cause_global_attention_always_includes_cls() {
-        let markers = CausalMarkerResult::default();
-        let indices = cause_global_attention_indices(&markers, 10);
-        assert!(indices.contains(&0), "CLS token must always be included");
-    }
-
-    #[test]
-    fn test_effect_global_attention_always_includes_cls() {
-        let markers = CausalMarkerResult::default();
-        let indices = effect_global_attention_indices(&markers, 10);
-        assert!(indices.contains(&0), "CLS token must always be included");
-    }
-
-    #[test]
-    fn test_cause_attention_includes_first_tokens() {
-        let markers = CausalMarkerResult::default();
-        let indices = cause_global_attention_indices(&markers, 10);
-        // Should include first few tokens for subject capture
-        assert!(indices.contains(&1) || indices.contains(&2) || indices.contains(&3));
-    }
-
-    #[test]
-    fn test_effect_attention_includes_last_tokens() {
-        let markers = CausalMarkerResult::default();
-        let indices = effect_global_attention_indices(&markers, 10);
-        // Should include last few tokens for outcome capture
-        let has_late_tokens = indices.iter().any(|&i| i >= 5);
-        assert!(has_late_tokens, "Effect attention should include later tokens");
     }
 }
