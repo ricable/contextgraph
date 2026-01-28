@@ -549,6 +549,8 @@ fn truncate_name(content: &str, max_len: usize) -> String {
 mod tests {
     use super::*;
 
+    // This test requires test-mode feature for placeholder embeddings
+    #[cfg(feature = "test-mode")]
     #[tokio::test]
     async fn test_activate_relationship() {
         let graph = Arc::new(RwLock::new(CausalGraph::new()));

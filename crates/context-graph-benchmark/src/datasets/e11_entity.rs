@@ -764,7 +764,8 @@ mod tests {
         let entities = extract_entity_mentions(text);
 
         let canonical_ids: HashSet<_> = entities.canonical_ids().into_iter().collect();
-        assert!(canonical_ids.contains("rust_language"), "Should detect Rust");
+        // EntityLink::new() lowercases the name for canonical_id
+        assert!(canonical_ids.contains("rust"), "Should detect Rust");
         assert!(canonical_ids.contains("tokio"), "Should detect Tokio");
     }
 

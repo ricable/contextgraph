@@ -83,10 +83,13 @@ impl RocksDbTeleologicalStore {
 
             for id in ids_clone {
                 // Skip soft-deleted entries (read lock inside spawn_blocking)
+                // FAIL FAST: Panic if lock is poisoned (thread panic elsewhere)
                 let is_deleted = soft_deleted
                     .read()
-                    .map(|guard| guard.get(&id).copied().unwrap_or(false))
-                    .unwrap_or(false);
+                    .expect("soft_deleted RwLock poisoned - a thread panicked while holding this lock")
+                    .get(&id)
+                    .copied()
+                    .unwrap_or(false); // Unknown IDs are not deleted
                 if is_deleted {
                     results.push(None);
                     continue;
@@ -152,10 +155,13 @@ impl RocksDbTeleologicalStore {
                 let id = parse_fingerprint_key(&key);
 
                 // Check soft-deleted inside spawn_blocking
+                // FAIL FAST: Panic if lock is poisoned
                 let is_deleted = soft_deleted
                     .read()
-                    .map(|guard| guard.get(&id).copied().unwrap_or(false))
-                    .unwrap_or(false);
+                    .expect("soft_deleted RwLock poisoned - a thread panicked while holding this lock")
+                    .get(&id)
+                    .copied()
+                    .unwrap_or(false); // Unknown IDs are not deleted
                 if !is_deleted {
                     count += 1;
                 }
@@ -532,10 +538,13 @@ impl RocksDbTeleologicalStore {
                 let id = parse_fingerprint_key(&key);
 
                 // Skip soft-deleted fingerprints (read lock inside spawn_blocking)
+                // FAIL FAST: Panic if lock is poisoned
                 let is_deleted = soft_deleted
                     .read()
-                    .map(|guard| guard.get(&id).copied().unwrap_or(false))
-                    .unwrap_or(false);
+                    .expect("soft_deleted RwLock poisoned - a thread panicked while holding this lock")
+                    .get(&id)
+                    .copied()
+                    .unwrap_or(false); // Unknown IDs are not deleted
                 if is_deleted {
                     continue;
                 }

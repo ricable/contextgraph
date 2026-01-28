@@ -702,12 +702,18 @@ impl RocksDbTeleologicalStore {
     }
 
     /// Check if an ID is soft-deleted.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the RwLock is poisoned, indicating a critical thread panic elsewhere.
+    /// This is intentional fail-fast behavior per project requirements.
     pub(crate) fn is_soft_deleted(&self, id: &Uuid) -> bool {
-        if let Ok(deleted) = self.soft_deleted.read() {
-            deleted.get(id).copied().unwrap_or(false)
-        } else {
-            false
-        }
+        self.soft_deleted
+            .read()
+            .expect("soft_deleted RwLock poisoned - a thread panicked while holding this lock")
+            .get(id)
+            .copied()
+            .unwrap_or(false) // Unknown IDs are not deleted
     }
 }
 

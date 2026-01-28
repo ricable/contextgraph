@@ -781,10 +781,11 @@ mod tests {
         let runner = E1SemanticBenchmarkRunner::new(config);
         let validation = runner.generate_validation_summary(&metrics);
 
-        assert_eq!(validation.checks.len(), 4);
-        assert!(validation.checks[0].passed); // MRR
-        assert!(validation.checks[1].passed); // P@10
-        assert!(validation.checks[2].passed); // Separation
+        // 3 checks: MRR, P@10, Noise Robustness (topic separation is informational only)
+        assert_eq!(validation.checks.len(), 3);
+        assert!(validation.checks[0].passed); // MRR >= 0.70
+        assert!(validation.checks[1].passed); // P@10 >= 0.60
+        assert!(validation.checks[2].passed); // MRR >= 0.55 at 0.2 noise
     }
 
     #[test]

@@ -21,7 +21,7 @@
 
 use serde_json::json;
 use std::collections::HashSet;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use context_graph_core::graph::asymmetric::{
@@ -184,7 +184,7 @@ impl Handlers {
         // Step 5: Optionally filter by graph direction and hydrate content
         let connection_ids: Vec<Uuid> = connections.iter().map(|c| c.connection_id).collect();
 
-        // Get source metadata for graph direction and provenance
+        // Get source metadata for graph direction and provenance - FAIL FAST on error
         let source_metadata = match self
             .teleological_store
             .get_source_metadata_batch(&connection_ids)
@@ -192,21 +192,40 @@ impl Handlers {
         {
             Ok(m) => m,
             Err(e) => {
-                warn!(
+                error!(
                     error = %e,
-                    "search_connections: Source metadata retrieval failed"
+                    connection_count = connection_ids.len(),
+                    "search_connections: Source metadata retrieval FAILED"
                 );
-                vec![None; connection_ids.len()]
+                return self.tool_error(
+                    id,
+                    &format!(
+                        "Failed to retrieve source metadata for {} connections: {}",
+                        connection_ids.len(),
+                        e
+                    ),
+                );
             }
         };
 
-        // Get content if requested
+        // Get content if requested - FAIL FAST on error
         let contents: Vec<Option<String>> = if request.include_content && !connections.is_empty() {
             match self.teleological_store.get_content_batch(&connection_ids).await {
                 Ok(c) => c,
                 Err(e) => {
-                    warn!(error = %e, "search_connections: Content retrieval failed");
-                    vec![None; connection_ids.len()]
+                    error!(
+                        error = %e,
+                        connection_count = connection_ids.len(),
+                        "search_connections: Content retrieval FAILED"
+                    );
+                    return self.tool_error(
+                        id,
+                        &format!(
+                            "Failed to retrieve content for {} connections: {}",
+                            connection_ids.len(),
+                            e
+                        ),
+                    );
                 }
             }
         } else {
@@ -367,8 +386,19 @@ impl Handlers {
             {
                 Ok(results) => results,
                 Err(e) => {
-                    warn!(error = %e, hop = hop_index, "get_graph_path: Hop search failed");
-                    break;
+                    error!(
+                        error = %e,
+                        hop = hop_index,
+                        "get_graph_path: Hop search FAILED - cannot continue path"
+                    );
+                    return self.tool_error(
+                        id,
+                        &format!(
+                            "Failed to search for hop {} candidates: {}. Path traversal aborted.",
+                            hop_index,
+                            e
+                        ),
+                    );
                 }
             };
 
@@ -449,14 +479,25 @@ impl Handlers {
             }
         }
 
-        // Step 3: Optionally hydrate content
+        // Step 3: Optionally hydrate content - FAIL FAST on error
         if request.include_content && !path.is_empty() {
             let hop_ids: Vec<Uuid> = path.iter().map(|h| h.memory_id).collect();
             let contents = match self.teleological_store.get_content_batch(&hop_ids).await {
                 Ok(c) => c,
                 Err(e) => {
-                    warn!(error = %e, "get_graph_path: Content retrieval failed");
-                    vec![None; hop_ids.len()]
+                    error!(
+                        error = %e,
+                        hop_count = hop_ids.len(),
+                        "get_graph_path: Content retrieval FAILED"
+                    );
+                    return self.tool_error(
+                        id,
+                        &format!(
+                            "Failed to retrieve content for {} hops: {}",
+                            hop_ids.len(),
+                            e
+                        ),
+                    );
                 }
             };
 
@@ -548,38 +589,59 @@ impl Handlers {
         // Get graph discovery service - GUARANTEED to be available (NO FALLBACKS)
         let service = self.graph_discovery_service();
 
-        // Fetch memory content and metadata for analysis
+        // Fetch memory content and metadata for analysis - FAIL FAST on any error
         let mut memories_for_analysis: Vec<MemoryForGraphAnalysis> = Vec::with_capacity(memory_uuids.len());
-        let mut fetch_errors: Vec<String> = Vec::new();
 
         for uuid in &memory_uuids {
-            // Get fingerprint
+            // Get fingerprint - FAIL FAST on error
             let fingerprint = match self.teleological_store.retrieve(*uuid).await {
                 Ok(Some(fp)) => fp,
                 Ok(None) => {
-                    warn!(uuid = %uuid, "Memory not found, skipping");
-                    fetch_errors.push(format!("Memory {} not found", uuid));
-                    continue;
+                    error!(uuid = %uuid, "discover_graph_relationships: Memory not found");
+                    return self.tool_error(
+                        id,
+                        &format!(
+                            "Memory {} not found. All requested memories must exist.",
+                            uuid
+                        ),
+                    );
                 }
                 Err(e) => {
-                    warn!(uuid = %uuid, error = %e, "Failed to fetch memory, skipping");
-                    fetch_errors.push(format!("Failed to fetch {}: {}", uuid, e));
-                    continue;
+                    error!(uuid = %uuid, error = %e, "discover_graph_relationships: Failed to fetch memory");
+                    return self.tool_error(
+                        id,
+                        &format!(
+                            "Failed to fetch memory {}: {}",
+                            uuid,
+                            e
+                        ),
+                    );
                 }
             };
 
-            // Get content
+            // Get content - FAIL FAST on error
             let content = match self.teleological_store.get_content(*uuid).await {
                 Ok(Some(c)) => c,
                 Ok(None) => {
-                    warn!(uuid = %uuid, "Memory content not found, skipping");
-                    fetch_errors.push(format!("Content for {} not found", uuid));
-                    continue;
+                    error!(uuid = %uuid, "discover_graph_relationships: Memory content not found");
+                    return self.tool_error(
+                        id,
+                        &format!(
+                            "Content for memory {} not found. All requested memories must have content.",
+                            uuid
+                        ),
+                    );
                 }
                 Err(e) => {
-                    warn!(uuid = %uuid, error = %e, "Failed to fetch content, skipping");
-                    fetch_errors.push(format!("Failed to fetch content for {}: {}", uuid, e));
-                    continue;
+                    error!(uuid = %uuid, error = %e, "discover_graph_relationships: Failed to fetch content");
+                    return self.tool_error(
+                        id,
+                        &format!(
+                            "Failed to fetch content for memory {}: {}",
+                            uuid,
+                            e
+                        ),
+                    );
                 }
             };
 
@@ -603,20 +665,19 @@ impl Handlers {
         }
 
         if memories_for_analysis.len() < 2 {
+            // This should not happen now that we fail fast on any fetch error
             return self.tool_error(
                 id,
                 &format!(
-                    "Need at least 2 valid memories for relationship discovery, got {}. Errors: {:?}",
-                    memories_for_analysis.len(),
-                    fetch_errors
+                    "Need at least 2 valid memories for relationship discovery, got {}",
+                    memories_for_analysis.len()
                 ),
             );
         }
 
         info!(
             valid_memories = memories_for_analysis.len(),
-            errors = fetch_errors.len(),
-            "discover_graph_relationships: Memories fetched, running discovery cycle"
+            "discover_graph_relationships: All memories fetched successfully, running discovery cycle"
         );
 
         // Run discovery cycle
@@ -664,8 +725,8 @@ impl Handlers {
             })
             .collect();
 
-        let mut all_errors = result.error_messages.clone();
-        all_errors.extend(fetch_errors);
+        // All fetch errors now fail fast, so we only have discovery errors
+        let all_errors = result.error_messages.clone();
 
         let response = DiscoverGraphRelationshipsResponse {
             relationships: relationships.clone(),

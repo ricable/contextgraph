@@ -15,7 +15,7 @@
 
 use serde_json::json;
 use std::collections::HashSet;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use context_graph_core::causal::asymmetric::{
@@ -173,6 +173,7 @@ impl Handlers {
         let cause_ids: Vec<Uuid> = causes.iter().map(|c| c.cause_id).collect();
 
         // Get source metadata for causal direction and provenance
+        // FAIL FAST: If metadata retrieval fails, the entire operation fails
         let source_metadata = match self
             .teleological_store
             .get_source_metadata_batch(&cause_ids)
@@ -180,21 +181,43 @@ impl Handlers {
         {
             Ok(m) => m,
             Err(e) => {
-                warn!(
+                error!(
                     error = %e,
-                    "search_causes: Source metadata retrieval failed"
+                    cause_count = cause_ids.len(),
+                    "search_causes: Source metadata retrieval FAILED - cannot proceed without metadata"
                 );
-                vec![None; cause_ids.len()]
+                return self.tool_error(
+                    id,
+                    &format!(
+                        "Failed to retrieve source metadata for {} causes: {}. \
+                         This indicates a storage layer issue that must be debugged.",
+                        cause_ids.len(),
+                        e
+                    ),
+                );
             }
         };
 
         // Get content if requested
+        // FAIL FAST: If content retrieval fails when requested, the entire operation fails
         let contents: Vec<Option<String>> = if request.include_content && !causes.is_empty() {
             match self.teleological_store.get_content_batch(&cause_ids).await {
                 Ok(c) => c,
                 Err(e) => {
-                    warn!(error = %e, "search_causes: Content retrieval failed");
-                    vec![None; cause_ids.len()]
+                    error!(
+                        error = %e,
+                        cause_count = cause_ids.len(),
+                        "search_causes: Content retrieval FAILED - cannot proceed"
+                    );
+                    return self.tool_error(
+                        id,
+                        &format!(
+                            "Failed to retrieve content for {} causes: {}. \
+                             This indicates a storage layer issue that must be debugged.",
+                            cause_ids.len(),
+                            e
+                        ),
+                    );
                 }
             }
         } else {
@@ -402,6 +425,7 @@ impl Handlers {
         // Step 5: Optionally filter by causal direction and hydrate content
         let effect_ids: Vec<Uuid> = effects.iter().map(|e| e.effect_id).collect();
 
+        // Get source metadata - FAIL FAST on error
         let source_metadata = match self
             .teleological_store
             .get_source_metadata_batch(&effect_ids)
@@ -409,20 +433,40 @@ impl Handlers {
         {
             Ok(m) => m,
             Err(e) => {
-                warn!(
+                error!(
                     error = %e,
-                    "search_effects: Source metadata retrieval failed"
+                    effect_count = effect_ids.len(),
+                    "search_effects: Source metadata retrieval FAILED"
                 );
-                vec![None; effect_ids.len()]
+                return self.tool_error(
+                    id,
+                    &format!(
+                        "Failed to retrieve source metadata for {} effects: {}",
+                        effect_ids.len(),
+                        e
+                    ),
+                );
             }
         };
 
+        // Get content if requested - FAIL FAST on error
         let contents: Vec<Option<String>> = if request.include_content && !effects.is_empty() {
             match self.teleological_store.get_content_batch(&effect_ids).await {
                 Ok(c) => c,
                 Err(e) => {
-                    warn!(error = %e, "search_effects: Content retrieval failed");
-                    vec![None; effect_ids.len()]
+                    error!(
+                        error = %e,
+                        effect_count = effect_ids.len(),
+                        "search_effects: Content retrieval FAILED"
+                    );
+                    return self.tool_error(
+                        id,
+                        &format!(
+                            "Failed to retrieve content for {} effects: {}",
+                            effect_ids.len(),
+                            e
+                        ),
+                    );
                 }
             }
         } else {
@@ -586,8 +630,19 @@ impl Handlers {
             {
                 Ok(results) => results,
                 Err(e) => {
-                    warn!(error = %e, hop = hop_index, "get_causal_chain: Hop search failed");
-                    break;
+                    error!(
+                        error = %e,
+                        hop = hop_index,
+                        "get_causal_chain: Hop search FAILED - cannot continue chain"
+                    );
+                    return self.tool_error(
+                        id,
+                        &format!(
+                            "Failed to search for hop {} candidates: {}. Chain traversal aborted.",
+                            hop_index,
+                            e
+                        ),
+                    );
                 }
             };
 
@@ -668,14 +723,25 @@ impl Handlers {
             }
         }
 
-        // Step 3: Optionally hydrate content
+        // Step 3: Optionally hydrate content - FAIL FAST on error
         if request.include_content && !chain.is_empty() {
             let hop_ids: Vec<Uuid> = chain.iter().map(|h| h.memory_id).collect();
             let contents = match self.teleological_store.get_content_batch(&hop_ids).await {
                 Ok(c) => c,
                 Err(e) => {
-                    warn!(error = %e, "get_causal_chain: Content retrieval failed");
-                    vec![None; hop_ids.len()]
+                    error!(
+                        error = %e,
+                        hop_count = hop_ids.len(),
+                        "get_causal_chain: Content retrieval FAILED"
+                    );
+                    return self.tool_error(
+                        id,
+                        &format!(
+                            "Failed to retrieve content for {} hops: {}",
+                            hop_ids.len(),
+                            e
+                        ),
+                    );
                 }
             };
 

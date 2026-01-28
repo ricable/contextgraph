@@ -145,14 +145,25 @@ impl Handlers {
             embedder_id.name()
         );
 
-        // Step 3: Get content if requested
+        // Step 3: Get content if requested - FAIL FAST on error
         let candidate_ids: Vec<Uuid> = candidates.iter().map(|c| c.fingerprint.id).collect();
         let contents = if request.include_content {
             match self.teleological_store.get_content_batch(&candidate_ids).await {
                 Ok(c) => c,
                 Err(e) => {
-                    warn!(error = %e, "search_by_embedder: Content retrieval failed, continuing without content");
-                    vec![None; candidate_ids.len()]
+                    error!(
+                        error = %e,
+                        result_count = candidate_ids.len(),
+                        "search_by_embedder: Content retrieval FAILED"
+                    );
+                    return self.tool_error(
+                        id,
+                        &format!(
+                            "Failed to retrieve content for {} results: {}",
+                            candidate_ids.len(),
+                            e
+                        ),
+                    );
                 }
             }
         } else {
@@ -353,6 +364,7 @@ impl Handlers {
                 .with_embedders(vec![embedder_index])
                 .with_min_similarity(0.0);
 
+            // FAIL FAST: If search fails for any embedder, the entire comparison fails
             let candidates = match self
                 .teleological_store
                 .search_semantic(&query_fingerprint, options)
@@ -360,13 +372,20 @@ impl Handlers {
             {
                 Ok(results) => results,
                 Err(e) => {
-                    warn!(
+                    error!(
                         error = %e,
                         embedder = ?embedder_id,
-                        "compare_embedder_views: Search in {} failed, skipping",
+                        "compare_embedder_views: Search in {} FAILED",
                         embedder_id.name()
                     );
-                    continue;
+                    return self.tool_error(
+                        id,
+                        &format!(
+                            "Search failed for embedder {}: {}",
+                            embedder_id.name(),
+                            e
+                        ),
+                    );
                 }
             };
 
@@ -504,12 +523,15 @@ impl Handlers {
 
         info!("list_embedder_indexes: Listing all 13 embedder indexes");
 
-        // Get actual memory count from store
+        // Get actual memory count from store - FAIL FAST on error
         let total_memories = match self.teleological_store.count().await {
             Ok(count) => count,
             Err(e) => {
-                warn!(error = %e, "list_embedder_indexes: Failed to get memory count");
-                0
+                error!(error = %e, "list_embedder_indexes: Failed to get memory count");
+                return self.tool_error(
+                    id,
+                    &format!("Failed to get memory count from store: {}", e),
+                );
             }
         };
 

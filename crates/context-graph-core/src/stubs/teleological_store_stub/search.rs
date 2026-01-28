@@ -73,18 +73,29 @@ impl InMemoryTeleologicalStore {
         Ok(results)
     }
 
-    /// Search by text query (requires embedding provider).
+    /// Search by text query - NOT IMPLEMENTED.
+    ///
+    /// Text search requires embedding generation, which is NOT available at the storage layer.
+    ///
+    /// # Errors
+    ///
+    /// Always returns `CoreError::NotImplemented` with guidance on correct usage.
     pub async fn search_text_impl(
         &self,
-        _text: &str,
+        text: &str,
         _options: TeleologicalSearchOptions,
     ) -> CoreResult<Vec<TeleologicalSearchResult>> {
         error!(
-            "search_text not supported in InMemoryTeleologicalStore (requires embedding provider)"
+            query_text = %text,
+            "search_text called on in-memory store which cannot generate embeddings"
         );
-        Err(CoreError::FeatureDisabled {
-            feature: "text_search".to_string(),
-        })
+        Err(CoreError::NotImplemented(
+            "search_text is not available at the storage layer. \
+             The storage layer can only search using pre-computed embeddings. \
+             Use the MCP tool 'search_graph' which handles embedding generation, \
+             or generate embeddings via the embedding service and call 'search_semantic' directly."
+                .to_string(),
+        ))
     }
 
     /// Search by sparse vector (SPLADE-style).

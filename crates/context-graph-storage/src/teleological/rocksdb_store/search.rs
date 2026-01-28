@@ -97,11 +97,18 @@ fn get_fingerprint_raw_sync(db: &DB, id: Uuid) -> Result<Option<Vec<u8>>, Teleol
 
 /// Check if an ID is soft-deleted (sync version for spawn_blocking).
 /// Takes Arc<RwLock<HashMap>> to avoid expensive HashMap cloning before spawn_blocking.
+///
+/// # Panics
+///
+/// Panics if the RwLock is poisoned, indicating a critical thread panic elsewhere.
+/// This is intentional fail-fast behavior per project requirements.
 fn is_soft_deleted_sync(soft_deleted: &Arc<RwLock<HashMap<Uuid, bool>>>, id: &Uuid) -> bool {
     soft_deleted
         .read()
-        .map(|guard| guard.get(id).copied().unwrap_or(false))
-        .unwrap_or(false)
+        .expect("soft_deleted RwLock poisoned - a thread panicked while holding this lock")
+        .get(id)
+        .copied()
+        .unwrap_or(false) // False here is correct: unknown IDs are not deleted
 }
 
 /// Compute embedder scores with code query type (pure function).
@@ -973,17 +980,42 @@ impl RocksDbTeleologicalStore {
         Ok(())
     }
 
-    /// Search by text (internal async wrapper).
+    /// Search by text - NOT IMPLEMENTED at storage layer.
+    ///
+    /// Text search requires embedding generation, which is NOT available at the storage layer.
+    /// The storage layer can only search using pre-computed embeddings.
+    ///
+    /// # Errors
+    ///
+    /// Always returns `CoreError::NotImplemented` with guidance on correct usage.
+    ///
+    /// # Correct Usage
+    ///
+    /// Instead of calling `search_text`, use the embedding service to generate embeddings
+    /// from text, then call `search_semantic` or `search_multi_space` with those embeddings:
+    ///
+    /// ```ignore
+    /// // WRONG: search_text("query") - will fail
+    /// // RIGHT: Generate embeddings first, then search
+    /// let embeddings = embedding_service.embed("query").await?;
+    /// let results = store.search_semantic(&embeddings.e1, options).await?;
+    /// ```
     pub(crate) async fn search_text_async(
         &self,
-        _text: &str,
-        options: TeleologicalSearchOptions,
+        text: &str,
+        _options: TeleologicalSearchOptions,
     ) -> CoreResult<Vec<TeleologicalSearchResult>> {
-        // Text search requires embedding generation, which is not available in storage layer
-        // Return empty results with a warning
-        warn!("search_text called but embedding generation not available in storage layer");
-        warn!("Use embedding service to generate query embeddings, then call search_semantic");
-        Ok(Vec::with_capacity(options.top_k))
+        error!(
+            query_text = %text,
+            "search_text called on storage layer which cannot generate embeddings"
+        );
+        Err(CoreError::NotImplemented(
+            "search_text is not available at the storage layer. \
+             The storage layer can only search using pre-computed embeddings. \
+             Use the MCP tool 'search_graph' which handles embedding generation, \
+             or generate embeddings via the embedding service and call 'search_semantic' directly."
+                .to_string(),
+        ))
     }
 
     /// Search by sparse vector (internal async wrapper).

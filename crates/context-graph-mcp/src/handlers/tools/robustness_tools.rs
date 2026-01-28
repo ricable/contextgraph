@@ -31,7 +31,7 @@
 use std::collections::HashSet;
 
 use serde_json::json;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use context_graph_core::traits::{SearchStrategy, TeleologicalSearchOptions};
@@ -303,21 +303,32 @@ impl Handlers {
             .collect();
 
         // Step 6: Build response with provenance
-        // Get content if requested
+        // Get content if requested - FAIL FAST on error
         let contents: Vec<Option<String>> =
             if request.include_content && !all_result_ids.is_empty() {
                 match self.teleological_store.get_content_batch(&all_result_ids).await {
                     Ok(c) => c,
                     Err(e) => {
-                        warn!(error = %e, "search_robust: Content retrieval failed");
-                        vec![None; all_result_ids.len()]
+                        error!(
+                            error = %e,
+                            result_count = all_result_ids.len(),
+                            "search_robust: Content retrieval FAILED"
+                        );
+                        return self.tool_error(
+                            id,
+                            &format!(
+                                "Failed to retrieve content for {} results: {}",
+                                all_result_ids.len(),
+                                e
+                            ),
+                        );
                     }
                 }
             } else {
                 vec![None; all_result_ids.len()]
             };
 
-        // Get source metadata
+        // Get source metadata - FAIL FAST on error
         let source_metadata = match self
             .teleological_store
             .get_source_metadata_batch(&all_result_ids)
@@ -325,8 +336,19 @@ impl Handlers {
         {
             Ok(m) => m,
             Err(e) => {
-                warn!(error = %e, "search_robust: Source metadata retrieval failed");
-                vec![None; all_result_ids.len()]
+                error!(
+                    error = %e,
+                    result_count = all_result_ids.len(),
+                    "search_robust: Source metadata retrieval FAILED"
+                );
+                return self.tool_error(
+                    id,
+                    &format!(
+                        "Failed to retrieve source metadata for {} results: {}",
+                        all_result_ids.len(),
+                        e
+                    ),
+                );
             }
         };
 

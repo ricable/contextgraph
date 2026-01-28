@@ -346,3 +346,42 @@ async fn test_file_index_empty_after_clear() {
     let files = store.list_indexed_files().await.unwrap();
     assert!(files.is_empty(), "Should have no indexed files");
 }
+
+// ============================================================================
+// FAIL-FAST TESTS - Verify error propagation per project requirements
+// ============================================================================
+
+#[tokio::test]
+async fn test_search_text_returns_not_implemented_error() {
+    // FAIL-FAST TEST: search_text should return NotImplemented error,
+    // NOT silently return empty results.
+    //
+    // This is a critical behavior change - the storage layer cannot
+    // generate embeddings, so it MUST fail instead of pretending to work.
+    use crate::error::CoreError;
+
+    let store = InMemoryTeleologicalStore::new();
+    let options = TeleologicalSearchOptions::quick(10);
+
+    let result = store.search_text("test query", options).await;
+
+    // MUST be an error, NOT Ok(empty)
+    assert!(result.is_err(), "search_text MUST return error, not Ok(empty)");
+
+    // Verify it's specifically NotImplemented
+    match result {
+        Err(CoreError::NotImplemented(msg)) => {
+            // Verify error message is helpful
+            assert!(
+                msg.contains("storage layer"),
+                "Error should mention storage layer limitation"
+            );
+            assert!(
+                msg.contains("search_semantic") || msg.contains("search_graph"),
+                "Error should suggest alternative methods"
+            );
+        }
+        Err(other) => panic!("Expected NotImplemented error, got: {:?}", other),
+        Ok(_) => panic!("search_text MUST return error, not Ok"),
+    }
+}
