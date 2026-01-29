@@ -1,23 +1,23 @@
 # PRD 08: Search & Retrieval
 
-**Version**: 4.0.0 | **Parent**: [PRD 01 Overview](PRD_01_OVERVIEW.md) | **Language**: Rust
+**Version**: 5.0.0 | **Parent**: [PRD 01 Overview](PRD_01_OVERVIEW.md) | **Language**: Rust
 
 ---
 
-## 1. 4-Stage Search Pipeline
+## 1. 3-Stage Search Pipeline
 
 ```
 +-----------------------------------------------------------------------+
-|                        4-STAGE SEARCH PIPELINE                         |
+|                        3-STAGE SEARCH PIPELINE                         |
 +-----------------------------------------------------------------------+
 |                                                                       |
-|  Query: "What does the contract say about early termination?"         |
+|  Query: "What does the report say about customer retention?"          |
 |                                                                       |
 |  +---------------------------------------------------------------+   |
 |  | STAGE 1: BM25 RECALL                                  [<5ms]   |   |
 |  |                                                                |   |
 |  | - E13 inverted index lookup                                   |   |
-|  | - Terms: "contract", "early", "termination"                   |   |
+|  | - Terms: "report", "customer", "retention"                    |   |
 |  | - Fast lexical matching                                       |   |
 |  |                                                                |   |
 |  | Output: 500 candidate chunks                                  |   |
@@ -27,9 +27,8 @@
 |  +---------------------------------------------------------------+   |
 |  | STAGE 2: SEMANTIC RANKING                             [<80ms]  |   |
 |  |                                                                |   |
-|  | - E1-LEGAL: Semantic similarity (384D dense cosine)           |   |
-|  | - E6-LEGAL: Keyword expansion (sparse dot product)            |   |
-|  | - E7: Structured text similarity (Free) / boost (Pro)         |   |
+|  | - E1: Semantic similarity (384D dense cosine)                 |   |
+|  | - E6: Keyword expansion (sparse dot product)                  |   |
 |  | - Score fusion via Reciprocal Rank Fusion (RRF)               |   |
 |  |                                                                |   |
 |  | Output: 100 candidates, ranked                                |   |
@@ -37,24 +36,11 @@
 |                              |                                        |
 |                              v                                        |
 |  +---------------------------------------------------------------+   |
-|  | STAGE 3: MULTI-SIGNAL BOOST (PRO TIER ONLY)          [<30ms]  |   |
-|  |                                                                |   |
-|  | - E8-LEGAL: Boost citation similarity                         |   |
-|  | - E11-LEGAL: Boost entity matches                             |   |
-|  |                                                                |   |
-|  | Weights: 0.6 x semantic + 0.2 x structure                    |   |
-|  |        + 0.1 x citation + 0.1 x entity                       |   |
-|  |                                                                |   |
-|  | Output: 50 candidates, re-ranked                              |   |
-|  +---------------------------------------------------------------+   |
-|                              |                                        |
-|                              v                                        |
-|  +---------------------------------------------------------------+   |
-|  | STAGE 4: COLBERT RERANK (PRO TIER ONLY)              [<100ms] |   |
+|  | STAGE 3: COLBERT RERANK (PRO TIER ONLY)              [<100ms] |   |
 |  |                                                                |   |
 |  | - E12: Token-level MaxSim scoring                             |   |
 |  | - Ensures exact phrase matches rank highest                   |   |
-|  | - "early termination" > "termination that was early"          |   |
+|  | - "customer retention" > "retention of the customer"          |   |
 |  |                                                                |   |
 |  | Output: Top K results with provenance                         |   |
 |  +---------------------------------------------------------------+   |
@@ -62,7 +48,7 @@
 |  LATENCY TARGETS                                                      |
 |  ----------------                                                     |
 |  Free tier (Stages 1-2):  <100ms                                     |
-|  Pro tier (Stages 1-4):   <200ms                                     |
+|  Pro tier (Stages 1-3):   <200ms                                     |
 |                                                                       |
 +-----------------------------------------------------------------------+
 ```
@@ -80,7 +66,7 @@ pub struct SearchEngine {
 impl SearchEngine {
     pub fn search(
         &self,
-        case: &CaseHandle,
+        collection: &CollectionHandle,
         query: &str,
         top_k: usize,
         document_filter: Option<Uuid>,
@@ -88,28 +74,25 @@ impl SearchEngine {
         let start = std::time::Instant::now();
 
         // Stage 1: BM25 recall
-        let bm25_candidates = self.bm25_recall(case, query, 500, document_filter)?;
+        let bm25_candidates = self.bm25_recall(collection, query, 500, document_filter)?;
 
         if bm25_candidates.is_empty() {
             return Ok(vec![]);
         }
 
         // Stage 2: Semantic ranking
-        let query_e1 = self.embedder.embed_query(query, EmbedderId::E1Legal)?;
-        let query_e6 = self.embedder.embed_query(query, EmbedderId::E6Legal)?;
-        let query_e7 = self.embedder.embed_query(query, EmbedderId::E7)?;
+        let query_e1 = self.embedder.embed_query(query, EmbedderId::E1)?;
+        let query_e6 = self.embedder.embed_query(query, EmbedderId::E6)?;
 
         let mut scored: Vec<(Uuid, f32)> = bm25_candidates
             .iter()
             .map(|chunk_id| {
-                let e1_score = self.score_dense(case, "e1", chunk_id, &query_e1)?;
-                let e6_score = self.score_sparse(case, "e6", chunk_id, &query_e6)?;
-                let e7_score = self.score_dense(case, "e7", chunk_id, &query_e7)?;
+                let e1_score = self.score_dense(collection, "e1", chunk_id, &query_e1)?;
+                let e6_score = self.score_sparse(collection, "e6", chunk_id, &query_e6)?;
 
                 let rrf = rrf_fusion(&[
                     (e1_score, 1.0),   // E1: weight 1.0
                     (e6_score, 0.8),   // E6: weight 0.8
-                    (e7_score, 0.6),   // E7: weight 0.6
                 ]);
 
                 Ok((*chunk_id, rrf))
@@ -119,22 +102,16 @@ impl SearchEngine {
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
         scored.truncate(100);
 
-        // Stage 3: Multi-signal boost (Pro only)
+        // Stage 3: ColBERT rerank (Pro only)
         if self.tier.is_pro() {
-            scored = self.multi_signal_boost(case, query, scored)?;
-            scored.truncate(50);
-        }
-
-        // Stage 4: ColBERT rerank (Pro only)
-        if self.tier.is_pro() {
-            scored = self.colbert_rerank(case, query, scored)?;
+            scored = self.colbert_rerank(collection, query, scored)?;
         }
 
         // Build results with provenance
         let results: Vec<SearchResult> = scored
             .into_iter()
             .take(top_k)
-            .map(|(chunk_id, score)| self.build_result(case, chunk_id, score))
+            .map(|(chunk_id, score)| self.build_result(collection, chunk_id, score))
             .collect::<Result<Vec<_>>>()?;
 
         let elapsed = start.elapsed();
@@ -150,12 +127,12 @@ impl SearchEngine {
 
     fn build_result(
         &self,
-        case: &CaseHandle,
+        collection: &CollectionHandle,
         chunk_id: Uuid,
         score: f32,
     ) -> Result<SearchResult> {
-        let chunk = case.get_chunk(chunk_id)?;
-        let (ctx_before, ctx_after) = case.get_surrounding_context(&chunk, 1)?;
+        let chunk = collection.get_chunk(chunk_id)?;
+        let (ctx_before, ctx_after) = collection.get_surrounding_context(&chunk, 1)?;
 
         Ok(SearchResult {
             text: chunk.text,
@@ -176,7 +153,7 @@ impl SearchEngine {
 
 Standard BM25 with `k1=1.2, b=0.75`. Stored in `bm25_index` column family.
 
-**Key schema**: `term:{token}` → bincode `PostingList`, `stats` → bincode `Bm25Stats`
+**Key schema**: `term:{token}` -> bincode `PostingList`, `stats` -> bincode `Bm25Stats`
 
 **Tokenization**: lowercase, split on non-alphanumeric (preserving apostrophes), filter stopwords and single-char tokens.
 
@@ -184,13 +161,13 @@ Standard BM25 with `k1=1.2, b=0.75`. Stored in `bm25_index` column family.
 pub struct Bm25Index;
 
 impl Bm25Index {
-    /// Tokenize query → lookup postings per term → accumulate BM25 scores
-    /// per chunk → apply optional document_filter → return top `limit` chunk IDs
-    pub fn search(case: &CaseHandle, query: &str, limit: usize,
+    /// Tokenize query -> lookup postings per term -> accumulate BM25 scores
+    /// per chunk -> apply optional document_filter -> return top `limit` chunk IDs
+    pub fn search(collection: &CollectionHandle, query: &str, limit: usize,
                   document_filter: Option<Uuid>) -> Result<Vec<Uuid>>;
 
-    /// Tokenize chunk text → upsert PostingList per term → update Bm25Stats
-    pub fn index_chunk(case: &CaseHandle, chunk: &Chunk) -> Result<()>;
+    /// Tokenize chunk text -> upsert PostingList per term -> update Bm25Stats
+    pub fn index_chunk(collection: &CollectionHandle, chunk: &Chunk) -> Result<()>;
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -238,26 +215,20 @@ pub fn rrf_fusion(scored_weights: &[(f32, f32)]) -> f32 {
         .sum()
 }
 
-/// Alternative: weighted combination for Stage 3 multi-signal boost
-pub fn weighted_combination(
-    base_score: f32,
-    signals: &[(f32, f32)],  // (score, weight) pairs
-) -> f32 {
-    let total_weight: f32 = signals.iter().map(|(_, w)| w).sum();
-    let weighted_sum: f32 = signals.iter().map(|(s, w)| s * w).sum();
-    base_score * 0.6 + (weighted_sum / total_weight) * 0.4
+/// RRF constant. Higher K smooths out rank differences.
+const RRF_K: f32 = 60.0;
 }
 ```
 
 ---
 
-## 5. ColBERT Reranking (Stage 4)
+## 5. ColBERT Reranking (Stage 3)
 
 ```rust
 impl SearchEngine {
     fn colbert_rerank(
         &self,
-        case: &CaseHandle,
+        collection: &CollectionHandle,
         query: &str,
         candidates: Vec<(Uuid, f32)>,
     ) -> Result<Vec<(Uuid, f32)>> {
@@ -272,7 +243,7 @@ impl SearchEngine {
             .into_iter()
             .map(|(chunk_id, base_score)| {
                 // Load chunk's token embeddings
-                let chunk_tokens = self.load_token_embeddings(case, &chunk_id)?;
+                let chunk_tokens = self.load_token_embeddings(collection, &chunk_id)?;
 
                 // MaxSim: for each query token, find max similarity to any chunk token
                 let maxsim_score = query_vecs.vectors.iter()
@@ -303,28 +274,92 @@ pub struct TokenEmbeddings {
 
 ---
 
-## 6. Search Response Format (Canonical)
+## 6. Knowledge Graph Integration in Search
 
-This is the canonical MCP response format for `search_case` (also referenced by PRD 09).
+After vector search returns chunks, results can optionally be expanded via the collection's knowledge graph to surface related content the user did not directly query.
+
+```
+KNOWLEDGE GRAPH EXPANSION (POST-RETRIEVAL)
+=================================================================================
+
+  1. Vector search returns top K chunks (from Stages 1-3)
+  2. For each result chunk:
+     a. Look up entities mentioned in that chunk
+     b. Find other chunks/documents sharing those entities -> "Related documents"
+     c. Traverse chunk-to-chunk edges (semantic similarity, co-reference) -> "Related chunks"
+  3. Deduplicate and rank expanded results by graph edge weight
+  4. Return expanded results alongside primary results
+
+  Enables:
+    - "Related documents" via entity overlap
+    - "Related chunks" via graph edges
+    - Cross-document discovery without explicit search terms
+```
+
+```rust
+impl SearchEngine {
+    /// Expand search results via knowledge graph edges
+    pub fn expand_via_graph(
+        &self,
+        collection: &CollectionHandle,
+        results: &[SearchResult],
+        max_expansions: usize,
+    ) -> Result<Vec<SearchResult>> {
+        let mut expanded = Vec::new();
+
+        for result in results {
+            // Find entities in this chunk
+            let entities = collection.get_chunk_entities(result.provenance.document_id)?;
+
+            // Find other documents mentioning the same entities
+            let related_docs = collection.find_documents_by_entities(&entities)?;
+
+            // Find chunks connected via graph edges
+            let related_chunks = collection.get_related_chunks(
+                result.provenance.document_id,
+                max_expansions,
+            )?;
+
+            for chunk in related_chunks {
+                expanded.push(self.build_result(collection, chunk.id, chunk.edge_weight)?);
+            }
+        }
+
+        // Deduplicate by chunk_id
+        expanded.dedup_by_key(|r| r.provenance.document_id);
+        expanded.truncate(max_expansions);
+
+        Ok(expanded)
+    }
+}
+```
+
+---
+
+## 7. Search Response Format (Canonical)
+
+This is the canonical MCP response format for `search_collection` (also referenced by PRD 09).
 Document-scoped search uses the same pipeline via the `document_filter` parameter on `SearchEngine::search`.
+
+Every search result includes full provenance: file path, document name, page, paragraph, line, and character offsets.
 
 ```json
 {
-  "query": "early termination clause",
-  "case": "Smith v. Jones Corp",
+  "query": "customer retention strategy",
+  "collection": "Project Alpha",
   "results_count": 5,
   "search_time_ms": 87,
   "tier": "pro",
-  "stages_used": ["bm25", "semantic", "multi_signal", "colbert"],
+  "stages_used": ["bm25", "semantic", "colbert"],
   "results": [
     {
-      "text": "Either party may terminate this Agreement upon thirty (30) days written notice...",
+      "text": "The recommended customer retention strategy focuses on quarterly business reviews and proactive account management...",
       "score": 0.94,
-      "citation": "Contract.pdf, p. 12, para. 8",
-      "citation_short": "Contract, p. 12",
+      "citation": "Q3_Report.pdf, p. 12, para. 8",
+      "citation_short": "Q3_Report, p. 12",
       "source": {
-        "document": "Contract.pdf",
-        "document_path": "/Users/sarah/Documents/CaseTrack/cases/smith-v-jones/originals/Contract.pdf",
+        "document": "Q3_Report.pdf",
+        "document_path": "/Users/sarah/Projects/Alpha/originals/Q3_Report.pdf",
         "document_id": "abc-123",
         "chunk_id": "chunk-456",
         "chunk_index": 14,
@@ -335,7 +370,6 @@ Document-scoped search uses the same pipeline via the `document_filter` paramete
         "line_end": 4,
         "char_start": 24580,
         "char_end": 26580,
-        "bates": null,
         "extraction_method": "Native",
         "ocr_confidence": null,
         "chunk_created_at": "2026-01-15T14:30:00Z",
@@ -353,4 +387,4 @@ Document-scoped search uses the same pipeline via the `document_filter` paramete
 
 ---
 
-*CaseTrack PRD v4.0.0 -- Document 8 of 10*
+*CaseTrack PRD v5.0.0 -- Document 8 of 10*

@@ -1,4 +1,4 @@
-# PRD 05: 7-Embedder Legal Stack
+# PRD 05: 4-Embedder Stack
 
 **Version**: 4.0.0 | **Parent**: [PRD 01 Overview](PRD_01_OVERVIEW.md) | **Language**: Rust
 
@@ -8,18 +8,18 @@
 
 The embedder stack is designed for **consumer hardware**:
 
-- **7 embedders** (not 13-15): Reduced from research system for practical use
+- **4 embedders** (not 13-15): Reduced from research system for practical use
 - **384D max**: Smaller dimensions = less RAM, faster search
 - **ONNX format**: CPU-optimized, cross-platform
 - **Quantized (INT8)**: 50% smaller, nearly same quality
 - **No LLM inference**: Removed causal/reasoning embedders that need GPUs
-- **Tiered loading**: Free tier loads 3 models; Pro loads 6 (BM25 is algorithmic)
+- **Tiered loading**: Free tier loads 2 models; Pro loads 3 (BM25 is algorithmic)
 
 ---
 
 ## 2. Embedder Specifications
 
-### E1-LEGAL: Semantic Similarity (PRIMARY)
+### E1: Semantic Similarity (PRIMARY)
 
 | Property | Value |
 |----------|-------|
@@ -30,10 +30,10 @@ The embedder stack is designed for **consumer hardware**:
 | Tier | FREE |
 | Purpose | Core semantic search |
 
-**What it finds**: "breach of duty" matches "violation of fiduciary obligation"
+**What it finds**: "quarterly revenue decline" matches "Q3 earnings drop"
 **Role in pipeline**: Foundation embedder. All search queries start here. Stage 2 ranking.
 
-### E6-LEGAL: Keyword Expansion (SPLADE)
+### E6: Keyword Expansion (SPLADE)
 
 | Property | Value |
 |----------|-------|
@@ -44,50 +44,8 @@ The embedder stack is designed for **consumer hardware**:
 | Tier | FREE |
 | Purpose | Exact term matching + expansion |
 
-**What it finds**: "Daubert" also matches "expert testimony", "Rule 702"
+**What it finds**: "Q3 earnings" also matches "third quarter revenue", "Q3 financial results"
 **Role in pipeline**: Stage 2 ranking alongside E1. Catches exact terminology E1 misses.
-
-### E7: Structured Text
-
-| Property | Value |
-|----------|-------|
-| Model | all-MiniLM-L6-v2 (Sentence Transformers) |
-| Dimension | 384 |
-| Size | 45MB (INT8 ONNX) |
-| Speed | 40ms/chunk |
-| Tier | FREE |
-| Purpose | Contracts, statutes, numbered clauses |
-
-**What it finds**: Understands "Section 4.2(a)" structure, numbered lists, clause references
-**Role in pipeline**: Stage 2 (Free tier), Stage 3 boost (Pro tier)
-
-### E8-LEGAL: Citation Relationships
-
-| Property | Value |
-|----------|-------|
-| Model | MiniLM-L3-v2 fine-tuned on citation pairs |
-| Dimension | 256 (asymmetric: citing/cited) |
-| Size | 35MB (INT8 ONNX) |
-| Speed | 25ms/chunk |
-| Tier | PRO |
-| Purpose | Find documents citing same authorities |
-
-**What it finds**: "Cases citing Miranda v. Arizona", related precedents
-**Role in pipeline**: Stage 3 multi-signal boost. Asymmetric: citing direction matters.
-
-### E11-LEGAL: Legal Entities
-
-| Property | Value |
-|----------|-------|
-| Model | legal-bert-small-uncased (nlpaueb) |
-| Dimension | 384 |
-| Size | 60MB (INT8 ONNX) |
-| Speed | 45ms/chunk |
-| Tier | PRO |
-| Purpose | Find by party, court, statute, doctrine |
-
-**What it finds**: "Documents mentioning Judge Smith", "References to 42 USC 1983"
-**Role in pipeline**: Stage 3 multi-signal boost. Entity-aware similarity.
 
 ### E12: Precision Reranking (ColBERT)
 
@@ -100,8 +58,8 @@ The embedder stack is designed for **consumer hardware**:
 | Tier | PRO |
 | Purpose | Final reranking for exact phrase matches |
 
-**What it finds**: "breach of fiduciary duty" ranks higher than "fiduciary duty was not breached"
-**Role in pipeline**: Stage 4 (final rerank). Token-level MaxSim scoring. Only runs on top 50 candidates.
+**What it finds**: "revenue increased significantly" ranks higher than "revenue did not increase"
+**Role in pipeline**: Stage 3 (final rerank). Token-level MaxSim scoring. Only runs on top 50 candidates.
 
 ### E13: Fast Recall (BM25)
 
@@ -114,7 +72,7 @@ The embedder stack is designed for **consumer hardware**:
 | Tier | FREE |
 | Purpose | Fast initial candidate retrieval |
 
-**What it finds**: Exact keyword matches, high recall
+**What it finds**: Exact keyword matches for terms like "invoice", "contract", "deadline"
 **Role in pipeline**: Stage 1. Retrieves initial 500 candidates from inverted index.
 
 ---
@@ -123,28 +81,15 @@ The embedder stack is designed for **consumer hardware**:
 
 | Metric | Free Tier | Pro Tier |
 |--------|-----------|----------|
-| Models to download | 3 (E1, E6, E7) | 6 (+ E8, E11, E12) |
-| Model disk space | ~165MB | ~370MB |
-| RAM at runtime | ~800MB | ~1.5GB |
-| Per-chunk embed time | ~120ms | ~290ms |
+| Models to download | 2 (E1, E6) | 3 (+ E12) |
+| Model disk space | ~120MB | ~230MB |
+| RAM at runtime | ~600MB | ~1.0GB |
+| Per-chunk embed time | ~80ms | ~180ms |
 | Search latency | <100ms | <200ms |
 
 ---
 
-## 4. What Was Removed (vs. Research System)
-
-| Removed | Alternative in CaseTrack |
-|---------|--------------------------|
-| E2-E4 Temporal | Date metadata filter |
-| E5 Causal | Keyword patterns via E6 |
-| E9 HDC | BM25 fallback |
-| E10 Intent | E1 semantic covers this |
-| E14 SAILER | E7 handles structure |
-| E15 Citation Network | E8 simpler pairwise version |
-
----
-
-## 5. Provenance Linkage
+## 4. Provenance Linkage
 
 **Every embedding vector is traceable back to its source document, page, and paragraph.** The chain is: `embedding key (e1:{chunk_uuid})` -> `ChunkData` (text + full `Provenance`) -> source file on disk. No embedding is stored without its chunk existing first; the ingestion pipeline (PRD 06) creates ChunkData with full Provenance before calling `embed_chunk()`.
 
@@ -152,7 +97,7 @@ For the canonical Provenance struct fields, storage layout, and complete chain s
 
 ---
 
-## 6. Embedding Engine Implementation
+## 5. Embedding Engine Implementation
 
 ```rust
 use ort::{Session, Environment, GraphOptimizationLevel, ExecutionProvider};
@@ -170,44 +115,35 @@ pub struct EmbeddingEngine {
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum EmbedderId {
-    E1Legal,    // Semantic (FREE)
-    E6Legal,    // Keywords (FREE)
-    E7,         // Structured (FREE)
-    E8Legal,    // Citations (PRO)
-    E11Legal,   // Entities (PRO)
-    E12,        // ColBERT (PRO)
+    E1,     // Semantic (FREE)
+    E6,     // Keywords (FREE)
+    E12,    // ColBERT (PRO)
     // E13 is BM25, not a neural model
 }
 
 impl EmbedderId {
     pub fn model_dir_name(&self) -> &'static str {
         match self {
-            Self::E1Legal => "bge-small-en-v1.5",
-            Self::E6Legal => "splade-distil",
-            Self::E7 => "minilm-l6",
-            Self::E8Legal => "citation-minilm",
-            Self::E11Legal => "legal-bert-small",
+            Self::E1 => "bge-small-en-v1.5",
+            Self::E6 => "splade-distil",
             Self::E12 => "colbert-small",
         }
     }
 
     pub fn dimension(&self) -> usize {
         match self {
-            Self::E1Legal => 384,
-            Self::E6Legal => 0,    // Sparse
-            Self::E7 => 384,
-            Self::E8Legal => 256,
-            Self::E11Legal => 384,
-            Self::E12 => 64,       // Per token
+            Self::E1 => 384,
+            Self::E6 => 0,    // Sparse
+            Self::E12 => 64,  // Per token
         }
     }
 
     pub fn is_sparse(&self) -> bool {
-        matches!(self, Self::E6Legal)
+        matches!(self, Self::E6)
     }
 
     pub fn is_free_tier(&self) -> bool {
-        matches!(self, Self::E1Legal | Self::E6Legal | Self::E7)
+        matches!(self, Self::E1 | Self::E6)
     }
 }
 
@@ -259,16 +195,12 @@ impl EmbeddingEngine {
     fn models_for_tier(tier: LicenseTier) -> Vec<EmbedderId> {
         match tier {
             LicenseTier::Free => vec![
-                EmbedderId::E1Legal,
-                EmbedderId::E6Legal,
-                EmbedderId::E7,
+                EmbedderId::E1,
+                EmbedderId::E6,
             ],
             _ => vec![
-                EmbedderId::E1Legal,
-                EmbedderId::E6Legal,
-                EmbedderId::E7,
-                EmbedderId::E8Legal,
-                EmbedderId::E11Legal,
+                EmbedderId::E1,
+                EmbedderId::E6,
                 EmbedderId::E12,
             ],
         }
@@ -281,8 +213,8 @@ impl EmbeddingEngine {
         for (id, session) in &self.models {
             if let Some(session) = session {
                 match id {
-                    EmbedderId::E6Legal => {
-                        embeddings.e6_legal = Some(self.run_sparse_inference(session, text)?);
+                    EmbedderId::E6 => {
+                        embeddings.e6 = Some(self.run_sparse_inference(session, text)?);
                     }
                     EmbedderId::E12 => {
                         embeddings.e12 = Some(self.run_token_inference(session, text)?);
@@ -290,10 +222,7 @@ impl EmbeddingEngine {
                     _ => {
                         let vec = self.run_dense_inference(session, text)?;
                         match id {
-                            EmbedderId::E1Legal => embeddings.e1_legal = Some(vec),
-                            EmbedderId::E7 => embeddings.e7 = Some(vec),
-                            EmbedderId::E8Legal => embeddings.e8_legal = Some(vec),
-                            EmbedderId::E11Legal => embeddings.e11_legal = Some(vec),
+                            EmbedderId::E1 => embeddings.e1 = Some(vec),
                             _ => {}
                         }
                     }
@@ -312,7 +241,7 @@ impl EmbeddingEngine {
             .ok_or(CaseTrackError::ModelNotDownloaded(embedder))?;
 
         match embedder {
-            EmbedderId::E6Legal => {
+            EmbedderId::E6 => {
                 Ok(QueryEmbedding::Sparse(self.run_sparse_inference(session, query)?))
             }
             EmbedderId::E12 => {
@@ -364,12 +293,9 @@ impl EmbeddingEngine {
 /// Embeddings for a single chunk
 #[derive(Default)]
 pub struct ChunkEmbeddings {
-    pub e1_legal: Option<Vec<f32>>,        // 384D
-    pub e6_legal: Option<SparseVec>,       // Sparse
-    pub e7: Option<Vec<f32>>,              // 384D
-    pub e8_legal: Option<Vec<f32>>,        // 256D
-    pub e11_legal: Option<Vec<f32>>,       // 384D
-    pub e12: Option<TokenEmbeddings>,      // 64D per token
+    pub e1: Option<Vec<f32>>,           // 384D
+    pub e6: Option<SparseVec>,          // Sparse
+    pub e12: Option<TokenEmbeddings>,   // 64D per token
 }
 
 pub enum QueryEmbedding {
@@ -381,9 +307,9 @@ pub enum QueryEmbedding {
 
 ---
 
-## 7. Model Management
+## 6. Model Management
 
-### 7.1 Lazy Loading
+### 6.1 Lazy Loading
 
 Models not needed for the current operation are not loaded:
 
@@ -413,7 +339,7 @@ pub fn ensure_model_loaded(&mut self, id: EmbedderId) -> Result<&Session> {
 }
 ```
 
-### 7.2 Memory Pressure Handling
+### 6.2 Memory Pressure Handling
 
 ```rust
 /// Unload least-recently-used models when memory is constrained
@@ -425,7 +351,7 @@ pub fn handle_memory_pressure(&mut self) {
         tracing::warn!("Low memory ({} MB free). Unloading Pro models.", available_mb);
 
         // Unload Pro-tier models (keep Free tier loaded)
-        for id in &[EmbedderId::E8Legal, EmbedderId::E11Legal, EmbedderId::E12] {
+        for id in &[EmbedderId::E12] {
             if let Some(slot) = self.models.get_mut(id) {
                 *slot = None;
             }
@@ -436,7 +362,7 @@ pub fn handle_memory_pressure(&mut self) {
 
 ---
 
-## 8. ONNX Model Conversion Notes
+## 7. ONNX Model Conversion Notes
 
 For the fresh project build, models must be converted from PyTorch to ONNX:
 
@@ -474,7 +400,7 @@ quantize_dynamic(
 )
 ```
 
-A `scripts/convert_models.py` script should be included in the repository to automate this for all 6 neural models. Pre-converted ONNX models should be hosted on Hugging Face under a `casetrack/` organization.
+A `scripts/convert_models.py` script should be included in the repository to automate this for all 3 neural models. Pre-converted ONNX models should be hosted on Hugging Face under a `casetrack/` organization.
 
 ---
 

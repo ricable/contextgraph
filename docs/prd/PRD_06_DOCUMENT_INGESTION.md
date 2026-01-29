@@ -12,6 +12,7 @@
 | PDF (scanned) | Tesseract OCR | Good (>95%) | `tesseract` | Requires image rendering |
 | DOCX | docx-rs | Excellent | `docx-rs` | Preserves structure |
 | DOC (legacy) | Convert via LibreOffice | Good | CLI shelling | Optional, warns user |
+| XLSX/XLS/ODS | calamine | Excellent | `calamine` | Pure Rust, reads all spreadsheet formats |
 | Images (JPG/PNG/TIFF) | Tesseract OCR | Good | `tesseract`, `image` | Single page per image |
 | TXT/RTF | Direct read | Excellent | `std::fs` | Plain text, no metadata |
 
@@ -23,7 +24,7 @@
 DOCUMENT INGESTION FLOW
 =================================================================================
 
-User: "Ingest ~/Downloads/Complaint.pdf"
+User: "Ingest ~/Downloads/Report.pdf"
                     |
                     v
 +-----------------------------------------------------------------------+
@@ -41,6 +42,7 @@ User: "Ingest ~/Downloads/Complaint.pdf"
 |    - Route to format-specific parser                                  |
 |    - Extract text with position metadata                              |
 |    - For scanned pages: detect and run OCR                            |
+|    - For spreadsheets: extract sheets, rows, and cell data            |
 |    - Extract document metadata (title, author, dates)                 |
 |    Output: ParsedDocument { pages: Vec<Page>, metadata }              |
 +-----------------------------------------------------------------------+
@@ -58,7 +60,10 @@ User: "Ingest ~/Downloads/Complaint.pdf"
 |      * paragraph_start/end: which paragraphs this chunk spans          |
 |      * line_start/end: which lines this chunk spans                    |
 |      * char_start/end: exact character offsets within the page          |
-|      * extraction_method: Native / OCR / Hybrid                        |
+|      * sheet_name: sheet name (for spreadsheets)                       |
+|      * row_range: row range (for spreadsheets, e.g., rows 1-45)       |
+|      * column_range: column range (for spreadsheets)                   |
+|      * extraction_method: Native / OCR / Hybrid / Spreadsheet          |
 |      * ocr_confidence: quality score for OCR-extracted text             |
 |      * created_at: Unix timestamp of chunk creation                     |
 |      * embedded_at: Unix timestamp (set after Step 4)                   |
@@ -78,7 +83,7 @@ User: "Ingest ~/Downloads/Complaint.pdf"
                     v
 +-----------------------------------------------------------------------+
 | 5. STORE (provenance chain is sealed here)                             |
-|    - Write chunks + provenance to case RocksDB (chunks CF)            |
+|    - Write chunks + provenance to collection RocksDB (chunks CF)      |
 |      Each chunk stored with its FULL provenance inline                |
 |    - Write embedding vectors to embeddings CF, keyed by chunk_id      |
 |      chunk_id is the bridge: embedding → chunk → provenance → file    |
@@ -86,51 +91,48 @@ User: "Ingest ~/Downloads/Complaint.pdf"
 |    - Write provenance records to provenance CF (prov:{chunk_uuid})    |
 |    - Update BM25 inverted index                                       |
 |    - Update document metadata (ingested_at, updated_at timestamps)    |
-|    - Update case stats                                                |
-|    - Optionally copy original file to case/originals/                 |
+|    - Update collection stats                                          |
+|    - Optionally copy original file to collection/originals/           |
 |    Output: IngestResult { pages, chunks, duration, timestamps }       |
 +-----------------------------------------------------------------------+
                     |
                     v
-Response: "Ingested Complaint.pdf: 45 pages, 234 chunks, 12s"
+Response: "Ingested Report.pdf: 45 pages, 234 chunks, 12s"
 ```
 
-### 2.1 Post-Chunk Processing: Entity & Citation Extraction
+### 2.1 Post-Chunk Processing: Entity Extraction & Knowledge Graph
 
-After Step 5 (STORE), the pipeline extracts entities and citations to populate the **Context Graph** (see [PRD 04 Section 8](PRD_04_STORAGE_ARCHITECTURE.md)).
+After Step 5 (STORE), the pipeline extracts entities and builds the **Context Graph** (see [PRD 04 Section 8](PRD_04_STORAGE_ARCHITECTURE.md)).
 
-**Step 6 -- EXTRACT ENTITIES**: For each chunk, run regex extractors (citations, statutes, dates, amounts) and NER via E11-Legal (persons, organizations, courts). Deduplicate within the document. Store Entity and EntityMention records in `entities` CF, update `entity_index`. Output: `Vec<Entity>`, `Vec<EntityMention>`.
+**Step 6 -- EXTRACT ENTITIES**: For each chunk, run regex extractors (dates, amounts, percentages) and NER (persons, organizations, locations). Deduplicate within the document. Store Entity and EntityMention records in `entities` CF, update `entity_index`. Output: `Vec<Entity>`, `Vec<EntityMention>`.
 
-**Step 7 -- EXTRACT CITATIONS**: Parse Bluebook ("Smith v. Jones, 123 F.3d 456"), neutral ("2020 WL 1234567"), and statute ("42 U.S.C. S 1983") citations. Normalize to canonical form. Detect treatment (Cited/Followed/Distinguished/Overruled/Discussed). Store CitationRecord in `citations` CF. Output: `Vec<CitationRecord>`.
+**Step 7 -- BUILD DOCUMENT GRAPH EDGES**: Find shared entities (SharedEntities edges) across documents and compute document-level E1 similarity (SemanticSimilar edges). Cross-document entity matching links the same entity appearing in different documents. Store in `doc_graph` and `chunk_graph` CFs. Output: `Vec<DocRelationship>`.
 
-**Step 8 -- BUILD DOCUMENT GRAPH EDGES**: Find shared entities (SharedEntities edges), shared authorities (CitesAuthority edges), and compute document-level E1 similarity (SemanticSimilar edges). Store in `doc_graph` and `chunk_graph` CFs. Output: `Vec<DocRelationship>`.
+**Step 8 -- UPDATE COLLECTION MAP**: Incrementally add new entities, key dates, entity statistics. Recompute CollectionStatistics. Output: Updated CollectionMap.
 
-**Step 9 -- UPDATE CASE MAP**: Incrementally add new parties, key dates, authority/entity statistics. Recompute CaseStatistics. Output: Updated CaseMap.
-
-Complete response: `"Ingested Complaint.pdf: 45 pages, 234 chunks, 47 entities, 12 citations, 12s"`
+Complete response: `"Ingested Report.pdf: 45 pages, 234 chunks, 47 entities, 12s"`
 
 #### Entity Types Extracted
 
 | Type | Detection Method | Examples |
 |------|-----------------|----------|
-| Person | NER (E11-Legal) | "John Smith", "Judge Martinez" |
-| Organization | NER (E11-Legal) | "Acme Corp", "Department of Justice" |
-| Court | NER + Regex | "United States District Court for the N.D. Cal." |
-| Statute | Regex | "42 U.S.C. S 1983", "Cal. Civ. Code S 1714" |
-| CaseCitation | Regex (Bluebook) | "Smith v. Jones, 123 F.3d 456 (9th Cir. 2020)" |
-| Date | Regex + NER | "January 15, 2024", "filed on 01/15/2024" |
-| MonetaryAmount | Regex | "$1,250,000.00", "1.25 million dollars" |
-| LegalConcept | NER (E11-Legal) | "breach of fiduciary duty", "negligence per se" |
+| Person | NER | "John Smith", "Sarah Chen" |
+| Organization | NER | "Acme Corp", "Finance Department" |
+| Date | Regex + NER | "January 15, 2024", "Q3 2024", "filed on 01/15/2024" |
+| Amount | Regex | "$1,250,000.00", "1.25 million dollars", "15.7%" |
+| Location | NER | "New York, NY", "123 Main Street", "United Kingdom" |
+| Concept | NER | "supply chain optimization", "revenue forecast" |
 
-#### Citation Treatment Detection
+#### Knowledge Graph Integration During Ingestion
 
-| Treatment | Signal Words |
-|-----------|-------------|
-| Cited | Default (bare citation, no qualifying language) |
-| Followed | "following", "in accord", "consistent with" |
-| Distinguished | "distinguished", "unlike", "in contrast to" |
-| Overruled | "overruled", "abrogated", "no longer good law" |
-| Discussed | "see", "see also", "cf.", "compare" |
+After entity extraction, the pipeline builds knowledge graph connections:
+
+| Step | Description |
+|------|-------------|
+| Entity-to-Chunk edges | Each extracted entity links to the chunk(s) where it appears |
+| Cross-document entity matching | Same entity (e.g., "Acme Corp") across multiple documents creates shared-entity edges |
+| Document relationship edges | Documents sharing 3+ entities are linked with SharedEntities relationship |
+| Entity co-occurrence | Entities appearing in the same chunk are linked with co-occurrence edges |
 
 ---
 
@@ -293,9 +295,95 @@ impl DocxProcessor {
 
 ---
 
-## 5. OCR (Tesseract)
+## 5. XLSX/Excel Processing
 
-### 5.1 Bundling Strategy
+```rust
+use calamine::{open_workbook_auto, Reader, DataType};
+
+pub struct XlsxProcessor;
+
+impl XlsxProcessor {
+    pub fn process(&self, path: &Path) -> Result<ParsedDocument> {
+        let mut workbook = open_workbook_auto(path)
+            .map_err(|e| CaseTrackError::SpreadsheetParseError {
+                path: path.to_path_buf(),
+                source: e,
+            })?;
+
+        let sheet_names: Vec<String> = workbook.sheet_names().to_vec();
+        let mut pages = Vec::with_capacity(sheet_names.len());
+
+        for (sheet_idx, sheet_name) in sheet_names.iter().enumerate() {
+            let range = workbook.worksheet_range(sheet_name)
+                .map_err(|e| CaseTrackError::SpreadsheetParseError {
+                    path: path.to_path_buf(),
+                    source: e,
+                })?;
+
+            // Detect headers from first row
+            let headers: Vec<String> = range.rows().next()
+                .map(|row| row.iter().map(|cell| cell.to_string()).collect())
+                .unwrap_or_default();
+
+            let mut content = String::new();
+            let mut paragraphs = Vec::new();
+            let mut para_idx = 0;
+
+            for (row_idx, row) in range.rows().enumerate() {
+                let row_text: Vec<String> = row.iter()
+                    .enumerate()
+                    .filter(|(_, cell)| !cell.is_empty())
+                    .map(|(col_idx, cell)| {
+                        let header = headers.get(col_idx)
+                            .filter(|h| !h.is_empty() && row_idx > 0);
+                        match header {
+                            Some(h) => format!("{}: {}", h, cell),
+                            None => cell.to_string(),
+                        }
+                    })
+                    .collect();
+
+                if !row_text.is_empty() {
+                    let line = row_text.join(" | ");
+                    paragraphs.push(Paragraph {
+                        index: para_idx,
+                        text: line.clone(),
+                        style: if row_idx == 0 { ParagraphStyle::Heading } else { ParagraphStyle::Body },
+                    });
+                    content.push_str(&line);
+                    content.push('\n');
+                    para_idx += 1;
+                }
+            }
+
+            // Each sheet becomes a logical "page"
+            pages.push(Page {
+                number: (sheet_idx + 1) as u32,
+                content,
+                paragraphs,
+                extraction_method: ExtractionMethod::Spreadsheet,
+                ocr_confidence: None,
+            });
+        }
+
+        Ok(ParsedDocument {
+            id: Uuid::new_v4(),
+            filename: path.file_name().unwrap().to_string_lossy().to_string(),
+            pages,
+            metadata: DocumentMetadataRaw::default(),
+            file_hash: compute_sha256(path)?,
+        })
+    }
+}
+```
+
+**Spreadsheet provenance**: Each chunk from a spreadsheet includes `sheet_name`, `row_range` (e.g., rows 1-45), and `column_range` in its provenance record, enabling precise traceability back to specific cells.
+
+---
+
+## 6. OCR (Tesseract)
+
+### 6.1 Bundling Strategy
 
 | Platform | Method |
 |----------|--------|
@@ -305,7 +393,7 @@ impl DocxProcessor {
 
 The `eng.traineddata` (~15MB) is bundled or downloaded on first OCR use.
 
-### 5.2 OCR Pipeline
+### 6.2 OCR Pipeline
 
 ```rust
 pub struct OcrEngine {
@@ -340,9 +428,9 @@ impl OcrEngine {
 
 ---
 
-## 6. Chunking Strategy
+## 7. Chunking Strategy
 
-### 6.1 Chunking Rules (MANDATORY)
+### 7.1 Chunking Rules (MANDATORY)
 
 | Parameter | Value |
 |-----------|-------|
@@ -355,24 +443,24 @@ Character-based (not token-based) for deterministic, reproducible chunking.
 
 **Boundary priority**: (1) paragraph break, (2) sentence boundary, (3) word boundary. Never split mid-word. Chunks do NOT cross page boundaries.
 
-### 6.2 Provenance Per Chunk (MANDATORY)
+### 7.2 Provenance Per Chunk (MANDATORY)
 
-**Every chunk MUST store its complete provenance at creation time.** Fields: `document_id`, `document_name`, `document_path`, `page`, `paragraph_start/end`, `line_start/end`, `char_start/end`, `extraction_method`, `ocr_confidence`, `bates_number` (optional), `chunk_index`.
+**Every chunk MUST store its complete provenance at creation time.** Fields: `document_id`, `document_name`, `document_path`, `page`, `paragraph_start/end`, `line_start/end`, `char_start/end`, `extraction_method`, `ocr_confidence`, `sheet_name` (spreadsheets), `row_range` (spreadsheets), `column_range` (spreadsheets), `chunk_index`.
 
 Provenance is: (1) stored in RocksDB with chunk text and embeddings, (2) returned in every search result, (3) queryable via MCP tools, (4) immutable after creation. See [PRD 04 Section 5.2](PRD_04_STORAGE_ARCHITECTURE.md) for the canonical Provenance struct and storage layout.
 
-### 6.3 Chunking Implementation
+### 7.3 Chunking Implementation
 
 ```rust
 /// Chunker configuration: 2000 chars, 10% overlap
-pub struct LegalChunker {
+pub struct DocumentChunker {
     target_chars: usize,   // 2000
     max_chars: usize,      // 2200 (small overrun to avoid mid-sentence)
     min_chars: usize,      // 400 (don't emit tiny fragments)
     overlap_chars: usize,  // 200 (10% of target)
 }
 
-impl Default for LegalChunker {
+impl Default for DocumentChunker {
     fn default() -> Self {
         Self {
             target_chars: 2000,
@@ -383,7 +471,7 @@ impl Default for LegalChunker {
     }
 }
 
-impl LegalChunker {
+impl DocumentChunker {
     pub fn chunk(&self, doc: &ParsedDocument) -> Vec<Chunk> {
         let mut chunks = Vec::new();
         let mut chunk_seq: u32 = 0;
@@ -505,7 +593,6 @@ impl LegalChunker {
                 char_end,
                 extraction_method: page.extraction_method,
                 ocr_confidence: page.ocr_confidence,
-                bates_number: None,
                 chunk_index: sequence,
             },
         }
@@ -590,12 +677,12 @@ fn split_sentences(text: &str) -> Vec<String> {
 
 ---
 
-## 7. Batch Ingestion (Pro Tier)
+## 8. Batch Ingestion (Pro Tier)
 
 ```rust
 /// Ingest all supported files in a directory
 pub async fn ingest_folder(
-    case: &mut CaseHandle,
+    collection: &mut CollectionHandle,
     engine: &EmbeddingEngine,
     folder: &Path,
     recursive: bool,
@@ -608,7 +695,7 @@ pub async fn ingest_folder(
     for (idx, file) in files.iter().enumerate() {
         tracing::info!("[{}/{}] Ingesting: {}", idx + 1, total, file.display());
 
-        match ingest_single_file(case, engine, file).await {
+        match ingest_single_file(collection, engine, file).await {
             Ok(result) => results.push(result),
             Err(e) => {
                 tracing::error!("Failed to ingest {}: {}", file.display(), e);
@@ -631,7 +718,10 @@ pub async fn ingest_folder(
 
 fn discover_files(folder: &Path, recursive: bool) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
-    let supported = &["pdf", "docx", "doc", "txt", "rtf", "jpg", "jpeg", "png", "tiff", "tif"];
+    let supported = &[
+        "pdf", "docx", "doc", "xlsx", "xls", "ods",
+        "txt", "rtf", "jpg", "jpeg", "png", "tiff", "tif",
+    ];
 
     let walker = if recursive {
         walkdir::WalkDir::new(folder)
@@ -656,14 +746,14 @@ fn discover_files(folder: &Path, recursive: bool) -> Result<Vec<PathBuf>> {
 
 ---
 
-## 8. Duplicate Detection
+## 9. Duplicate Detection
 
 Check SHA256 hash against existing documents before ingesting. If duplicate found, return error with existing document ID and `--force` hint.
 
 ```rust
-pub fn check_duplicate(case: &CaseHandle, file_hash: &str) -> Result<Option<Uuid>> {
-    let cf = case.db.cf_handle("documents").unwrap();
-    for item in case.db.iterator_cf(&cf, rocksdb::IteratorMode::Start) {
+pub fn check_duplicate(collection: &CollectionHandle, file_hash: &str) -> Result<Option<Uuid>> {
+    let cf = collection.db.cf_handle("documents").unwrap();
+    for item in collection.db.iterator_cf(&cf, rocksdb::IteratorMode::Start) {
         let (_, value) = item?;
         let doc: DocumentMetadata = bincode::deserialize(&value)?;
         if doc.file_hash == file_hash {
@@ -676,7 +766,7 @@ pub fn check_duplicate(case: &CaseHandle, file_hash: &str) -> Result<Option<Uuid
 
 ---
 
-## 9. Data Types
+## 10. Data Types
 
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -715,9 +805,10 @@ pub enum ParagraphStyle {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum ExtractionMethod {
-    Native,   // Direct text extraction from PDF/DOCX
-    Ocr,      // Tesseract OCR
-    Skipped,  // OCR disabled, scanned page skipped
+    Native,       // Direct text extraction from PDF/DOCX
+    Ocr,          // Tesseract OCR
+    Spreadsheet,  // calamine spreadsheet extraction
+    Skipped,      // OCR disabled, scanned page skipped
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

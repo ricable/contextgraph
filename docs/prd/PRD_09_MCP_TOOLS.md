@@ -6,50 +6,52 @@
 
 ## 1. Tool Overview
 
-| Tool | Description | Tier | Requires Active Case |
-|------|-------------|------|---------------------|
-| `create_case` | Create a new case | Free | No |
-| `list_cases` | List all cases | Free | No |
-| `switch_case` | Switch active case | Free | No |
-| `delete_case` | Delete a case and all its data | Free | No |
-| `get_case_info` | Get details about active case | Free | Yes |
-| `ingest_document` | Ingest a PDF, DOCX, or image | Free | Yes |
+| Tool | Description | Tier | Requires Active Collection |
+|------|-------------|------|---------------------------|
+| `create_collection` | Create a new document collection | Free | No |
+| `list_collections` | List all collections | Free | No |
+| `switch_collection` | Switch active collection | Free | No |
+| `delete_collection` | Delete a collection and all its data | Free | No |
+| `get_collection_info` | Get details about active collection | Free | Yes |
+| `ingest_document` | Ingest a PDF, DOCX, XLSX, or image | Free | Yes |
 | `ingest_folder` | Ingest all supported files in a folder and subfolders | Free | Yes |
 | `sync_folder` | Sync a folder -- ingest new/changed files, optionally remove deleted | Free | Yes |
-| `list_documents` | List documents in active case | Free | Yes |
+| `list_documents` | List documents in active collection | Free | Yes |
 | `get_document` | Get document details and stats | Free | Yes |
-| `delete_document` | Remove a document from a case | Free | Yes |
-| `search_case` | Search across all documents | Free (limited) | Yes |
-| `find_entity` | Find mentions of a legal entity | Pro | Yes |
+| `delete_document` | Remove a document from a collection | Free | Yes |
+| `search_documents` | Search across all documents | Free (limited) | Yes |
+| `find_entity` | Find mentions of an entity across documents | Pro | Yes |
 | `get_chunk` | Get a specific chunk with full provenance | Free | Yes |
 | `get_document_chunks` | List all chunks in a document with provenance | Free | Yes |
 | `get_source_context` | Get surrounding text for a chunk (context window) | Free | Yes |
 | `reindex_document` | Delete old embeddings/indexes for a document and rebuild from scratch | Free | Yes |
-| `reindex_case` | Rebuild all embeddings and indexes for the entire active case | Free | Yes |
-| `get_index_status` | Show embedding/index health for all documents in active case | Free | Yes |
+| `reindex_collection` | Rebuild all embeddings and indexes for the entire active collection | Free | Yes |
+| `get_index_status` | Show embedding/index health for all documents in active collection | Free | Yes |
 | `watch_folder` | Start watching a folder for file changes -- auto-sync on change or schedule | Free | Yes |
 | `unwatch_folder` | Stop watching a folder | Free | Yes |
 | `list_watches` | List all active folder watches and their sync status | Free | No |
 | `set_sync_schedule` | Set the auto-sync schedule (on_change, hourly, daily, manual) | Free | Yes |
 | `get_status` | Get server status and model info | Free | No |
 | | | | |
-| **--- Context Graph: Case Overview ---** | | | |
-| `get_case_map` | High-level case briefing: parties, key dates, issues, document categories, top entities, top authorities, statistics | Free | Yes |
-| `get_case_timeline` | Chronological view of key dates and events extracted from documents | Free | Yes |
-| `get_case_statistics` | Document counts, page counts, chunk counts, entity counts, authority counts, embedder coverage | Free | Yes |
+| **--- Context Graph: Collection Overview ---** | | | |
+| `get_collection_summary` | High-level collection briefing: key stakeholders, key dates, topics, document categories, top entities, key references, statistics | Free | Yes |
+| `get_collection_timeline` | Chronological view of key dates and events extracted from documents | Free | Yes |
+| `get_collection_statistics` | Document counts, page counts, chunk counts, entity counts, reference counts, embedder coverage | Free | Yes |
 | | | | |
-| **--- Context Graph: Entity & Citation Search ---** | | | |
-| `list_entities` | List all extracted entities in the case, grouped by type (person, org, court, statute, etc.) | Free | Yes |
+| **--- Context Graph: Entity & Reference Search ---** | | | |
+| `list_entities` | List all extracted entities in the collection, grouped by type (person, org, date, amount, etc.) | Free | Yes |
 | `get_entity_mentions` | Get all chunks mentioning a specific entity, with context snippets | Free | Yes |
 | `search_entity_relationships` | Find chunks mentioning two or more entities together | Pro | Yes |
-| `list_authorities` | List all cited legal authorities (statutes, case law) with citation counts | Free | Yes |
-| `get_authority_citations` | Get all chunks citing a specific authority, with treatment (cited, followed, distinguished) | Free | Yes |
+| `get_entity_graph` | Show entity relationships across documents in the collection | Pro | Yes |
+| `list_references` | List all referenced external sources (documents, standards, regulations) with reference counts | Free | Yes |
+| `get_reference_citations` | Get all chunks citing a specific reference, with context | Free | Yes |
 | | | | |
 | **--- Context Graph: Document Navigation ---** | | | |
 | `get_document_structure` | Get headings, sections, and table of contents for a document | Free | Yes |
 | `browse_pages` | Get all chunks from a specific page range within a document | Free | Yes |
-| `find_related_documents` | Find documents similar to a given document (by shared entities, authorities, or semantic similarity) | Free | Yes |
-| `list_documents_by_type` | List documents filtered by type (pleading, discovery, exhibit, etc.) | Free | Yes |
+| `find_related_documents` | Find documents similar to a given document (by shared entities, references, or semantic similarity) | Free | Yes |
+| `get_related_documents` | Given a document, find related docs via knowledge graph (shared entities, references) | Free | Yes |
+| `list_documents_by_type` | List documents filtered by type (contract, report, spreadsheet, etc.) | Free | Yes |
 | `traverse_chunks` | Navigate forward/backward through chunks in a document from a starting point | Free | Yes |
 | | | | |
 | **--- Context Graph: Advanced Search ---** | | | |
@@ -73,12 +75,12 @@
 All tools return errors in a consistent MCP format. The four common error types:
 
 ```json
-// NoCaseActive -- returned by any tool that requires an active case
+// NoCollectionActive -- returned by any tool that requires an active collection
 {
   "isError": true,
   "content": [{
     "type": "text",
-    "text": "No active case. Create or switch to a case first:\n  - create_case: Create a new case\n  - switch_case: Switch to an existing case\n  - list_cases: See all cases"
+    "text": "No active collection. Create or switch to a collection first:\n  - create_collection: Create a new collection\n  - switch_collection: Switch to an existing collection\n  - list_collections: See all collections"
   }]
 }
 
@@ -87,7 +89,7 @@ All tools return errors in a consistent MCP format. The four common error types:
   "isError": true,
   "content": [{
     "type": "text",
-    "text": "File not found: /Users/sarah/Downloads/Complaint.pdf\n\nCheck that the path is correct and the file exists."
+    "text": "File not found: /Users/sarah/Downloads/Contract.pdf\n\nCheck that the path is correct and the file exists."
   }]
 }
 
@@ -96,16 +98,16 @@ All tools return errors in a consistent MCP format. The four common error types:
   "isError": true,
   "content": [{
     "type": "text",
-    "text": "Free tier allows 3 cases (you have 3). Delete a case or upgrade to Pro for unlimited cases: https://casetrack.legal/upgrade"
+    "text": "Free tier allows 3 collections (you have 3). Delete a collection or upgrade to Pro for unlimited collections: https://casetrack.dev/upgrade"
   }]
 }
 
-// NotFound -- returned when a case, document, or chunk ID is not found
+// NotFound -- returned when a collection, document, or chunk ID is not found
 {
   "isError": true,
   "content": [{
     "type": "text",
-    "text": "Case not found: \"Smith\". Did you mean:\n  - Smith v. Jones Corp (ID: a1b2c3d4)\nUse the full name or ID."
+    "text": "Collection not found: \"Acme\". Did you mean:\n  - Acme Corp Partnership (ID: a1b2c3d4)\nUse the full name or ID."
   }]
 }
 ```
@@ -114,27 +116,27 @@ Per-tool error examples are omitted below; all errors follow these patterns.
 
 ---
 
-### 2.1 `create_case`
+### 2.1 `create_collection`
 
 ```json
 {
-  "name": "create_case",
-  "description": "Create a new legal case. Creates an isolated database for this case on your machine. Automatically switches to the new case.",
+  "name": "create_collection",
+  "description": "Create a new document collection. Creates an isolated database for this collection on your machine. Automatically switches to the new collection.",
   "inputSchema": {
     "type": "object",
     "properties": {
       "name": {
         "type": "string",
-        "description": "Case name (e.g., 'Smith v. Jones')"
+        "description": "Collection name (e.g., 'Project Alpha', 'Acme Corp Partnership')"
       },
-      "case_number": {
+      "collection_id": {
         "type": "string",
-        "description": "Optional docket or case number"
+        "description": "Optional identifier or reference number"
       },
-      "case_type": {
+      "collection_type": {
         "type": "string",
-        "enum": ["civil", "criminal", "family", "bankruptcy", "contract", "employment", "personal_injury", "real_estate", "intellectual_property", "immigration", "other"],
-        "description": "Type of legal case"
+        "enum": ["project", "contract", "financial", "compliance", "research", "hr", "operations", "other"],
+        "description": "Type of document collection"
       }
     },
     "required": ["name"]
@@ -147,19 +149,19 @@ Per-tool error examples are omitted below; all errors follow these patterns.
 {
   "content": [{
     "type": "text",
-    "text": "Created case \"Smith v. Jones Corp\" (ID: a1b2c3d4).\nType: Contract\nThis is now your active case.\n\nNext: Ingest documents with ingest_document."
+    "text": "Created collection \"Acme Corp Partnership\" (ID: a1b2c3d4).\nType: Contract\nThis is now your active collection.\n\nNext: Ingest documents with ingest_document."
   }]
 }
 ```
 
 ---
 
-### 2.2 `list_cases`
+### 2.2 `list_collections`
 
 ```json
 {
-  "name": "list_cases",
-  "description": "List all cases. Shows name, type, status, document count, and which case is active.",
+  "name": "list_collections",
+  "description": "List all collections. Shows name, type, status, document count, and which collection is active.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -167,7 +169,7 @@ Per-tool error examples are omitted below; all errors follow these patterns.
         "type": "string",
         "enum": ["active", "closed", "archived", "all"],
         "default": "active",
-        "description": "Filter by case status"
+        "description": "Filter by collection status"
       }
     }
   }
@@ -176,39 +178,39 @@ Per-tool error examples are omitted below; all errors follow these patterns.
 
 ---
 
-### 2.3 `switch_case`
+### 2.3 `switch_collection`
 
 ```json
 {
-  "name": "switch_case",
-  "description": "Switch to a different case. All subsequent operations (ingest, search) will use this case.",
+  "name": "switch_collection",
+  "description": "Switch to a different collection. All subsequent operations (ingest, search) will use this collection.",
   "inputSchema": {
     "type": "object",
     "properties": {
-      "case_name": {
+      "collection_name": {
         "type": "string",
-        "description": "Case name or ID to switch to"
+        "description": "Collection name or ID to switch to"
       }
     },
-    "required": ["case_name"]
+    "required": ["collection_name"]
   }
 }
 ```
 
 ---
 
-### 2.4 `delete_case`
+### 2.4 `delete_collection`
 
 ```json
 {
-  "name": "delete_case",
-  "description": "Permanently delete a case and all its documents, embeddings, and data. This cannot be undone.",
+  "name": "delete_collection",
+  "description": "Permanently delete a collection and all its documents, embeddings, and data. This cannot be undone.",
   "inputSchema": {
     "type": "object",
     "properties": {
-      "case_name": {
+      "collection_name": {
         "type": "string",
-        "description": "Case name or ID to delete"
+        "description": "Collection name or ID to delete"
       },
       "confirm": {
         "type": "boolean",
@@ -216,19 +218,19 @@ Per-tool error examples are omitted below; all errors follow these patterns.
         "default": false
       }
     },
-    "required": ["case_name", "confirm"]
+    "required": ["collection_name", "confirm"]
   }
 }
 ```
 
 ---
 
-### 2.5 `get_case_info`
+### 2.5 `get_collection_info`
 
 ```json
 {
-  "name": "get_case_info",
-  "description": "Get detailed information about the active case including document list and storage usage.",
+  "name": "get_collection_info",
+  "description": "Get detailed information about the active collection including document list and storage usage.",
   "inputSchema": {
     "type": "object",
     "properties": {}
@@ -243,7 +245,7 @@ Per-tool error examples are omitted below; all errors follow these patterns.
 ```json
 {
   "name": "ingest_document",
-  "description": "Ingest a document (PDF, DOCX, or image) into the active case. Extracts text (with OCR for scans), chunks the text, computes embeddings, and indexes for search. All processing and storage happens locally on your machine.",
+  "description": "Ingest a document (PDF, DOCX, XLSX, or image) into the active collection. Extracts text (with OCR for scans), chunks the text, computes embeddings, and indexes for search. All processing and storage happens locally on your machine.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -257,13 +259,13 @@ Per-tool error examples are omitted below; all errors follow these patterns.
       },
       "document_type": {
         "type": "string",
-        "enum": ["pleading", "motion", "brief", "contract", "exhibit", "correspondence", "deposition", "discovery", "statute", "case_law", "other"],
-        "description": "Type of legal document"
+        "enum": ["contract", "report", "spreadsheet", "presentation", "correspondence", "memo", "proposal", "invoice", "policy", "other"],
+        "description": "Type of document"
       },
       "copy_original": {
         "type": "boolean",
         "default": false,
-        "description": "Copy the original file into the case folder"
+        "description": "Copy the original file into the collection folder"
       }
     },
     "required": ["file_path"]
@@ -278,7 +280,7 @@ Per-tool error examples are omitted below; all errors follow these patterns.
 ```json
 {
   "name": "ingest_folder",
-  "description": "Ingest all supported documents in a folder and all subfolders. Walks the entire directory tree recursively. Automatically skips files already ingested (matched by SHA256 hash). Supported formats: PDF, DOCX, DOC, TXT, RTF, JPG, PNG, TIFF. Each file is chunked into 2000-character segments with full provenance.",
+  "description": "Ingest all supported documents in a folder and all subfolders. Walks the entire directory tree recursively. Automatically skips files already ingested (matched by SHA256 hash). Supported formats: PDF, DOCX, DOC, XLSX, TXT, RTF, JPG, PNG, TIFF. Each file is chunked into 2000-character segments with full provenance.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -298,13 +300,13 @@ Per-tool error examples are omitted below; all errors follow these patterns.
       },
       "document_type": {
         "type": "string",
-        "enum": ["pleading", "motion", "brief", "contract", "exhibit", "correspondence", "deposition", "discovery", "statute", "case_law", "other"],
+        "enum": ["contract", "report", "spreadsheet", "presentation", "correspondence", "memo", "proposal", "invoice", "policy", "other"],
         "description": "Default document type for all files. If omitted, CaseTrack infers from file content."
       },
       "file_extensions": {
         "type": "array",
         "items": { "type": "string" },
-        "description": "Optional filter: only ingest files with these extensions (e.g., [\"pdf\", \"docx\"]). Default: all supported formats."
+        "description": "Optional filter: only ingest files with these extensions (e.g., [\"pdf\", \"docx\", \"xlsx\"]). Default: all supported formats."
       }
     },
     "required": ["folder_path"]
@@ -317,7 +319,7 @@ Per-tool error examples are omitted below; all errors follow these patterns.
 {
   "content": [{
     "type": "text",
-    "text": "Folder ingestion complete for Smith v. Jones Corp\n\n  Folder:     ~/Cases/Smith/Documents/\n  Subfolders: 4 (Pleadings/, Discovery/, Exhibits/, Correspondence/)\n  Found:      47 supported files\n  New:        23 (ingested)\n  Skipped:    22 (already ingested, matching SHA256)\n  Failed:     2\n  Duration:   4 minutes 12 seconds\n\n  New documents ingested:\n  - Pleadings/Complaint.pdf (45 pages, 234 chunks)\n  - Pleadings/Answer.pdf (12 pages, 67 chunks)\n  - Discovery/Interrogatories.docx (8 pages, 42 chunks)\n  ... 20 more\n\n  Failures:\n  - Exhibits/corrupted.pdf: PDF parsing error (file may be corrupted)\n  - Exhibits/scan_2019.tiff: OCR failed (image too low resolution)\n\nAll 23 new documents are now searchable."
+    "text": "Folder ingestion complete for Acme Corp Partnership\n\n  Folder:     ~/Projects/Acme/Documents/\n  Subfolders: 4 (Contracts/, Reports/, Financials/, Correspondence/)\n  Found:      47 supported files\n  New:        23 (ingested)\n  Skipped:    22 (already ingested, matching SHA256)\n  Failed:     2\n  Duration:   4 minutes 12 seconds\n\n  New documents ingested:\n  - Contracts/Vendor_Agreement.docx (45 pages, 234 chunks)\n  - Contracts/Service_Contract.pdf (12 pages, 67 chunks)\n  - Reports/Q3_Report.xlsx (8 pages, 42 chunks)\n  ... 20 more\n\n  Failures:\n  - Financials/corrupted.pdf: PDF parsing error (file may be corrupted)\n  - Reports/scan_2019.tiff: OCR failed (image too low resolution)\n\nAll 23 new documents are now searchable."
   }]
 }
 ```
@@ -329,7 +331,7 @@ Per-tool error examples are omitted below; all errors follow these patterns.
 ```json
 {
   "name": "sync_folder",
-  "description": "Sync a folder with the active case. Compares files on disk against what is already ingested and: (1) ingests new files not yet in the case, (2) re-ingests files that have changed since last ingestion (detected by SHA256 mismatch), (3) optionally removes documents whose source files no longer exist on disk. This is the easiest way to keep a case up to date with a directory of documents -- just point it at the folder and run it whenever files change.",
+  "description": "Sync a folder with the active collection. Compares files on disk against what is already ingested and: (1) ingests new files not yet in the collection, (2) re-ingests files that have changed since last ingestion (detected by SHA256 mismatch), (3) optionally removes documents whose source files no longer exist on disk. This is the easiest way to keep a collection up to date with a directory of documents -- just point it at the folder and run it whenever files change.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -340,11 +342,11 @@ Per-tool error examples are omitted below; all errors follow these patterns.
       "remove_deleted": {
         "type": "boolean",
         "default": false,
-        "description": "If true, documents whose source files no longer exist on disk will be removed from the case (chunks + embeddings deleted). Default: false (only add/update, never remove)."
+        "description": "If true, documents whose source files no longer exist on disk will be removed from the collection (chunks + embeddings deleted). Default: false (only add/update, never remove)."
       },
       "document_type": {
         "type": "string",
-        "enum": ["pleading", "motion", "brief", "contract", "exhibit", "correspondence", "deposition", "discovery", "statute", "case_law", "other"],
+        "enum": ["contract", "report", "spreadsheet", "presentation", "correspondence", "memo", "proposal", "invoice", "policy", "other"],
         "description": "Default document type for newly ingested files."
       },
       "dry_run": {
@@ -365,7 +367,7 @@ Per-tool error examples are omitted below; all errors follow these patterns.
 ```json
 {
   "name": "list_documents",
-  "description": "List all documents in the active case.",
+  "description": "List all documents in the active collection.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -408,7 +410,7 @@ Per-tool error examples are omitted below; all errors follow these patterns.
 ```json
 {
   "name": "delete_document",
-  "description": "Remove a document and all its chunks, embeddings, and index entries from the active case.",
+  "description": "Remove a document and all its chunks, embeddings, and index entries from the active collection.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -429,18 +431,18 @@ Per-tool error examples are omitted below; all errors follow these patterns.
 
 ---
 
-### 2.12 `search_case`
+### 2.12 `search_documents`
 
 ```json
 {
-  "name": "search_case",
-  "description": "Search across all documents in the active case using semantic and keyword search. Returns results with FULL provenance: source document filename, file path, page, paragraph, line numbers, character offsets, extraction method, timestamps. Every result is traceable to its exact source location.",
+  "name": "search_documents",
+  "description": "Search across all documents in the active collection using semantic and keyword search. Returns results with FULL provenance: source document filename, file path, page, paragraph, line numbers, character offsets, extraction method, timestamps. Every result is traceable to its exact source location.",
   "inputSchema": {
     "type": "object",
     "properties": {
       "query": {
         "type": "string",
-        "description": "Natural language search query (e.g., 'What are the termination provisions?')"
+        "description": "Natural language search query (e.g., 'Q3 revenue analysis', 'vendor payment terms', 'project timeline')"
       },
       "top_k": {
         "type": "integer",
@@ -464,7 +466,7 @@ Per-tool error examples are omitted below; all errors follow these patterns.
 {
   "content": [{
     "type": "text",
-    "text": "Search: \"early termination clause\"\nCase: Smith v. Jones Corp | 5 documents, 1,051 chunks searched\nTime: 87ms | Tier: Pro (4-stage pipeline)\n\n--- Result 1 (score: 0.94) ---\nContract.pdf, p. 12, para. 8, ll. 1-4\n\n\"Either party may terminate this Agreement upon thirty (30) days written notice to the other party. In the event of material breach, the non-breaching party may terminate immediately upon written notice specifying the breach.\"\n\n--- Result 2 (score: 0.89) ---\nContract.pdf, p. 13, para. 10, ll. 1-6\n\n\"In the event of early termination, the non-breaching party shall be entitled to recover all damages, including but not limited to lost profits, reasonable attorney's fees, and costs of enforcement.\"\n\n--- Result 3 (score: 0.76) ---\nComplaint.pdf, p. 8, para. 22, ll. 3-5\n\n\"Defendant terminated the Agreement without the required thirty days notice, in direct violation of Section 8.1 of the Agreement.\""
+    "text": "Search: \"payment terms\"\nCollection: Acme Corp Partnership | 5 documents, 1,051 chunks searched\nTime: 87ms | Tier: Pro (3-stage pipeline)\n\n--- Result 1 (score: 0.94) ---\nVendor_Agreement.docx, p. 12, para. 8, ll. 1-4\n\n\"Payment shall be made within thirty (30) days of receipt of invoice. Late payments shall accrue interest at a rate of 1.5% per month on the outstanding balance.\"\n\n--- Result 2 (score: 0.89) ---\nVendor_Agreement.docx, p. 13, para. 10, ll. 1-6\n\n\"In the event of early termination, the service provider shall be entitled to recover all outstanding fees, including accrued interest and reasonable costs of transition.\"\n\n--- Result 3 (score: 0.76) ---\nQ3_Report.xlsx, p. 8, para. 22, ll. 3-5\n\n\"Vendor payments exceeded budget by 12% in Q3, primarily due to accelerated delivery schedules under the revised service level agreement.\""
   }]
 }
 ```
@@ -476,17 +478,17 @@ Per-tool error examples are omitted below; all errors follow these patterns.
 ```json
 {
   "name": "find_entity",
-  "description": "Find all mentions of a legal entity (person, court, statute, case citation) across documents. Pro tier only. Uses E11-LEGAL entity embedder.",
+  "description": "Find all mentions of an entity (person, organization, date, amount) across documents. Uses the entity index built during ingestion.",
   "inputSchema": {
     "type": "object",
     "properties": {
       "entity": {
         "type": "string",
-        "description": "Entity to find (e.g., 'Judge Smith', '42 USC 1983', 'Miranda v. Arizona')"
+        "description": "Entity to find (e.g., 'John Smith', 'Acme Corp', '$1.2 million')"
       },
       "entity_type": {
         "type": "string",
-        "enum": ["person", "court", "statute", "case_citation", "organization", "any"],
+        "enum": ["person", "organization", "date", "amount", "location", "concept", "any"],
         "default": "any",
         "description": "Type of entity to search for"
       },
@@ -508,7 +510,7 @@ Per-tool error examples are omitted below; all errors follow these patterns.
 ```json
 {
   "name": "reindex_document",
-  "description": "Rebuild all embeddings, chunks, and search indexes for a single document. Deletes all existing chunks and embeddings for the document, re-extracts text from the original file, re-chunks into 2000-character segments, re-embeds with all active models, and rebuilds the BM25 index. Use this when: (1) a document's source file has been updated on disk, (2) you upgraded to Pro tier and want the document embedded with all 7 models, (3) embeddings seem stale or corrupt, (4) OCR results need refreshing. The original file path stored in provenance is used to re-read the source file.",
+  "description": "Rebuild all embeddings, chunks, and search indexes for a single document. Deletes all existing chunks and embeddings for the document, re-extracts text from the original file, re-chunks into 2000-character segments, re-embeds with all active models, and rebuilds the BM25 index. Use this when: (1) a document's source file has been updated on disk, (2) you upgraded to Pro tier and want the document embedded with all 4 models, (3) embeddings seem stale or corrupt, (4) OCR results need refreshing. The original file path stored in provenance is used to re-read the source file.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -534,19 +536,19 @@ Per-tool error examples are omitted below; all errors follow these patterns.
 
 ---
 
-### 2.15 `reindex_case`
+### 2.15 `reindex_collection`
 
 ```json
 {
-  "name": "reindex_case",
-  "description": "Rebuild all embeddings, chunks, and search indexes for every document in the active case. This is a full rebuild -- it deletes ALL existing chunks and embeddings, re-reads every source file, re-chunks, re-embeds with all active models, and rebuilds the entire BM25 index. Use this when: (1) upgrading from Free to Pro tier (re-embed everything with 7 models instead of 4), (2) after a CaseTrack update that changes chunking or embedding logic, (3) the case index seems corrupted or stale, (4) you want a clean rebuild. WARNING: This can be slow for large cases (hundreds of documents).",
+  "name": "reindex_collection",
+  "description": "Rebuild all embeddings, chunks, and search indexes for every document in the active collection. This is a full rebuild -- it deletes ALL existing chunks and embeddings, re-reads every source file, re-chunks, re-embeds with all active models, and rebuilds the entire BM25 index. Use this when: (1) upgrading from Free to Pro tier (re-embed everything with 4 models instead of 3), (2) after a CaseTrack update that changes chunking or embedding logic, (3) the collection index seems corrupted or stale, (4) you want a clean rebuild. WARNING: This can be slow for large collections (hundreds of documents).",
   "inputSchema": {
     "type": "object",
     "properties": {
       "confirm": {
         "type": "boolean",
         "default": false,
-        "description": "Must be true to confirm. This deletes and rebuilds ALL embeddings in the case."
+        "description": "Must be true to confirm. This deletes and rebuilds ALL embeddings in the collection."
       },
       "reparse": {
         "type": "boolean",
@@ -571,7 +573,7 @@ Per-tool error examples are omitted below; all errors follow these patterns.
 ```json
 {
   "name": "get_index_status",
-  "description": "Show the embedding and index health status for all documents in the active case. Reports which documents have complete embeddings for the current tier, which need reindexing (source file changed, missing embedder coverage, stale embeddings), and overall case index health. Use this to diagnose issues or decide whether to run reindex_document or reindex_case.",
+  "description": "Show the embedding and index health status for all documents in the active collection. Reports which documents have complete embeddings for the current tier, which need reindexing (source file changed, missing embedder coverage, stale embeddings), and overall collection index health. Use this to diagnose issues or decide whether to run reindex_document or reindex_collection.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -625,7 +627,7 @@ Per-tool error examples are omitted below; all errors follow these patterns.
 {
   "content": [{
     "type": "text",
-    "text": "Chunk abc-123 (2000 chars)\n\nText:\n\"Either party may terminate this Agreement upon thirty (30) days written notice to the other party...\"\n\nProvenance:\n  Document:   Contract.pdf\n  File Path:  /Users/sarah/Cases/Smith/Contract.pdf\n  Page:       12\n  Paragraphs: 8-9\n  Lines:      1-14\n  Chars:      2401-4401 (within page)\n  Extraction: Native text\n  Chunk Index: 47 of 234\n\nEmbeddings: E1-Legal, E6-Legal, E7, E8-Legal, E11-Legal, E12"
+    "text": "Chunk abc-123 (2000 chars)\n\nText:\n\"Payment shall be made within thirty (30) days of receipt of invoice. Late payments shall accrue interest...\"\n\nProvenance:\n  Document:   Vendor_Agreement.docx\n  File Path:  /Users/sarah/Projects/Acme/Vendor_Agreement.docx\n  Page:       12\n  Paragraphs: 8-9\n  Lines:      1-14\n  Chars:      2401-4401 (within page)\n  Extraction: Native text\n  Chunk Index: 47 of 234\n\nEmbeddings: E1, E6, E12"
   }]
 }
 ```
@@ -690,7 +692,7 @@ Per-tool error examples are omitted below; all errors follow these patterns.
 ```json
 {
   "name": "watch_folder",
-  "description": "Start watching a folder for file changes. When files are added, modified, or deleted in the watched folder (or any subfolder), CaseTrack automatically syncs the changes into the active case -- new files are ingested, modified files are reindexed (old chunks/embeddings deleted, new ones created), and optionally deleted files are removed from the case. Uses OS-level file notifications (inotify on Linux, FSEvents on macOS, ReadDirectoryChangesW on Windows) for instant detection. Also supports scheduled sync as a safety net (daily, hourly, or custom interval). Watch persists across server restarts.",
+  "description": "Start watching a folder for file changes. When files are added, modified, or deleted in the watched folder (or any subfolder), CaseTrack automatically syncs the changes into the active collection -- new files are ingested, modified files are reindexed (old chunks/embeddings deleted, new ones created), and optionally deleted files are removed from the collection. Uses OS-level file notifications (inotify on Linux, FSEvents on macOS, ReadDirectoryChangesW on Windows) for instant detection. Also supports scheduled sync as a safety net (daily, hourly, or custom interval). Watch persists across server restarts.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -707,12 +709,12 @@ Per-tool error examples are omitted below; all errors follow these patterns.
       "auto_remove_deleted": {
         "type": "boolean",
         "default": false,
-        "description": "If true, documents whose source files are deleted from disk will be automatically removed from the case (chunks + embeddings deleted). Default: false (only add/update, never auto-remove)."
+        "description": "If true, documents whose source files are deleted from disk will be automatically removed from the collection (chunks + embeddings deleted). Default: false (only add/update, never auto-remove)."
       },
       "file_extensions": {
         "type": "array",
         "items": { "type": "string" },
-        "description": "Optional filter: only watch files with these extensions (e.g., [\"pdf\", \"docx\"]). Default: all supported formats."
+        "description": "Optional filter: only watch files with these extensions (e.g., [\"pdf\", \"docx\", \"xlsx\"]). Default: all supported formats."
       }
     },
     "required": ["folder_path"]
@@ -727,7 +729,7 @@ Per-tool error examples are omitted below; all errors follow these patterns.
 ```json
 {
   "name": "unwatch_folder",
-  "description": "Stop watching a folder. Removes the watch but does NOT delete any documents already ingested from that folder. The case data remains intact -- only the automatic sync is stopped.",
+  "description": "Stop watching a folder. Removes the watch but does NOT delete any documents already ingested from that folder. The collection data remains intact -- only the automatic sync is stopped.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -748,13 +750,13 @@ Per-tool error examples are omitted below; all errors follow these patterns.
 ```json
 {
   "name": "list_watches",
-  "description": "List all active folder watches across all cases. Shows the watched folder, which case it syncs to, the schedule, last sync time, and current status.",
+  "description": "List all active folder watches across all collections. Shows the watched folder, which collection it syncs to, the schedule, last sync time, and current status.",
   "inputSchema": {
     "type": "object",
     "properties": {
-      "case_filter": {
+      "collection_filter": {
         "type": "string",
-        "description": "Optional: only show watches for a specific case name or ID"
+        "description": "Optional: only show watches for a specific collection name or ID"
       }
     }
   }
@@ -795,14 +797,14 @@ Per-tool error examples are omitted below; all errors follow these patterns.
 
 ## 2b. Context Graph Tool Specifications
 
-The context graph tools give the AI structured navigation of the case beyond flat search. They are built on the entity, citation, and document graph data extracted during ingestion (see PRD 04 Section 8).
+The context graph tools give the AI structured navigation of the collection beyond flat search. They are built on the entity, reference, and document graph data extracted during ingestion (see PRD 04 Section 8).
 
-### 2.25 `get_case_map`
+### 2.25 `get_collection_summary`
 
 ```json
 {
-  "name": "get_case_map",
-  "description": "Get a high-level briefing on the active case. Returns: all identified parties and their roles, key dates and events, key legal issues, document breakdown by category, most-cited legal authorities, most-mentioned entities, and case statistics. This is the FIRST tool the AI should call when starting work on a case -- it provides the structural overview needed to plan search strategy for 1000+ documents.",
+  "name": "get_collection_summary",
+  "description": "Get a high-level briefing on the active collection. Returns: key stakeholders (people and organizations mentioned most), key dates and events, key topics, document breakdown by category, key references (most-referenced documents or external sources), most-mentioned entities, and collection statistics. This is the FIRST tool the AI should call when starting work on a collection -- it provides the structural overview needed to plan search strategy for 1000+ documents.",
   "inputSchema": {
     "type": "object",
     "properties": {}
@@ -815,19 +817,19 @@ The context graph tools give the AI structured navigation of the case beyond fla
 {
   "content": [{
     "type": "text",
-    "text": "CASE MAP: Smith v. Jones Corp (Contract)\n\n  PARTIES:\n    Plaintiff:  Smith Corp (CEO: John Smith)\n    Defendant:  Jones LLC (CEO: Mary Jones)\n    Judge:      Hon. Robert Anderson, U.S. District Court, S.D.N.Y.\n    Attorneys:  Sarah Chen (Plaintiff), Michael Brown (Defendant)\n\n  KEY DATES:\n    2022-01-15  Contract signed (Contract.pdf, p.1)\n    2023-06-01  Alleged breach (Complaint.pdf, p.5)\n    2023-07-01  Complaint filed (Complaint.pdf, p.1)\n    2023-09-15  Answer filed (Answer.pdf, p.1)\n    2024-01-10  Discovery deadline (Scheduling_Order.pdf, p.2)\n    2024-06-15  Trial date (Scheduling_Order.pdf, p.3)\n\n  KEY LEGAL ISSUES:\n    1. Breach of non-compete clause (§4.2) -- 23 documents, 187 chunks\n    2. Damages calculation -- 18 documents, 145 chunks\n    3. Injunctive relief eligibility -- 8 documents, 42 chunks\n    4. Attorney's fees -- 5 documents, 28 chunks\n\n  DOCUMENTS (47 total, 2,341 pages, 12,450 chunks):\n    Pleadings:       5 docs (Complaint, Answer, Motions...)\n    Discovery:      20 docs (Interrogatories, Depositions...)\n    Exhibits:       15 docs (Contracts, Emails, Invoices...)\n    Correspondence:  7 docs (Settlement letters, Notices...)\n\n  TOP AUTHORITIES (most cited):\n    1. 42 U.S.C. § 1983 -- 47 citations across 15 documents\n    2. Fed. R. Civ. P. 12(b)(6) -- 23 citations across 8 documents\n    3. Smith v. Board of Regents, 429 U.S. 438 -- 12 citations across 6 documents\n\n  TOP ENTITIES:\n    Smith Corp -- 892 mentions in 45 documents\n    Jones LLC -- 756 mentions in 42 documents\n    John Smith -- 234 mentions in 28 documents\n    Non-compete agreement -- 187 mentions in 23 documents\n\n  EMBEDDINGS: 7/7 embedders (Pro tier), all 12,450 chunks fully embedded"
+    "text": "COLLECTION SUMMARY: Acme Corp Partnership (Contract)\n\n  KEY STAKEHOLDERS:\n    Client:     Acme Corp (CEO: John Smith)\n    Vendor:     Summit Services LLC (CEO: Mary Jones)\n    Analysts:   Sarah Chen (Acme), Michael Brown (Summit)\n\n  KEY DATES:\n    2022-01-15  Contract signed (Vendor_Agreement.docx, p.1)\n    2023-06-01  Service level review (Q3_Report.xlsx, p.5)\n    2023-07-01  Renewal proposal submitted (Proposal.pdf, p.1)\n    2023-09-15  Budget approved (Budget.xlsx, p.1)\n    2024-01-10  Q1 deliverables deadline (Status_Report.docx, p.2)\n    2024-06-15  Partnership review date (Meeting_Notes.pdf, p.3)\n\n  KEY TOPICS:\n    1. Service level agreement compliance -- 23 documents, 187 chunks\n    2. Payment terms and schedules -- 18 documents, 145 chunks\n    3. Vendor performance metrics -- 8 documents, 42 chunks\n    4. Cost optimization -- 5 documents, 28 chunks\n\n  DOCUMENTS (47 total, 2,341 pages, 12,450 chunks):\n    Contracts:       5 docs (Vendor Agreement, Service Contract, Amendments...)\n    Reports:        20 docs (Q3 Report, Performance Reviews, Audits...)\n    Financials:     15 docs (Budgets, Invoices, Cost Analyses...)\n    Correspondence:  7 docs (Meeting Notes, Status Updates, Memos...)\n\n  KEY REFERENCES (most cited):\n    1. Master Service Agreement v2.1 -- 47 references across 15 documents\n    2. SLA Framework 2023 -- 23 references across 8 documents\n    3. Industry Benchmark Report -- 12 references across 6 documents\n\n  TOP ENTITIES:\n    Acme Corp -- 892 mentions in 45 documents\n    Summit Services LLC -- 756 mentions in 42 documents\n    John Smith -- 234 mentions in 28 documents\n    Service level agreement -- 187 mentions in 23 documents\n\n  EMBEDDINGS: 4/4 embedders (Pro tier), all 12,450 chunks fully embedded"
   }]
 }
 ```
 
 ---
 
-### 2.26 `get_case_timeline`
+### 2.26 `get_collection_timeline`
 
 ```json
 {
-  "name": "get_case_timeline",
-  "description": "Get a chronological timeline of key dates and events extracted from documents in the active case. Each event includes the date, description, and source document/chunk provenance. Use this to understand the narrative sequence of the case.",
+  "name": "get_collection_timeline",
+  "description": "Get a chronological timeline of key dates and events extracted from documents in the active collection. Each event includes the date, description, and source document/chunk provenance. Use this to understand the narrative sequence of events.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -846,12 +848,12 @@ The context graph tools give the AI structured navigation of the case beyond fla
 
 ---
 
-### 2.27 `get_case_statistics`
+### 2.27 `get_collection_statistics`
 
 ```json
 {
-  "name": "get_case_statistics",
-  "description": "Get detailed statistics about the active case: document counts by type, page/chunk totals, entity and citation counts, embedder coverage, storage usage. Useful for understanding case scope and data quality.",
+  "name": "get_collection_statistics",
+  "description": "Get detailed statistics about the active collection: document counts by type, page/chunk totals, entity and reference counts, embedder coverage, storage usage. Useful for understanding collection scope and data quality.",
   "inputSchema": {
     "type": "object",
     "properties": {}
@@ -866,13 +868,13 @@ The context graph tools give the AI structured navigation of the case beyond fla
 ```json
 {
   "name": "list_entities",
-  "description": "List all entities extracted from documents in the active case, grouped by type. Shows name, type, mention count, and number of documents mentioning each entity. Entities include: persons, organizations, courts, statutes, case citations, dates, monetary amounts, and legal concepts.",
+  "description": "List all entities extracted from documents in the active collection, grouped by type. Shows name, type, mention count, and number of documents mentioning each entity. Entities include: persons, organizations, dates, monetary amounts, locations, and concepts.",
   "inputSchema": {
     "type": "object",
     "properties": {
       "entity_type": {
         "type": "string",
-        "enum": ["person", "organization", "court", "statute", "case_citation", "date", "monetary_amount", "legal_concept", "all"],
+        "enum": ["person", "organization", "date", "amount", "location", "concept", "all"],
         "default": "all",
         "description": "Filter by entity type"
       },
@@ -906,11 +908,11 @@ The context graph tools give the AI structured navigation of the case beyond fla
     "properties": {
       "entity_name": {
         "type": "string",
-        "description": "Name of the entity to find (e.g., 'John Smith', '42 USC 1983', 'breach of contract')"
+        "description": "Name of the entity to find (e.g., 'John Smith', 'Acme Corp', 'payment terms')"
       },
       "entity_type": {
         "type": "string",
-        "enum": ["person", "organization", "court", "statute", "case_citation", "date", "monetary_amount", "legal_concept", "any"],
+        "enum": ["person", "organization", "date", "amount", "location", "concept", "any"],
         "default": "any"
       },
       "top_k": {
@@ -929,7 +931,7 @@ The context graph tools give the AI structured navigation of the case beyond fla
 {
   "content": [{
     "type": "text",
-    "text": "Mentions of \"John Smith\" (person) -- 234 total, showing top 20:\n\n  1. Complaint.pdf, p.2, para.3\n     \"Plaintiff JOHN SMITH, CEO of Smith Corp, brings this action...\"\n\n  2. Deposition_Smith.pdf, p.15, para.8\n     \"Q: Mr. Smith, when did you first learn of the alleged breach?\"\n     \"A: I received a call from our VP on March 10, 2023...\"\n\n  3. Contract.pdf, p.12, para.1 (signature block)\n     \"John Smith, Chief Executive Officer, Smith Corp\"\n\n  ... 17 more mentions"
+    "text": "Mentions of \"John Smith\" (person) -- 234 total, showing top 20:\n\n  1. Proposal.pdf, p.2, para.3\n     \"John Smith, CEO of Acme Corp, presented the partnership proposal...\"\n\n  2. Meeting_Notes.pdf, p.15, para.8\n     \"Q: Mr. Smith, when did you first review the vendor performance report?\"\n     \"A: I received the summary from our VP on March 10, 2023...\"\n\n  3. Vendor_Agreement.docx, p.12, para.1 (signature block)\n     \"John Smith, Chief Executive Officer, Acme Corp\"\n\n  ... 17 more mentions"
   }]
 }
 ```
@@ -941,7 +943,7 @@ The context graph tools give the AI structured navigation of the case beyond fla
 ```json
 {
   "name": "search_entity_relationships",
-  "description": "Find chunks where two or more entities are mentioned together. Use this to trace relationships (who interacted with whom, what statute applies to which party). Pro tier only.",
+  "description": "Find chunks where two or more entities are mentioned together. Use this to trace relationships (who interacted with whom, what terms apply to which party). Pro tier only.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -950,7 +952,7 @@ The context graph tools give the AI structured navigation of the case beyond fla
         "items": { "type": "string" },
         "minItems": 2,
         "maxItems": 5,
-        "description": "Entity names to find together (e.g., ['Smith Corp', 'Jones LLC'])"
+        "description": "Entity names to find together (e.g., ['Acme Corp', 'Summit Services'])"
       },
       "top_k": {
         "type": "integer",
@@ -965,18 +967,51 @@ The context graph tools give the AI structured navigation of the case beyond fla
 
 ---
 
-### 2.31 `list_authorities`
+### 2.31 `get_entity_graph`
 
 ```json
 {
-  "name": "list_authorities",
-  "description": "List all legal authorities (statutes, case law, rules, regulations) cited in the active case. Shows the authority, type, citation count, and number of citing documents. Use this to understand which legal authorities matter most in the case.",
+  "name": "get_entity_graph",
+  "description": "Show entity relationships across documents in the active collection. Returns a graph of entities connected by co-occurrence in documents and chunks. Use this to understand how people, organizations, and concepts relate to each other across the collection.",
   "inputSchema": {
     "type": "object",
     "properties": {
-      "authority_type": {
+      "entity_name": {
         "type": "string",
-        "enum": ["federal_statute", "state_statute", "federal_rule", "state_rule", "case_law", "regulation", "all"],
+        "description": "Optional: center the graph on a specific entity. If omitted, returns the top entities by connectivity."
+      },
+      "depth": {
+        "type": "integer",
+        "default": 2,
+        "minimum": 1,
+        "maximum": 4,
+        "description": "How many relationship hops to include from the center entity"
+      },
+      "top_k": {
+        "type": "integer",
+        "default": 20,
+        "maximum": 100,
+        "description": "Maximum entities to include in the graph"
+      }
+    }
+  }
+}
+```
+
+---
+
+### 2.32 `list_references`
+
+```json
+{
+  "name": "list_references",
+  "description": "List all referenced external sources (documents, standards, regulations, reports) cited in the active collection. Shows the reference, type, citation count, and number of citing documents. Use this to understand which external sources matter most in the collection.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "reference_type": {
+        "type": "string",
+        "enum": ["document", "standard", "regulation", "report", "all"],
         "default": "all"
       },
       "sort_by": {
@@ -996,23 +1031,18 @@ The context graph tools give the AI structured navigation of the case beyond fla
 
 ---
 
-### 2.32 `get_authority_citations`
+### 2.33 `get_reference_citations`
 
 ```json
 {
-  "name": "get_authority_citations",
-  "description": "Get all chunks that cite a specific legal authority. Shows the context of each citation and the treatment (cited, followed, distinguished, overruled). Use this to understand how an authority is used throughout the case.",
+  "name": "get_reference_citations",
+  "description": "Get all chunks that cite a specific reference. Shows the context of each citation. Use this to understand how a reference is used throughout the collection.",
   "inputSchema": {
     "type": "object",
     "properties": {
-      "authority": {
+      "reference": {
         "type": "string",
-        "description": "The legal authority to look up (e.g., '42 USC 1983', 'Miranda v. Arizona')"
-      },
-      "treatment_filter": {
-        "type": "string",
-        "enum": ["cited", "followed", "distinguished", "overruled", "discussed", "all"],
-        "default": "all"
+        "description": "The reference to look up (e.g., 'Master Service Agreement v2.1', 'ISO 27001')"
       },
       "top_k": {
         "type": "integer",
@@ -1020,19 +1050,19 @@ The context graph tools give the AI structured navigation of the case beyond fla
         "maximum": 100
       }
     },
-    "required": ["authority"]
+    "required": ["reference"]
   }
 }
 ```
 
 ---
 
-### 2.33 `get_document_structure`
+### 2.34 `get_document_structure`
 
 ```json
 {
   "name": "get_document_structure",
-  "description": "Get the structural outline of a document: headings, sections, numbered clauses, and their page/chunk locations. This gives the AI a table-of-contents view for navigation. Works best with structured documents (contracts, briefs, statutes).",
+  "description": "Get the structural outline of a document: headings, sections, numbered clauses, and their page/chunk locations. This gives the AI a table-of-contents view for navigation. Works best with structured documents (contracts, reports, policies).",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -1048,7 +1078,7 @@ The context graph tools give the AI structured navigation of the case beyond fla
 
 ---
 
-### 2.34 `browse_pages`
+### 2.35 `browse_pages`
 
 ```json
 {
@@ -1079,12 +1109,12 @@ The context graph tools give the AI structured navigation of the case beyond fla
 
 ---
 
-### 2.35 `find_related_documents`
+### 2.36 `find_related_documents`
 
 ```json
 {
   "name": "find_related_documents",
-  "description": "Find documents related to a given document. Relationships detected: shared entities, shared legal authorities, semantic similarity (E1 cosine), response chains (complaint->answer->reply), and amendment chains. Returns related documents ranked by relationship strength.",
+  "description": "Find documents related to a given document. Relationships detected: shared entities, shared references, semantic similarity (E1 cosine), and version chains. Returns related documents ranked by relationship strength.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -1094,7 +1124,7 @@ The context graph tools give the AI structured navigation of the case beyond fla
       },
       "relationship_type": {
         "type": "string",
-        "enum": ["all", "shared_entities", "shared_authorities", "semantic_similar", "response_chain", "amendment_chain"],
+        "enum": ["all", "shared_entities", "shared_references", "semantic_similar", "version_chain"],
         "default": "all"
       },
       "top_k": {
@@ -1110,18 +1140,44 @@ The context graph tools give the AI structured navigation of the case beyond fla
 
 ---
 
-### 2.36 `list_documents_by_type`
+### 2.37 `get_related_documents`
+
+```json
+{
+  "name": "get_related_documents",
+  "description": "Given a document, find related docs via the knowledge graph. Uses shared entities, references, and semantic similarity to surface connections. This is a knowledge-graph-first approach compared to find_related_documents which also supports explicit relationship types.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "document_name": {
+        "type": "string",
+        "description": "Document name or ID"
+      },
+      "top_k": {
+        "type": "integer",
+        "default": 10,
+        "maximum": 50
+      }
+    },
+    "required": ["document_name"]
+  }
+}
+```
+
+---
+
+### 2.38 `list_documents_by_type`
 
 ```json
 {
   "name": "list_documents_by_type",
-  "description": "List all documents in the active case filtered by document type (pleading, discovery, exhibit, etc.). Includes page count, chunk count, and ingestion date.",
+  "description": "List all documents in the active collection filtered by document type (contract, report, spreadsheet, etc.). Includes page count, chunk count, and ingestion date.",
   "inputSchema": {
     "type": "object",
     "properties": {
       "document_type": {
         "type": "string",
-        "enum": ["pleading", "motion", "brief", "contract", "exhibit", "correspondence", "deposition", "discovery", "statute", "case_law", "other"],
+        "enum": ["contract", "report", "spreadsheet", "presentation", "correspondence", "memo", "proposal", "invoice", "policy", "other"],
         "description": "Type to filter by"
       }
     },
@@ -1132,7 +1188,7 @@ The context graph tools give the AI structured navigation of the case beyond fla
 
 ---
 
-### 2.37 `traverse_chunks`
+### 2.39 `traverse_chunks`
 
 ```json
 {
@@ -1166,12 +1222,12 @@ The context graph tools give the AI structured navigation of the case beyond fla
 
 ---
 
-### 2.38 `search_similar_chunks`
+### 2.40 `search_similar_chunks`
 
 ```json
 {
   "name": "search_similar_chunks",
-  "description": "Find chunks across all documents that are semantically similar to a given chunk. Uses E1 cosine similarity. Use this to find related passages in other documents (e.g., 'find other places in the case that discuss the same issue as this paragraph').",
+  "description": "Find chunks across all documents that are semantically similar to a given chunk. Uses E1 cosine similarity. Use this to find related passages in other documents (e.g., 'find other places in the collection that discuss the same topic as this paragraph').",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -1204,12 +1260,12 @@ The context graph tools give the AI structured navigation of the case beyond fla
 
 ---
 
-### 2.39 `compare_documents`
+### 2.41 `compare_documents`
 
 ```json
 {
   "name": "compare_documents",
-  "description": "Compare what two documents say about a specific topic. Searches both documents independently, then returns side-by-side results showing how each document addresses the topic. Pro tier only. Use this for: contract vs. complaint comparison, deposition A vs. deposition B, any 'what does X say vs. what does Y say' question.",
+  "description": "Compare what two documents say about a specific topic. Searches both documents independently, then returns side-by-side results showing how each document addresses the topic. Pro tier only. Use this for: contract vs. proposal comparison, report A vs. report B, any 'what does X say vs. what does Y say' question.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -1223,7 +1279,7 @@ The context graph tools give the AI structured navigation of the case beyond fla
       },
       "topic": {
         "type": "string",
-        "description": "Topic to compare (e.g., 'termination provisions', 'damages', 'breach of duty')"
+        "description": "Topic to compare (e.g., 'payment terms', 'delivery schedule', 'performance metrics')"
       },
       "top_k_per_document": {
         "type": "integer",
@@ -1238,20 +1294,20 @@ The context graph tools give the AI structured navigation of the case beyond fla
 
 ---
 
-### 2.40 `find_document_clusters`
+### 2.42 `find_document_clusters`
 
 ```json
 {
   "name": "find_document_clusters",
-  "description": "Group all documents in the case by theme or topic using semantic clustering. Returns clusters of related documents with a label describing what they share. Pro tier only. Use this to understand the structure of a large case (100+ documents) at a glance.",
+  "description": "Group all documents in the collection by theme or topic using semantic clustering. Returns clusters of related documents with a label describing what they share. Pro tier only. Use this to understand the structure of a large collection (100+ documents) at a glance.",
   "inputSchema": {
     "type": "object",
     "properties": {
       "strategy": {
         "type": "string",
-        "enum": ["topical", "entity", "authority", "document_type"],
+        "enum": ["topical", "entity", "reference", "document_type"],
         "default": "topical",
-        "description": "Clustering strategy: 'topical' = semantic similarity, 'entity' = shared parties, 'authority' = shared citations, 'document_type' = by type"
+        "description": "Clustering strategy: 'topical' = semantic similarity, 'entity' = shared people/orgs, 'reference' = shared external sources, 'document_type' = by type"
       },
       "max_clusters": {
         "type": "integer",
@@ -1278,7 +1334,7 @@ pub struct WatchManager {
 
 struct ActiveWatch {
     config: FolderWatch,
-    case_handle: Arc<CaseHandle>,
+    collection_handle: Arc<CollectionHandle>,
 }
 
 enum FsEventKind { Created, Modified, Deleted }
@@ -1290,9 +1346,9 @@ For full implementation details (server initialization, tool registration, error
 
 ---
 
-## 4. Active Case State
+## 4. Active Collection State
 
-The server maintains an "active case" that all document and search operations target. The server starts with no active case; `create_case` automatically switches to the new case, and `switch_case` explicitly changes it. Tools requiring a case return a `NoCaseActive` error if none is set. The active case persists for the MCP session duration but not across sessions.
+The server maintains an "active collection" that all document and search operations target. The server starts with no active collection; `create_collection` automatically switches to the new collection, and `switch_collection` explicitly changes it. Tools requiring a collection return a `NoCollectionActive` error if none is set. The active collection persists for the MCP session duration but not across sessions.
 
 ---
 

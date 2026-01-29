@@ -51,8 +51,8 @@ casetrack/
 |           |-- lib.rs
 |           |-- error.rs
 |           |-- config.rs
-|           |-- case/            # registry, handle, model
-|           |-- document/        # pdf, docx, ocr, chunker, model
+|           |-- collection/      # registry, handle, model
+|           |-- document/        # pdf, docx, xlsx, ocr, chunker, model
 |           |-- embedding/       # engine, models, download, types
 |           |-- search/          # engine, bm25, ranking, result
 |           |-- provenance/      # citation formatting
@@ -60,13 +60,14 @@ casetrack/
 |           +-- license/         # validator (ed25519)
 |-- tests/
 |   |-- integration/
-|   |   |-- test_case_lifecycle.rs
+|   |   |-- test_collection_lifecycle.rs
 |   |   |-- test_ingest_pdf.rs
 |   |   |-- test_search.rs
 |   |   +-- test_mcp_tools.rs
 |   +-- fixtures/
 |       |-- sample.pdf
 |       |-- sample.docx
+|       |-- sample.xlsx
 |       +-- scanned.png
 +-- docs/prd/
 ```
@@ -83,7 +84,7 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.75"
 license = "LicenseRef-Commercial"
-repository = "https://github.com/casetrack-legal/casetrack"
+repository = "https://github.com/casetrack-dev/casetrack"
 
 [workspace.dependencies]
 rmcp = { version = "0.13", features = ["server", "transport-io", "macros"] }
@@ -96,6 +97,7 @@ ort = { version = "2.0", features = ["download-binaries"] }
 pdf-extract = "0.7"
 lopdf = "0.32"
 docx-rs = "0.4"
+calamine = "0.24"
 image = "0.25"
 tesseract = { version = "0.14", optional = true }
 hf-hub = "0.3"
@@ -169,6 +171,7 @@ ort.workspace = true
 pdf-extract.workspace = true
 lopdf.workspace = true
 docx-rs.workspace = true
+calamine.workspace = true
 image.workspace = true
 tesseract = { workspace = true, optional = true }
 hf-hub.workspace = true
@@ -244,7 +247,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "casetrack", about = "Legal document analysis MCP server for Claude", version)]
+#[command(name = "casetrack", about = "Document intelligence MCP server for Claude", version)]
 pub struct Args {
     #[arg(long, env = "CASETRACK_HOME")]
     pub data_dir: Option<PathBuf>,
@@ -286,15 +289,15 @@ use uuid::Uuid;
 
 #[derive(Error, Debug)]
 pub enum CaseTrackError {
-    // === Case Errors ===
-    #[error("Case not found: {0}")]
-    CaseNotFound(Uuid),
+    // === Collection Errors ===
+    #[error("Collection not found: {0}")]
+    CollectionNotFound(Uuid),
 
-    #[error("No active case. Create or switch to a case first.")]
-    NoCaseActive,
+    #[error("No active collection. Create or switch to a collection first.")]
+    NoCollectionActive,
 
-    #[error("Case name not found: \"{0}\"")]
-    CaseNameNotFound(String),
+    #[error("Collection name not found: \"{0}\"")]
+    CollectionNameNotFound(String),
 
     // === Document Errors ===
     #[error("Document not found: {0}")]
@@ -316,6 +319,10 @@ pub enum CaseTrackError {
     // === DOCX Errors ===
     #[error("DOCX parse error for {}: {source}", .path.display())]
     DocxParseError { path: PathBuf, source: String },
+
+    // === XLSX Errors ===
+    #[error("XLSX parse error for {}: {source}", .path.display())]
+    XlsxParseError { path: PathBuf, source: String },
 
     // === OCR Errors ===
     #[error("OCR not available (build without OCR feature)")]
@@ -341,8 +348,8 @@ pub enum CaseTrackError {
     #[error("Registry database failed to open: {source}")]
     RegistryOpenFailed { source: rocksdb::Error },
 
-    #[error("Case database failed to open at {}: {source}", .path.display())]
-    CaseDbOpenFailed { path: PathBuf, source: rocksdb::Error },
+    #[error("Collection database failed to open at {}: {source}", .path.display())]
+    CollectionDbOpenFailed { path: PathBuf, source: rocksdb::Error },
 
     #[error("Database schema version {found} is newer than supported version {supported}. Update CaseTrack.")]
     FutureSchemaVersion { found: u32, supported: u32 },
@@ -355,7 +362,7 @@ pub enum CaseTrackError {
     ChunkNotFound(Uuid),
 
     // === License Errors ===
-    #[error("Free tier limit: {resource} ({current}/{max}). Upgrade: https://casetrack.legal/upgrade")]
+    #[error("Free tier limit: {resource} ({current}/{max}). Upgrade: https://casetrack.dev/upgrade")]
     FreeTierLimit { resource: String, current: u32, max: u32 },
 
     #[error("Invalid license key format")]
@@ -386,7 +393,7 @@ pub type Result<T> = std::result::Result<T, CaseTrackError>;
 1. **Specific**: Every error tells you exactly what went wrong
 2. **Actionable**: Every error tells you what to do about it
 3. **No silent failures**: Every operation returns `Result<T>`
-4. **User-facing errors include guidance**: "Create or switch to a case first"
+4. **User-facing errors include guidance**: "Create or switch to a collection first"
 5. **Internal errors include report URL**: "Please report this at github.com/..."
 
 ---
@@ -424,7 +431,7 @@ Logging goes to stderr (stdout is MCP transport). Controlled by `RUST_LOG` env v
 |-------|-------|
 | ERROR | Failures preventing operations (file not found, DB corruption) |
 | WARN  | Degraded functionality (low memory, OCR disabled) |
-| INFO  | Normal operations (server started, case created, search completed) |
+| INFO  | Normal operations (server started, collection created, search completed) |
 | DEBUG | Internal details (model loading times, RocksDB stats) |
 | TRACE | Verbose (individual chunk embeddings, token counts) |
 
@@ -502,6 +509,10 @@ pub fn validate_write_path(path: &Path, data_dir: &Path) -> Result<PathBuf> {
 
 After initial model download and license activation, CaseTrack makes zero network requests. Document processing, search, and storage are 100% local. Update checks are optional and non-blocking.
 
+### 8.4 Data Privacy and Confidentiality
+
+All documents and embeddings are stored locally on the user's machine. CaseTrack never transmits document content, metadata, or search queries to any external service. This ensures data privacy and confidentiality for sensitive business documents.
+
 ---
 
 ## 9. Testing Strategy
@@ -543,6 +554,11 @@ mod tests {
     fn test_no_orphaned_embeddings() { ... }
     fn test_no_chunk_without_provenance() { ... }
 
+    // Document parsers
+    fn test_pdf_extraction() { ... }
+    fn test_docx_extraction() { ... }
+    fn test_xlsx_extraction() { ... }
+
     // RRF, cosine similarity, license
     fn test_rrf_fusion() { ... }
     fn test_cosine_identical_vectors() { ... }
@@ -555,35 +571,35 @@ mod tests {
 ### 9.2 Integration Tests
 
 ```rust
-// tests/integration/test_case_lifecycle.rs
+// tests/integration/test_collection_lifecycle.rs
 #[tokio::test]
-async fn test_create_list_switch_delete_case() {
+async fn test_create_list_switch_delete_collection() {
     let dir = tempdir().unwrap();
-    let mut registry = CaseRegistry::open(dir.path()).unwrap();
+    let mut registry = CollectionRegistry::open(dir.path()).unwrap();
 
-    let case = registry.create_case(CreateCaseParams {
-        name: "Test Case".to_string(),
-        case_number: None,
-        case_type: Some(CaseType::Contract),
+    let collection = registry.create_collection(CreateCollectionParams {
+        name: "Project Alpha".to_string(),
+        collection_id: None,
+        collection_type: Some(CollectionType::Contract),
     }).unwrap();
-    assert_eq!(case.name, "Test Case");
+    assert_eq!(collection.name, "Project Alpha");
 
-    let cases = registry.list_cases().unwrap();
-    assert_eq!(cases.len(), 1);
+    let collections = registry.list_collections().unwrap();
+    assert_eq!(collections.len(), 1);
 
-    let handle = registry.switch_case(case.id).unwrap();
-    assert_eq!(registry.active_case_id(), Some(case.id));
+    let handle = registry.switch_collection(collection.id).unwrap();
+    assert_eq!(registry.active_collection_id(), Some(collection.id));
 
     drop(handle);
-    registry.delete_case(case.id).unwrap();
-    assert_eq!(registry.list_cases().unwrap().len(), 0);
+    registry.delete_collection(collection.id).unwrap();
+    assert_eq!(registry.list_collections().unwrap().len(), 0);
 }
 
 // tests/integration/test_search.rs
 #[tokio::test]
 async fn test_search_returns_relevant_results() {
-    // Setup: create case, ingest sample PDF with known content
-    let results = search_engine.search(&case_handle, "termination clause", 10, None).unwrap();
+    // Setup: create collection, ingest sample PDF with known content
+    let results = search_engine.search(&collection_handle, "payment terms", 10, None).unwrap();
 
     assert!(!results.is_empty());
     assert!(results[0].score > 0.5);
@@ -599,9 +615,9 @@ async fn test_search_returns_relevant_results() {
 }
 
 #[tokio::test]
-async fn test_case_isolation() {
-    // Verify chunks from one case never appear in another case's search
-    // Ingest into Case A, search Case B -- must return zero results
+async fn test_collection_isolation() {
+    // Verify chunks from one collection never appear in another collection's search
+    // Ingest into Collection A, search Collection B -- must return zero results
 }
 ```
 
@@ -609,6 +625,7 @@ async fn test_case_isolation() {
 
 - `sample.pdf` -- 3-page PDF with known contract terms
 - `sample.docx` -- Word document with headings, paragraphs, lists
+- `sample.xlsx` -- Spreadsheet with financial data and multiple sheets
 - `scanned.png` -- Image of typed text for OCR testing
 - `empty.pdf` -- Edge case: empty PDF
 - `large_paragraph.txt` -- Edge case: single paragraph >2000 characters
@@ -733,15 +750,14 @@ jobs:
 
 ### 11.1 Pricing Tiers
 
-| Tier | Price | Cases | Docs/Case | Embedders | Key Features |
-|------|-------|-------|-----------|-----------|-------------|
-| Free | $0 | 3 | 100 | 4 (E1,E6,E7,E13) | Basic search, provenance |
-| Pro | $29/mo | Unlimited | Unlimited | 7 (all) | ColBERT rerank, entities, batch ingest |
-| Firm | $99/mo | Unlimited | Unlimited | 7 (all) | 5 seats, phone support |
+| Tier | Price | Collections | Docs/Collection | Embedders | Key Features |
+|------|-------|-------------|-----------------|-----------|-------------|
+| Free | $0 | 3 | 100 | 2 (E1, E6) | BM25, basic search, provenance |
+| Pro | $29/mo | Unlimited | Unlimited | 3 (+ E12) | ColBERT rerank, auto-sync, priority support |
 
 ### 11.2 License Key System
 
-See [PRD 07](PRD_07_CASE_MANAGEMENT.md) for details. Key points: ed25519 offline validation, online activation via Lemon Squeezy on first use, 30-day cache, graceful degradation to Free tier on failure.
+See [PRD 07](PRD_07_COLLECTION_MANAGEMENT.md) for details. Key points: ed25519 offline validation, online activation via Lemon Squeezy on first use, 30-day cache, graceful degradation to Free tier on failure.
 
 ---
 
@@ -758,17 +774,17 @@ PROJECT SETUP
   [ ] Implement config + CLI parsing (config.rs, cli.rs)
   [ ] Set up tracing/logging to stderr
 
-CASE MANAGEMENT
-  [ ] Implement Case, CaseType, CaseStatus structs
-  [ ] Implement CaseRegistry (create, list, switch, delete)
-  [ ] Implement CaseHandle (open case DB, column families)
+COLLECTION MANAGEMENT
+  [ ] Implement Collection, CollectionType, CollectionStatus structs
+  [ ] Implement CollectionRegistry (create, list, switch, delete)
+  [ ] Implement CollectionHandle (open collection DB, column families)
   [ ] RocksDB configuration (rocks_options)
   [ ] Schema versioning (check_and_migrate)
-  [ ] Unit tests for case operations
+  [ ] Unit tests for collection operations
 
 MCP SERVER SKELETON
   [ ] Set up rmcp server with stdio transport
-  [ ] Register create_case, list_cases, switch_case, delete_case tools
+  [ ] Register create_collection, list_collections, switch_collection, delete_collection tools
   [ ] Test with Claude Code manually
 ```
 
@@ -786,15 +802,21 @@ DOCX PROCESSING
   [ ] Paragraph and heading extraction
   [ ] Section break handling
 
+XLSX PROCESSING
+  [ ] Implement XlsxProcessor (calamine crate)
+  [ ] Sheet enumeration and cell extraction
+  [ ] Table structure preservation
+  [ ] Header row detection
+
 CHUNKING (2000-character chunks, 10% overlap -- see PRD 06)
-  [ ] Implement LegalChunker (2000-char target, 200-char overlap, paragraph-aware)
+  [ ] Implement DocumentChunker (2000-char target, 200-char overlap, paragraph-aware)
   [ ] Character counting (not token-based)
   [ ] Long paragraph splitting (>2200 chars)
   [ ] Provenance attachment per chunk (file path, document name, page, paragraph, line, char offsets)
   [ ] Chunk boundary validation (min 400 chars, max 2200 chars)
 
-STORAGE (Per-case isolated databases -- see PRD 04)
-  [ ] Store chunks in RocksDB (one DB per case)
+STORAGE (Per-collection isolated databases -- see PRD 04)
+  [ ] Store chunks in RocksDB (one DB per collection)
   [ ] Store document metadata
   [ ] Store provenance records (full path, page, paragraph, line, char offsets per chunk)
   [ ] Duplicate detection (SHA256)
@@ -814,9 +836,8 @@ MODEL MANAGEMENT
 
 EMBEDDING ENGINE
   [ ] ONNX Runtime setup (Environment, Session)
-  [ ] E1-LEGAL (bge-small dense embedding)
-  [ ] E7 (MiniLM dense embedding)
-  [ ] E6-LEGAL (SPLADE sparse embedding)
+  [ ] E1 (bge-small dense embedding)
+  [ ] E6 (SPLADE sparse embedding)
   [ ] Batch embedding for ingestion
   [ ] Store embeddings in RocksDB
 
@@ -828,9 +849,9 @@ BM25 INDEX
 
 SEARCH ENGINE
   [ ] Stage 1: BM25 recall
-  [ ] Stage 2: Semantic ranking (E1 + E6 + E7 via RRF)
+  [ ] Stage 2: Semantic ranking (E1 + E6 via RRF)
   [ ] Cosine similarity, sparse dot product
-  [ ] search_case MCP tool
+  [ ] search_documents MCP tool
   [ ] Result formatting with citations
 ```
 
@@ -838,12 +859,8 @@ SEARCH ENGINE
 
 ```
 PRO EMBEDDERS
-  [ ] E8-LEGAL (citation embedding)
-  [ ] E11-LEGAL (entity embedding)
   [ ] E12 (ColBERT token-level)
-  [ ] Stage 3: Multi-signal boost
-  [ ] Stage 4: ColBERT rerank (MaxSim)
-  [ ] find_entity MCP tool
+  [ ] Stage 3: ColBERT rerank (MaxSim)
 
 LICENSE SYSTEM
   [ ] ed25519 key validation
@@ -864,7 +881,7 @@ FOLDER INGESTION & SYNC
 
 REINDEXING & EMBEDDING FRESHNESS
   [ ] reindex_document tool (delete old chunks/embeddings, re-extract, re-chunk, re-embed)
-  [ ] reindex_case tool (full rebuild of all documents in a case)
+  [ ] reindex_collection tool (full rebuild of all documents in a collection)
   [ ] reparse=false mode (keep chunks, rebuild embeddings only -- fast tier upgrade path)
   [ ] skip_unchanged mode (only reindex docs whose source SHA256 changed or embeddings incomplete)
   [ ] get_index_status tool (health check: per-document embedder coverage, SHA256 staleness)
@@ -896,69 +913,75 @@ AUTO-SYNC & FOLDER WATCHING (see PRD 09 Section 3)
 ENTITY EXTRACTION (runs during ingestion, after chunking)
   [ ] Entity extraction pipeline (post-chunk processing step)
   [ ] Regex-based extractors:
-      - Case citations (e.g., "Smith v. Jones, 123 F.3d 456 (9th Cir. 2020)")
-      - Statute references (e.g., "42 U.S.C. § 1983")
-      - Date patterns (filed dates, hearing dates, deadlines)
+      - Date patterns (deadlines, milestones, event dates)
       - Monetary amounts ("$1,250,000.00", "1.25 million dollars")
-  [ ] NER-based extractors (reuse E11-Legal embedder):
-      - Person names (parties, attorneys, judges, witnesses)
-      - Organization names (companies, agencies, courts)
-      - Court names and jurisdictions
-      - Legal concepts and doctrines
+      - Location references (addresses, regions, countries)
+  [ ] NER-based extractors:
+      - Person names (stakeholders, contacts, signatories)
+      - Organization names (companies, agencies, departments)
+      - Concepts and topics (domain-specific terms)
   [ ] Entity deduplication (same entity across chunks/documents)
   [ ] Entity storage in `entities` and `entity_index` column families
   [ ] EntityMention records linking entities to chunks with char offsets
 
-CITATION EXTRACTION & NETWORK
-  [ ] Citation parser (regex for Bluebook, neutral citations, statute refs)
-  [ ] Citation normalization (canonical form for dedup)
-  [ ] CitationRecord storage with source_doc, target, treatment
-  [ ] CitationTreatment detection (Cited, Followed, Distinguished, Overruled, Discussed)
-  [ ] Authority type classification (Case, Statute, Regulation, SecondarySource)
-  [ ] Citation network storage in `citations` column family
-  [ ] Cross-document citation linking (Doc A cites same authority as Doc B)
+REFERENCE EXTRACTION & NETWORK
+  [ ] Reference parser (regex for document references, standards, external sources)
+  [ ] Reference normalization (canonical form for dedup)
+  [ ] ReferenceRecord storage with source_doc, target, context
+  [ ] Reference type classification (Document, Standard, Regulation, Report)
+  [ ] Reference network storage in `references` column family
+  [ ] Cross-document reference linking (Doc A references same source as Doc B)
+
+KNOWLEDGE GRAPH
+  [ ] Entity relationship graph construction
+  [ ] Co-occurrence detection (entities appearing in same chunks)
+  [ ] Cross-document entity linking
+  [ ] Graph storage in `knowledge_graph` column family
+  [ ] Graph traversal queries (shortest path, neighbors, clusters)
 
 DOCUMENT GRAPH
   [ ] DocRelationship storage in `doc_graph` column family
-  [ ] Relationship types: CitesAuthority, SharedEntities, SemanticSimilar, ResponseTo, Amends, Exhibits
+  [ ] Relationship types: SharedReferences, SharedEntities, SemanticSimilar, VersionOf, Exhibits
   [ ] Automatic relationship detection during ingestion:
-      - CitesAuthority: documents citing same authorities
+      - SharedReferences: documents referencing same external sources
       - SharedEntities: documents mentioning same entities
       - SemanticSimilar: E1 cosine > 0.75 between document-level embeddings
   [ ] Chunk similarity graph in `chunk_graph` column family
   [ ] Cross-chunk similarity edges (E1 cosine > 0.8 between chunks)
 
-CASE MAP
-  [ ] CaseMap builder (aggregates entities, citations, relationships per case)
-  [ ] Party extraction and role classification (Plaintiff, Defendant, Judge, Witness, Attorney)
+COLLECTION SUMMARY
+  [ ] CollectionSummary builder (aggregates entities, references, relationships per collection)
+  [ ] Stakeholder extraction and role classification (key people and organizations)
   [ ] Key date extraction and timeline construction
-  [ ] Legal issue extraction from headings, arguments, holdings
-  [ ] Authority statistics (most-cited authorities in the case)
+  [ ] Topic extraction from headings, content analysis
+  [ ] Reference statistics (most-cited references in the collection)
   [ ] Entity statistics (most-mentioned entities)
-  [ ] CaseStatistics computation (doc count, chunk count, entity count, etc.)
-  [ ] Case map storage in `case_map` column family
-  [ ] Incremental case map updates (on ingest/delete/reindex)
+  [ ] CollectionStatistics computation (doc count, chunk count, entity count, etc.)
+  [ ] Collection summary storage in `collection_summary` column family
+  [ ] Incremental collection summary updates (on ingest/delete/reindex)
 
-CONTEXT GRAPH MCP TOOLS (16 tools -- see PRD 09 Section 2b)
-  [ ] Case Overview tools:
-      - get_case_map (parties, issues, key dates, top authorities)
-      - get_case_timeline (chronological events extracted from documents)
-      - get_case_statistics (counts, coverage, health metrics)
-  [ ] Entity & Citation tools:
+CONTEXT GRAPH MCP TOOLS (18 tools -- see PRD 09 Section 2b)
+  [ ] Collection Overview tools:
+      - get_collection_summary (stakeholders, topics, key dates, key references)
+      - get_collection_timeline (chronological events extracted from documents)
+      - get_collection_statistics (counts, coverage, health metrics)
+  [ ] Entity & Reference tools:
       - list_entities (filter by type, sort by mention count)
       - get_entity_mentions (all mentions of an entity across documents)
       - search_entity_relationships (entities connected via shared documents)
-      - list_authorities (all cited authorities with citation counts)
-      - get_authority_citations (all documents citing a specific authority)
+      - get_entity_graph (entity relationship visualization)
+      - list_references (all referenced external sources with citation counts)
+      - get_reference_citations (all documents citing a specific reference)
   [ ] Document Navigation tools:
-      - get_document_structure (headings, sections, page count, entity/citation summary)
+      - get_document_structure (headings, sections, page count, entity/reference summary)
       - browse_pages (paginated page content with entities highlighted)
-      - find_related_documents (documents related via citations, entities, or semantics)
+      - find_related_documents (documents related via references, entities, or semantics)
+      - get_related_documents (knowledge-graph-first document discovery)
       - list_documents_by_type (filter by inferred document type)
       - traverse_chunks (sequential chunk navigation with prev/next)
   [ ] Advanced Search tools:
       - search_similar_chunks (find chunks semantically similar to a given chunk)
-      - compare_documents (side-by-side entity, citation, and semantic comparison)
+      - compare_documents (side-by-side entity, reference, and semantic comparison)
       - find_document_clusters (group documents by topic/entity similarity)
 ```
 
@@ -1042,8 +1065,7 @@ DOCUMENTATION
 | Downloads | 10,000 | 50,000 | 200,000 |
 | Free users | 5,000 | 25,000 | 100,000 |
 | Pro conversions (2%) | 100 | 500 | 2,000 |
-| Firm conversions | 20 | 100 | 400 |
-| ARR | $58K | $318K | $1.37M |
+| ARR | $35K | $174K | $696K |
 
 ---
 
@@ -1055,23 +1077,23 @@ DOCUMENTATION
 | MCPB bundle (all platforms) | ~50MB |
 | Models (Free tier) | ~165MB |
 | Models (Pro tier) | ~370MB |
-| Case database (per 100 docs) | ~5-50MB |
-| Total install (Free, 1 case) | ~200MB |
-| Total install (Pro, 10 cases) | ~900MB |
+| Collection database (per 100 docs) | ~5-50MB |
+| Total install (Free, 1 collection) | ~200MB |
+| Total install (Pro, 10 collections) | ~900MB |
 
 ## Appendix B: Comparison with Alternatives
 
-| Feature | CaseTrack | Casetext | Westlaw | DIY RAG |
-|---------|-----------|----------|---------|---------|
-| Price | $0-29/mo | $200/mo | $400/mo | Free |
-| Install time | 2 min | N/A (SaaS) | N/A (SaaS) | Hours |
-| Runs locally | Yes | No | No | Yes |
-| No GPU required | Yes | N/A | N/A | Usually no |
-| Claude integration | Native MCP | No | No | Manual |
-| Provenance | Always | Sometimes | Sometimes | DIY |
-| Legal-specific models | Yes | Yes | Yes | No |
-| Privacy | 100% local | Cloud | Cloud | Local |
-| Offline capable | Yes | No | No | Yes |
+| Feature | CaseTrack | Traditional SaaS | DIY RAG |
+|---------|-----------|-------------------|---------|
+| Price | $0-29/mo | $200-400/mo | Free |
+| Install time | 2 min | N/A (SaaS) | Hours |
+| Runs locally | Yes | No | Yes |
+| No GPU required | Yes | N/A | Usually no |
+| Claude integration | Native MCP | No | Manual |
+| Provenance | Always | Sometimes | DIY |
+| Document-optimized models | Yes | Varies | No |
+| Privacy | 100% local | Cloud | Local |
+| Offline capable | Yes | No | Yes |
 
 ---
 

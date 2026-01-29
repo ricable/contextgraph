@@ -13,10 +13,10 @@ DISTRIBUTION CHANNELS (Priority Order)
 1. CLAUDE CODE (Primary - Recommended)
    ────────────────────────────────
    # macOS/Linux - One command:
-   curl -fsSL https://casetrack.legal/install.sh | sh
+   curl -fsSL https://casetrack.dev/install.sh | sh
 
    # Windows - PowerShell:
-   irm https://casetrack.legal/install.ps1 | iex
+   irm https://casetrack.dev/install.ps1 | iex
 
    # Or via cargo:
    cargo binstall casetrack   # Pre-compiled binary (fast)
@@ -94,7 +94,7 @@ Reads or creates `~/.claude/settings.json`, merges `mcpServers.casetrack` entry 
 
 ## 4. MCPB Bundle Structure
 
-`.mcpb` = ZIP archive (~50MB) for Claude Desktop GUI install. Contains platform binaries, manifest, icon, and shared resources (tokenizer, legal vocab).
+`.mcpb` = ZIP archive (~50MB) for Claude Desktop GUI install. Contains platform binaries, manifest, icon, and shared resources (tokenizer, vocabulary).
 
 ### 4.1 Manifest Specification
 
@@ -103,12 +103,12 @@ Reads or creates `~/.claude/settings.json`, merges `mcpServers.casetrack` entry 
   "manifest_version": "1.0",
   "name": "casetrack",
   "version": "1.0.0",
-  "display_name": "CaseTrack Legal Document Analysis",
-  "description": "Ingest PDFs, Word docs, and scans. Search with AI. Every answer cites the source.",
+  "display_name": "CaseTrack Document Intelligence",
+  "description": "Ingest PDFs, Word docs, Excel spreadsheets, and scans. Search with AI. Every answer cites the source.",
 
   "author": {
     "name": "CaseTrack",
-    "url": "https://casetrack.legal"
+    "url": "https://casetrack.dev"
   },
 
   "server": {
@@ -124,7 +124,7 @@ Reads or creates `~/.claude/settings.json`, merges `mcpServers.casetrack` entry 
     {
       "id": "data_dir",
       "name": "Data Location",
-      "description": "Where to store cases and models on your computer",
+      "description": "Where to store collections and models on your computer",
       "type": "directory",
       "default": "${DOCUMENTS}/CaseTrack",
       "required": true
@@ -132,7 +132,7 @@ Reads or creates `~/.claude/settings.json`, merges `mcpServers.casetrack` entry 
     {
       "id": "license_key",
       "name": "License Key (Optional)",
-      "description": "Leave blank for free tier. Purchase at casetrack.legal",
+      "description": "Leave blank for free tier. Purchase at casetrack.dev",
       "type": "string",
       "sensitive": true,
       "required": false
@@ -181,13 +181,13 @@ Reads or creates `~/.claude/settings.json`, merges `mcpServers.casetrack` entry 
 ## 5. Installation Flow (Claude Desktop)
 
 ```
-1. Download: User downloads casetrack.mcpb (~50MB) from casetrack.legal
+1. Download: User downloads casetrack.mcpb (~50MB) from casetrack.dev
 2. Install:  Double-click .mcpb, drag to Claude Desktop, or Settings > Extensions > Install
 3. Configure: Dialog prompts for data location and optional license key
    +-------------------------------------------------------+
    | Install CaseTrack?                                     |
    |                                                        |
-   | CaseTrack lets you search legal documents with AI.     |
+   | CaseTrack lets you search documents with AI.           |
    | All processing happens on your computer.               |
    |                                                        |
    | Data Location:  [~/Documents/CaseTrack            ] [F]|
@@ -210,11 +210,11 @@ Reads or creates `~/.claude/settings.json`, merges `mcpServers.casetrack` entry 
 Initialization sequence on first launch:
 
 ```
-1. Create directory structure: models/, cases/ (registry.db created by RocksDB::open)
+1. Create directory structure: models/, collections/ (registry.db created by RocksDB::open)
 2. Check for missing models based on tier; download any missing (with progress logging)
 3. Open or create registry database
 4. Validate license (offline-first)
-5. Log ready state: tier + case count
+5. Log ready state: tier + collection count
 ```
 
 ### 6.1 Model Download Strategy
@@ -232,39 +232,18 @@ pub struct ModelSpec {
 
 pub const MODELS: &[ModelSpec] = &[
     ModelSpec {
-        id: "e1-legal",
+        id: "e1",
         repo: "BAAI/bge-small-en-v1.5",
         files: &["model.onnx", "tokenizer.json"],
         size_mb: 65,
         required: true,
     },
     ModelSpec {
-        id: "e6-legal",
+        id: "e6",
         repo: "naver/splade-cocondenser-selfdistil",
         files: &["model.onnx", "tokenizer.json"],
         size_mb: 55,
         required: true,
-    },
-    ModelSpec {
-        id: "e7",
-        repo: "sentence-transformers/all-MiniLM-L6-v2",
-        files: &["model.onnx", "tokenizer.json"],
-        size_mb: 45,
-        required: true,
-    },
-    ModelSpec {
-        id: "e8-legal",
-        repo: "casetrack/citation-minilm-v1",
-        files: &["model.onnx", "tokenizer.json"],
-        size_mb: 35,
-        required: false,
-    },
-    ModelSpec {
-        id: "e11-legal",
-        repo: "nlpaueb/legal-bert-small-uncased",
-        files: &["model.onnx", "tokenizer.json"],
-        size_mb: 60,
-        required: false,
     },
     ModelSpec {
         id: "e12",
@@ -331,7 +310,7 @@ casetrack --uninstall
 ```
 
 This command:
-1. Asks for confirmation ("This will remove CaseTrack. Your case data will NOT be deleted.")
+1. Asks for confirmation ("This will remove CaseTrack. Your data will NOT be deleted.")
 2. Removes the binary from PATH
 3. Removes the Claude Code/Desktop configuration entry
 4. Prints location of data directory for manual cleanup
@@ -346,7 +325,7 @@ rm ~/.local/bin/casetrack   # macOS/Linux
 
 # Remove Claude Code config (edit ~/.claude/settings.json, remove "casetrack" key)
 
-# Optionally remove data (YOUR CHOICE -- this deletes all cases):
+# Optionally remove data (YOUR CHOICE -- this deletes all collections):
 rm -rf ~/Documents/CaseTrack/
 ```
 

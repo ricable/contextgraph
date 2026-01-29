@@ -11,7 +11,7 @@
 - **Embedding models**: Downloaded once, stored in `~/Documents/CaseTrack/models/`
 - **Vector embeddings**: Stored in RocksDB on your device
 - **Document chunks**: Stored in RocksDB on your device
-- **Case databases**: Each case is an isolated RocksDB instance
+- **Collection databases**: Each collection is an isolated RocksDB instance
 - **Original documents**: Optionally copied to your CaseTrack folder
 
 **Nothing is sent to any cloud service. Ever.**
@@ -31,33 +31,32 @@
 |   |   |-- model.onnx                         Cached permanently
 |   |   +-- tokenizer.json                     No re-download needed
 |   |-- splade-distil/
-|   |-- minilm-l6/
 |   +-- colbert-small/
 |
-|-- registry.db/                             <-- Case index (RocksDB)
-|   +-- [case metadata, schema version]
+|-- registry.db/                             <-- Collection index (RocksDB)
+|   +-- [collection metadata, schema version]
 |
-+-- cases/                                   <-- Per-case databases
++-- collections/                             <-- Per-collection databases
     |
-    |-- {case-uuid-1}/                       <-- Case "Smith v. Jones"
-    |   |-- case.db/                           (Isolated RocksDB instance)
+    |-- {collection-uuid-1}/                 <-- Collection "Project Alpha"
+    |   |-- collection.db/                     (Isolated RocksDB instance)
     |   |   |-- documents     CF              Document metadata
     |   |   |-- chunks        CF              Text chunks (bincode)
-    |   |   |-- embeddings    CF              Vector embeddings (f32 arrays)
-    |   |   |   |-- e1_legal                  384D vectors
-    |   |   |   |-- e6_legal                  Sparse vectors
-    |   |   |   |-- e7                        384D vectors
+    |   |   |-- embeddings    CF              All embedder vectors + chunk text + provenance
+    |   |   |   |-- e1                        384D vectors
+    |   |   |   |-- e6                        Sparse vectors
     |   |   |   +-- ...                       All active embedders
-    |   |   |-- provenance    CF              Source location tracking
-    |   |   +-- bm25_index    CF              Inverted index for keyword search
+    |   |   |-- bm25_index    CF              Inverted index for keyword search
+    |   |   +-- ...                           Additional column families
     |   +-- originals/                        Original files (optional copy)
-    |       |-- Complaint.pdf
-    |       +-- Contract.docx
+    |       |-- Report.pdf
+    |       |-- Summary.docx
+    |       +-- Data.xlsx
     |
-    |-- {case-uuid-2}/                       <-- Case "Doe v. Corp"
+    |-- {collection-uuid-2}/                 <-- Collection "Q4 Analysis"
     |   +-- ...                                (Completely isolated)
     |
-    +-- {case-uuid-N}/                       <-- More cases...
+    +-- {collection-uuid-N}/                 <-- More collections...
 
 CF = RocksDB Column Family
 ```
@@ -68,19 +67,19 @@ CF = RocksDB Column Family
 
 | Data Type | Size Per Unit | Notes |
 |-----------|---------------|-------|
-| Models (Free tier) | ~165MB total | E1 + E6 + E7 (one-time download) |
-| Models (Pro tier) | ~370MB total | All 7 models (one-time download) |
-| Registry DB | ~1MB | Scales with number of cases |
+| Models (Free tier) | ~120MB total | E1 + E6 (one-time download) |
+| Models (Pro tier) | ~230MB total | All 4 models (one-time download) |
+| Registry DB | ~1MB | Scales with number of collections |
 | Per document page (Free) | ~30KB | 3 embeddings + chunk text + provenance |
 | Per document page (Pro) | ~50KB | 6 embeddings + chunk text + provenance |
-| 100-page case (Free) | ~3MB | |
-| 100-page case (Pro) | ~5MB | |
-| 1000-page case (Pro) | ~50MB | |
+| 100-page collection (Free) | ~3MB | |
+| 100-page collection (Pro) | ~5MB | |
+| 1000-page collection (Pro) | ~50MB | |
 | BM25 index per 1000 chunks | ~2MB | Inverted index |
 
 **Example total disk usage:**
-- Free tier, 3 cases of 100 pages each: 165MB (models) + 9MB (data) = **~175MB**
-- Pro tier, 10 cases of 500 pages each: 370MB (models) + 250MB (data) = **~620MB**
+- Free tier, 3 collections of 100 pages each: 165MB (models) + 9MB (data) = **~175MB**
+- Pro tier, 10 collections of 500 pages each: 370MB (models) + 250MB (data) = **~620MB**
 
 ---
 
@@ -96,30 +95,30 @@ CF = RocksDB Column Family
 | Bulk write performance | Excellent | Good | Good |
 | Concurrent reads | Excellent | Limited (WAL) | Excellent |
 | Rust crate quality | Good (rust-rocksdb) | Good (rusqlite) | Fair |
-| Per-case isolation | Separate DB instances | Separate files | Separate files |
+| Per-collection isolation | Separate DB instances | Separate files | Separate files |
 
-RocksDB was chosen for: column families (clean separation of data types), prefix iteration (efficient case listing), and bulk write performance (ingestion throughput).
+RocksDB was chosen for: column families (clean separation of data types), prefix iteration (efficient collection listing), and bulk write performance (ingestion throughput).
 
 ### 4.2 Column Family Schema
 
-Each case database uses these column families:
+Each collection database uses these column families:
 
 ```rust
 pub const COLUMN_FAMILIES: &[&str] = &[
-    "documents",    // Document metadata
-    "chunks",       // Text chunk content
-    "embeddings",   // Vector embeddings (all embedders)
-    "provenance",   // Source location tracking
-    "bm25_index",   // Inverted index for BM25
-    "metadata",     // Case-level metadata, stats
+    "documents",        // Document metadata
+    "chunks",           // Text chunk content
+    "embeddings",       // All embedder vectors + chunk text + provenance per chunk
+    "bm25_index",       // Inverted index for BM25
+    "metadata",         // Collection-level metadata, stats
 
     // === Context Graph (relationships between documents, chunks, entities) ===
-    "entities",     // Extracted entities (parties, courts, statutes, dates)
-    "entity_index", // Entity → chunk mentions index
-    "citations",    // Legal citations (statutes, case law references)
-    "doc_graph",    // Document-to-document relationships (similarity, citation links)
-    "chunk_graph",  // Chunk-to-chunk relationships (similarity edges)
-    "case_map",     // Case-level summary: parties, issues, dates, doc categories
+    "entities",         // Extracted entities (person, organization, date, amount, location, concept)
+    "entity_index",     // Entity -> chunk mentions index
+    "references",       // Cross-document references (shared entities, citations, hyperlinks)
+    "doc_graph",        // Document-to-document relationships (similarity, reference links)
+    "chunk_graph",      // Chunk-to-chunk relationships (similarity edges, co-reference)
+    "knowledge_graph",  // Entity-to-entity relationships, entity-to-chunk mappings
+    "collection_map",   // Collection-level summary: key actors, dates, document categories
 ];
 ```
 
@@ -128,15 +127,15 @@ pub const COLUMN_FAMILIES: &[&str] = &[
 ```rust
 // === Registry DB Keys ===
 
-// Case listing
-"case:{uuid}"                      -> bincode<Case>
-"schema_version"                   -> u32 (current: 1)
+// Collection listing
+"collection:{uuid}"                          -> bincode<Collection>
+"schema_version"                             -> u32 (current: 1)
 
 // Folder watches (auto-sync)
-"watch:{uuid}"                     -> bincode<FolderWatch>
-"watch_case:{case_uuid}:{watch_uuid}" -> watch_uuid  (index: watches by case)
+"watch:{uuid}"                               -> bincode<FolderWatch>
+"watch_collection:{collection_uuid}:{watch_uuid}" -> watch_uuid  (index: watches by collection)
 
-// === Case DB Keys (per column family) ===
+// === Collection DB Keys (per column family) ===
 
 // documents CF
 "doc:{uuid}"                       -> bincode<DocumentMetadata>
@@ -145,16 +144,14 @@ pub const COLUMN_FAMILIES: &[&str] = &[
 "chunk:{uuid}"                     -> bincode<ChunkData>
 "doc_chunks:{doc_uuid}:{seq}"      -> chunk_uuid  (index: chunks by document)
 
-// embeddings CF
+// embeddings CF -- each chunk stores all embedder vectors alongside text and provenance
+// chunk_id -> { text, provenance, e1_vector, e6_vector, e12_vector, bm25_terms }
+"emb:{chunk_uuid}"                 -> bincode<ChunkEmbeddingRecord>
+
+// Legacy per-embedder keys (supported for migration)
 "e1:{chunk_uuid}"                  -> [f32; 384] as bytes
 "e6:{chunk_uuid}"                  -> bincode<SparseVec>
-"e7:{chunk_uuid}"                  -> [f32; 384] as bytes
-"e8:{chunk_uuid}"                  -> [f32; 256] as bytes
-"e11:{chunk_uuid}"                 -> [f32; 384] as bytes
 "e12:{chunk_uuid}"                 -> bincode<TokenEmbeddings>
-
-// provenance CF
-"prov:{chunk_uuid}"                -> bincode<Provenance>
 
 // bm25_index CF
 "term:{term}"                      -> bincode<PostingList>
@@ -162,40 +159,46 @@ pub const COLUMN_FAMILIES: &[&str] = &[
 "stats"                            -> bincode<Bm25Stats> (avg doc length, total docs)
 
 // metadata CF
-"case_info"                        -> bincode<Case>
-"stats"                            -> bincode<CaseStats>
+"collection_info"                  -> bincode<Collection>
+"stats"                            -> bincode<CollectionStats>
 
 // === CONTEXT GRAPH COLUMN FAMILIES ===
 
 // entities CF
 "entity:{type}:{normalized_name}"  -> bincode<Entity>
-// type = person | organization | court | statute | case_citation | date | monetary_amount | legal_concept
+// type = person | organization | date | amount | location | concept
 
 // entity_index CF (bidirectional)
 "ent_chunks:{entity_key}"          -> bincode<Vec<EntityMention>>
 "chunk_ents:{chunk_uuid}"          -> bincode<Vec<EntityRef>>
 
-// citations CF
-"cite:{authority_key}"             -> bincode<CitationRecord>
-"cite_chunks:{authority_key}"      -> bincode<Vec<CitationMention>>
-"chunk_cites:{chunk_uuid}"         -> bincode<Vec<AuthorityRef>>
+// references CF (cross-document references)
+"ref:{reference_key}"              -> bincode<ReferenceRecord>
+"ref_chunks:{reference_key}"       -> bincode<Vec<ReferenceMention>>
+"chunk_refs:{chunk_uuid}"          -> bincode<Vec<ReferenceRef>>
 
 // doc_graph CF
 "doc_sim:{doc_a}:{doc_b}"         -> f32 (cosine similarity)
-"doc_cites:{citing_doc}:{cited_doc}" -> bincode<DocCitation>
+"doc_refs:{source_doc}:{target_doc}" -> bincode<DocReference>
 "doc_entities:{doc_uuid}"         -> bincode<Vec<EntityRef>>
 "doc_category:{category}:{doc_uuid}" -> doc_uuid
 
 // chunk_graph CF
 "chunk_sim:{chunk_a}:{chunk_b}"   -> f32 (stored only when > 0.7)
+"chunk_coref:{chunk_a}:{chunk_b}" -> bincode<CoReference>  (shared entity co-reference)
 "chunk_seq:{doc_uuid}:{seq}"      -> chunk_uuid
 
-// case_map CF (rebuilt after ingestion)
-"parties"                          -> bincode<Vec<Party>>
+// knowledge_graph CF
+"kg_ent_rel:{entity_a}:{rel_type}:{entity_b}" -> bincode<EntityRelationship>
+"kg_ent_chunks:{entity_key}"       -> bincode<Vec<Uuid>>  (entity-to-chunk mappings)
+"kg_chunk_ents:{chunk_uuid}"       -> bincode<Vec<String>> (chunk-to-entity mappings)
+
+// collection_map CF (rebuilt after ingestion)
+"key_actors"                       -> bincode<Vec<KeyActor>>
 "key_dates"                        -> bincode<Vec<KeyDate>>
-"key_issues"                       -> bincode<Vec<LegalIssue>>
+"key_topics"                       -> bincode<Vec<Topic>>
 "doc_categories"                   -> bincode<HashMap<String, Vec<Uuid>>>
-"authority_stats"                  -> bincode<Vec<AuthorityStat>>
+"reference_stats"                  -> bincode<Vec<ReferenceStat>>
 "entity_stats"                     -> bincode<Vec<EntityStat>>
 ```
 
@@ -210,7 +213,7 @@ pub fn rocks_options() -> rocksdb::Options {
     opts.create_missing_column_families(true);
 
     // Memory budget: ~64MB per open database
-    // (allows multiple cases open simultaneously on 8GB machines)
+    // (allows multiple collections open simultaneously on 8GB machines)
     let mut block_cache = rocksdb::Cache::new_lru_cache(32 * 1024 * 1024); // 32MB
     let mut table_opts = rocksdb::BlockBasedOptions::default();
     table_opts.set_block_cache(&block_cache);
@@ -254,7 +257,7 @@ pub struct ChunkData {
     pub provenance: Provenance,     // Full source trace -- see Section 5.2 Provenance Chain
     pub created_at: i64,            // Unix timestamp
     pub embedded_at: i64,           // Unix timestamp: last embedding computation
-    pub embedder_versions: Vec<String>, // e.g., ["e1", "e6", "e7"] for Free tier
+    pub embedder_versions: Vec<String>, // e.g., ["e1", "e6"] for Free tier
 }
 
 #[derive(Serialize, Deserialize)]
@@ -270,9 +273,21 @@ pub struct DocumentMetadata {
     pub file_hash: String,                // SHA256 (dedup + staleness detection)
     pub file_size_bytes: u64,
     pub extraction_method: ExtractionMethod,
-    pub embedder_coverage: Vec<String>,   // e.g., ["e1", "e6", "e7"]
+    pub embedder_coverage: Vec<String>,   // e.g., ["e1", "e6"]
     pub entity_count: u32,
-    pub citation_count: u32,
+    pub reference_count: u32,
+}
+
+/// Unified embedding record: all embedder vectors stored alongside chunk text and provenance
+#[derive(Serialize, Deserialize)]
+pub struct ChunkEmbeddingRecord {
+    pub chunk_id: Uuid,
+    pub text: String,
+    pub provenance: Provenance,
+    pub e1_vector: Option<Vec<f32>>,       // 384D dense vector
+    pub e6_vector: Option<SparseVec>,      // SPLADE sparse vector
+    pub e12_vector: Option<TokenEmbeddings>, // ColBERT per-token embeddings
+    pub bm25_terms: Option<Vec<String>>,   // Pre-extracted BM25 terms
 }
 ```
 
@@ -283,36 +298,36 @@ PROVENANCE CHAIN -- EVERY VECTOR TRACES TO ITS SOURCE
 =================================================================================
 
 Embedding Vector (e.g., key "e1:{chunk_uuid}")
-    │
-    └──► chunk_uuid ──► ChunkData (key "chunk:{uuid}")
-                           │
-                           ├── text: "Either party may terminate..."
-                           ├── provenance: Provenance {
-                           │       document_id:     "doc-abc"
-                           │       document_name:   "Contract.pdf"
-                           │       document_path:   "/Users/sarah/Cases/Smith/Contract.pdf"
-                           │       page:            12
-                           │       paragraph_start: 8
-                           │       paragraph_end:   9
-                           │       line_start:      1
-                           │       line_end:        14
-                           │       char_start:      2401
-                           │       char_end:        4401
-                           │       extraction_method: Native
-                           │       ocr_confidence:  None
-                           │       chunk_index:     47
-                           │   }
-                           ├── created_at:     1706367600  (when chunk was created)
-                           └── embedded_at:    1706367612  (when embedding was computed)
+    |
+    +---> chunk_uuid ---> ChunkData (key "chunk:{uuid}")
+                           |
+                           +-- text: "Either party may terminate..."
+                           +-- provenance: Provenance {
+                           |       document_id:        "doc-abc"
+                           |       source_file_path:   "/Users/alex/Projects/Alpha/Contract.pdf"
+                           |       document_filename:  "Contract.pdf"
+                           |       page_number:        12
+                           |       paragraph_number:   8
+                           |       line_number:        1
+                           |       char_start:         2401
+                           |       char_end:           4401
+                           |       extraction_method:  Native
+                           |       ocr_confidence:     None
+                           |       chunk_index:        47
+                           |       created_at:         1706367600
+                           |       embedded_at:        1706367612
+                           |   }
+                           +-- created_at:     1706367600  (when chunk was created)
+                           +-- embedded_at:    1706367612  (when embedding was computed)
 
 There is NO embedding without a chunk. There is NO chunk without provenance.
 There is NO provenance without a source document path and filename.
 
 This chain MUST be maintained through all operations:
   - Ingestion: creates chunk + provenance + embeddings together (atomic)
-  - Reindex: deletes old, creates new (preserves document_path)
+  - Reindex: deletes old, creates new (preserves source_file_path)
   - Delete: removes all three (chunk, provenance, embeddings) together
-  - Sync: detects changed files by document_path + SHA256 hash
+  - Sync: detects changed files by source_file_path + SHA256 hash
 ```
 
 ### 5.3 Embeddings as Raw Bytes
@@ -454,7 +469,7 @@ Every CaseTrack installation is **fully isolated per customer**:
 - CaseTrack installs on each customer's machine independently
 - Each customer has their own `~/Documents/CaseTrack/` directory
 - No data is shared between customers -- there is no server, no cloud, no shared state
-- For Firm tier (5 seats), each seat is a separate installation on a separate machine with its own database
+- For Team tier (5 seats), each seat is a separate installation on a separate machine with its own database
 - Customer A's embeddings, vectors, chunks, and provenance records **never touch** Customer B's data
 - There is no central database. Each customer IS their own database.
 
@@ -466,36 +481,36 @@ Customer A (Sarah's MacBook)         Customer B (Mike's Windows PC)
 ~/Documents/CaseTrack/               C:\Users\Mike\Documents\CaseTrack\
 |-- models/                          |-- models/
 |-- registry.db                      |-- registry.db
-+-- cases/                           +-- cases/
-    |-- {sarah-case-1}/                  |-- {mike-case-1}/
-    +-- {sarah-case-2}/                  |-- {mike-case-2}/
-                                         +-- {mike-case-3}/
++-- collections/                     +-- collections/
+    |-- {sarah-collection-1}/            |-- {mike-collection-1}/
+    +-- {sarah-collection-2}/            |-- {mike-collection-2}/
+                                         +-- {mike-collection-3}/
 
 ZERO shared state. ZERO shared databases. ZERO network communication.
 Each installation is a completely independent system.
 ```
 
-### 7.2 Per-Case Isolation
+### 7.2 Per-Collection Isolation
 
-Each case is a **completely independent RocksDB instance**:
+Each collection is a **completely independent RocksDB instance**:
 
-- Separate database, embeddings, and index files per case
-- No cross-case queries, shared vectors, or embedding bleed
-- Independent lifecycle: deleting Case A has zero impact on Case B
-- Portable: copy a case directory to another machine
-- Cleanly deletable: `rm -rf cases/{uuid}/`
+- Separate database, embeddings, and index files per collection
+- No cross-collection queries, shared vectors, or embedding bleed
+- Independent lifecycle: deleting Collection A has zero impact on Collection B
+- Portable: copy a collection directory to another machine
+- Cleanly deletable: `rm -rf collections/{uuid}/`
 
 ```rust
-/// Opening a case creates or loads its isolated database
-pub struct CaseHandle {
+/// Opening a collection creates or loads its isolated database
+pub struct CollectionHandle {
     db: rocksdb::DB,
-    case_id: Uuid,
-    case_dir: PathBuf,
+    collection_id: Uuid,
+    collection_dir: PathBuf,
 }
 
-impl CaseHandle {
-    pub fn open(case_dir: &Path) -> Result<Self> {
-        let db_path = case_dir.join("case.db");
+impl CollectionHandle {
+    pub fn open(collection_dir: &Path) -> Result<Self> {
+        let db_path = collection_dir.join("collection.db");
         let mut opts = rocks_options();
 
         let cfs = COLUMN_FAMILIES.iter()
@@ -506,16 +521,16 @@ impl CaseHandle {
 
         Ok(Self {
             db,
-            case_id: Uuid::parse_str(
-                case_dir.file_name().unwrap().to_str().unwrap()
+            collection_id: Uuid::parse_str(
+                collection_dir.file_name().unwrap().to_str().unwrap()
             )?,
-            case_dir: case_dir.to_path_buf(),
+            collection_dir: collection_dir.to_path_buf(),
         })
     }
 
-    /// Delete this case entirely
+    /// Delete this collection entirely
     pub fn destroy(self) -> Result<()> {
-        let path = self.case_dir.clone();
+        let path = self.collection_dir.clone();
         drop(self); // Close DB handle first
         fs::remove_dir_all(&path)?;
         Ok(())
@@ -527,7 +542,7 @@ impl CaseHandle {
 
 ## 8. Context Graph Data Models
 
-Entities, citations, and relationships extracted during ingestion and stored as graph edges for structured case navigation.
+Entities, references, and relationships extracted during ingestion and stored as graph edges for structured collection navigation.
 
 ### 8.1 Entity Model
 
@@ -544,8 +559,7 @@ pub struct Entity {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum EntityType {
-    Person, Organization, Court, Statute,
-    CaseCitation, Date, MonetaryAmount, LegalConcept,
+    Person, Organization, Date, Amount, Location, Concept,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -565,35 +579,35 @@ pub struct EntityRef {
 }
 ```
 
-### 8.2 Citation Model
+### 8.2 Reference Model
 
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CitationRecord {
-    pub authority_key: String,         // e.g., "42_usc_1983"
-    pub authority_type: AuthorityType,
-    pub display_name: String,          // e.g., "42 U.S.C. § 1983"
+pub struct ReferenceRecord {
+    pub reference_key: String,         // Normalized reference identifier
+    pub reference_type: ReferenceType,
+    pub display_name: String,          // Human-readable reference label
     pub mention_count: u32,
-    pub citing_documents: Vec<Uuid>,
+    pub source_documents: Vec<Uuid>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum AuthorityType {
-    FederalStatute, StateStatute, FederalRule, StateRule,
-    CaseLaw, Regulation, Other,
+pub enum ReferenceType {
+    InternalCrossRef, ExternalDocument, Hyperlink,
+    Standard, Specification, Other,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CitationMention {
+pub struct ReferenceMention {
     pub chunk_id: Uuid,
     pub document_id: Uuid,
     pub context_snippet: String,
-    pub treatment: Option<CitationTreatment>,
+    pub relationship: Option<ReferenceRelationship>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum CitationTreatment {
-    Cited, Followed, Distinguished, Overruled, Discussed,
+pub enum ReferenceRelationship {
+    Cites, Supports, Contradicts, Extends, Supersedes, Discusses,
 }
 ```
 
@@ -610,38 +624,38 @@ pub struct DocRelationship {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum DocRelType {
-    CitesAuthority, SharedEntities, SemanticSimilar,
-    ResponseTo, Amends, Exhibits,
+    SharedReferences, SharedEntities, SemanticSimilar,
+    ResponseTo, Amends, Attachment,
 }
 ```
 
-### 8.4 Case Map Model
+### 8.4 Collection Summary Model
 
 ```rust
-/// High-level case overview, rebuilt after each ingestion.
+/// High-level collection overview, rebuilt after each ingestion.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CaseMap {
-    pub parties: Vec<Party>,
+pub struct CollectionSummary {
+    pub key_actors: Vec<KeyActor>,
     pub key_dates: Vec<KeyDate>,
-    pub key_issues: Vec<LegalIssue>,
+    pub key_topics: Vec<Topic>,
     pub document_categories: HashMap<String, Vec<Uuid>>,
-    pub top_authorities: Vec<AuthorityStat>,
+    pub top_references: Vec<ReferenceStat>,
     pub top_entities: Vec<EntityStat>,
-    pub statistics: CaseStatistics,
+    pub statistics: CollectionStatistics,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Party {
+pub struct KeyActor {
     pub name: String,
-    pub role: PartyRole,
+    pub role: ActorRole,
     pub mention_count: u32,
     pub aliases: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum PartyRole {
-    Plaintiff, Defendant, Judge, Witness, Expert,
-    Attorney, ThirdParty, Arbitrator, Mediator, Other,
+pub enum ActorRole {
+    Author, Reviewer, Approver, Contributor,
+    Owner, Stakeholder, Other,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -653,18 +667,18 @@ pub struct KeyDate {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LegalIssue {
+pub struct Topic {
     pub name: String,
     pub mention_count: u32,
     pub relevant_documents: Vec<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuthorityStat {
-    pub authority_key: String,
+pub struct ReferenceStat {
+    pub reference_key: String,
     pub display_name: String,
-    pub citation_count: u32,
-    pub citing_documents: u32,
+    pub reference_count: u32,
+    pub source_documents: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -677,12 +691,12 @@ pub struct EntityStat {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CaseStatistics {
+pub struct CollectionStatistics {
     pub total_documents: u32,
     pub total_pages: u32,
     pub total_chunks: u32,
     pub total_entities: u32,
-    pub total_citations: u32,
+    pub total_references: u32,
     pub storage_bytes: u64,
     pub document_type_breakdown: HashMap<String, u32>,
     pub embedder_coverage: HashMap<String, u32>,
@@ -706,7 +720,7 @@ pub struct WatchRegistry {
 #[derive(Serialize, Deserialize)]
 pub struct FolderWatch {
     pub id: Uuid,
-    pub case_id: Uuid,
+    pub collection_id: Uuid,
     pub folder_path: String,           // Absolute path to watched folder
     pub recursive: bool,               // Watch subfolders (default: true)
     pub enabled: bool,                 // Can be paused
@@ -733,44 +747,44 @@ Sync uses `file_hash` and `original_path` from `DocumentMetadata` (see Section 5
 ```
 FOR each file in watched folder:
   1. Compute SHA256 of file
-  2. Look up file by original_path in case DB
-  3. IF not found → new file → ingest
-  4. IF found AND hash matches → unchanged → skip
-  5. IF found AND hash differs → modified → reindex (delete old, re-ingest)
+  2. Look up file by original_path in collection DB
+  3. IF not found -> new file -> ingest
+  4. IF found AND hash matches -> unchanged -> skip
+  5. IF found AND hash differs -> modified -> reindex (delete old, re-ingest)
 
-FOR each document in case DB with original_path under watched folder:
-  6. IF source file no longer exists on disk → deleted
-     IF auto_remove_deleted → delete document from case
-     ELSE → log warning, skip
+FOR each document in collection DB with original_path under watched folder:
+  6. IF source file no longer exists on disk -> deleted
+     IF auto_remove_deleted -> delete document from collection
+     ELSE -> log warning, skip
 ```
 
 ---
 
 ## 10. Backup & Export
 
-### 10.1 Case Export
+### 10.1 Collection Export
 
-Cases can be exported as portable archives:
+Collections can be exported as portable archives:
 
 ```
-casetrack export --case "Smith v. Jones" --output ~/Desktop/smith-v-jones.ctcase
+casetrack export --collection "Project Alpha" --output ~/Desktop/project-alpha.ctcollection
 ```
 
-The `.ctcase` file is a ZIP containing:
-- `case.db/` -- RocksDB snapshot
+The `.ctcollection` file is a ZIP containing:
+- `collection.db/` -- RocksDB snapshot
 - `originals/` -- Original documents (if stored)
-- `manifest.json` -- Case metadata, schema version, embedder versions
+- `manifest.json` -- Collection metadata, schema version, embedder versions
 
-### 10.2 Case Import
+### 10.2 Collection Import
 
 ```
-casetrack import ~/Desktop/smith-v-jones.ctcase
+casetrack import ~/Desktop/project-alpha.ctcollection
 ```
 
 1. Validates schema version compatibility
-2. Creates new case UUID (avoids collisions)
-3. Copies database and originals to `cases/` directory
-4. Registers in case registry
+2. Creates new collection UUID (avoids collisions)
+3. Copies database and originals to `collections/` directory
+4. Registers in collection registry
 
 ---
 
@@ -778,18 +792,15 @@ casetrack import ~/Desktop/smith-v-jones.ctcase
 
 | Data Type | Storage Location | Format | Size Per Unit |
 |-----------|------------------|--------|---------------|
-| Case metadata | `registry.db` | bincode via RocksDB | ~500 bytes/case |
-| Document metadata | `cases/{id}/case.db` documents CF | bincode | ~200 bytes/doc |
-| Text chunks (2000 chars) | `cases/{id}/case.db` chunks CF | bincode | ~2.5KB/chunk (text + provenance metadata) |
-| E1 embeddings (384D) | `cases/{id}/case.db` embeddings CF | f32 bytes | 1,536 bytes/chunk |
-| E6 sparse vectors | `cases/{id}/case.db` embeddings CF | bincode sparse | ~500 bytes/chunk |
-| E7 embeddings (384D) | `cases/{id}/case.db` embeddings CF | f32 bytes | 1,536 bytes/chunk |
-| E8 embeddings (256D) | `cases/{id}/case.db` embeddings CF | f32 bytes | 1,024 bytes/chunk |
-| E11 embeddings (384D) | `cases/{id}/case.db` embeddings CF | f32 bytes | 1,536 bytes/chunk |
-| E12 token embeddings | `cases/{id}/case.db` embeddings CF | bincode | ~8KB/chunk |
-| BM25 inverted index | `cases/{id}/case.db` bm25_index CF | bincode | ~2MB/1000 chunks |
-| Provenance records | `cases/{id}/case.db` provenance CF | bincode | ~300 bytes/chunk |
-| Original documents | `cases/{id}/originals/` | original files | varies |
+| Collection metadata | `registry.db` | bincode via RocksDB | ~500 bytes/collection |
+| Document metadata | `collections/{id}/collection.db` documents CF | bincode | ~200 bytes/doc |
+| Text chunks (2000 chars) | `collections/{id}/collection.db` chunks CF | bincode | ~2.5KB/chunk (text + provenance metadata) |
+| E1 embeddings (384D) | `collections/{id}/collection.db` embeddings CF | f32 bytes | 1,536 bytes/chunk |
+| E6 sparse vectors | `collections/{id}/collection.db` embeddings CF | bincode sparse | ~500 bytes/chunk |
+| E12 token embeddings | `collections/{id}/collection.db` embeddings CF | bincode | ~8KB/chunk |
+| BM25 inverted index | `collections/{id}/collection.db` bm25_index CF | bincode | ~2MB/1000 chunks |
+| Provenance records | Embedded in chunk embedding records | bincode | ~300 bytes/chunk |
+| Original documents | `collections/{id}/originals/` | original files | varies |
 | ONNX models | `models/` | ONNX format | 35-110MB each |
 
 ---

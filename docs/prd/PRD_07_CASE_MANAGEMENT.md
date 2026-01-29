@@ -1,27 +1,29 @@
-# PRD 07: Case Management & Provenance
+# PRD 07: Collection Management & Provenance
 
-**Version**: 4.0.0 | **Parent**: [PRD 01 Overview](PRD_01_OVERVIEW.md) | **Language**: Rust
+**Version**: 5.0.0 | **Parent**: [PRD 01 Overview](PRD_01_OVERVIEW.md) | **Language**: Rust
 
 ---
 
-## 1. Case Model
+## 1. Collection Model
 
 ```rust
-/// A legal case/matter containing documents
+/// A document collection containing related files
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Case {
+pub struct Collection {
     pub id: Uuid,
     pub name: String,
-    pub case_number: Option<String>,
-    pub case_type: CaseType,
-    pub status: CaseStatus,
+    pub description: Option<String>,
+    pub collection_type: CollectionType,
+    pub status: CollectionStatus,
+    pub tags: Vec<String>,
+    pub created_by: Option<String>,
     pub created_at: i64,     // Unix timestamp
     pub updated_at: i64,     // Unix timestamp
-    pub stats: CaseStats,
+    pub stats: CollectionStats,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CaseStats {
+pub struct CollectionStats {
     pub document_count: u32,
     pub page_count: u32,
     pub chunk_count: u32,
@@ -29,25 +31,23 @@ pub struct CaseStats {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum CaseType {
-    Civil,
-    Criminal,
-    Family,
-    Bankruptcy,
-    Contract,
-    Employment,
-    PersonalInjury,
-    RealEstate,
-    IntellectualProperty,
-    Immigration,
+pub enum CollectionType {
+    Business,
+    Research,
+    Project,
+    Archive,
+    Compliance,
+    Financial,
+    Technical,
+    HR,
+    Sales,
     Other,
 }
 
 // Derive FromStr via case-insensitive match on variant names. Default: Other.
-// Note: "ip" is an alias for IntellectualProperty.
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum CaseStatus {
+pub enum CollectionStatus {
     Active,
     Closed,
     Archived,
@@ -56,76 +56,78 @@ pub enum CaseStatus {
 
 ---
 
-## 2. Case Registry
+## 2. Collection Registry
 
-Shared RocksDB instance indexing all cases. Key schema: `case:{uuid}` → bincode-serialized `Case`.
+Shared RocksDB instance indexing all collections. Key schema: `collection:{uuid}` -> bincode-serialized `Collection`.
 
 ```rust
-pub struct CaseRegistry {
+pub struct CollectionRegistry {
     db: rocksdb::DB,        // registry.db in data_dir
     data_dir: PathBuf,
-    active_case: Option<Uuid>,
+    active_collection: Option<Uuid>,
 }
 
-pub struct CreateCaseParams {
+pub struct CreateCollectionParams {
     pub name: String,
-    pub case_number: Option<String>,
-    pub case_type: Option<CaseType>,
+    pub description: Option<String>,
+    pub collection_type: Option<CollectionType>,
+    pub tags: Option<Vec<String>>,
+    pub created_by: Option<String>,
 }
 
-impl CaseRegistry {
+impl CollectionRegistry {
     /// Opens registry.db from data_dir
     pub fn open(data_dir: &Path) -> Result<Self>;
 
-    /// Creates case dir + originals subdir, initializes CaseHandle DB,
-    /// stores in registry, auto-switches active_case to new case
-    pub fn create_case(&mut self, params: CreateCaseParams) -> Result<Case>;
+    /// Creates collection dir + originals subdir, initializes CollectionHandle DB,
+    /// stores in registry, auto-switches active_collection to new collection
+    pub fn create_collection(&mut self, params: CreateCollectionParams) -> Result<Collection>;
 
-    /// Lookup by "case:{id}" key. Error: CaseNotFound
-    pub fn get_case(&self, case_id: Uuid) -> Result<Case>;
+    /// Lookup by "collection:{id}" key. Error: CollectionNotFound
+    pub fn get_collection(&self, collection_id: Uuid) -> Result<Collection>;
 
-    /// Prefix scan "case:", returns all cases sorted by updated_at DESC
-    pub fn list_cases(&self) -> Result<Vec<Case>>;
+    /// Prefix scan "collection:", returns all collections sorted by updated_at DESC
+    pub fn list_collections(&self) -> Result<Vec<Collection>>;
 
-    /// Upsert case metadata
-    pub fn update_case(&mut self, case: &Case) -> Result<()>;
+    /// Upsert collection metadata
+    pub fn update_collection(&mut self, collection: &Collection) -> Result<()>;
 
-    /// Deletes registry entry + entire case directory. Clears active_case if matched.
-    pub fn delete_case(&mut self, case_id: Uuid) -> Result<()>;
+    /// Deletes registry entry + entire collection directory. Clears active_collection if matched.
+    pub fn delete_collection(&mut self, collection_id: Uuid) -> Result<()>;
 
-    /// Validates case exists, opens CaseHandle, sets active_case
-    pub fn switch_case(&mut self, case_id: Uuid) -> Result<CaseHandle>;
+    /// Validates collection exists, opens CollectionHandle, sets active_collection
+    pub fn switch_collection(&mut self, collection_id: Uuid) -> Result<CollectionHandle>;
 
-    pub fn active_case_id(&self) -> Option<Uuid>;
-    pub fn count_cases(&self) -> Result<u32>;
+    pub fn active_collection_id(&self) -> Option<Uuid>;
+    pub fn count_collections(&self) -> Result<u32>;
 }
 ```
 
 ---
 
-## 3. Case Handle
+## 3. Collection Handle
 
-Each case has its own `case.db` RocksDB with column families defined in `super::COLUMN_FAMILIES`.
+Each collection has its own `collection.db` RocksDB with column families defined in `super::COLUMN_FAMILIES`.
 
 Key schemas:
-- Documents CF: `doc:{uuid}` → bincode `DocumentMetadata`
-- Chunks CF: `chunk:{uuid}` → bincode `Chunk`
-- Chunks CF index: `doc_chunks:{doc_uuid}:{sequence:06}` → chunk UUID string
+- Documents CF: `doc:{uuid}` -> bincode `DocumentMetadata`
+- Chunks CF: `chunk:{uuid}` -> bincode `Chunk`
+- Chunks CF index: `doc_chunks:{doc_uuid}:{sequence:06}` -> chunk UUID string
 
 ```rust
-/// Handle to an open case database
-pub struct CaseHandle {
+/// Handle to an open collection database
+pub struct CollectionHandle {
     pub db: rocksdb::DB,
-    pub case_id: Uuid,       // Parsed from case_dir directory name
-    pub case_dir: PathBuf,
+    pub collection_id: Uuid,       // Parsed from collection_dir directory name
+    pub collection_dir: PathBuf,
 }
 
-impl CaseHandle {
-    /// Create case.db with all column families (DB dropped after init, reopened by open())
-    pub fn initialize(case_dir: &Path) -> Result<()>;
+impl CollectionHandle {
+    /// Create collection.db with all column families (DB dropped after init, reopened by open())
+    pub fn initialize(collection_dir: &Path) -> Result<()>;
 
-    /// Open existing case.db. Error: CaseDbOpenFailed
-    pub fn open(case_dir: &Path) -> Result<Self>;
+    /// Open existing collection.db. Error: CollectionDbOpenFailed
+    pub fn open(collection_dir: &Path) -> Result<Self>;
 
     // --- Document Operations (all use "documents" CF) ---
     pub fn store_document(&self, doc: &DocumentMetadata) -> Result<()>;
@@ -162,12 +164,12 @@ This applies to:
   - Every text chunk
   - Every embedding vector (linked via chunk_id)
   - Every entity mention (stores chunk_id + char offsets)
-  - Every citation record (stores chunk_id + document_id)
+  - Every reference record (stores chunk_id + document_id)
   - Every search result (includes full provenance)
   - Every MCP tool response that returns text
 
 If the provenance chain is broken, the data is USELESS.
-A search result without a source citation is worthless to an attorney.
+A search result without a source reference is worthless to a professional.
 ```
 
 Every chunk tracks exactly where it came from:
@@ -178,8 +180,8 @@ Every chunk tracks exactly where it came from:
 /// it came from -- which document, which file on disk, which page, which paragraph,
 /// which line, which character range. Without provenance, the data is useless.
 ///
-/// The Provenance chain: Embedding vector → chunk_id → ChunkData.provenance → source file
-/// This chain is NEVER broken. Every embedding, every entity mention, every citation,
+/// The Provenance chain: Embedding vector -> chunk_id -> ChunkData.provenance -> source file
+/// This chain is NEVER broken. Every embedding, every entity mention, every reference,
 /// every search result carries its Provenance. If you can't cite the source, you can't
 /// return the information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,15 +189,15 @@ pub struct Provenance {
     // === Source Document (WHERE did this come from?) ===
     /// UUID of the ingested document
     pub document_id: Uuid,
-    /// Original filename ("Contract.pdf") -- always stored, never empty
+    /// Original filename ("Report.pdf") -- always stored, never empty
     pub document_name: String,
     /// Full filesystem path where the file was when ingested
-    /// ("/Users/sarah/Cases/Smith/Contract.pdf")
+    /// ("/Users/sarah/Projects/Alpha/Report.pdf")
     /// Used for: reindexing (re-reads the file), sync (detects changes), display
     pub document_path: Option<PathBuf>,
 
     // === Location in Document (EXACTLY where in the document?) ===
-    /// Page number (1-indexed) -- which page of the PDF/DOCX
+    /// Page number (1-indexed) -- which page of the PDF/DOCX/XLSX
     pub page: u32,
     /// First paragraph index included in this chunk (0-indexed within page)
     pub paragraph_start: u32,
@@ -219,10 +221,6 @@ pub struct Provenance {
     /// text may be unreliable ("This text was OCR'd with 72% confidence").
     pub ocr_confidence: Option<f32>,
 
-    // === Legal Metadata ===
-    /// Optional Bates stamp number (for litigation document production)
-    pub bates_number: Option<String>,
-
     // === Chunk Position ===
     /// Sequential position of this chunk within the entire document (0-indexed)
     pub chunk_index: u32,
@@ -236,7 +234,7 @@ pub struct Provenance {
 }
 
 impl Provenance {
-    /// Generate a legal citation string
+    /// Generate a source reference string
     pub fn cite(&self) -> String {
         let mut parts = vec![self.document_name.clone()];
         parts.push(format!("p. {}", self.page));
@@ -251,23 +249,15 @@ impl Provenance {
             parts.push(format!("ll. {}-{}", self.line_start, self.line_end));
         }
 
-        if let Some(bates) = &self.bates_number {
-            parts.push(format!("({})", bates));
-        }
-
         parts.join(", ")
     }
 
-    /// Short citation for inline use
+    /// Short reference for inline use
     pub fn cite_short(&self) -> String {
-        if let Some(bates) = &self.bates_number {
-            bates.clone()
-        } else {
-            format!("{}, p. {}",
-                self.document_name.split('.').next().unwrap_or(&self.document_name),
-                self.page
-            )
-        }
+        format!("{}, p. {}",
+            self.document_name.split('.').next().unwrap_or(&self.document_name),
+            self.page
+        )
     }
 }
 ```
@@ -299,7 +289,6 @@ impl SearchResult {
                 "paragraph_start": self.provenance.paragraph_start,
                 "paragraph_end": self.provenance.paragraph_end,
                 "lines": format!("{}-{}", self.provenance.line_start, self.provenance.line_end),
-                "bates": self.provenance.bates_number,
                 "extraction_method": format!("{:?}", self.provenance.extraction_method),
                 "ocr_confidence": self.provenance.ocr_confidence,
             },
@@ -317,7 +306,7 @@ impl SearchResult {
 Search results include surrounding chunks for comprehension. Uses the `doc_chunks` index to look up adjacent chunks by `sequence +/- window`.
 
 ```rust
-impl CaseHandle {
+impl CollectionHandle {
     /// Returns (before_text, after_text) by looking up adjacent chunks
     /// via doc_chunks:{doc_id}:{sequence +/- 1} index keys
     pub fn get_surrounding_context(
@@ -330,122 +319,262 @@ impl CaseHandle {
 
 ---
 
-## 5. Case Lifecycle
+## 5. Collection Summary
+
+Each collection maintains a summary structure that provides an at-a-glance overview of the collection's contents, automatically updated as documents are ingested or removed.
+
+```rust
+/// Per-collection summary providing an overview of all contents
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CollectionSummary {
+    pub collection_id: Uuid,
+
+    // === Key Entities ===
+    /// People, organizations, and other named entities mentioned across all documents
+    pub entities: Vec<EntitySummary>,
+
+    // === Key Dates & Timelines ===
+    /// Important dates extracted from documents with context
+    pub key_dates: Vec<DateEntry>,
+
+    // === Top Topics/Themes ===
+    /// Dominant themes identified across the collection
+    pub top_topics: Vec<TopicSummary>,
+
+    // === Document Statistics ===
+    pub document_count: u32,
+    pub total_pages: u32,
+    pub total_chunks: u32,
+    pub storage_bytes: u64,
+    pub file_types: HashMap<String, u32>,  // e.g., {"pdf": 12, "docx": 5, "xlsx": 3}
+
+    // === Entity Statistics ===
+    pub unique_entity_count: u32,
+    pub entity_type_counts: HashMap<String, u32>,  // e.g., {"person": 45, "org": 12}
+
+    pub last_updated: i64,  // Unix timestamp
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EntitySummary {
+    pub name: String,
+    pub entity_type: String,        // "person", "organization", "location", etc.
+    pub mention_count: u32,
+    pub document_ids: Vec<Uuid>,    // Which documents mention this entity
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DateEntry {
+    pub date: String,               // ISO 8601
+    pub context: String,            // What the date refers to
+    pub document_id: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TopicSummary {
+    pub label: String,
+    pub chunk_count: u32,           // How many chunks belong to this topic
+    pub representative_terms: Vec<String>,
+}
+```
+
+---
+
+## 6. Reference Network
+
+The reference network is a graph of cross-document references within a collection. It enables navigation between related documents based on shared entities, semantic similarity, and explicit references.
+
+```rust
+/// Edge in the reference network connecting two documents
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReferenceEdge {
+    pub source_doc_id: Uuid,
+    pub target_doc_id: Uuid,
+    pub edge_type: ReferenceEdgeType,
+    pub weight: f32,                // Strength of the reference (0.0-1.0)
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum ReferenceEdgeType {
+    SharedEntity,           // Both documents mention the same entity
+    SemanticSimilarity,     // Documents contain semantically similar chunks
+    ExplicitReference,      // One document explicitly references another
+}
+```
+
+---
+
+## 7. Knowledge Graph
+
+Every collection maintains a knowledge graph linking chunks, documents, and entities with full provenance.
 
 ```
-CASE LIFECYCLE
+KNOWLEDGE GRAPH STRUCTURE
 =================================================================================
 
-  create_case("Smith v. Jones")
+  Nodes:
+    - Document nodes (one per ingested file)
+    - Chunk nodes (one per text chunk, linked to parent document)
+    - Entity nodes (people, organizations, dates, etc. extracted from chunks)
+
+  Edges:
+    - Chunk-to-Document: Every chunk linked to its source document with full provenance
+    - Entity-to-Chunk: Entity mention links with character offsets
+    - Document-to-Document: Shared entities, semantic similarity, explicit references
+    - Chunk-to-Chunk: Semantic similarity above threshold, co-reference
+
+  Enables queries like:
+    - "Show me all documents mentioning Company X"
+    - "What other documents relate to this one?"
+    - "Which entities appear across multiple documents?"
+    - "Trace the provenance of this information back to the source"
+```
+
+```rust
+/// Node in the collection's knowledge graph
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum GraphNode {
+    Document { id: Uuid, name: String },
+    Chunk { id: Uuid, document_id: Uuid, text_preview: String },
+    Entity { id: Uuid, name: String, entity_type: String },
+}
+
+/// Edge in the collection's knowledge graph
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GraphEdge {
+    pub source: Uuid,
+    pub target: Uuid,
+    pub edge_type: GraphEdgeType,
+    pub weight: f32,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum GraphEdgeType {
+    ChunkToDocument,        // Chunk belongs to document (provenance link)
+    EntityToChunk,          // Entity mentioned in chunk
+    DocumentToDocument,     // Cross-document reference
+    ChunkToChunk,           // Semantic similarity or co-reference
+}
+```
+
+---
+
+## 8. Collection Lifecycle
+
+```
+COLLECTION LIFECYCLE
+=================================================================================
+
+  create_collection("Project Alpha")
        |
        v
-  [ACTIVE] -----> ingest_pdf, ingest_docx, search_case
+  [ACTIVE] -----> ingest_pdf, ingest_docx, ingest_xlsx, search_collection
        |
-       |  close_case()          reopen_case()
-       v                             |
-  [CLOSED] --------> (read-only) ---+
+       |  close_collection()          reopen_collection()
+       v                                   |
+  [CLOSED] --------> (read-only) ---------+
        |
-       |  archive_case()
+       |  archive_collection()
        v
   [ARCHIVED] -----> (read-only, not shown in default list)
        |
-       |  delete_case()
+       |  delete_collection()
        v
-  [DELETED] -----> case directory removed from disk
+  [DELETED] -----> collection directory removed from disk
 
 Notes:
   - ACTIVE: Full read/write. Can ingest, search, modify.
   - CLOSED: Read-only. Search works. Cannot ingest new documents.
-  - ARCHIVED: Same as closed but hidden from default list_cases.
+  - ARCHIVED: Same as closed but hidden from default list_collections.
   - DELETED: Completely removed. Not recoverable.
 ```
 
 ---
 
-## 6. Case Management via MCP Tools -- Operations Guide
+## 9. Collection Management via MCP Tools -- Operations Guide
 
-This section is the definitive reference for how the AI (Claude) and the user manage cases, documents, embeddings, and databases through MCP tools. **Every operation below is exposed as an MCP tool** (see PRD 09 for full input/output schemas).
+This section is the definitive reference for how the AI (Claude) and the user manage collections, documents, embeddings, and databases through MCP tools. **Every operation below is exposed as an MCP tool** (see PRD 09 for full input/output schemas).
 
-### 6.1 Isolation Guarantee
+### 9.1 Isolation Guarantee
 
 ```
-CRITICAL: DATA NEVER CROSSES CASE BOUNDARIES
+CRITICAL: DATA NEVER CROSSES COLLECTION BOUNDARIES
 =================================================================================
 
-- Each case = its own RocksDB database on disk (separate files, separate directory)
-- Embeddings from Case A are in a DIFFERENT DATABASE FILE than Case B
-- Search operates within a SINGLE CASE ONLY -- there is no cross-case search
-- Ingestion targets the ACTIVE CASE ONLY -- documents go into exactly one case
-- Deleting a case deletes ONLY that case's database, chunks, embeddings, and index
+- Each collection = its own RocksDB database on disk (separate files, separate directory)
+- Embeddings from Collection A are in a DIFFERENT DATABASE FILE than Collection B
+- Search operates within a SINGLE COLLECTION ONLY -- there is no cross-collection search
+- Ingestion targets the ACTIVE COLLECTION ONLY -- documents go into exactly one collection
+- Deleting a collection deletes ONLY that collection's database, chunks, embeddings, and index
 - No shared vector index, no shared embedding store, no shared anything
 
-The AI MUST switch_case before performing ANY operation on a different case.
-There is no way to accidentally mix data between cases.
+The AI MUST switch_collection before performing ANY operation on a different collection.
+There is no way to accidentally mix data between collections.
 ```
 
-### 6.2 Case Lifecycle Operations (MCP Tools)
+### 9.2 Collection Lifecycle Operations (MCP Tools)
 
 | Operation | MCP Tool | What It Does | Data Impact |
 |-----------|----------|-------------|-------------|
-| Create a case | `create_case` | Creates a new case directory, initializes an empty RocksDB instance with all column families, registers in the case registry, auto-switches to the new case | New database on disk |
-| List all cases | `list_cases` | Lists all cases with status, document count, chunk count, creation date | Read-only |
-| Switch active case | `switch_case` | Changes which case all subsequent operations target. Opens that case's RocksDB database. | Changes active DB handle |
-| Get case details | `get_case_info` | Shows all documents, total pages, total chunks, storage usage, embedder info | Read-only |
-| Delete a case | `delete_case` | **Permanently removes**: case directory, RocksDB database, ALL chunks, ALL embeddings, ALL indexes, ALL provenance records, optionally stored original files. Requires `confirm=true`. Not recoverable. | **Destroys entire database** |
+| Create a collection | `create_collection` | Creates a new collection directory, initializes an empty RocksDB instance with all column families, registers in the collection registry, auto-switches to the new collection | New database on disk |
+| List all collections | `list_collections` | Lists all collections with status, document count, chunk count, creation date | Read-only |
+| Switch active collection | `switch_collection` | Changes which collection all subsequent operations target. Opens that collection's RocksDB database. | Changes active DB handle |
+| Get collection details | `get_collection_info` | Shows all documents, total pages, total chunks, storage usage, embedder info | Read-only |
+| Delete a collection | `delete_collection` | **Permanently removes**: collection directory, RocksDB database, ALL chunks, ALL embeddings, ALL indexes, ALL provenance records, optionally stored original files. Requires `confirm=true`. Not recoverable. | **Destroys entire database** |
 
-### 6.3 Document Management Operations (MCP Tools)
+### 9.3 Document Management Operations (MCP Tools)
 
 | Operation | MCP Tool | What It Does | Data Impact |
 |-----------|----------|-------------|-------------|
-| Ingest one file | `ingest_document` | Reads file → extracts text → chunks into 2000-char segments → embeds with all active models → stores in active case's DB | Adds chunks + embeddings to active case |
-| Ingest a folder | `ingest_folder` | Recursively walks directory → ingests all supported files → skips already-ingested (SHA256) | Bulk add to active case |
-| Sync a folder | `sync_folder` | Compares disk vs DB → ingests new files, reindexes changed files, optionally removes deleted | Add/update/remove in active case |
-| List documents | `list_documents` | Lists all documents in active case with page count, chunk count, type | Read-only |
+| Ingest one file | `ingest_document` | Reads file -> extracts text -> chunks into 2000-char segments -> embeds with all active models -> stores in active collection's DB | Adds chunks + embeddings to active collection |
+| Ingest a folder | `ingest_folder` | Recursively walks directory -> ingests all supported files (PDF, DOCX, XLSX, TXT, etc.) -> skips already-ingested (SHA256) | Bulk add to active collection |
+| Sync a folder | `sync_folder` | Compares disk vs DB -> ingests new files, reindexes changed files, optionally removes deleted | Add/update/remove in active collection |
+| List documents | `list_documents` | Lists all documents in active collection with page count, chunk count, type | Read-only |
 | Get document details | `get_document` | Shows one document's metadata, extraction method, chunk stats | Read-only |
-| **Delete a document** | `delete_document` | **Removes from active case**: document metadata, ALL chunks for that document, ALL embeddings for those chunks, ALL provenance records, ALL BM25 index entries. Requires `confirm=true`. | **Destroys document data** |
+| **Delete a document** | `delete_document` | **Removes from active collection**: document metadata, ALL chunks for that document, ALL embeddings for those chunks, ALL provenance records, ALL BM25 index entries. Requires `confirm=true`. | **Destroys document data** |
 
-### 6.4 Embedding & Index Management Operations (MCP Tools)
+### 9.4 Embedding & Index Management Operations (MCP Tools)
 
 | Operation | MCP Tool | What It Does | Data Impact |
 |-----------|----------|-------------|-------------|
-| Check index health | `get_index_status` | Per-document report: embedder coverage (4/7 vs 7/7), SHA256 staleness, missing source files | Read-only |
-| Reindex one document | `reindex_document` | Deletes ALL old chunks + embeddings → re-reads source file → re-chunks → re-embeds → rebuilds BM25 entries. Option: `reparse=false` keeps chunks, only rebuilds embeddings. | **Replaces** old embeddings with fresh ones |
-| Reindex entire case | `reindex_case` | Full rebuild of every document in the case. Option: `skip_unchanged=true` only touches stale documents. Requires `confirm=true`. | **Replaces** all embeddings in case |
+| Check index health | `get_index_status` | Per-document report: embedder coverage (2/4 vs 4/4), SHA256 staleness, missing source files | Read-only |
+| Reindex one document | `reindex_document` | Deletes ALL old chunks + embeddings -> re-reads source file -> re-chunks -> re-embeds -> rebuilds BM25 entries. Option: `reparse=false` keeps chunks, only rebuilds embeddings. | **Replaces** old embeddings with fresh ones |
+| Reindex entire collection | `reindex_collection` | Full rebuild of every document in the collection. Option: `skip_unchanged=true` only touches stale documents. Requires `confirm=true`. | **Replaces** all embeddings in collection |
 | Get chunk provenance | `get_chunk` | Retrieves one chunk with full text and provenance (file, page, paragraph, line, char offsets) | Read-only |
 | List document chunks | `get_document_chunks` | Lists all chunks in a document with their provenance | Read-only |
 | Get surrounding context | `get_source_context` | Gets the chunks before/after a given chunk for context | Read-only |
 
-### 6.5 Folder Watch & Auto-Sync Operations (MCP Tools)
+### 9.5 Folder Watch & Auto-Sync Operations (MCP Tools)
 
 | Operation | MCP Tool | What It Does | Data Impact |
 |-----------|----------|-------------|-------------|
-| Watch a folder | `watch_folder` | Starts OS-level file monitoring. New/modified/deleted files automatically trigger ingestion/reindex/removal in the target case. | Automatic ongoing changes |
-| Stop watching | `unwatch_folder` | Stops auto-sync. Existing case data is untouched. | No data change |
+| Watch a folder | `watch_folder` | Starts OS-level file monitoring. New/modified/deleted files automatically trigger ingestion/reindex/removal in the target collection. | Automatic ongoing changes |
+| Stop watching | `unwatch_folder` | Stops auto-sync. Existing collection data is untouched. | No data change |
 | List watches | `list_watches` | Shows all active watches, their schedule, last sync, health status | Read-only |
 | Change schedule | `set_sync_schedule` | Changes how often a watch syncs (on_change, hourly, daily, manual) | No data change |
 
-### 6.6 Typical AI Workflow
+### 9.6 Typical AI Workflow
 
 ```
-User: "New case, Smith v. Jones. Docs in ~/Cases/Smith/"
+User: "New collection for Project Alpha. Docs in ~/Projects/Alpha/"
 
 Claude:
-  1. create_case("Smith v. Jones", case_type="contract")  → isolated DB, auto-switched
-  2. ingest_folder("~/Cases/Smith/", recursive=true)      → chunks + embeds all files
-  3. watch_folder("~/Cases/Smith/", schedule="on_change") → auto-sync future changes
+  1. create_collection("Project Alpha", collection_type="project")  -> isolated DB, auto-switched
+  2. ingest_folder("~/Projects/Alpha/", recursive=true)             -> chunks + embeds all files
+  3. watch_folder("~/Projects/Alpha/", schedule="on_change")        -> auto-sync future changes
 
-User: "Search for termination clauses"
-  4. search_case("termination clauses", top_k=5)          → results with full provenance
+User: "Search for customer retention strategy"
+  4. search_collection("customer retention strategy", top_k=5)      -> results with full provenance
 
-User: "Switch to Doe case and search witness testimony"
-  5. switch_case("Doe v. State")                          → separate DB, Smith inaccessible
-  6. search_case("witness testimony")                     → Doe-only results
+User: "Switch to Q3 Reports collection and search revenue figures"
+  5. switch_collection("Q3 Reports")                                -> separate DB, Alpha inaccessible
+  6. search_collection("revenue figures")                           -> Q3-only results
 
-Key invariant: delete_case/delete_document/reindex always cascade through
-chunks → embeddings → provenance → BM25 entries. Original source files on
+Key invariant: delete_collection/delete_document/reindex always cascade through
+chunks -> embeddings -> provenance -> BM25 entries. Original source files on
 disk are NEVER removed. See PRD 09 for full tool schemas.
 ```
 
 ---
 
-*CaseTrack PRD v4.0.0 -- Document 7 of 10*
+*CaseTrack PRD v5.0.0 -- Document 7 of 10*
