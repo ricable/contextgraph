@@ -856,6 +856,37 @@ impl TeleologicalMemoryStore for InMemoryTeleologicalStore {
         Ok(results)
     }
 
+    // ==================== Audit Log (Phase 1.1 Stubs) ====================
+
+    async fn append_audit_record(&self, _record: &crate::types::audit::AuditRecord) -> CoreResult<()> {
+        // Test stub: no-op for audit log append
+        Ok(())
+    }
+
+    async fn get_audit_by_target(
+        &self,
+        _target_id: Uuid,
+        _limit: usize,
+    ) -> CoreResult<Vec<crate::types::audit::AuditRecord>> {
+        // Test stub: always returns empty
+        Ok(Vec::new())
+    }
+
+    async fn get_audit_by_time_range(
+        &self,
+        _start: chrono::DateTime<chrono::Utc>,
+        _end: chrono::DateTime<chrono::Utc>,
+        _limit: usize,
+    ) -> CoreResult<Vec<crate::types::audit::AuditRecord>> {
+        // Test stub: always returns empty
+        Ok(Vec::new())
+    }
+
+    async fn count_audit_records(&self) -> CoreResult<usize> {
+        // Test stub: always returns 0
+        Ok(0)
+    }
+
     // ==================== Type Downcasting ====================
 
     fn as_any(&self) -> &dyn Any {

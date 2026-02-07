@@ -20,6 +20,7 @@
 //! - `ClaudeResponse`: From session end captured responses
 //! - `Manual`: User-injected via MCP tools (no special metadata)
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// Source metadata for memory provenance tracking.
@@ -81,6 +82,44 @@ pub struct SourceMetadata {
 
     /// LLM confidence score [0.0, 1.0] (for CausalExplanation).
     pub confidence: Option<f32>,
+
+    /// User/agent who created this memory (Phase 1.2 operator attribution).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+
+    /// Explicit creation timestamp (UTC, Phase 1.2 operator attribution).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<DateTime<Utc>>,
+
+    /// SHA-256 hash of the source file content (Phase 3b code git provenance).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_content_hash: Option<String>,
+
+    /// When the source file was last modified on disk (Phase 3b).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_modified_at: Option<DateTime<Utc>>,
+
+    /// UUIDs of source memories this was derived from (Phase 4, item 5.10).
+    /// Set when a memory is created by merging other memories.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub derived_from: Option<Vec<uuid::Uuid>>,
+
+    /// Method used to derive this memory (Phase 4, item 5.10).
+    /// E.g., "merge:union", "merge:intersection", "merge:weighted_average".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub derivation_method: Option<String>,
+
+    /// Tool use ID from Claude Code hook payload (Phase 5, item 5.12).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_use_id: Option<String>,
+
+    /// MCP JSON-RPC request ID (Phase 5, item 5.12).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_request_id: Option<String>,
+
+    /// Hook execution timestamp in milliseconds (Phase 5, item 5.12).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hook_execution_timestamp_ms: Option<i64>,
 }
 
 /// Type of memory source.
@@ -123,6 +162,15 @@ impl Default for SourceMetadata {
             causal_relationship_id: None,
             mechanism_type: None,
             confidence: None,
+            created_by: None,
+            created_at: None,
+            file_content_hash: None,
+            file_modified_at: None,
+            derived_from: None,
+            derivation_method: None,
+            tool_use_id: None,
+            mcp_request_id: None,
+            hook_execution_timestamp_ms: None,
         }
     }
 }
@@ -141,17 +189,7 @@ impl SourceMetadata {
             file_path: Some(file_path.into()),
             chunk_index: Some(chunk_index),
             total_chunks: Some(total_chunks),
-            start_line: None,
-            end_line: None,
-            hook_type: None,
-            tool_name: None,
-            session_id: None,
-            session_sequence: None,
-            causal_direction: None,
-            source_fingerprint_id: None,
-            causal_relationship_id: None,
-            mechanism_type: None,
-            confidence: None,
+            ..Self::default()
         }
     }
 
@@ -178,15 +216,7 @@ impl SourceMetadata {
             total_chunks: Some(total_chunks),
             start_line: Some(start_line),
             end_line: Some(end_line),
-            hook_type: None,
-            tool_name: None,
-            session_id: None,
-            session_sequence: None,
-            causal_direction: None,
-            source_fingerprint_id: None,
-            causal_relationship_id: None,
-            mechanism_type: None,
-            confidence: None,
+            ..Self::default()
         }
     }
 
@@ -199,20 +229,9 @@ impl SourceMetadata {
     pub fn hook_description(hook_type: impl Into<String>, tool_name: Option<String>) -> Self {
         Self {
             source_type: SourceType::HookDescription,
-            file_path: None,
-            chunk_index: None,
-            total_chunks: None,
-            start_line: None,
-            end_line: None,
             hook_type: Some(hook_type.into()),
             tool_name,
-            session_id: None,
-            session_sequence: None,
-            causal_direction: None,
-            source_fingerprint_id: None,
-            causal_relationship_id: None,
-            mechanism_type: None,
-            confidence: None,
+            ..Self::default()
         }
     }
 
@@ -220,20 +239,7 @@ impl SourceMetadata {
     pub fn claude_response() -> Self {
         Self {
             source_type: SourceType::ClaudeResponse,
-            file_path: None,
-            chunk_index: None,
-            total_chunks: None,
-            start_line: None,
-            end_line: None,
-            hook_type: None,
-            tool_name: None,
-            session_id: None,
-            session_sequence: None,
-            causal_direction: None,
-            source_fingerprint_id: None,
-            causal_relationship_id: None,
-            mechanism_type: None,
-            confidence: None,
+            ..Self::default()
         }
     }
 
@@ -241,20 +247,7 @@ impl SourceMetadata {
     pub fn manual() -> Self {
         Self {
             source_type: SourceType::Manual,
-            file_path: None,
-            chunk_index: None,
-            total_chunks: None,
-            start_line: None,
-            end_line: None,
-            hook_type: None,
-            tool_name: None,
-            session_id: None,
-            session_sequence: None,
-            causal_direction: None,
-            source_fingerprint_id: None,
-            causal_relationship_id: None,
-            mechanism_type: None,
-            confidence: None,
+            ..Self::default()
         }
     }
 
@@ -274,20 +267,11 @@ impl SourceMetadata {
     ) -> Self {
         Self {
             source_type: SourceType::CausalExplanation,
-            file_path: None,
-            chunk_index: None,
-            total_chunks: None,
-            start_line: None,
-            end_line: None,
-            hook_type: None,
-            tool_name: None,
-            session_id: None,
-            session_sequence: None,
-            causal_direction: None,
             source_fingerprint_id: Some(source_fingerprint_id),
             causal_relationship_id: Some(causal_relationship_id),
             mechanism_type: Some(mechanism_type),
             confidence: Some(confidence),
+            ..Self::default()
         }
     }
 
@@ -310,6 +294,19 @@ impl SourceMetadata {
     pub fn with_session(mut self, session_id: impl Into<String>, session_sequence: u64) -> Self {
         self.session_id = Some(session_id.into());
         self.session_sequence = Some(session_sequence);
+        self
+    }
+
+    /// Set operator attribution (Phase 1.2 provenance improvement).
+    ///
+    /// Records who created this memory and when.
+    ///
+    /// # Arguments
+    ///
+    /// * `operator_id` - User/agent who created this memory
+    pub fn with_operator(mut self, operator_id: impl Into<String>) -> Self {
+        self.created_by = Some(operator_id.into());
+        self.created_at = Some(Utc::now());
         self
     }
 

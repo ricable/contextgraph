@@ -18,7 +18,7 @@ fn test_teleological_cf_names_count() {
         "Must have exactly {} teleological column families",
         TELEOLOGICAL_CF_COUNT
     );
-    assert_eq!(TELEOLOGICAL_CF_COUNT, 15); // 13 active + 2 legacy CFs total
+    assert_eq!(TELEOLOGICAL_CF_COUNT, 23); // 21 active + 2 legacy CFs total
 }
 
 #[test]
@@ -166,20 +166,22 @@ fn test_descriptors_in_correct_order() {
 }
 
 #[test]
-fn test_get_all_teleological_cf_descriptors_returns_25() {
+fn test_get_all_teleological_cf_descriptors_returns_36() {
     use rocksdb::Cache;
     let cache = Cache::new_lru_cache(256 * 1024 * 1024);
     let descriptors = get_all_teleological_cf_descriptors(&cache);
 
-    // 15 teleological + 13 quantized embedder = 28
-    // Teleological (15): fingerprints, topic_profiles, e13_splade_inverted, e6_sparse_inverted,
+    // 23 teleological + 13 quantized embedder = 36
+    // Teleological (23): fingerprints, topic_profiles, e13_splade_inverted, e6_sparse_inverted,
     //   e1_matryoshka_128, synergy_matrix, teleological_profiles, teleological_vectors, content,
-    //   source_metadata, file_index, topic_portfolio, e12_late_interaction, session_identity, ego_node
+    //   source_metadata, file_index, topic_portfolio, e12_late_interaction, entity_provenance,
+    //   audit_log, audit_by_target, merge_history, importance_history, tool_call_index,
+    //   consolidation_recommendations, embedding_registry, session_identity, ego_node
     // Quantized (13): emb_0 through emb_12
     assert_eq!(
         descriptors.len(),
-        28,
-        "Must return 15 teleological + 13 quantized = 28 CFs"
+        36,
+        "Must return 23 teleological + 13 quantized = 36 CFs"
     );
 }
 

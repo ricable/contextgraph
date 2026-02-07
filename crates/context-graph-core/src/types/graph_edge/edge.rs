@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::marblestone::{Domain, EdgeType, NeurotransmitterWeights};
-use crate::types::NodeId;
+use crate::types::{LLMProvenance, NodeId};
 
 /// Type alias for edge identifiers (UUID v4).
 pub type EdgeId = Uuid;
@@ -77,6 +77,11 @@ pub struct GraphEdge {
 
     /// Timestamp when this edge was last traversed.
     pub last_traversed_at: Option<DateTime<Utc>>,
+
+    /// LLM provenance metadata for how this edge was discovered (Phase 1.3).
+    /// Populated by the graph discovery agent when it creates edges via LLM analysis.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub discovery_provenance: Option<LLMProvenance>,
 }
 
 impl GraphEdge {
@@ -138,6 +143,7 @@ impl GraphEdge {
             traversal_count: 0,
             created_at: now,
             last_traversed_at: None,
+            discovery_provenance: None,
         }
     }
 
@@ -202,6 +208,12 @@ impl GraphEdge {
         edge.weight = weight.clamp(0.0, 1.0);
         edge.confidence = confidence.clamp(0.0, 1.0);
         edge
+    }
+
+    /// Add LLM discovery provenance to an existing edge.
+    pub fn with_discovery_provenance(mut self, provenance: LLMProvenance) -> Self {
+        self.discovery_provenance = Some(provenance);
+        self
     }
 }
 

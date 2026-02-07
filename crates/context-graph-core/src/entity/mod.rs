@@ -24,8 +24,10 @@
 //!
 //! Entity "detection" is now simply: embed with KEPLER, search by similarity.
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use uuid::Uuid;
 
 /// Categories of entities for display/grouping purposes.
 ///
@@ -50,11 +52,16 @@ pub enum EntityType {
     Unknown,
 }
 
-/// An entity reference with surface form.
+/// An entity reference with surface form and confidence.
 ///
 /// The canonical_id is simply the lowercase normalized form.
 /// KEPLER embeddings handle actual entity resolution.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+///
+/// # Phase 3a Provenance
+///
+/// Confidence tracking enables entity provenance - knowing how certain
+/// we are about entity extraction (1.0 for KB matches, lower for heuristics).
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EntityLink {
     /// Raw entity text as provided
     pub surface_form: String,
@@ -62,25 +69,62 @@ pub struct EntityLink {
     pub canonical_id: String,
     /// Entity type (for display only - KEPLER doesn't need this)
     pub entity_type: EntityType,
+    /// Extraction confidence [0.0, 1.0]. Default: 1.0 (certain).
+    /// Phase 3a: Enables tracking how entities were detected.
+    pub confidence: f32,
+}
+
+// Manual implementations of PartialEq, Eq, and Hash that ignore confidence.
+// Two EntityLinks pointing to the same entity are equal regardless of confidence.
+impl PartialEq for EntityLink {
+    fn eq(&self, other: &Self) -> bool {
+        self.surface_form == other.surface_form
+            && self.canonical_id == other.canonical_id
+            && self.entity_type == other.entity_type
+    }
+}
+
+impl Eq for EntityLink {}
+
+impl std::hash::Hash for EntityLink {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.surface_form.hash(state);
+        self.canonical_id.hash(state);
+        self.entity_type.hash(state);
+        // Intentionally exclude confidence from hash
+    }
 }
 
 impl EntityLink {
-    /// Create a new entity link from surface form.
+    /// Create a new entity link from surface form with default confidence (1.0).
     /// Canonical ID is simply the lowercase form.
     pub fn new(surface_form: &str) -> Self {
         Self {
             surface_form: surface_form.to_string(),
             canonical_id: surface_form.to_lowercase(),
             entity_type: EntityType::Unknown,
+            confidence: 1.0,
         }
     }
 
-    /// Create with explicit type annotation.
+    /// Create with explicit type annotation and default confidence (1.0).
     pub fn with_type(surface_form: &str, entity_type: EntityType) -> Self {
         Self {
             surface_form: surface_form.to_string(),
             canonical_id: surface_form.to_lowercase(),
             entity_type,
+            confidence: 1.0,
+        }
+    }
+
+    /// Create with explicit confidence score.
+    /// Useful for tracking extraction method quality (Phase 3a provenance).
+    pub fn with_confidence(surface_form: &str, entity_type: EntityType, confidence: f32) -> Self {
+        Self {
+            surface_form: surface_form.to_string(),
+            canonical_id: surface_form.to_lowercase(),
+            entity_type,
+            confidence: confidence.clamp(0.0, 1.0),
         }
     }
 }
@@ -90,6 +134,65 @@ impl EntityLink {
 pub struct EntityMetadata {
     /// All entities
     pub entities: Vec<EntityLink>,
+}
+
+// =============================================================================
+// PHASE 3A: ENTITY PROVENANCE TRACKING
+// =============================================================================
+// These types enable full provenance tracking from entities back to source
+// memories, with extraction method and confidence scoring.
+// =============================================================================
+
+/// How an entity was extracted from source content.
+///
+/// Phase 3a: Tracks extraction methodology for provenance auditing.
+/// Different methods have different confidence characteristics.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EntityExtractionMethod {
+    /// Matched against known knowledge base (highest confidence).
+    KnowledgeBase,
+    /// Detected via heuristic pattern (capitalization, technical patterns).
+    HeuristicPattern,
+    /// Inferred via TransE relationship prediction.
+    TransEInferred,
+    /// Extracted by LLM analysis.
+    LLMExtracted,
+}
+
+/// Character span in source text where entity was found.
+///
+/// Phase 3a: Enables "show me where this entity came from" provenance.
+/// Pattern follows CausalSourceSpan for consistency.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntitySourceSpan {
+    /// Start character offset in source text
+    pub start_char: usize,
+    /// End character offset in source text
+    pub end_char: usize,
+    /// Text excerpt containing the entity mention
+    pub text_excerpt: String,
+}
+
+/// Full provenance record for an extracted entity.
+///
+/// Links an entity back to its source memory and records how
+/// it was extracted, with what confidence, and where in the text.
+///
+/// Phase 3a: Stored in CF_ENTITY_PROVENANCE for full audit trail.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EntityProvenance {
+    /// The entity this provenance is for
+    pub entity: EntityLink,
+    /// UUID of the memory this entity was extracted from
+    pub source_memory_id: Uuid,
+    /// Character spans in source text where entity appears
+    pub source_spans: Vec<EntitySourceSpan>,
+    /// How the entity was extracted
+    pub extraction_method: EntityExtractionMethod,
+    /// Extraction confidence [0.0, 1.0]
+    pub confidence: f32,
+    /// When this entity was extracted
+    pub extracted_at: DateTime<Utc>,
 }
 
 impl EntityMetadata {

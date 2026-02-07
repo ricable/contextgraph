@@ -188,6 +188,13 @@ impl Handlers {
                 self.call_repair_causal_relationships(id).await
             }
 
+            // ========== PROVENANCE TOOLS (Phase P3 - Provenance Queries) ==========
+            tool_names::GET_AUDIT_TRAIL => self.call_get_audit_trail(id, arguments).await,
+            tool_names::GET_MERGE_HISTORY => self.call_get_merge_history(id, arguments).await,
+            tool_names::GET_PROVENANCE_CHAIN => {
+                self.call_get_provenance_chain(id, arguments).await
+            }
+
             // Unknown tool
             _ => JsonRpcResponse::error(
                 id,

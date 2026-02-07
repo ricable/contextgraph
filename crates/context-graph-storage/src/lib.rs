@@ -170,6 +170,11 @@ pub use teleological::{
     TELEOLOGICAL_CFS,
     TELEOLOGICAL_CF_COUNT,
     TELEOLOGICAL_VERSION,
+    // Phase 4 Lifecycle Provenance: Merge + importance history
+    CF_MERGE_HISTORY,
+    CF_IMPORTANCE_HISTORY,
+    merge_history_cf_options,
+    importance_history_cf_options,
 };
 
 // Re-export code storage types (CODE-001)

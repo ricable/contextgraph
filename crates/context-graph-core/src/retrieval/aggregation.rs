@@ -226,6 +226,19 @@ impl AggregationStrategy {
                     result.boosted_score = result.rrf_score;
                 }
 
+                // Populate insight_annotation per improvement plan 5.5
+                if result.unique_contribution {
+                    result.insight_annotation = Some(format!(
+                        "Blind-spot discovery: Only {} found this result (other embedders missed it)",
+                        result.primary_embedder_name()
+                    ));
+                } else if result.found_by.len() >= 10 {
+                    result.insight_annotation = Some(format!(
+                        "Strong consensus: {}/13 embedders agree on this result",
+                        result.found_by.len()
+                    ));
+                }
+
                 result
             })
             .collect();

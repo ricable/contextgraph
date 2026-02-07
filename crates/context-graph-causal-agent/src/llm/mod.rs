@@ -399,13 +399,22 @@ ws ::= [ \t\n\r]*"#
             "Analyzing causal relationship"
         );
 
-        // Generate response with grammar constraint
-        let response = self
-            .generate_with_grammar(&prompt, GrammarType::Causal)
+        // Generate response with grammar constraint and capture metadata
+        let (response, tokens_consumed, generation_time_ms) = self
+            .generate_with_grammar_and_metadata(&prompt, GrammarType::Causal)
             .await?;
 
+        // Build provenance
+        let provenance = self.build_provenance(
+            GrammarType::Causal,
+            Some(tokens_consumed),
+            Some(generation_time_ms),
+        );
+
         // Parse the JSON response (guaranteed valid by grammar)
-        self.parse_causal_response(&response)
+        let mut result = self.parse_causal_response(&response)?;
+        result.llm_provenance = Some(provenance);
+        Ok(result)
     }
 
     /// Batch analyze multiple memory pairs.
@@ -833,14 +842,17 @@ ws ::= [ \t\n\r]*"#
         self.generate_with_grammar(prompt, GrammarType::Causal).await
     }
 
-    /// Generate text with a specific grammar type.
+    /// Generate text with a specific grammar type and return metadata.
     ///
-    /// This allows other crates to use the appropriate grammar for their needs.
-    pub async fn generate_with_grammar(
+    /// Returns (output, tokens_consumed, generation_time_ms) for provenance tracking.
+    pub async fn generate_with_grammar_and_metadata(
         &self,
         prompt: &str,
         grammar_type: GrammarType,
-    ) -> CausalAgentResult<String> {
+    ) -> CausalAgentResult<(String, u32, u64)> {
+        use std::time::Instant;
+
+        let start_time = Instant::now();
         let state = self.state.read();
 
         let LlmState::Loaded {
@@ -949,12 +961,28 @@ ws ::= [ \t\n\r]*"#
                 message: format!("Token decoding failed: {}", e),
             })?;
 
+        let generation_time_ms = start_time.elapsed().as_millis() as u64;
+        let tokens_consumed = generated_tokens.len() as u32;
+
         debug!(
-            generated_tokens = generated_tokens.len(),
+            generated_tokens = tokens_consumed,
             output_len = output.len(),
+            generation_time_ms = generation_time_ms,
             "Generation complete"
         );
 
+        Ok((output, tokens_consumed, generation_time_ms))
+    }
+
+    /// Generate text with a specific grammar type.
+    ///
+    /// This allows other crates to use the appropriate grammar for their needs.
+    pub async fn generate_with_grammar(
+        &self,
+        prompt: &str,
+        grammar_type: GrammarType,
+    ) -> CausalAgentResult<String> {
+        let (output, _tokens, _time) = self.generate_with_grammar_and_metadata(prompt, grammar_type).await?;
         Ok(output)
     }
 
@@ -1034,12 +1062,108 @@ ws ::= [ \t\n\r]*"#
             mechanism,
             mechanism_type,
             raw_response: Some(response.to_string()),
+            llm_provenance: None,
         })
     }
 
     /// Get the model configuration.
     pub fn config(&self) -> &LlmConfig {
         &self.config
+    }
+
+    /// Build LLMProvenance from current config for provenance tracking.
+    ///
+    /// # Arguments
+    /// * `grammar_type` - The grammar type used for this generation
+    /// * `tokens_consumed` - Optional token count from generation
+    /// * `generation_time_ms` - Optional generation time in milliseconds
+    ///
+    /// # Returns
+    /// LLMProvenance struct with model metadata
+    pub fn build_provenance(
+        &self,
+        grammar_type: GrammarType,
+        tokens_consumed: Option<u32>,
+        generation_time_ms: Option<u64>,
+    ) -> context_graph_core::types::LLMProvenance {
+        use sha2::{Digest, Sha256};
+
+        // Extract model name from path
+        let model_name = self
+            .config
+            .model_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        // Extract quantization from model name (e.g., "Q5_K_M" from "Hermes-2-Pro-Mistral-7B.Q5_K_M.gguf")
+        let quantization = if model_name.contains("Q5_K_M") {
+            "Q5_K_M".to_string()
+        } else if model_name.contains("Q4_K_M") {
+            "Q4_K_M".to_string()
+        } else if model_name.contains("Q8_0") {
+            "Q8_0".to_string()
+        } else {
+            "unknown".to_string()
+        };
+
+        // Compute SHA-256 hash of the grammar file
+        let grammar_path = match grammar_type {
+            GrammarType::Causal => &self.config.causal_grammar_path,
+            GrammarType::Graph => &self.config.graph_grammar_path,
+            GrammarType::Validation => &self.config.validation_grammar_path,
+            GrammarType::SingleText | GrammarType::MultiRelationship => {
+                // These use embedded grammars, hash the constant string
+                let grammar_str = match grammar_type {
+                    GrammarType::SingleText => Self::default_single_text_grammar(),
+                    GrammarType::MultiRelationship => Self::default_multi_relationship_grammar(),
+                    _ => "",
+                };
+                let mut hasher = Sha256::new();
+                hasher.update(grammar_str.as_bytes());
+                let result = hasher.finalize();
+                let prompt_template_hash = format!("{:x}", result);
+
+                return context_graph_core::types::LLMProvenance::new(
+                    model_name,
+                    quantization.clone(),
+                    quantization,
+                    self.config.temperature,
+                    self.config.max_tokens,
+                    prompt_template_hash,
+                )
+                .with_grammar_type(format!("{:?}", grammar_type))
+                .with_tokens_consumed(tokens_consumed.unwrap_or(0))
+                .with_generation_time_ms(generation_time_ms.unwrap_or(0));
+            }
+        };
+
+        // Hash the grammar file content
+        let prompt_template_hash = if let Ok(grammar_content) = std::fs::read(grammar_path) {
+            let mut hasher = Sha256::new();
+            hasher.update(&grammar_content);
+            let result = hasher.finalize();
+            format!("{:x}", result)
+        } else {
+            // Fallback: hash the path itself
+            let mut hasher = Sha256::new();
+            hasher.update(grammar_path.to_string_lossy().as_bytes());
+            let result = hasher.finalize();
+            format!("{:x}", result)
+        };
+
+        context_graph_core::types::LLMProvenance::new(
+            model_name,
+            quantization.clone(),
+            quantization,
+            self.config.temperature,
+            self.config.max_tokens,
+            prompt_template_hash,
+        )
+        .with_grammar_type(format!("{:?}", grammar_type))
+        .with_tokens_consumed(tokens_consumed.unwrap_or(0))
+        .with_generation_time_ms(generation_time_ms.unwrap_or(0))
     }
 
     /// Estimate VRAM usage in MB.

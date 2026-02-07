@@ -1,5 +1,6 @@
 //! Core domain types for the Context Graph system.
 
+pub mod audit;
 pub mod causal_relationship;
 pub mod code_entity;
 pub mod file_index;
@@ -9,10 +10,11 @@ mod memory_node;
 mod source_metadata;
 
 pub use causal_relationship::{
-    CausalRelationship, CausalSearchResult, CausalSourceSpan, MultiEmbedderConfig,
+    CausalRelationship, CausalSearchResult, CausalSourceSpan, LLMProvenance, MultiEmbedderConfig,
 };
 pub use code_entity::{
-    CodeEntity, CodeEntityType, CodeFileIndexEntry, CodeLanguage, CodeStats, Visibility,
+    CodeEntity, CodeEntityType, CodeFileIndexEntry, CodeGitMetadata, CodeLanguage, CodeStats,
+    Visibility,
 };
 pub use file_index::{FileIndexEntry, FileWatcherStats};
 pub use fingerprint::{
@@ -37,6 +39,10 @@ pub use fingerprint::{
     MAX_SPARSE_ACTIVE,
     SPARSE_VOCAB_SIZE,
     TOTAL_DENSE_DIMS,
+};
+pub use audit::{
+    AuditOperation, AuditRecord, AuditResult, ConsolidationCandidate, ConsolidationRecommendation,
+    EmbeddingVersionRecord, HookExecutionRecord, ImportanceChangeRecord, RecommendationStatus,
 };
 pub use graph_edge::*;
 pub use memory_node::*;

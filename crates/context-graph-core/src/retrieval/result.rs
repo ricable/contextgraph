@@ -300,6 +300,67 @@ impl SpaceContribution {
     }
 }
 
+// =============================================================================
+// RETRIEVAL PROVENANCE TYPES (Phase 2 Improvement Plan)
+// =============================================================================
+
+/// Provenance metadata for a search result.
+/// Exposes how the retrieval system found and ranked this result.
+///
+/// This struct is returned only when `include_provenance` is true in the
+/// search request. It provides full transparency into the retrieval pipeline.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct SearchResultProvenance {
+    /// Search strategy used ("e1_only", "multi_space", "pipeline").
+    pub strategy: String,
+    /// Weight profile applied (e.g., "semantic_search", "causal_reasoning").
+    pub weight_profile: String,
+    /// Query classification details.
+    pub query_classification: QueryClassification,
+    /// Per-embedder contributions to this result.
+    pub embedder_contributions: Vec<EmbedderContribution>,
+    /// Fraction of embedders that found this result (0.0-1.0).
+    pub consensus_score: f32,
+    /// Name of the primary (best-ranked) embedder.
+    pub primary_embedder: String,
+    /// Whether this was a blind spot discovery (found by only 1 embedder).
+    pub is_blind_spot_discovery: bool,
+}
+
+/// Classification of the search query.
+///
+/// Provides details about how the query was classified and what
+/// detection patterns triggered the classification.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct QueryClassification {
+    /// Detected query type ("Causal", "Code", "Intent", "General", etc.).
+    pub detected_type: String,
+    /// Patterns/keywords that triggered this classification.
+    pub detection_patterns: Vec<String>,
+    /// Intent mode if applicable ("SeekingIntent", "SeekingContext").
+    pub intent_mode: Option<String>,
+    /// E10 boost applied (1.2x for SeekingIntent, 0.8x for SeekingContext).
+    pub e10_boost_applied: Option<f32>,
+}
+
+/// Contribution of a single embedder to a search result.
+///
+/// Shows exactly how much each embedder contributed to the final
+/// ranking of this result.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct EmbedderContribution {
+    /// Embedder name (e.g., "E1_Semantic", "E5_Causal").
+    pub embedder: String,
+    /// Raw similarity score in this embedding space.
+    pub similarity: f32,
+    /// Rank in this embedder's results (0-indexed).
+    pub rank: usize,
+    /// RRF contribution: weight / (K + rank + 1).
+    pub rrf_contribution: f32,
+    /// Weight applied from the active weight profile.
+    pub weight: f32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -110,6 +110,16 @@ pub use column_families::{
     QUANTIZED_EMBEDDER_CF_COUNT,
     TELEOLOGICAL_CFS,
     TELEOLOGICAL_CF_COUNT,
+    // Phase 1.1 Provenance: Audit log column families
+    audit_by_target_cf_options,
+    audit_log_cf_options,
+    CF_AUDIT_BY_TARGET,
+    CF_AUDIT_LOG,
+    // Phase 4 Lifecycle Provenance: Merge + importance history column families
+    merge_history_cf_options,
+    importance_history_cf_options,
+    CF_MERGE_HISTORY,
+    CF_IMPORTANCE_HISTORY,
 };
 
 // Re-export quantized storage types (TASK-EMB-022)

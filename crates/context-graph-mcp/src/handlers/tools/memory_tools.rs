@@ -237,6 +237,12 @@ impl Handlers {
             .map(String::from)
             .or_else(|| self.get_session_id());
 
+        // PHASE-1.2: Extract operator_id for provenance tracking
+        let operator_id = args
+            .get("operator_id")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
         // CAUSAL-HINT: Get causal hint if provider is available (non-blocking with timeout)
         // Per Phase 5: LLM analyzes content for causal nature, provides hints to E5 embedder
         // CAUSAL-HINT-FIX: Clone hint before moving into metadata so we can use direction for storage
@@ -394,7 +400,8 @@ impl Handlers {
 
                 // E4-FIX Phase 1: Persist session metadata for E4 sequence retrieval
                 // This enables proper before/after queries by storing session_sequence
-                let source_metadata = SourceMetadata {
+                // PHASE-1.2: Add operator attribution fields for provenance tracking
+                let mut source_metadata = SourceMetadata {
                     source_type: SourceType::Manual,
                     session_id: session_id.clone(),
                     session_sequence: Some(session_sequence),
@@ -410,6 +417,15 @@ impl Handlers {
                     causal_relationship_id: None,
                     mechanism_type: None,
                     confidence: None,
+                    created_by: operator_id.clone(),
+                    created_at: Some(chrono::Utc::now()),
+                    file_content_hash: None,
+                    file_modified_at: None,
+                    derived_from: None,
+                    derivation_method: None,
+                    tool_use_id: None,
+                    mcp_request_id: None,
+                    hook_execution_timestamp_ms: None,
                 };
 
                 if let Err(e) = self
@@ -432,6 +448,41 @@ impl Handlers {
                         causal_direction = %causal_direction,
                         "store_memory: Source metadata stored for E4 sequence retrieval"
                     );
+                }
+
+                // PHASE-1.2: Append audit record for memory creation
+                {
+                    use context_graph_core::types::audit::{AuditOperation, AuditRecord};
+                    let mut audit_record = AuditRecord::new(AuditOperation::MemoryCreated, fingerprint_id);
+                    if let Some(ref op_id) = operator_id {
+                        audit_record = audit_record.with_operator(op_id.clone());
+                    }
+                    if let Some(ref sess_id) = session_id {
+                        audit_record = audit_record.with_session(sess_id.clone());
+                    }
+                    if let Some(r) = rationale {
+                        audit_record = audit_record.with_rationale(r);
+                    }
+                    audit_record = audit_record.with_parameters(json!({
+                        "importance": importance,
+                        "content_size": content.len(),
+                        "causal_direction": causal_direction,
+                    }));
+
+                    if let Err(e) = self.teleological_store.append_audit_record(&audit_record).await {
+                        // Non-fatal: audit is secondary to the main operation
+                        warn!(
+                            fingerprint_id = %fingerprint_id,
+                            error = %e,
+                            "store_memory: Failed to append audit record (memory stored successfully)"
+                        );
+                    } else {
+                        debug!(
+                            fingerprint_id = %fingerprint_id,
+                            audit_id = %audit_record.id,
+                            "store_memory: Audit record appended successfully"
+                        );
+                    }
                 }
 
                 // ===== MULTI-RELATIONSHIP CAUSAL EXTRACTION =====
@@ -608,6 +659,15 @@ impl Handlers {
         // TASK-CONTENT-002: Parse includeContent parameter (default: false for backward compatibility)
         let include_content = args
             .get("includeContent")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // PHASE-2-PROVENANCE: Parse includeProvenance parameter (default: false)
+        // When true, each result includes a nested "provenance" object with
+        // full retrieval transparency: strategy, weight profile, query classification,
+        // per-embedder contributions, consensus score, and blind spot detection.
+        let include_provenance = args
+            .get("includeProvenance")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
@@ -1201,6 +1261,23 @@ impl Handlers {
                     vec![]
                 };
 
+                // PHASE-2-PROVENANCE: Compute strategy name before the results loop
+                // (needed both for provenance and for the response metadata)
+                let strategy_name = match strategy {
+                    SearchStrategy::E1Only => "e1_only",
+                    SearchStrategy::MultiSpace => "multi_space",
+                    SearchStrategy::Pipeline => "pipeline",
+                };
+
+                // PHASE-2-PROVENANCE: Pre-compute query analysis once (outside the loop)
+                // so we can include it in each result's provenance without re-analyzing.
+                let query_analysis = if include_provenance {
+                    let analyzer = context_graph_core::retrieval::QueryTypeAnalyzer::new();
+                    Some(analyzer.analyze(query))
+                } else {
+                    None
+                };
+
                 let results_json: Vec<_> = results
                     .iter()
                     .enumerate()
@@ -1278,16 +1355,70 @@ impl Handlers {
                                 });
                             }
                         }
+
+                        // =============================================================
+                        // PHASE-2-PROVENANCE: Add provenance when requested
+                        // =============================================================
+                        if include_provenance {
+                            if let Some(ref analysis) = query_analysis {
+                                // Build per-embedder contributions from existing embedder_scores
+                                let contributions: Vec<serde_json::Value> = r.embedder_scores.iter()
+                                    .enumerate()
+                                    .filter(|(_, &score)| score > 0.0)
+                                    .map(|(idx, &score)| {
+                                        let name = embedder_names::name(idx);
+                                        // Compute approximate rank: count embedders with higher score
+                                        let approx_rank = r.embedder_scores.iter()
+                                            .filter(|&&s| s > score)
+                                            .count();
+                                        // Compute RRF contribution
+                                        let rrf_contrib = 1.0 / (60.0 + approx_rank as f32 + 1.0);
+                                        // Get weight from effective profile
+                                        let weight = effective_weight_profile.as_ref()
+                                            .and_then(|p| get_weight_profile(p))
+                                            .map(|w| w[idx])
+                                            .unwrap_or(1.0 / 13.0);
+                                        json!({
+                                            "embedder": name,
+                                            "similarity": score,
+                                            "rank": approx_rank,
+                                            "rrfContribution": rrf_contrib,
+                                            "weight": weight
+                                        })
+                                    })
+                                    .collect();
+
+                                // Build query classification from pre-computed analysis
+                                let query_class = json!({
+                                    "detectedType": analysis.query_type.name(),
+                                    "detectionPatterns": analysis.keywords,
+                                    "intentMode": if intent_mode != IntentMode::None {
+                                        Some(format!("{:?}", intent_mode))
+                                    } else {
+                                        None::<String>
+                                    },
+                                    "e10BoostApplied": match intent_mode {
+                                        IntentMode::SeekingIntent => Some(1.2f32),
+                                        IntentMode::SeekingContext => Some(0.8f32),
+                                        IntentMode::None => None::<f32>,
+                                    }
+                                });
+
+                                entry["provenance"] = json!({
+                                    "strategy": strategy_name,
+                                    "weightProfile": effective_weight_profile.as_deref().unwrap_or("default"),
+                                    "queryClassification": query_class,
+                                    "embedderContributions": contributions,
+                                    "consensusScore": agreement_count as f32 / 13.0,
+                                    "primaryEmbedder": dominant_name,
+                                    "isBlindSpotDiscovery": !blind_spots.is_empty() && agreement_count <= 1
+                                });
+                            }
+                        }
+
                         entry
                     })
                     .collect();
-
-                // TASK-MULTISPACE: Include search strategy in response for debugging
-                let strategy_name = match strategy {
-                    SearchStrategy::E1Only => "e1_only",
-                    SearchStrategy::MultiSpace => "multi_space",
-                    SearchStrategy::Pipeline => "pipeline",
-                };
 
                 // Build response with causal metadata
                 let mut response = json!({

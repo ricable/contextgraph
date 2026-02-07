@@ -90,6 +90,33 @@ impl Handlers {
 
         match delete_result {
             Ok(true) => {
+                // PHASE-1.2: Append audit record for deletion
+                {
+                    use context_graph_core::types::audit::{AuditOperation, AuditRecord};
+                    let audit_op = AuditOperation::MemoryDeleted {
+                        soft: request.soft_delete,
+                        reason: request.reason.clone(),
+                    };
+                    let mut audit_record = AuditRecord::new(audit_op, node_id);
+                    if let Some(ref op_id) = request.operator_id {
+                        audit_record = audit_record.with_operator(op_id.clone());
+                    }
+
+                    if let Err(e) = self.teleological_store.append_audit_record(&audit_record).await {
+                        warn!(
+                            node_id = %node_id,
+                            error = %e,
+                            "forget_concept: Failed to append audit record (deletion completed successfully)"
+                        );
+                    } else {
+                        debug!(
+                            node_id = %node_id,
+                            audit_id = %audit_record.id,
+                            "forget_concept: Audit record appended successfully"
+                        );
+                    }
+                }
+
                 // Build response using DTO factory methods
                 let response = if request.soft_delete {
                     info!(node_id = %node_id, "forget_concept: Soft deleted memory (30-day recovery per SEC-06)");
@@ -222,6 +249,41 @@ impl Handlers {
                     clamped = clamped,
                     "boost_importance: Updated memory successfully"
                 );
+
+                // PHASE-1.2: Append audit record for importance boost
+                {
+                    use context_graph_core::types::audit::{AuditOperation, AuditRecord};
+                    use serde_json::json;
+                    let audit_op = AuditOperation::ImportanceBoosted {
+                        old: old_importance,
+                        new: new_importance,
+                        delta: request.delta,
+                    };
+                    let mut audit_record = AuditRecord::new(audit_op, node_id);
+                    if let Some(ref op_id) = request.operator_id {
+                        audit_record = audit_record.with_operator(op_id.clone());
+                    }
+                    audit_record = audit_record.with_parameters(json!({
+                        "old_importance": old_importance,
+                        "new_importance": new_importance,
+                        "delta": request.delta,
+                        "clamped": clamped,
+                    }));
+
+                    if let Err(e) = self.teleological_store.append_audit_record(&audit_record).await {
+                        warn!(
+                            node_id = %node_id,
+                            error = %e,
+                            "boost_importance: Failed to append audit record (update completed successfully)"
+                        );
+                    } else {
+                        debug!(
+                            node_id = %node_id,
+                            audit_id = %audit_record.id,
+                            "boost_importance: Audit record appended successfully"
+                        );
+                    }
+                }
 
                 // Build response using DTO factory method
                 let response = BoostImportanceResponse::new(node_id, old_importance, request.delta);

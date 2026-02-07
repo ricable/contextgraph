@@ -29,6 +29,7 @@ pub(crate) mod intent;
 pub(crate) mod keyword;
 pub(crate) mod maintenance;
 pub(crate) mod merge;
+pub(crate) mod provenance;
 pub(crate) mod robustness;
 pub(crate) mod sequence;
 pub(crate) mod temporal;
@@ -94,6 +95,9 @@ pub fn get_tool_definitions() -> Vec<ToolDefinition> {
     // Maintenance tools (1) - Data repair and cleanup
     tools.extend(maintenance::definitions());
 
+    // Provenance tools (3) - Phase P3 provenance queries
+    tools.extend(provenance::definitions());
+
     tools
 }
 
@@ -103,13 +107,13 @@ mod tests {
 
     #[test]
     fn test_total_tool_count() {
-        // 50 tools:
+        // 53 tools:
         // core: 4, merge: 1, curation: 2, topic: 4, file_watcher: 4, sequence: 4,
         // causal: 4, causal_discovery: 2, keyword: 1, code: 1, graph: 4,
         // robustness: 1, intent: 1, entity: 6, embedder: 4, temporal: 2, graph_link: 4,
-        // maintenance: 1
+        // maintenance: 1, provenance: 3
         // (Note: find_contextual_matches merged into search_by_intent, inject_context merged into store_memory)
-        assert_eq!(get_tool_definitions().len(), 50);
+        assert_eq!(get_tool_definitions().len(), 53);
     }
 
     #[test]
@@ -182,6 +186,10 @@ mod tests {
             "get_unified_neighbors",
             // Maintenance tools (1) - Data repair and cleanup
             "repair_causal_relationships",
+            // Provenance tools (3) - Phase P3 provenance queries
+            "get_audit_trail",
+            "get_merge_history",
+            "get_provenance_chain",
         ];
 
         for name in expected {
@@ -235,5 +243,6 @@ mod tests {
         assert_eq!(temporal::definitions().len(), 2); // E2 recency search, E3 periodic search
         assert_eq!(graph_link::definitions().len(), 4); // K-NN navigation, typed edges, unified neighbors
         assert_eq!(maintenance::definitions().len(), 1); // Data repair and cleanup
+        assert_eq!(provenance::definitions().len(), 3); // P3 provenance queries
     }
 }

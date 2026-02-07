@@ -727,6 +727,7 @@ fn create_test_causal_relationship(id: Uuid, source_id: Uuid) -> context_graph_c
         e8_graph_target: vec![0.5; 1024],
         e11_entity: vec![0.6; 768],
         source_content: "Source content for test".to_string(),
+        llm_provenance: None,
         created_at: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()

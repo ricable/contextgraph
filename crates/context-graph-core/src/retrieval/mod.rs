@@ -121,6 +121,7 @@ pub use query::{EmbeddingSpaceMask, MultiEmbeddingQuery, PipelineStageConfig};
 pub use result::{
     AggregatedMatch, MultiEmbeddingResult, PipelineStageTiming, ScoredMatch, SpaceContribution,
     SpaceSearchResult,
+    SearchResultProvenance, QueryClassification, EmbedderContribution,
 };
 pub use teleological_query::TeleologicalQuery;
 pub use teleological_result::{

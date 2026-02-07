@@ -22,6 +22,7 @@ pub(super) fn create_test_edge() -> GraphEdge {
         traversal_count: 0,
         created_at: Utc::now(),
         last_traversed_at: None,
+        discovery_provenance: None,
     }
 }
 
@@ -42,6 +43,7 @@ fn test_graph_edge_has_all_13_fields() {
         traversal_count: 0,
         created_at: Utc::now(),
         last_traversed_at: None,
+        discovery_provenance: None,
     };
     // Verify all fields are accessible
     let _id: EdgeId = edge.id;

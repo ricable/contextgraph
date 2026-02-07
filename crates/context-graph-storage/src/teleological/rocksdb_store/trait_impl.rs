@@ -328,6 +328,33 @@ impl TeleologicalMemoryStore for RocksDbTeleologicalStore {
         ).await
     }
 
+    // ==================== Audit Log (Phase 1.1) ====================
+
+    async fn append_audit_record(&self, record: &context_graph_core::types::audit::AuditRecord) -> CoreResult<()> {
+        self.append_audit_record(record).map_err(Into::into)
+    }
+
+    async fn get_audit_by_target(
+        &self,
+        target_id: uuid::Uuid,
+        limit: usize,
+    ) -> CoreResult<Vec<context_graph_core::types::audit::AuditRecord>> {
+        self.get_audit_by_target(target_id, limit).map_err(Into::into)
+    }
+
+    async fn get_audit_by_time_range(
+        &self,
+        start: chrono::DateTime<chrono::Utc>,
+        end: chrono::DateTime<chrono::Utc>,
+        limit: usize,
+    ) -> CoreResult<Vec<context_graph_core::types::audit::AuditRecord>> {
+        self.get_audit_by_time_range(start, end, limit).map_err(Into::into)
+    }
+
+    async fn count_audit_records(&self) -> CoreResult<usize> {
+        self.count_audit_records().map_err(Into::into)
+    }
+
     // ==================== Type Downcasting ====================
 
     fn as_any(&self) -> &dyn Any {

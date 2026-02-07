@@ -718,6 +718,66 @@ pub trait TeleologicalMemoryStore: Send + Sync {
         config: &crate::types::MultiEmbedderConfig,
     ) -> CoreResult<Vec<crate::types::CausalSearchResult>>;
 
+    // ==================== Audit Log (Phase 1.1) ====================
+
+    /// Append an audit record to the append-only audit log.
+    ///
+    /// Records provenance information about operations performed on memories.
+    /// All mutations (create, merge, delete, boost) should create audit records.
+    ///
+    /// # Arguments
+    /// * `record` - The audit record to append
+    ///
+    /// # Errors
+    /// - `CoreError::StorageError` - Storage backend failure
+    /// - `CoreError::SerializationError` - Serialization failure
+    async fn append_audit_record(&self, record: &crate::types::audit::AuditRecord) -> CoreResult<()>;
+
+    /// Retrieve audit records for a specific target entity.
+    ///
+    /// # Arguments
+    /// * `target_id` - UUID of the target entity
+    /// * `limit` - Maximum number of records to return
+    ///
+    /// # Returns
+    /// Vector of audit records sorted by timestamp (descending).
+    ///
+    /// # Errors
+    /// - `CoreError::StorageError` - Storage backend failure
+    async fn get_audit_by_target(
+        &self,
+        target_id: Uuid,
+        limit: usize,
+    ) -> CoreResult<Vec<crate::types::audit::AuditRecord>>;
+
+    /// Retrieve audit records within a time range.
+    ///
+    /// # Arguments
+    /// * `start` - Start timestamp (inclusive)
+    /// * `end` - End timestamp (inclusive)
+    /// * `limit` - Maximum number of records to return
+    ///
+    /// # Returns
+    /// Vector of audit records sorted by timestamp (descending).
+    ///
+    /// # Errors
+    /// - `CoreError::StorageError` - Storage backend failure
+    async fn get_audit_by_time_range(
+        &self,
+        start: chrono::DateTime<chrono::Utc>,
+        end: chrono::DateTime<chrono::Utc>,
+        limit: usize,
+    ) -> CoreResult<Vec<crate::types::audit::AuditRecord>>;
+
+    /// Count total audit records in the log.
+    ///
+    /// # Returns
+    /// Total count of audit records.
+    ///
+    /// # Errors
+    /// - `CoreError::StorageError` - Storage backend failure
+    async fn count_audit_records(&self) -> CoreResult<usize>;
+
     // ==================== Type Downcasting ====================
 
     /// Get a reference to self as Any for downcasting.

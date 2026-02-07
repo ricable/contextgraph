@@ -43,6 +43,9 @@ parking_lot = "0.12"
 # Regex for fallback parsing
 regex = "1"
 
+# SHA-256 hashing for prompt template provenance
+sha2 = "0.10"
+
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3"

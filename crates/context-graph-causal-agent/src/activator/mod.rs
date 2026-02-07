@@ -566,6 +566,7 @@ mod tests {
             mechanism: "Direct causation".to_string(),
             mechanism_type: None,
             raw_response: None,
+            llm_provenance: None,
         };
 
         let result = activator
@@ -599,6 +600,7 @@ mod tests {
             mechanism: "Weak evidence".to_string(),
             mechanism_type: None,
             raw_response: None,
+            llm_provenance: None,
         };
 
         let result = activator
@@ -661,6 +663,7 @@ mod tests {
             mechanism: "Direct causation".to_string(),
             mechanism_type: None,
             raw_response: None,
+            llm_provenance: None,
         };
 
         let result = activator
@@ -700,6 +703,7 @@ mod tests {
             mechanism: "Direct causation".to_string(),
             mechanism_type: None,
             raw_response: None,
+            llm_provenance: None,
         };
 
         let result = activator

@@ -78,17 +78,26 @@ impl GraphRelationshipLLM {
 
         let prompt = self.prompt_builder.build_analysis_prompt(memory_a, memory_b);
 
-        // Use the shared LLM with graph grammar for inference
-        let response = self
+        // Use the shared LLM with graph grammar for inference and capture metadata
+        let (response, tokens_consumed, generation_time_ms) = self
             .llm
-            .generate_with_grammar(&prompt, GrammarType::Graph)
+            .generate_with_grammar_and_metadata(&prompt, GrammarType::Graph)
             .await
             .map_err(|e| GraphAgentError::LlmInferenceError {
                 message: format!("Graph LLM inference failed: {}", e),
             })?;
 
+        // Build provenance
+        let provenance = self.llm.build_provenance(
+            GrammarType::Graph,
+            Some(tokens_consumed),
+            Some(generation_time_ms),
+        );
+
         // Parse the response - grammar guarantees valid JSON
-        self.parse_analysis_response(&response)
+        let mut result = self.parse_analysis_response(&response)?;
+        result.llm_provenance = Some(provenance);
+        Ok(result)
     }
 
     /// Analyze multiple memory pairs in batch.
@@ -252,6 +261,7 @@ impl GraphRelationshipLLM {
             confidence,
             description,
             raw_response: Some(raw_response.to_string()),
+            llm_provenance: None,
         })
     }
 
@@ -378,6 +388,7 @@ mod tests {
             confidence,
             description,
             raw_response: Some(response.to_string()),
+            llm_provenance: None,
         })
     }
 

@@ -324,7 +324,7 @@ impl From<EntityLink> for EntityLinkDto {
             surface_form: link.surface_form,
             canonical_id: link.canonical_id,
             entity_type: entity_type_to_string(link.entity_type),
-            confidence: None,
+            confidence: Some(link.confidence), // Phase 3a: Populate from EntityLink
         }
     }
 }
@@ -335,7 +335,7 @@ impl From<&EntityLink> for EntityLinkDto {
             surface_form: link.surface_form.clone(),
             canonical_id: link.canonical_id.clone(),
             entity_type: entity_type_to_string(link.entity_type),
-            confidence: None,
+            confidence: Some(link.confidence), // Phase 3a: Populate from EntityLink
         }
     }
 }
@@ -1026,6 +1026,9 @@ pub struct EntityNode {
 }
 
 /// An edge in the entity graph.
+///
+/// Phase 3a: Extended with TransE scores and relationship discovery method
+/// for full provenance of entity relationships.
 #[derive(Debug, Clone, Serialize)]
 pub struct EntityEdge {
     /// Source entity canonical ID.
@@ -1043,6 +1046,31 @@ pub struct EntityEdge {
     /// Memory IDs supporting this edge.
     #[serde(rename = "memoryIds")]
     pub memory_ids: Vec<Uuid>,
+
+    /// TransE score for this edge (closer to 0 = stronger relationship).
+    /// Phase 3a: Persisted for provenance - was previously discarded.
+    #[serde(rename = "transeScore", skip_serializing_if = "Option::is_none")]
+    pub transe_score: Option<f32>,
+
+    /// How this relationship was discovered.
+    /// Phase 3a: Tracks provenance of relationship discovery.
+    #[serde(rename = "discoveryMethod", skip_serializing_if = "Option::is_none")]
+    pub discovery_method: Option<String>,
+}
+
+/// How an entity relationship was discovered.
+///
+/// Phase 3a: Enables tracking relationship provenance - co-occurrence
+/// vs. TransE inference vs. LLM extraction have different reliability.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum RelationshipOrigin {
+    /// Discovered via entity co-occurrence in memories.
+    CoOccurrence { count: usize },
+    /// Inferred via TransE relationship prediction.
+    TransEInferred { score: f32 },
+    /// Inferred by LLM analysis.
+    LLMInferred { confidence: f32, model: String },
 }
 
 // ============================================================================

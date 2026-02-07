@@ -122,3 +122,11 @@ pub const TRAVERSE_GRAPH: &str = "traverse_graph";
 /// Per ARCH-21: Multi-space fusion via RRF, not weighted sum.
 /// Per AP-60: Temporal embedders (E2-E4) excluded from semantic fusion.
 pub const GET_UNIFIED_NEIGHBORS: &str = "get_unified_neighbors";
+
+// ========== PROVENANCE TOOLS (Phase P3 - Provenance Queries) ==========
+/// Query audit log for a specific memory or time range.
+pub const GET_AUDIT_TRAIL: &str = "get_audit_trail";
+/// Show merge lineage and history for a fingerprint.
+pub const GET_MERGE_HISTORY: &str = "get_merge_history";
+/// Full provenance chain from embedding to source for a memory.
+pub const GET_PROVENANCE_CHAIN: &str = "get_provenance_chain";

@@ -91,6 +91,12 @@ impl Handlers {
         let min_score = request.min_score;
         let is_source_seeking = request.is_source();
 
+        // PHASE-2-PROVENANCE: Parse includeProvenance from raw args (not in DTO)
+        let include_provenance = args
+            .get("includeProvenance")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
         info!(
             query_preview = %query.chars().take(50).collect::<String>(),
             direction = %request.direction,
@@ -285,7 +291,27 @@ impl Handlers {
             "search_connections: Completed connection search"
         );
 
-        self.tool_result(id, serde_json::to_value(response).unwrap_or_else(|_| json!({})))
+        // PHASE-2-PROVENANCE: Add retrieval provenance when requested
+        let mut response_json = serde_json::to_value(response).unwrap_or_else(|_| json!({}));
+        if include_provenance {
+            response_json["retrievalProvenance"] = json!({
+                "connectionScoringMethod": "asymmetric_e8_similarity",
+                "e8GraphSimilarity": {
+                    "direction": request.direction,
+                    "isSourceSeeking": is_source_seeking,
+                    "directionModifier": direction_modifier,
+                    "sourceModifier": SOURCE_DIRECTION_MODIFIER,
+                    "targetModifier": TARGET_DIRECTION_MODIFIER
+                },
+                "candidateSearchProfile": "graph_reasoning",
+                "fetchMultiplier": 5,
+                "minScoreThreshold": min_score,
+                "candidatesEvaluated": candidates_evaluated,
+                "filteredByScore": filtered_count
+            });
+        }
+
+        self.tool_result(id, response_json)
     }
 
     /// get_graph_path tool implementation.

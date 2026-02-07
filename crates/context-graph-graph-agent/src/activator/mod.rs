@@ -548,6 +548,7 @@ mod tests {
             confidence: 0.3, // Below threshold
             description: "A imports B".to_string(),
             raw_response: None,
+            llm_provenance: None,
         };
 
         let result = activator
@@ -572,6 +573,7 @@ mod tests {
             confidence: 0.85,
             description: "A imports B".to_string(),
             raw_response: None,
+            llm_provenance: None,
         };
 
         let result = activator
@@ -602,6 +604,7 @@ mod tests {
             confidence: 0.85,
             description: "A imports B".to_string(),
             raw_response: None,
+            llm_provenance: None,
         };
 
         let result = activator

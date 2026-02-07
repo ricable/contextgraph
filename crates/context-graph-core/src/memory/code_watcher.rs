@@ -25,7 +25,7 @@ use tracing::{debug, error, info, instrument, warn};
 
 use super::ast_chunker::{AstChunkConfig, AstChunkerError, AstCodeChunker};
 use super::code_capture::{CodeCaptureError, CodeCaptureService, CodeEmbeddingProvider, CodeStorage};
-use crate::types::CodeLanguage;
+use crate::types::{CodeGitMetadata, CodeLanguage};
 
 /// Errors from CodeFileWatcher operations.
 #[derive(Debug, Error)]
@@ -529,6 +529,73 @@ impl<E: CodeEmbeddingProvider, S: CodeStorage> CodeFileWatcher<E, S> {
         let mut hasher = Sha256::new();
         hasher.update(content.as_bytes());
         format!("{:x}", hasher.finalize())
+    }
+
+    /// Capture git metadata for a file.
+    ///
+    /// Runs `git log -1 --format="%H|%an|%aI" -- {file}` to get:
+    /// - Commit hash
+    /// - Author name
+    /// - Author date (ISO 8601)
+    ///
+    /// Phase 3b: Git provenance for code entities.
+    fn capture_git_metadata(&self, file_path: &Path) -> Option<CodeGitMetadata> {
+        // Get git root for running commands
+        let git_root = self.git_root.as_ref()?;
+
+        // Get relative path from git root
+        let relative_path = file_path.strip_prefix(git_root).ok()?;
+
+        let output = Command::new("git")
+            .args(&["log", "-1", "--format=%H|%an|%aI", "--"])
+            .arg(relative_path)
+            .current_dir(git_root)
+            .output()
+            .ok()?;
+
+        if !output.status.success() {
+            return None;
+        }
+
+        let stdout = String::from_utf8(output.stdout).ok()?;
+        let line = stdout.trim();
+        if line.is_empty() {
+            return None;
+        }
+
+        let parts: Vec<&str> = line.splitn(3, '|').collect();
+        if parts.len() < 3 {
+            return None;
+        }
+
+        let commit_timestamp = chrono::DateTime::parse_from_rfc3339(parts[2])
+            .ok()
+            .map(|dt| dt.with_timezone(&chrono::Utc));
+
+        Some(CodeGitMetadata {
+            commit_hash: Some(parts[0].to_string()),
+            author: Some(parts[1].to_string()),
+            branch: self.get_current_branch(),
+            commit_timestamp,
+        })
+    }
+
+    /// Get the current git branch name.
+    fn get_current_branch(&self) -> Option<String> {
+        let git_root = self.git_root.as_ref()?;
+
+        let output = Command::new("git")
+            .args(&["rev-parse", "--abbrev-ref", "HEAD"])
+            .current_dir(git_root)
+            .output()
+            .ok()?;
+
+        if output.status.success() {
+            let branch = String::from_utf8(output.stdout).ok()?;
+            Some(branch.trim().to_string())
+        } else {
+            None
+        }
     }
 
     /// Detect language from file extension.

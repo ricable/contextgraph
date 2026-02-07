@@ -54,6 +54,14 @@ pub struct ForgetConceptRequest {
     /// If false, memory is permanently deleted with no recovery option
     #[serde(default = "default_soft_delete")]
     pub soft_delete: bool,
+
+    /// Optional operator ID for provenance tracking (Phase 1.2)
+    #[serde(default)]
+    pub operator_id: Option<String>,
+
+    /// Optional reason for deletion (Phase 4, item 5.9)
+    #[serde(default)]
+    pub reason: Option<String>,
 }
 
 fn default_soft_delete() -> bool {
@@ -65,6 +73,8 @@ impl Default for ForgetConceptRequest {
         Self {
             node_id: String::new(),
             soft_delete: true, // Per SEC-06 and BR-MCP-001
+            operator_id: None,
+            reason: None,
         }
     }
 }
@@ -96,6 +106,10 @@ pub struct BoostImportanceRequest {
     /// - Negative values decrease importance
     /// - Final value is clamped to [0.0, 1.0] per BR-MCP-002
     pub delta: f32,
+
+    /// Optional operator ID for provenance tracking (Phase 1.2)
+    #[serde(default)]
+    pub operator_id: Option<String>,
 }
 
 impl Default for BoostImportanceRequest {
@@ -103,6 +117,7 @@ impl Default for BoostImportanceRequest {
         Self {
             node_id: String::new(),
             delta: 0.0,
+            operator_id: None,
         }
     }
 }
@@ -279,6 +294,8 @@ mod tests {
         let req = ForgetConceptRequest {
             node_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
             soft_delete: true,
+            operator_id: None,
+            reason: None,
         };
 
         let result = req.validate();
@@ -295,6 +312,8 @@ mod tests {
         let req = ForgetConceptRequest {
             node_id: "not-a-valid-uuid".to_string(),
             soft_delete: true,
+            operator_id: None,
+            reason: None,
         };
 
         let result = req.validate();
@@ -308,6 +327,8 @@ mod tests {
         let req = ForgetConceptRequest {
             node_id: "".to_string(),
             soft_delete: true,
+            operator_id: None,
+            reason: None,
         };
 
         let result = req.validate();
@@ -342,6 +363,7 @@ mod tests {
         let req = BoostImportanceRequest {
             node_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
             delta: 0.3,
+            operator_id: None,
         };
 
         let result = req.validate();
@@ -354,6 +376,7 @@ mod tests {
         let req = BoostImportanceRequest {
             node_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
             delta: 1.5,
+            operator_id: None,
         };
 
         let result = req.validate();
@@ -367,6 +390,7 @@ mod tests {
         let req = BoostImportanceRequest {
             node_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
             delta: -1.5,
+            operator_id: None,
         };
 
         let result = req.validate();
@@ -380,6 +404,7 @@ mod tests {
         let req = BoostImportanceRequest {
             node_id: "test".to_string(),
             delta: 0.2,
+            operator_id: None,
         };
 
         let (new_val, clamped) = req.apply_delta(0.5);
@@ -393,6 +418,7 @@ mod tests {
         let req = BoostImportanceRequest {
             node_id: "test".to_string(),
             delta: 0.5,
+            operator_id: None,
         };
 
         let (new_val, clamped) = req.apply_delta(0.8);
@@ -406,6 +432,7 @@ mod tests {
         let req = BoostImportanceRequest {
             node_id: "test".to_string(),
             delta: -0.5,
+            operator_id: None,
         };
 
         let (new_val, clamped) = req.apply_delta(0.2);
@@ -539,6 +566,7 @@ mod tests {
         let req = BoostImportanceRequest {
             node_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
             delta: 1.0,
+            operator_id: None,
         };
         assert!(req.validate().is_ok());
 
@@ -546,6 +574,7 @@ mod tests {
         let req = BoostImportanceRequest {
             node_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
             delta: -1.0,
+            operator_id: None,
         };
         assert!(req.validate().is_ok());
 
@@ -557,6 +586,7 @@ mod tests {
         let req = BoostImportanceRequest {
             node_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
             delta: 0.0,
+            operator_id: None,
         };
 
         assert!(req.validate().is_ok());
@@ -614,6 +644,7 @@ mod tests {
         let req = BoostImportanceRequest {
             node_id: "test".to_string(),
             delta: 100.0, // Extreme value, but we clamp the result not the input
+            operator_id: None,
         };
 
         // Even if we somehow got an extreme delta, apply_delta clamps correctly
@@ -653,6 +684,7 @@ mod tests {
         let req = BoostImportanceRequest {
             node_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
             delta: f32::NAN,
+            operator_id: None,
         };
 
         let result = req.validate();
@@ -666,6 +698,7 @@ mod tests {
         let req = BoostImportanceRequest {
             node_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
             delta: f32::INFINITY,
+            operator_id: None,
         };
 
         let result = req.validate();
@@ -675,6 +708,7 @@ mod tests {
         let req_neg = BoostImportanceRequest {
             node_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
             delta: f32::NEG_INFINITY,
+            operator_id: None,
         };
 
         let result_neg = req_neg.validate();

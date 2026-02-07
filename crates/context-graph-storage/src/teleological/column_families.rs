@@ -160,6 +160,154 @@ pub const CF_TOPIC_PORTFOLIO: &str = "topic_portfolio";
 pub const CF_E12_LATE_INTERACTION: &str = "e12_late_interaction";
 
 // =============================================================================
+// ENTITY PROVENANCE COLUMN FAMILIES (Phase 3a Provenance)
+// =============================================================================
+
+/// Column family for entity provenance storage.
+///
+/// Maps entity canonical_id + memory_id to EntityProvenance records.
+/// Enables "show me where this entity was extracted from" queries.
+///
+/// Key: `{canonical_id_bytes}_{memory_uuid_bytes}` (variable + 16 bytes)
+/// Value: EntityProvenance serialized via bincode (~200-2000 bytes)
+///
+/// # Storage Details
+/// - LZ4 compression (text excerpts compress well)
+/// - Bloom filter for fast existence checks
+/// - Prefix scan for all provenances of a given entity
+///
+/// # FAIL FAST Policy
+/// No fallback options - let RocksDB error on open if misconfigured.
+pub const CF_ENTITY_PROVENANCE: &str = "entity_provenance";
+
+// =============================================================================
+// AUDIT LOG COLUMN FAMILIES (Phase 1.1 Provenance)
+// =============================================================================
+// Append-only audit log for tracking all provenance-relevant operations.
+// NO update or delete operations -- append-only by design.
+// =============================================================================
+
+/// Column family for the primary audit log storage.
+///
+/// Stores `AuditRecord` entries in chronological order. Append-only --
+/// records are never updated or deleted.
+///
+/// Key: `{timestamp_nanos_be}_{uuid_bytes}` (8 + 16 = 24 bytes)
+/// Value: AuditRecord serialized via bincode (~200-2000 bytes)
+///
+/// # Storage Details
+/// - LZ4 compression (JSON parameters and strings compress well)
+/// - Bloom filter for fast existence checks
+/// - Big-endian timestamp prefix ensures chronological iteration
+/// - Append-only: NO update or delete operations
+pub const CF_AUDIT_LOG: &str = "audit_log";
+
+/// Column family for audit log secondary index by target entity.
+///
+/// Enables efficient "show me all operations on memory X" queries.
+/// Append-only -- mirrors the primary log's immutability contract.
+///
+/// Key: `{target_uuid_bytes}_{timestamp_nanos_be}` (16 + 8 = 24 bytes)
+/// Value: Primary key bytes (24 bytes) for joining back to CF_AUDIT_LOG
+///
+/// # Storage Details
+/// - LZ4 compression
+/// - Bloom filter for fast target existence checks
+/// - 16-byte prefix extractor for UUID-based prefix scans
+/// - Append-only: NO update or delete operations
+pub const CF_AUDIT_BY_TARGET: &str = "audit_by_target";
+
+// =============================================================================
+// LIFECYCLE PROVENANCE COLUMN FAMILIES (Phase 4)
+// =============================================================================
+// Permanent storage for merge history and importance change history.
+// Unlike ReversalRecords (30-day), these are PERMANENT -- never expire, never deleted.
+// =============================================================================
+
+/// Column family for permanent merge history storage (Phase 4, item 5.10).
+///
+/// Stores `MergeRecord` entries permanently. Unlike reversal records which
+/// expire after 30 days, merge history is retained indefinitely for
+/// complete lineage tracking.
+///
+/// Key: `{merged_uuid_bytes}_{timestamp_nanos_be}` (16 + 8 = 24 bytes)
+/// Value: MergeRecord serialized via bincode (~500-5000 bytes)
+///
+/// # Storage Details
+/// - LZ4 compression (JSON fingerprint data compresses well)
+/// - Bloom filter for fast merged_id lookups
+/// - PERMANENT: never expires, never deleted
+pub const CF_MERGE_HISTORY: &str = "merge_history";
+
+/// Column family for importance change history storage (Phase 4, item 5.11).
+///
+/// Stores `ImportanceChangeRecord` entries permanently for auditing
+/// all importance score changes over time.
+///
+/// Key: `{memory_uuid_bytes}_{timestamp_nanos_be}` (16 + 8 = 24 bytes)
+/// Value: ImportanceChangeRecord serialized via bincode (~100-500 bytes)
+///
+/// # Storage Details
+/// - LZ4 compression (structured data compresses well)
+/// - Bloom filter for fast memory_id lookups
+/// - PERMANENT: never expires, never deleted
+pub const CF_IMPORTANCE_HISTORY: &str = "importance_history";
+
+// =============================================================================
+// TOOL CALL PROVENANCE COLUMN FAMILIES (Phase 5, item 5.12)
+// =============================================================================
+
+/// Column family for tool call → memory mapping (Phase 5, item 5.12).
+///
+/// Maps tool_use_id to fingerprint IDs created by that tool call.
+/// Enables "which memories were created by this tool invocation?" queries.
+///
+/// Key: tool_use_id bytes (UTF-8, variable length)
+/// Value: Vec<Uuid> serialized via bincode (~16-160 bytes per entry)
+///
+/// # Storage Details
+/// - LZ4 compression
+/// - Bloom filter for fast tool_use_id lookups
+/// - FAIL FAST: No fallback options
+pub const CF_TOOL_CALL_INDEX: &str = "tool_call_index";
+
+// =============================================================================
+// CONSOLIDATION RECOMMENDATION PERSISTENCE (Phase 5, item 5.14)
+// =============================================================================
+
+/// Column family for consolidation recommendation persistence (Phase 5, item 5.14).
+///
+/// Stores ConsolidationRecommendation records for review and tracking.
+///
+/// Key: `{recommendation_uuid_bytes}` (16 bytes)
+/// Value: ConsolidationRecommendation serialized via bincode (~500-5000 bytes)
+///
+/// # Storage Details
+/// - LZ4 compression
+/// - Bloom filter for fast lookups
+/// - FAIL FAST: No fallback options
+pub const CF_CONSOLIDATION_RECOMMENDATIONS: &str = "consolidation_recommendations";
+
+// =============================================================================
+// EMBEDDING VERSION REGISTRY (Phase 6, item 5.15)
+// =============================================================================
+
+/// Column family for embedding version registry (Phase 6, item 5.15).
+///
+/// Tracks which embedder model versions were used to compute each fingerprint's
+/// embeddings. Enables stale embedding detection and targeted re-embedding.
+///
+/// Key: fingerprint_uuid_bytes (16 bytes)
+/// Value: EmbeddingVersionRecord serialized via bincode (~200-500 bytes)
+///
+/// # Storage Details
+/// - LZ4 compression (structured data compresses well)
+/// - Bloom filter for fast fingerprint_id lookups
+/// - 16-byte prefix extractor for UUID keys
+/// - PERMANENT: never expires, never deleted
+pub const CF_EMBEDDING_REGISTRY: &str = "embedding_registry";
+
+// =============================================================================
 // LEGACY COLUMN FAMILIES (Backwards Compatibility)
 // =============================================================================
 // These column families were created in earlier versions of the codebase.
@@ -178,7 +326,7 @@ pub const CF_SESSION_IDENTITY: &str = "session_identity";
 /// It is no longer used but must be opened for databases created with older versions.
 pub const CF_EGO_NODE: &str = "ego_node";
 
-/// All teleological column family names (15 total: 5 original + 3 teleological + 1 content + 1 source_metadata + 1 file_index + 1 topic_portfolio + 1 e12_late_interaction + 2 legacy).
+/// All teleological column family names (23 total: 5 original + 3 teleological + 1 content + 1 source_metadata + 1 file_index + 1 topic_portfolio + 1 e12_late_interaction + 1 entity_provenance + 2 audit + 2 lifecycle provenance + 2 phase 5 + 1 phase 6 + 2 legacy).
 pub const TELEOLOGICAL_CFS: &[&str] = &[
     CF_FINGERPRINTS,
     CF_TOPIC_PROFILES,
@@ -199,13 +347,26 @@ pub const TELEOLOGICAL_CFS: &[&str] = &[
     CF_TOPIC_PORTFOLIO,
     // TASK-STORAGE-P2-001: E12 Late Interaction token storage CF
     CF_E12_LATE_INTERACTION,
+    // Phase 3a Provenance: Entity provenance CF
+    CF_ENTITY_PROVENANCE,
+    // Phase 1.1 Provenance: Audit log CFs (append-only)
+    CF_AUDIT_LOG,
+    CF_AUDIT_BY_TARGET,
+    // Phase 4 Lifecycle Provenance: Permanent merge + importance history
+    CF_MERGE_HISTORY,
+    CF_IMPORTANCE_HISTORY,
+    // Phase 5 Hook & Tool Call Provenance
+    CF_TOOL_CALL_INDEX,
+    CF_CONSOLIDATION_RECOMMENDATIONS,
+    // Phase 6 Provenance: Embedding version registry
+    CF_EMBEDDING_REGISTRY,
     // Legacy CFs for backwards compatibility
     CF_SESSION_IDENTITY,
     CF_EGO_NODE,
 ];
 
-/// Total count of teleological CFs (should be 15: 13 active + 2 legacy).
-pub const TELEOLOGICAL_CF_COUNT: usize = 15;
+/// Total count of teleological CFs (should be 23: 21 active + 2 legacy).
+pub const TELEOLOGICAL_CF_COUNT: usize = 23;
 
 // =============================================================================
 // QUANTIZED EMBEDDER COLUMN FAMILIES (13 CFs for per-embedder storage)
@@ -637,6 +798,155 @@ pub fn e12_late_interaction_cf_options(cache: &Cache) -> Options {
     opts
 }
 
+// =============================================================================
+// ENTITY PROVENANCE CF OPTION BUILDER (Phase 3a Provenance)
+// =============================================================================
+
+/// Options for entity provenance storage (~200-2000 bytes per record).
+///
+/// # Configuration
+/// - LZ4 compression (text excerpts compress well, ~50% reduction)
+/// - Bloom filter for fast existence checks
+/// - Prefix scan support for "all provenances of entity X" queries
+///
+/// # Key Format
+/// `{canonical_id_bytes}_{memory_uuid_bytes}` (variable + 16 bytes).
+/// Composite key enables both entity-based and memory-based queries.
+///
+/// # FAIL FAST Policy
+/// No fallback options - let RocksDB error on open if misconfigured.
+pub fn entity_provenance_cf_options(cache: &Cache) -> Options {
+    let mut block_opts = BlockBasedOptions::default();
+    block_opts.set_block_cache(cache);
+    block_opts.set_bloom_filter(10.0, false);
+    block_opts.set_cache_index_and_filter_blocks(true);
+
+    let mut opts = Options::default();
+    opts.set_block_based_table_factory(&block_opts);
+    opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
+    opts.create_if_missing(true);
+    opts
+}
+
+// =============================================================================
+// AUDIT LOG CF OPTION BUILDERS (Phase 1.1 Provenance)
+// =============================================================================
+
+/// Options for audit log primary storage (~200-2000 bytes per record).
+///
+/// # Configuration
+/// - LZ4 compression (JSON parameters and text fields compress well, ~50%)
+/// - Bloom filter for fast existence checks
+/// - Level compaction for append-heavy workload
+/// - No prefix extractor (we use full-key range scans for time-based queries)
+///
+/// # Key Format
+/// `{timestamp_nanos_be}_{uuid_bytes}` (24 bytes).
+/// Big-endian timestamp ensures chronological ordering in RocksDB iteration.
+///
+/// # FAIL FAST Policy
+/// No fallback options - let RocksDB error on open if misconfigured.
+pub fn audit_log_cf_options(cache: &Cache) -> Options {
+    let mut block_opts = BlockBasedOptions::default();
+    block_opts.set_block_cache(cache);
+    block_opts.set_bloom_filter(10.0, false);
+    block_opts.set_cache_index_and_filter_blocks(true);
+
+    let mut opts = Options::default();
+    opts.set_block_based_table_factory(&block_opts);
+    opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
+    opts.set_compaction_style(rocksdb::DBCompactionStyle::Level);
+    opts.create_if_missing(true);
+    // FAIL FAST: No fallback options - let RocksDB error on open if misconfigured
+    opts
+}
+
+/// Options for audit log by-target secondary index.
+///
+/// # Configuration
+/// - LZ4 compression (key-value pairs compress modestly)
+/// - Bloom filter for fast target existence checks
+/// - 16-byte prefix extractor for UUID-based prefix scans
+///
+/// # Key Format
+/// `{target_uuid_bytes}_{timestamp_nanos_be}` (24 bytes).
+/// UUID prefix enables efficient "all records for target X" queries.
+///
+/// # FAIL FAST Policy
+/// No fallback options - let RocksDB error on open if misconfigured.
+pub fn audit_by_target_cf_options(cache: &Cache) -> Options {
+    let mut block_opts = BlockBasedOptions::default();
+    block_opts.set_block_cache(cache);
+    block_opts.set_bloom_filter(10.0, false);
+    block_opts.set_cache_index_and_filter_blocks(true);
+
+    let mut opts = Options::default();
+    opts.set_block_based_table_factory(&block_opts);
+    opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
+    opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(16)); // UUID prefix
+    opts.create_if_missing(true);
+    // FAIL FAST: No fallback options - let RocksDB error on open if misconfigured
+    opts
+}
+
+// =============================================================================
+// LIFECYCLE PROVENANCE CF OPTION BUILDERS (Phase 4)
+// =============================================================================
+
+/// Options for permanent merge history storage (~500-5000 bytes per record).
+///
+/// # Configuration
+/// - LZ4 compression (JSON fingerprint data compresses well, ~50%)
+/// - Bloom filter for fast merged_id lookups
+/// - Level compaction for append-heavy workload
+///
+/// # Key Format
+/// `{merged_uuid_bytes}_{timestamp_nanos_be}` (24 bytes).
+///
+/// # FAIL FAST Policy
+/// No fallback options - let RocksDB error on open if misconfigured.
+pub fn merge_history_cf_options(cache: &Cache) -> Options {
+    let mut block_opts = BlockBasedOptions::default();
+    block_opts.set_block_cache(cache);
+    block_opts.set_bloom_filter(10.0, false);
+    block_opts.set_cache_index_and_filter_blocks(true);
+
+    let mut opts = Options::default();
+    opts.set_block_based_table_factory(&block_opts);
+    opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
+    opts.set_compaction_style(rocksdb::DBCompactionStyle::Level);
+    opts.create_if_missing(true);
+    // FAIL FAST: No fallback options - let RocksDB error on open if misconfigured
+    opts
+}
+
+/// Options for importance change history storage (~100-500 bytes per record).
+///
+/// # Configuration
+/// - LZ4 compression (structured data compresses well)
+/// - Bloom filter for fast memory_id lookups
+/// - Level compaction for append-heavy workload
+///
+/// # Key Format
+/// `{memory_uuid_bytes}_{timestamp_nanos_be}` (24 bytes).
+///
+/// # FAIL FAST Policy
+/// No fallback options - let RocksDB error on open if misconfigured.
+pub fn importance_history_cf_options(cache: &Cache) -> Options {
+    let mut block_opts = BlockBasedOptions::default();
+    block_opts.set_block_cache(cache);
+    block_opts.set_bloom_filter(10.0, false);
+    block_opts.set_cache_index_and_filter_blocks(true);
+
+    let mut opts = Options::default();
+    opts.set_block_based_table_factory(&block_opts);
+    opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
+    opts.set_compaction_style(rocksdb::DBCompactionStyle::Level);
+    opts.create_if_missing(true);
+    // FAIL FAST: No fallback options - let RocksDB error on open if misconfigured
+    opts
+}
+
 /// Options for legacy column families (backwards compatibility only).
 ///
 /// These column families are no longer actively used but must be openable
@@ -656,6 +966,94 @@ pub fn legacy_cf_options(cache: &Cache) -> Options {
     let mut opts = Options::default();
     opts.set_block_based_table_factory(&block_opts);
     opts.set_compression_type(rocksdb::DBCompressionType::None);
+    opts.create_if_missing(true);
+    opts
+}
+
+// =============================================================================
+// PHASE 5 PROVENANCE CF OPTION BUILDERS
+// =============================================================================
+
+/// Options for tool call index storage (Phase 5, item 5.12).
+///
+/// # Configuration
+/// - LZ4 compression (UUID lists compress well)
+/// - Bloom filter for fast tool_use_id lookups
+/// - Point lookups by tool_use_id
+///
+/// # Key Format
+/// UTF-8 tool_use_id bytes (variable length).
+///
+/// # Value Format
+/// Vec<Uuid> serialized via bincode (~16-160 bytes per entry).
+///
+/// # FAIL FAST Policy
+/// No fallback options - let RocksDB error on open if misconfigured.
+pub fn tool_call_index_cf_options(cache: &Cache) -> Options {
+    let mut block_opts = BlockBasedOptions::default();
+    block_opts.set_block_cache(cache);
+    block_opts.set_bloom_filter(10.0, false);
+    block_opts.set_cache_index_and_filter_blocks(true);
+
+    let mut opts = Options::default();
+    opts.set_block_based_table_factory(&block_opts);
+    opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
+    opts.create_if_missing(true);
+    opts
+}
+
+/// Options for consolidation recommendations storage (Phase 5, item 5.14).
+///
+/// # Configuration
+/// - LZ4 compression (structured data compresses well, ~50%)
+/// - Bloom filter for fast recommendation_id lookups
+/// - 16-byte prefix extractor for UUID keys
+/// - Point lookups by recommendation UUID
+///
+/// # Key Format
+/// UUID (16 bytes) for recommendation_id.
+///
+/// # Value Format
+/// ConsolidationRecommendation serialized via bincode (~500-5000 bytes).
+///
+/// # FAIL FAST Policy
+/// No fallback options - let RocksDB error on open if misconfigured.
+pub fn consolidation_recommendations_cf_options(cache: &Cache) -> Options {
+    let mut block_opts = BlockBasedOptions::default();
+    block_opts.set_block_cache(cache);
+    block_opts.set_bloom_filter(10.0, false);
+    block_opts.set_cache_index_and_filter_blocks(true);
+
+    let mut opts = Options::default();
+    opts.set_block_based_table_factory(&block_opts);
+    opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
+    opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(16)); // UUID prefix
+    opts.optimize_for_point_lookup(32); // 32MB hint for point lookups
+    opts.create_if_missing(true);
+    opts
+}
+
+/// Options for embedding version registry storage (~200-500 bytes per record).
+///
+/// # Configuration
+/// - LZ4 compression (structured data compresses well)
+/// - Bloom filter for fast fingerprint_id lookups
+/// - 16-byte prefix extractor for UUID keys
+/// - Optimized for point lookups
+///
+/// # FAIL FAST Policy
+/// No fallback options - let RocksDB error on open if misconfigured.
+pub fn embedding_registry_cf_options(cache: &Cache) -> Options {
+    let mut block_opts = BlockBasedOptions::default();
+    block_opts.set_block_cache(cache);
+    block_opts.set_bloom_filter(10.0, false);
+    block_opts.set_cache_index_and_filter_blocks(true);
+
+    let mut opts = Options::default();
+    opts.set_block_based_table_factory(&block_opts);
+    opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
+    opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(16)); // UUID prefix
+    opts.optimize_for_point_lookup(32); // 32MB hint
     opts.create_if_missing(true);
     opts
 }
@@ -686,15 +1084,17 @@ pub fn quantized_embedder_cf_options(cache: &Cache) -> Options {
     opts
 }
 
-/// Get all 15 teleological column family descriptors.
+/// Get all 23 teleological column family descriptors.
 ///
-/// Returns 15 descriptors: 5 original + 3 teleological + 1 content + 1 source_metadata + 1 file_index + 1 topic_portfolio + 1 e12_late_interaction + 2 legacy.
+/// Returns 23 descriptors: 5 original + 3 teleological + 1 content + 1 source_metadata
+/// + 1 file_index + 1 topic_portfolio + 1 e12_late_interaction + 1 entity_provenance
+/// + 2 audit + 2 lifecycle provenance + 2 phase 5 + 1 phase 6 + 2 legacy.
 ///
 /// # Arguments
 /// * `cache` - Shared block cache (recommended: 256MB via `Cache::new_lru_cache`)
 ///
 /// # Returns
-/// Vector of 15 `ColumnFamilyDescriptor`s for teleological storage.
+/// Vector of 23 `ColumnFamilyDescriptor`s for teleological storage.
 ///
 /// # Example
 /// ```ignore
@@ -703,7 +1103,7 @@ pub fn quantized_embedder_cf_options(cache: &Cache) -> Options {
 ///
 /// let cache = Cache::new_lru_cache(256 * 1024 * 1024); // 256MB
 /// let descriptors = get_teleological_cf_descriptors(&cache);
-/// assert_eq!(descriptors.len(), 15);
+/// assert_eq!(descriptors.len(), 23);
 /// ```
 pub fn get_teleological_cf_descriptors(cache: &Cache) -> Vec<ColumnFamilyDescriptor> {
     vec![
@@ -741,6 +1141,22 @@ pub fn get_teleological_cf_descriptors(cache: &Cache) -> Vec<ColumnFamilyDescrip
             CF_E12_LATE_INTERACTION,
             e12_late_interaction_cf_options(cache),
         ),
+        // Phase 3a Provenance: Entity provenance CF
+        ColumnFamilyDescriptor::new(CF_ENTITY_PROVENANCE, entity_provenance_cf_options(cache)),
+        // Phase 1.1 Provenance: Audit log CFs (append-only)
+        ColumnFamilyDescriptor::new(CF_AUDIT_LOG, audit_log_cf_options(cache)),
+        ColumnFamilyDescriptor::new(CF_AUDIT_BY_TARGET, audit_by_target_cf_options(cache)),
+        // Phase 4 Lifecycle Provenance: Permanent merge + importance history
+        ColumnFamilyDescriptor::new(CF_MERGE_HISTORY, merge_history_cf_options(cache)),
+        ColumnFamilyDescriptor::new(CF_IMPORTANCE_HISTORY, importance_history_cf_options(cache)),
+        // Phase 5 Hook & Tool Call Provenance
+        ColumnFamilyDescriptor::new(CF_TOOL_CALL_INDEX, tool_call_index_cf_options(cache)),
+        ColumnFamilyDescriptor::new(
+            CF_CONSOLIDATION_RECOMMENDATIONS,
+            consolidation_recommendations_cf_options(cache),
+        ),
+        // Phase 6 Provenance: Embedding version registry
+        ColumnFamilyDescriptor::new(CF_EMBEDDING_REGISTRY, embedding_registry_cf_options(cache)),
         // Legacy column families for backwards compatibility
         ColumnFamilyDescriptor::new(CF_SESSION_IDENTITY, legacy_cf_options(cache)),
         ColumnFamilyDescriptor::new(CF_EGO_NODE, legacy_cf_options(cache)),
@@ -776,14 +1192,14 @@ pub fn get_quantized_embedder_cf_descriptors(cache: &Cache) -> Vec<ColumnFamilyD
 
 /// Get ALL teleological + quantized embedder column family descriptors.
 ///
-/// Returns 28 descriptors total: 15 teleological (13 active + 2 legacy) + 13 quantized embedder.
+/// Returns 36 descriptors total: 23 teleological (21 active + 2 legacy) + 13 quantized embedder.
 /// Use this when opening a database that needs both fingerprint and per-embedder storage.
 ///
 /// # Arguments
 /// * `cache` - Shared block cache (recommended: 256MB via `Cache::new_lru_cache`)
 ///
 /// # Returns
-/// Vector of 28 `ColumnFamilyDescriptor`s.
+/// Vector of 36 `ColumnFamilyDescriptor`s.
 ///
 /// # Example
 /// ```ignore
@@ -792,7 +1208,7 @@ pub fn get_quantized_embedder_cf_descriptors(cache: &Cache) -> Vec<ColumnFamilyD
 ///
 /// let cache = Cache::new_lru_cache(256 * 1024 * 1024); // 256MB
 /// let descriptors = get_all_teleological_cf_descriptors(&cache);
-/// assert_eq!(descriptors.len(), 28); // 15 teleological + 13 embedder
+/// assert_eq!(descriptors.len(), 36); // 23 teleological + 13 embedder
 /// ```
 pub fn get_all_teleological_cf_descriptors(cache: &Cache) -> Vec<ColumnFamilyDescriptor> {
     let mut descriptors = get_teleological_cf_descriptors(cache);
@@ -1113,13 +1529,13 @@ pub fn get_causal_cf_descriptors(cache: &Cache) -> Vec<ColumnFamilyDescriptor> {
 
 /// Get ALL column family descriptors (teleological + embedder + code + causal).
 ///
-/// Returns 35 descriptors total: 15 teleological + 13 quantized embedder + 5 code + 2 causal.
+/// Returns 43 descriptors total: 23 teleological + 13 quantized embedder + 5 code + 2 causal.
 ///
 /// # Arguments
 /// * `cache` - Shared block cache (recommended: 256MB via `Cache::new_lru_cache`)
 ///
 /// # Returns
-/// Vector of 35 `ColumnFamilyDescriptor`s.
+/// Vector of 43 `ColumnFamilyDescriptor`s.
 pub fn get_all_cf_descriptors(cache: &Cache) -> Vec<ColumnFamilyDescriptor> {
     let mut descriptors = get_all_teleological_cf_descriptors(cache);
     descriptors.extend(get_code_cf_descriptors(cache));

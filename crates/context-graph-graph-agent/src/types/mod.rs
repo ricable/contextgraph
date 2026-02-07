@@ -179,6 +179,10 @@ pub struct GraphAnalysisResult {
     /// Raw LLM response (for debugging).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub raw_response: Option<String>,
+
+    /// LLM provenance metadata (Phase 1.3).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_provenance: Option<context_graph_core::types::LLMProvenance>,
 }
 
 impl Default for GraphAnalysisResult {
@@ -192,6 +196,7 @@ impl Default for GraphAnalysisResult {
             confidence: 0.0,
             description: String::new(),
             raw_response: None,
+            llm_provenance: None,
         }
     }
 }

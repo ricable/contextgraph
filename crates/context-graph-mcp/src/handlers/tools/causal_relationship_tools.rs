@@ -124,6 +124,12 @@ impl Handlers {
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
+        // PHASE-2-PROVENANCE: Parse includeProvenance parameter (default: false)
+        let include_provenance = args
+            .get("includeProvenance")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
         // Parse hybrid search weight parameters (optional)
         // sourceWeight: weight for source-anchored embeddings (0.0-1.0, default 0.6)
         // explanationWeight: weight for explanation embeddings (0.0-1.0, default 0.4)
@@ -339,6 +345,41 @@ impl Handlers {
                         result["provenance"] = provenance;
                     }
 
+                    // PHASE-2-PROVENANCE: Add retrieval provenance when requested
+                    if include_provenance {
+                        result["retrievalProvenance"] = json!({
+                            "searchMode": search_mode,
+                            "multiEmbedder": true,
+                            "e5AsymmetricUsed": matches!(search_mode, "causes" | "effects"),
+                            "searchDirection": if search_mode == "causes" {
+                                "query_as_effect_seeking_causes"
+                            } else {
+                                "query_as_cause_seeking_effects"
+                            },
+                            "similarity": search_result.rrf_score,
+                            "consensusScore": search_result.consensus_score,
+                            "directionConfidence": search_result.direction_confidence,
+                            "perEmbedderScores": search_result.per_embedder_scores(),
+                            "embedderWeights": {
+                                "e1": e1_weight,
+                                "e5": e5_weight,
+                                "e8": e8_weight,
+                                "e11": e11_weight
+                            },
+                            "llmProvenance": rel.llm_provenance.as_ref().map(|p| json!({
+                                "modelName": p.model_name,
+                                "modelVersion": p.model_version,
+                                "quantization": p.quantization,
+                                "temperature": p.temperature,
+                                "maxTokens": p.max_tokens,
+                                "promptTemplateHash": p.prompt_template_hash,
+                                "grammarType": p.grammar_type,
+                                "tokensConsumed": p.tokens_consumed,
+                                "generationTimeMs": p.generation_time_ms
+                            }))
+                        });
+                    }
+
                     results.push(result);
                 }
             }
@@ -530,6 +571,36 @@ impl Handlers {
                             })
                             .collect();
                         result["extractionSpans"] = json!(extraction_spans);
+                    }
+
+                    // PHASE-2-PROVENANCE: Add retrieval provenance when requested
+                    if include_provenance {
+                        result["retrievalProvenance"] = json!({
+                            "searchMode": search_mode,
+                            "multiEmbedder": false,
+                            "e5AsymmetricUsed": matches!(search_mode, "causes" | "effects"),
+                            "searchDirection": match search_mode {
+                                "causes" => "query_as_effect_seeking_causes",
+                                "effects" => "query_as_cause_seeking_effects",
+                                _ => "semantic_undirected",
+                            },
+                            "similarity": similarity,
+                            "hybridWeights": {
+                                "sourceWeight": source_weight,
+                                "explanationWeight": explanation_weight
+                            },
+                            "llmProvenance": rel.llm_provenance.as_ref().map(|p| json!({
+                                "modelName": p.model_name,
+                                "modelVersion": p.model_version,
+                                "quantization": p.quantization,
+                                "temperature": p.temperature,
+                                "maxTokens": p.max_tokens,
+                                "promptTemplateHash": p.prompt_template_hash,
+                                "grammarType": p.grammar_type,
+                                "tokensConsumed": p.tokens_consumed,
+                                "generationTimeMs": p.generation_time_ms
+                            }))
+                        });
                     }
 
                     results.push(result);

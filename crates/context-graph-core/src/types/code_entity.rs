@@ -69,6 +69,26 @@ pub struct CodeEntity {
 
     /// List of attributes/decorators (e.g., #[test], #[derive]).
     pub attributes: Vec<String>,
+
+    /// Git metadata for this entity (Phase 3b code git provenance).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_metadata: Option<CodeGitMetadata>,
+}
+
+/// Git metadata for a code entity.
+///
+/// Phase 3b: Captures git provenance for code entities, enabling
+/// "who wrote this" and "when was this last changed" queries.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodeGitMetadata {
+    /// Git commit hash of the last change to this entity's file.
+    pub commit_hash: Option<String>,
+    /// Git author name of the last commit.
+    pub author: Option<String>,
+    /// Git branch name at time of scan.
+    pub branch: Option<String>,
+    /// Timestamp of the last commit.
+    pub commit_timestamp: Option<DateTime<Utc>>,
 }
 
 impl CodeEntity {
@@ -101,6 +121,7 @@ impl CodeEntity {
             content_hash,
             doc_comment: None,
             attributes: Vec::new(),
+            git_metadata: None,
         }
     }
 
@@ -189,6 +210,12 @@ impl CodeEntity {
     /// Builder method to add multiple attributes.
     pub fn with_attributes(mut self, attrs: Vec<String>) -> Self {
         self.attributes.extend(attrs);
+        self
+    }
+
+    /// Builder method to set git metadata.
+    pub fn with_git_metadata(mut self, metadata: CodeGitMetadata) -> Self {
+        self.git_metadata = Some(metadata);
         self
     }
 }

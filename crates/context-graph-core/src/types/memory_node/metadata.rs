@@ -1,11 +1,30 @@
 //! NodeMetadata container for MemoryNode supplementary information.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
 use super::Modality;
+
+/// Enhanced deletion tracking with provenance (Phase 4, item 5.9).
+///
+/// Captures who deleted a memory, why, and when recovery expires.
+/// Stored alongside NodeMetadata when a soft-delete occurs.
+///
+/// # Constitution Compliance
+/// - SEC-06: recovery_deadline = deleted_at + 30 days
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DeletionMetadata {
+    /// Who requested the deletion
+    pub deleted_by: Option<String>,
+    /// Why the memory was deleted
+    pub deletion_reason: Option<String>,
+    /// When the deletion occurred
+    pub deleted_at: DateTime<Utc>,
+    /// When recovery expires (30 days per SEC-06)
+    pub recovery_deadline: DateTime<Utc>,
+}
 
 /// Helper function for serde default version value
 fn default_version() -> u32 {
@@ -81,6 +100,11 @@ pub struct NodeMetadata {
     /// Rationale for storing this memory (required per AP-010)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rationale: Option<String>,
+
+    /// Enhanced deletion tracking metadata (Phase 4, item 5.9).
+    /// Populated when a memory is soft-deleted via mark_deleted_with_metadata().
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deletion_metadata: Option<DeletionMetadata>,
 }
 
 impl NodeMetadata {
@@ -101,6 +125,7 @@ impl NodeMetadata {
             child_ids: Vec::new(),
             custom: HashMap::new(),
             rationale: None,
+            deletion_metadata: None,
         }
     }
 
@@ -269,10 +294,32 @@ impl NodeMetadata {
         self.deleted_at = Some(Utc::now());
     }
 
-    /// Restore from soft deletion. Clears deleted flag and timestamp.
+    /// Marks this node as deleted with enhanced provenance metadata (Phase 4, item 5.9).
+    ///
+    /// Records who deleted the memory, why, and computes a 30-day recovery deadline
+    /// per SEC-06 constitution compliance.
+    ///
+    /// # Arguments
+    ///
+    /// * `operator_id` - Who requested the deletion (user/agent ID)
+    /// * `reason` - Why the memory was deleted
+    pub fn mark_deleted_with_metadata(&mut self, operator_id: Option<String>, reason: Option<String>) {
+        let now = Utc::now();
+        self.deleted = true;
+        self.deleted_at = Some(now);
+        self.deletion_metadata = Some(DeletionMetadata {
+            deleted_by: operator_id,
+            deletion_reason: reason,
+            deleted_at: now,
+            recovery_deadline: now + Duration::days(30),
+        });
+    }
+
+    /// Restore from soft deletion. Clears deleted flag, timestamp, and deletion metadata.
     pub fn restore(&mut self) {
         self.deleted = false;
         self.deleted_at = None;
+        self.deletion_metadata = None;
     }
 
     /// Increment version counter. Saturates at u32::MAX (never wraps).
@@ -331,6 +378,7 @@ mod tests {
         assert!(meta.child_ids.is_empty());
         assert!(meta.custom.is_empty());
         assert!(meta.rationale.is_none());
+        assert!(meta.deletion_metadata.is_none());
     }
 
     #[test]

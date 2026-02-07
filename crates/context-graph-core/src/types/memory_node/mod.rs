@@ -32,6 +32,7 @@ mod tests_node;
 mod tests_serialization;
 
 // Re-export all public types for backwards compatibility
+pub use metadata::DeletionMetadata;
 pub use metadata::NodeMetadata;
 pub use node::MemoryNode;
 pub use validation::ValidationError;

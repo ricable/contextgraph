@@ -113,6 +113,7 @@ fn extract_entity_mentions(text: &str) -> EntityMetadata {
                     surface_form: clean.to_string(),
                     canonical_id: canonical,
                     entity_type: EntityType::Unknown,
+                    confidence: 1.0, // Phase 3a: Default to 1.0 for heuristic extraction
                 });
             }
         }
@@ -1605,6 +1606,8 @@ impl Handlers {
                 relation: relation.to_string(),
                 weight,
                 memory_ids: memory_ids_vec.clone(),
+                transe_score: None, // Phase 3a: No TransE for co-occurrence edges
+                discovery_method: None, // Phase 3a: Could track "CoOccurrence" here
             });
         }
 
@@ -1714,16 +1717,19 @@ mod tests {
                 surface_form: "Rust".to_string(),
                 canonical_id: "rust_language".to_string(),
                 entity_type: EntityType::ProgrammingLanguage,
+                confidence: 1.0,
             },
             EntityLink {
                 surface_form: "PostgreSQL".to_string(),
                 canonical_id: "postgresql".to_string(),
                 entity_type: EntityType::Database,
+                confidence: 1.0,
             },
             EntityLink {
                 surface_form: "React".to_string(),
                 canonical_id: "react".to_string(),
                 entity_type: EntityType::Framework,
+                confidence: 1.0,
             },
         ];
 
@@ -1744,16 +1750,19 @@ mod tests {
                 surface_form: "Rust".to_string(),
                 canonical_id: "rust_language".to_string(),
                 entity_type: EntityType::ProgrammingLanguage,
+                confidence: 1.0,
             },
             EntityLink {
                 surface_form: "Python".to_string(),
                 canonical_id: "python".to_string(),
                 entity_type: EntityType::ProgrammingLanguage,
+                confidence: 1.0,
             },
             EntityLink {
                 surface_form: "PostgreSQL".to_string(),
                 canonical_id: "postgresql".to_string(),
                 entity_type: EntityType::Database,
+                confidence: 1.0,
             },
         ];
 
