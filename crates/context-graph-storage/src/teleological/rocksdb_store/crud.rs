@@ -10,7 +10,7 @@
 //! persistence.rs.
 
 use rocksdb::WriteBatch;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use context_graph_core::error::{CoreError, CoreResult};
@@ -64,7 +64,7 @@ impl RocksDbTeleologicalStore {
 
         match raw {
             Some(data) => {
-                let fp = deserialize_teleological_fingerprint(&data);
+                let fp = deserialize_teleological_fingerprint(&data)?;
                 Ok(Some(fp))
             }
             None => Ok(None),
@@ -86,8 +86,11 @@ impl RocksDbTeleologicalStore {
         }
 
         // If updating, we need to remove old terms from inverted indexes first
+        // STG-04 FIX: Hold secondary_index_lock for the remove batch to prevent
+        // concurrent store_fingerprint_internal from reading stale posting lists.
         if let Some(old_data) = existing {
-            let old_fp = deserialize_teleological_fingerprint(&old_data);
+            let old_fp = deserialize_teleological_fingerprint(&old_data)?;
+            let _index_guard = self.secondary_index_lock.lock();
             let mut batch = WriteBatch::default();
 
             // Remove from E13 SPLADE inverted index
@@ -107,6 +110,7 @@ impl RocksDbTeleologicalStore {
                     e,
                 )
             })?;
+            // Lock released here via drop(_index_guard)
         }
 
         // Remove from per-embedder indexes (will be re-added with updated vectors)
@@ -141,10 +145,26 @@ impl RocksDbTeleologicalStore {
             *self.fingerprint_count.write() = None;
         } else {
             // Hard delete: remove from all column families
-            let old_fp = deserialize_teleological_fingerprint(&existing.unwrap());
+            // STG-04 FIX: Hold lock during inverted index read-modify-write
+            let _index_guard = self.secondary_index_lock.lock();
             let key = fingerprint_key(&id);
-
             let mut batch = WriteBatch::default();
+
+            // Try to deserialize the old fingerprint for inverted index cleanup.
+            // If deserialization fails, we still delete the main record but skip
+            // inverted index cleanup (orphaned entries are harmless - they just
+            // point to a deleted ID that will be filtered on read).
+            let old_fp = match deserialize_teleological_fingerprint(&existing.unwrap()) {
+                Ok(fp) => Some(fp),
+                Err(e) => {
+                    warn!(
+                        "Failed to deserialize fingerprint {} during delete, \
+                         skipping inverted index cleanup: {}",
+                        id, e
+                    );
+                    None
+                }
+            };
 
             // Remove from fingerprints
             let cf_fp = self.get_cf(CF_FINGERPRINTS)?;
@@ -158,13 +178,16 @@ impl RocksDbTeleologicalStore {
             let cf_mat = self.get_cf(CF_E1_MATRYOSHKA_128)?;
             batch.delete_cf(cf_mat, e1_matryoshka_128_key(&id));
 
-            // Remove from E13 SPLADE inverted index
-            self.remove_from_splade_inverted_index(&mut batch, &id, &old_fp.semantic.e13_splade)?;
+            // Remove from inverted indexes only if we could deserialize the old fingerprint
+            if let Some(ref fp) = old_fp {
+                // Remove from E13 SPLADE inverted index
+                self.remove_from_splade_inverted_index(&mut batch, &id, &fp.semantic.e13_splade)?;
 
-            // Remove from E6 sparse inverted index (if present)
-            // Per e6upgrade.md: clean up E6 terms on delete
-            if let Some(e6_sparse) = &old_fp.e6_sparse {
-                self.remove_from_e6_sparse_inverted_index(&mut batch, &id, e6_sparse)?;
+                // Remove from E6 sparse inverted index (if present)
+                // Per e6upgrade.md: clean up E6 terms on delete
+                if let Some(e6_sparse) = &fp.e6_sparse {
+                    self.remove_from_e6_sparse_inverted_index(&mut batch, &id, e6_sparse)?;
+                }
             }
 
             // Remove content (TASK-CONTENT-009: cascade content deletion)
@@ -181,6 +204,9 @@ impl RocksDbTeleologicalStore {
             self.db.write(batch).map_err(|e| {
                 TeleologicalStoreError::rocksdb_op("delete_batch", CF_FINGERPRINTS, Some(id), e)
             })?;
+
+            // STG-04: Release lock before HNSW operations
+            drop(_index_guard);
 
             // Invalidate count cache
             *self.fingerprint_count.write() = None;

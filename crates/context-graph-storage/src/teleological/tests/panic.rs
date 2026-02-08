@@ -1,30 +1,50 @@
-//! Panic behavior tests (should_panic).
+//! Error behavior tests (formerly panic tests, now Result-returning).
+//!
+//! STG-01: Deserialization functions now return Result instead of panicking.
 
 use crate::teleological::*;
 use uuid::Uuid;
 
 // =========================================================================
-// PANIC TESTS (Verify fail-fast behavior)
+// DESERIALIZATION ERROR TESTS (Verify Result-based error handling)
 // =========================================================================
 
 #[test]
-#[should_panic(expected = "DESERIALIZATION ERROR")]
-fn test_panic_on_empty_fingerprint_data() {
-    let _ = deserialize_teleological_fingerprint(&[]);
+fn test_error_on_empty_fingerprint_data() {
+    let result = deserialize_teleological_fingerprint(&[]);
+    assert!(result.is_err(), "Expected Err for empty fingerprint data");
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("Empty data"),
+        "Error message should mention empty data, got: {}",
+        err_msg
+    );
 }
 
 #[test]
-#[should_panic(expected = "DESERIALIZATION ERROR")]
-fn test_panic_on_wrong_version() {
+fn test_error_on_wrong_version() {
     let mut data = vec![255u8]; // Wrong version
     data.extend(vec![0u8; 100]); // Garbage data
-    let _ = deserialize_teleological_fingerprint(&data);
+    let result = deserialize_teleological_fingerprint(&data);
+    assert!(result.is_err(), "Expected Err for wrong version");
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("Version mismatch"),
+        "Error message should mention version mismatch, got: {}",
+        err_msg
+    );
 }
 
 #[test]
-#[should_panic(expected = "DESERIALIZATION ERROR")]
-fn test_panic_on_wrong_topic_profile_size() {
-    let _ = deserialize_topic_profile(&[0u8; 51]); // Should be 52
+fn test_error_on_wrong_topic_profile_size() {
+    let result = deserialize_topic_profile(&[0u8; 51]); // Should be 52
+    assert!(result.is_err(), "Expected Err for wrong topic profile size");
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("52 bytes"),
+        "Error message should mention 52 bytes, got: {}",
+        err_msg
+    );
 }
 
 #[test]
@@ -34,13 +54,16 @@ fn test_panic_on_wrong_e1_vector_size() {
 }
 
 #[test]
-#[should_panic(expected = "DESERIALIZATION ERROR")]
-fn test_panic_on_truncated_memory_id_list() {
+fn test_error_on_truncated_memory_id_list() {
     // Create valid list, then truncate
     let ids: Vec<Uuid> = (0..5).map(|_| Uuid::new_v4()).collect();
     let serialized = serialize_memory_id_list(&ids);
     let truncated = &serialized[..serialized.len() - 10]; // Remove 10 bytes
-    let _ = deserialize_memory_id_list(truncated);
+    let result = deserialize_memory_id_list(truncated);
+    assert!(
+        result.is_err(),
+        "Expected Err for truncated memory ID list"
+    );
 }
 
 #[test]
@@ -65,4 +88,3 @@ fn test_content_key_parse_invalid_length_panics() {
     let invalid_key = [0u8; 8]; // Only 8 bytes, should be 16
     schema::parse_content_key(&invalid_key);
 }
-

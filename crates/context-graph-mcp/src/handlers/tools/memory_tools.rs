@@ -1083,9 +1083,11 @@ impl Handlers {
             if let Some(custom_weights_from_profile) = custom {
                 // Custom profile found - pass as custom_weights array (bypasses storage layer lookup)
                 options = options.with_custom_weights(custom_weights_from_profile);
-                // Must explicitly set MultiSpace for custom weights to work
-                options = options.with_strategy(strategy);
-                debug!(profile = %profile, "Resolved custom weight profile from RocksDB cache");
+                // MCP-03 FIX: Must explicitly set MultiSpace for custom weights to work.
+                // Previously this used the `strategy` variable which could be E1Only,
+                // making the custom weights completely ignored.
+                options = options.with_strategy(SearchStrategy::MultiSpace);
+                debug!(profile = %profile, "Resolved custom weight profile from RocksDB cache, forced MultiSpace strategy");
             } else {
                 options = options.with_weight_profile(profile);
             }

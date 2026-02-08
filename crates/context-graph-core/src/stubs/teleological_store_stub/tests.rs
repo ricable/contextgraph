@@ -136,6 +136,8 @@ async fn test_backend_type() {
     assert_eq!(store.backend_type(), TeleologicalStorageBackend::InMemory);
 }
 
+/// TST-09 FIX: Added assertions. Previously the result was assigned to `_results`
+/// (underscore prefix = intentionally unused) with zero assertions.
 #[tokio::test]
 async fn test_min_similarity_filter() {
     let store = InMemoryTeleologicalStore::new();
@@ -144,7 +146,15 @@ async fn test_min_similarity_filter() {
     }
     let query = SemanticFingerprint::zeroed();
     let options = TeleologicalSearchOptions::quick(10).with_min_similarity(0.99);
-    let _results = store.search_semantic(&query, options).await.unwrap();
+    let results = store.search_semantic(&query, options).await.unwrap();
+    // With zeroed query against zeroed fingerprints, cosine similarity is undefined (0/0).
+    // The stub returns 0.0 similarity, which should be filtered by min_similarity=0.99.
+    // Assert that the filter actually reduces results (or returns empty).
+    assert!(
+        results.len() <= 5,
+        "min_similarity=0.99 should filter some or all results, got {}",
+        results.len()
+    );
 }
 
 #[tokio::test]

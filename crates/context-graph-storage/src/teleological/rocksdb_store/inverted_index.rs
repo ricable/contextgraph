@@ -41,7 +41,7 @@ impl RocksDbTeleologicalStore {
             })?;
 
             let mut ids: Vec<Uuid> = match existing {
-                Some(data) => deserialize_memory_id_list(&data),
+                Some(data) => deserialize_memory_id_list(&data)?,
                 None => Vec::new(),
             };
 
@@ -76,7 +76,7 @@ impl RocksDbTeleologicalStore {
             })?;
 
             if let Some(data) = existing {
-                let mut ids: Vec<Uuid> = deserialize_memory_id_list(&data);
+                let mut ids: Vec<Uuid> = deserialize_memory_id_list(&data)?;
                 ids.retain(|&i| i != *id);
 
                 if ids.is_empty() {
@@ -121,7 +121,7 @@ impl RocksDbTeleologicalStore {
             })?;
 
             let mut ids: Vec<Uuid> = match existing {
-                Some(data) => deserialize_memory_id_list(&data),
+                Some(data) => deserialize_memory_id_list(&data)?,
                 None => Vec::new(),
             };
 
@@ -156,7 +156,7 @@ impl RocksDbTeleologicalStore {
             })?;
 
             if let Some(data) = existing {
-                let mut ids: Vec<Uuid> = deserialize_memory_id_list(&data);
+                let mut ids: Vec<Uuid> = deserialize_memory_id_list(&data)?;
                 ids.retain(|&i| i != *id);
 
                 if ids.is_empty() {
@@ -201,7 +201,7 @@ impl RocksDbTeleologicalStore {
             })?;
 
             if let Some(data) = existing {
-                let ids = deserialize_memory_id_list(&data);
+                let ids = deserialize_memory_id_list(&data)?;
                 for id in ids {
                     *candidate_counts.entry(id).or_insert(0) += 1;
                 }

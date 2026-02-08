@@ -149,7 +149,17 @@ impl QuantizedFingerprintStorage for RocksDbMemex {
             Ok(cf_purpose) => {
                 let pv_key = topic_profile_key(&id);
                 match self.db().get_cf(cf_purpose, pv_key) {
-                    Ok(Some(data)) => deserialize_topic_profile(&data),
+                    Ok(Some(data)) => match deserialize_topic_profile(&data) {
+                        Ok(profile) => profile,
+                        Err(e) => {
+                            warn!(
+                                "STORAGE WARNING: Corrupted topic profile for fingerprint {}: {}. \
+                                 Using zero vector as fallback.",
+                                id, e
+                            );
+                            [0.0f32; 13]
+                        }
+                    },
                     Ok(None) => {
                         // Topic profile missing - this is a data integrity issue
                         // Log warning but return zeros to allow degraded operation

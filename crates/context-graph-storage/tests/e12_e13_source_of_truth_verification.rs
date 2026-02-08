@@ -243,7 +243,8 @@ async fn test_e13_splade_stored_in_fingerprint() {
             println!("  Raw bytes: {} bytes", bytes.len());
 
             // Deserialize using proper storage format (not raw bincode)
-            let stored_fp = deserialize_teleological_fingerprint(&bytes);
+            let stored_fp = deserialize_teleological_fingerprint(&bytes)
+                .expect("Failed to deserialize fingerprint");
 
             let stored_nnz = stored_fp.semantic.e13_splade.nnz();
             println!("  E13 SPLADE NNZ: {}", stored_nnz);
@@ -476,7 +477,8 @@ async fn test_edge_case_empty_e13_splade() {
     match fp_bytes {
         Some(bytes) => {
             // Use proper storage deserialization format
-            let stored_fp = deserialize_teleological_fingerprint(&bytes);
+            let stored_fp = deserialize_teleological_fingerprint(&bytes)
+                .expect("Failed to deserialize fingerprint");
             println!("[VERIFIED] Fingerprint stored with {} E13 SPLADE terms",
                 stored_fp.semantic.e13_splade.nnz());
             assert!(stored_fp.semantic.e13_splade.is_empty(), "Should be empty");

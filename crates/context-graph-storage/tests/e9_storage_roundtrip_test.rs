@@ -113,7 +113,8 @@ fn test_e1_e9_preserved_after_serialization() {
     println!("\nSerialized to {} bytes", bytes.len());
 
     // Deserialize
-    let restored = deserialize_teleological_fingerprint(&bytes);
+    let restored = deserialize_teleological_fingerprint(&bytes)
+        .expect("Failed to deserialize fingerprint");
 
     println!("Restored E1 first 5 values: {:?}", &restored.semantic.e1_semantic[..5]);
     println!("Restored E9 first 5 values: {:?}", &restored.semantic.e9_hdc[..5]);

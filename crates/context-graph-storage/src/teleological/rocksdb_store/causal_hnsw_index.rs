@@ -357,10 +357,18 @@ impl CausalE11Index {
             panic!("FAIL FAST: Failed to reserve capacity: {}", e)
         });
 
-        *self.index.write() = new_index;
-        self.id_to_key.write().clear();
-        self.key_to_id.write().clear();
-        *self.next_key.write() = 0;
+        // BLD-09 FIX: Acquire locks in the SAME order as insert() to prevent
+        // ABBA deadlock. insert() order: id_to_key → key_to_id → index → next_key.
+        // Old clear() order was: index → id_to_key → key_to_id → next_key (inverted).
+        let mut id_to_key = self.id_to_key.write();
+        let mut key_to_id = self.key_to_id.write();
+        let mut index = self.index.write();
+        let mut next_key = self.next_key.write();
+
+        *index = new_index;
+        id_to_key.clear();
+        key_to_id.clear();
+        *next_key = 0;
 
         info!("Cleared CausalE11Index");
     }

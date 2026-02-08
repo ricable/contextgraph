@@ -316,18 +316,28 @@ pub trait TeleologicalMemoryStoreDefaults: Send + Sync {
 
     // ==================== Clustering Support Defaults ====================
 
-    /// Default: Scan fingerprints for clustering - returns empty vec.
+    /// Default: Scan fingerprints for clustering - returns empty vec WITH WARNING.
     ///
     /// # Arguments
     /// * `limit` - Optional limit (unused in default implementation)
     ///
     /// # Returns
     /// Empty vector - backend does not support scanning.
+    ///
+    /// # Warning
+    /// Logs a warning so that misconfigured backends produce visible output
+    /// instead of silently feeding empty data to HDBSCAN (which returns 0 clusters).
     async fn scan_fingerprints_for_clustering_default(
         &self,
         limit: Option<usize>,
     ) -> CoreResult<Vec<(uuid::Uuid, [Vec<f32>; 13])>> {
         let _ = limit; // Suppress unused warning
+        tracing::warn!(
+            "CLUSTERING WARNING: scan_fingerprints_for_clustering using default no-op implementation \
+             on {} backend. HDBSCAN will receive an empty matrix and produce 0 clusters. \
+             Override this method in your storage backend to enable clustering.",
+            self.backend_type()
+        );
         Ok(Vec::new())
     }
 
@@ -336,6 +346,12 @@ pub trait TeleologicalMemoryStoreDefaults: Send + Sync {
         limit: usize,
     ) -> CoreResult<Vec<crate::types::fingerprint::TeleologicalFingerprint>> {
         let _ = limit;
+        tracing::warn!(
+            "LISTING WARNING: list_fingerprints_unbiased using default no-op implementation \
+             on {} backend. Callers will receive an empty result set. \
+             Override this method in your storage backend.",
+            self.backend_type()
+        );
         Ok(Vec::new())
     }
 }

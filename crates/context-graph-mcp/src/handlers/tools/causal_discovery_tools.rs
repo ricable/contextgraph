@@ -127,9 +127,24 @@ impl Handlers {
             }
         };
 
+        // MCP-01 FIX: Apply sessionScope filter to indexed files.
+        // "current" = last 10 files, "recent" = last 50 files, "all" = no filter.
+        if indexed_files.is_empty() {
+            return self.tool_error(
+                id,
+                "No files are indexed - cannot perform causal discovery. Store some memories first.",
+            );
+        }
+
+        let scoped_files: Vec<_> = match session_scope {
+            "current" => indexed_files.into_iter().rev().take(10).collect(),
+            "recent" => indexed_files.into_iter().rev().take(50).collect(),
+            _ => indexed_files, // "all"
+        };
+
         // Collect memory IDs from indexed files (up to max_memories * 2 to have enough pairs)
         let mut memory_ids: Vec<uuid::Uuid> = Vec::new();
-        for file in indexed_files.iter().take(max_memories * 2) {
+        for file in scoped_files.iter().take(max_memories * 2) {
             if let Ok(ids) = self
                 .teleological_store
                 .get_fingerprints_for_file(&file.file_path)
@@ -281,14 +296,11 @@ impl Handlers {
             "trigger_causal_discovery: Complete"
         );
 
-        // Calculate average confidence from activator stats
+        // MCP-04 FIX: The "pairs" mode discovery cycle does not return per-relationship
+        // confidence values, so we cannot compute a real average. Report null instead
+        // of fabricating a value. The "extract" mode includes per-relationship confidence
+        // in its response via the relationships array.
         let stats = service.activator_stats();
-        let average_confidence = if result.relationships_confirmed > 0 {
-            // Estimate from confirmed vs rejected ratio
-            min_confidence + (1.0 - min_confidence) * 0.5
-        } else {
-            0.0
-        };
 
         self.tool_result(
             id,
@@ -297,7 +309,7 @@ impl Handlers {
                 "pairsAnalyzed": result.candidates_found,
                 "relationshipsFound": result.relationships_confirmed,
                 "relationshipsRejected": result.relationships_rejected,
-                "averageConfidence": average_confidence,
+                "averageConfidence": serde_json::Value::Null,
                 "edgesCreated": stats.edges_created,
                 "embeddingsGenerated": stats.embeddings_generated,
                 "durationMs": result.duration.as_millis(),

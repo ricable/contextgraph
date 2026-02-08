@@ -137,6 +137,12 @@ impl From<TeleologicalStoreError> for CoreError {
     }
 }
 
+impl From<CoreError> for TeleologicalStoreError {
+    fn from(e: CoreError) -> Self {
+        TeleologicalStoreError::Internal(e.to_string())
+    }
+}
+
 /// Result type for teleological store operations.
 pub type TeleologicalStoreResult<T> = Result<T, TeleologicalStoreError>;
 

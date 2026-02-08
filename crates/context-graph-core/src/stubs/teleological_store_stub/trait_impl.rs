@@ -784,8 +784,32 @@ impl TeleologicalMemoryStore for InMemoryTeleologicalStore {
         let e8_results = self.search_causal_e8(e8_embedding, !search_causes, top_k * 3).await?;
         let e11_results = self.search_causal_e11(e11_embedding, top_k * 3).await?;
 
-        // Build score maps for each embedder
+        // CRIT-05 FIX: Build rank maps from the ORIGINAL sorted Vecs (score-descending order).
+        // The search functions return Vec<(Uuid, f32)> sorted by score descending.
+        // Vec preserves insertion order, so enumerate() gives correct score-based ranks.
+        // Previously, ranks were assigned via HashMap::enumerate() which uses random
+        // iteration order, producing non-deterministic RRF results.
         use std::collections::HashMap;
+
+        // Build rank maps FIRST from the sorted Vecs (rank 0 = highest score)
+        let e1_ranks: HashMap<Uuid, usize> = e1_results.iter()
+            .enumerate()
+            .map(|(rank, (id, _))| (*id, rank))
+            .collect();
+        let e5_ranks: HashMap<Uuid, usize> = e5_results.iter()
+            .enumerate()
+            .map(|(rank, (id, _))| (*id, rank))
+            .collect();
+        let e8_ranks: HashMap<Uuid, usize> = e8_results.iter()
+            .enumerate()
+            .map(|(rank, (id, _))| (*id, rank))
+            .collect();
+        let e11_ranks: HashMap<Uuid, usize> = e11_results.iter()
+            .enumerate()
+            .map(|(rank, (id, _))| (*id, rank))
+            .collect();
+
+        // THEN collect into score maps for O(1) score lookup
         let e1_scores: HashMap<Uuid, f32> = e1_results.into_iter().collect();
         let e5_scores: HashMap<Uuid, f32> = e5_results.into_iter().collect();
         let e8_scores: HashMap<Uuid, f32> = e8_results.into_iter().collect();
@@ -801,24 +825,6 @@ impl TeleologicalMemoryStore for InMemoryTeleologicalStore {
         // Compute RRF scores for each candidate
         let k = 60.0f32;
         let mut rrf_scores: Vec<(Uuid, f32)> = Vec::new();
-
-        // Build rank maps
-        let e1_ranks: HashMap<Uuid, usize> = e1_scores.iter()
-            .enumerate()
-            .map(|(rank, (id, _))| (*id, rank))
-            .collect();
-        let e5_ranks: HashMap<Uuid, usize> = e5_scores.iter()
-            .enumerate()
-            .map(|(rank, (id, _))| (*id, rank))
-            .collect();
-        let e8_ranks: HashMap<Uuid, usize> = e8_scores.iter()
-            .enumerate()
-            .map(|(rank, (id, _))| (*id, rank))
-            .collect();
-        let e11_ranks: HashMap<Uuid, usize> = e11_scores.iter()
-            .enumerate()
-            .map(|(rank, (id, _))| (*id, rank))
-            .collect();
 
         for id in all_ids {
             let mut rrf_score = 0.0f32;

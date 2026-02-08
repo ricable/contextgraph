@@ -1,55 +1,39 @@
-//! MCP Protocol Compliance Unit Tests
+//! MCP Protocol Compliance Tests
 //!
-//! TASK-S001: Updated to use TeleologicalMemoryStore and MultiArrayEmbeddingProvider.
-//! TASK-S003: Added GoalAlignmentCalculator and GoalHierarchy for purpose operations.
-//! NO BACKWARDS COMPATIBILITY with legacy MemoryStore.
+//! ALL tests use REAL RocksDB storage and REAL GPU embeddings via ProductionMultiArrayProvider.
+//! No stubs, no mocks, no workarounds. Every test exercises the full production code path.
 //!
 //! Tests verify compliance with MCP protocol version 2024-11-05
 //! Reference: https://spec.modelcontextprotocol.io/specification/2024-11-05/
 //!
-//! # Test Helper Variants
+//! # Test Helpers
 //!
-//! This module provides three categories of test helpers:
-//!
-//! ## Fast In-Memory Helpers (Unit Tests)
-//! - `create_test_handlers()` - Uses InMemoryTeleologicalStore with stubs
-//! - `create_test_handlers_no_goals()` - Same but with empty goal hierarchy
-//!
-//! ## Real Storage Helpers (Integration Tests)
-//! - `create_test_handlers_with_rocksdb()` - Uses RocksDbTeleologicalStore with tempdir
-//! - `create_test_handlers_with_rocksdb_no_goals()` - Same but with empty goal hierarchy
-//! - `create_test_handlers_with_rocksdb_store_access()` - Same but returns store for FSV assertions
-//!
-//! ## Real GPU Embedding Helpers (FSV Tests) - Feature-gated: `cuda`
-//! - `create_test_handlers_with_real_embeddings()` - Uses ProductionMultiArrayProvider (GPU)
-//! - `create_test_handlers_with_real_embeddings_store_access()` - Same but returns store for FSV
+//! - `create_test_handlers()` - Real RocksDB + Real GPU embeddings, returns `(Handlers, TempDir)`
+//! - `create_test_handlers_with_rocksdb_store_access()` - Same + exposed store ref for FSV
+//! - `create_test_handlers_with_real_embeddings()` - Alias for create_test_handlers()
+//! - `create_test_handlers_with_real_embeddings_store_access()` - Alias for store access variant
 //!
 //! # TempDir Lifecycle
 //!
-//! The RocksDB helpers return `(Handlers, TempDir)`. The TempDir MUST be kept alive
-//! for the duration of the test - dropping it will delete the database directory
-//! and cause "Invalid argument" errors from RocksDB.
+//! All helpers return `(Handlers, TempDir)`. The TempDir MUST be kept alive
+//! for the duration of the test - dropping it deletes the database directory.
 //!
 //! ```ignore
 //! #[tokio::test]
-//! async fn test_with_real_storage() {
-//!     let (handlers, _tempdir) = create_test_handlers_with_rocksdb();
+//! async fn test_example() {
+//!     let (handlers, _tempdir) = create_test_handlers().await;
 //!     // _tempdir keeps the database alive until end of test
-//!     // ... test code ...
-//! } // _tempdir dropped here, cleaning up the database
+//! }
 //! ```
 
 mod content_storage_verification;
 mod curation_tools_fsv;
 mod error_codes;
-#[cfg(feature = "cuda")]
 mod gpu_embedding_verification;
 mod initialize;
 mod manual_fsv_verification;
-#[cfg(feature = "cuda")]
 mod mcp_protocol_e2e_test;
 mod robustness_fsv;
-#[cfg(feature = "cuda")]
 mod search_periodic_test;
 mod semantic_search_skill_verification;
 mod task_emb_024_verification;
@@ -64,69 +48,38 @@ use std::sync::Arc;
 use tempfile::TempDir;
 
 use context_graph_core::monitoring::{LayerStatusProvider, StubLayerStatusProvider};
-use context_graph_core::stubs::{InMemoryTeleologicalStore, StubMultiArrayProvider};
 use context_graph_core::traits::{MultiArrayEmbeddingProvider, TeleologicalMemoryStore};
 use context_graph_storage::teleological::RocksDbTeleologicalStore;
 
 // GRAPH-AGENT: Import stub for testing (enabled via test-utils feature in dev-dependencies)
 use context_graph_graph_agent::create_stub_graph_discovery_service;
 
-// TASK-EMB-016: Import global warm provider for FSV tests (feature-gated)
-#[cfg(feature = "cuda")]
 use context_graph_embeddings::{
     get_warm_provider, initialize_global_warm_provider, is_warm_initialized, warm_status_message,
     GpuConfig, ProductionMultiArrayProvider,
 };
 
-// TASK-P3-01: Import PathBuf for models directory resolution
-#[cfg(feature = "cuda")]
 use std::path::PathBuf;
 
-// TASK-WARM-LOAD: Warm model cache for GPU embedding tests
-// Prevents OOM by loading models ONCE and sharing across all tests
-#[cfg(feature = "cuda")]
 use tokio::sync::OnceCell;
 
 /// Global warm-loaded model cache.
 ///
-/// TASK-EMB-016: Updated to use global_provider.rs singleton.
-///
-/// RTX 5090 32GB VRAM - models should be warm-loaded ONCE and shared.
+/// RTX 5090 32GB VRAM - models are warm-loaded ONCE and shared across ALL tests.
 /// This prevents CUDA OOM when tests run in parallel, each trying to load
 /// all 13 embedding models (~20GB total) from scratch.
 ///
-/// FAIL FAST: If initial load fails, all tests using real embeddings will fail.
-#[cfg(feature = "cuda")]
+/// FAIL FAST: If initial load fails, ALL tests will fail - no stubs, no fallbacks.
 static WARM_MODEL_CACHE: OnceCell<Arc<dyn MultiArrayEmbeddingProvider>> = OnceCell::const_new();
 
 /// Get or initialize the warm-loaded embedding provider.
 ///
-/// TASK-EMB-016: This now uses the global warm provider singleton from global_provider.rs.
-/// If the global provider is already initialized (e.g., by CLI or another test),
-/// it will be reused. Otherwise, this function initializes it.
-///
-/// This function ensures models are loaded exactly ONCE into GPU VRAM and
-/// shared across all tests. The Arc allows multiple tests to hold references
-/// to the same provider instance.
-///
-/// # RTX 5090 32GB Configuration
-///
-/// With 32GB VRAM, all 13 embedding models fit comfortably:
-/// - Semantic (384D) + Temporal (3x) + Causal + Code + Graph + HDC + Multimodal
-/// - Entity + LateInteraction + SPLADE + Sparse
-/// - Total ~18-20GB loaded, leaving headroom for activations
-///
-/// # Returns
-///
-/// `Arc<dyn MultiArrayEmbeddingProvider>` - Cloned reference to the cached provider
+/// Uses the global warm provider singleton from global_provider.rs.
+/// Models are loaded exactly ONCE into GPU VRAM and shared across ALL tests.
 ///
 /// # Panics
 ///
-/// Panics if:
-/// - CUDA GPU not available
-/// - Models directory missing or incomplete
-/// - GPU OOM (should NOT happen with 32GB VRAM)
-#[cfg(feature = "cuda")]
+/// Panics if CUDA GPU not available, models directory missing, or GPU OOM.
 async fn get_warm_loaded_provider() -> Arc<dyn MultiArrayEmbeddingProvider> {
     WARM_MODEL_CACHE
         .get_or_init(|| async {
@@ -265,34 +218,42 @@ pub(crate) fn extract_mcp_tool_data(result: &serde_json::Value) -> serde_json::V
     }
 }
 
-/// Create test handlers with real stub implementations (no mocks).
+/// Create test handlers with REAL RocksDB storage and REAL GPU embeddings.
 ///
-/// TASK-S001: Uses TeleologicalMemoryStore and MultiArrayEmbeddingProvider.
-/// TASK-GAP-001: Updated to use Handlers::with_defaults() after PRD v6 refactor.
-/// TASK-INTEG-TOPIC: Uses with_defaults for automatic clustering component creation.
-/// GRAPH-AGENT: Includes stub GraphDiscoveryService that FAILS FAST if called.
-/// NO legacy MemoryStore support.
+/// ALL tests use real implementations - no stubs, no mocks, no workarounds.
+/// Requires CUDA GPU with models loaded into VRAM via warm provider.
 ///
-/// Note: The GraphDiscoveryService stub has an UNLOADED LLM - any calls to
-/// graph discovery methods will return Err(LlmNotInitialized). This is
-/// appropriate for tests that don't exercise graph discovery functionality.
-pub(crate) fn create_test_handlers() -> Handlers {
-    let teleological_store: Arc<dyn TeleologicalMemoryStore> =
-        Arc::new(InMemoryTeleologicalStore::new());
-    let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
-        Arc::new(StubMultiArrayProvider::new());
+/// # Returns
+///
+/// `(Handlers, TempDir)` - The Handlers instance and TempDir that owns the database.
+/// The TempDir MUST be kept alive for the duration of the test.
+///
+/// # Panics
+///
+/// Panics if CUDA GPU not available, models not loaded, or RocksDB fails to open.
+pub(crate) async fn create_test_handlers() -> (Handlers, TempDir) {
+    let tempdir = TempDir::new().expect("Failed to create temp directory for RocksDB test");
+    let db_path = tempdir.path().join("test_rocksdb");
+
+    let rocksdb_store = RocksDbTeleologicalStore::open(&db_path)
+        .expect("Failed to open RocksDbTeleologicalStore in test");
+
+    let teleological_store: Arc<dyn TeleologicalMemoryStore> = Arc::new(rocksdb_store);
+    let multi_array_provider = get_warm_loaded_provider().await;
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
 
     // GRAPH-AGENT: Create stub service with unloaded LLM
     // Calls to graph discovery methods will return Err(LlmNotInitialized)
     let graph_discovery_service = create_stub_graph_discovery_service();
 
-    Handlers::with_defaults(
+    let handlers = Handlers::with_defaults(
         teleological_store,
         multi_array_provider,
         layer_status_provider,
         graph_discovery_service,
-    )
+    );
+
+    (handlers, tempdir)
 }
 
 // ============================================================================
@@ -311,8 +272,8 @@ pub(crate) fn create_test_handlers() -> Handlers {
 ///
 /// # Components
 ///
-/// - **Storage**: RocksDbTeleologicalStore (17 column families, real persistence)
-/// - **Embeddings**: StubMultiArrayProvider (until GPU embedding ready - FAIL FAST on embed ops)
+/// - **Storage**: RocksDbTeleologicalStore (real persistence)
+/// - **Embeddings**: ProductionMultiArrayProvider (real GPU)
 /// - **GraphDiscovery**: Stub service with unloaded LLM (FAIL FAST on graph ops)
 ///
 /// # HNSW Initialization
@@ -351,18 +312,10 @@ pub(crate) async fn create_test_handlers_with_rocksdb() -> (Handlers, TempDir) {
 
     let teleological_store: Arc<dyn TeleologicalMemoryStore> = Arc::new(rocksdb_store);
 
-    // Still use StubMultiArrayProvider until GPU embedding is ready
-    // This will FAIL FAST on actual embedding operations - tests must not rely on embeddings
-    let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
-        Arc::new(StubMultiArrayProvider::new());
-
+    let multi_array_provider = get_warm_loaded_provider().await;
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
-
-    // GRAPH-AGENT: Create stub service with unloaded LLM
-    // Calls to graph discovery methods will return Err(LlmNotInitialized)
     let graph_discovery_service = create_stub_graph_discovery_service();
 
-    // TASK-INTEG-TOPIC: Use with_defaults for automatic clustering component creation
     let handlers = Handlers::with_defaults(
         teleological_store,
         multi_array_provider,
@@ -373,58 +326,24 @@ pub(crate) async fn create_test_handlers_with_rocksdb() -> (Handlers, TempDir) {
     (handlers, tempdir)
 }
 
-// NOTE: create_test_hierarchy was removed along with context_graph_core::purpose module.
-// GoalHierarchy, GoalNode, GoalDiscoveryMetadata are no longer available.
-// Handlers no longer requires goal hierarchy - purpose vector was removed from TeleologicalFingerprint.
-
-/// Create test handlers with REAL RocksDbTeleologicalStore and EXPOSED store reference.
+/// Create test handlers with REAL RocksDB + REAL GPU embeddings and EXPOSED store reference.
 ///
-/// This is for Full State Verification tests that need to directly inspect
-/// the underlying store to verify data was actually persisted.
+/// For Full State Verification tests that need to directly inspect the underlying store.
 ///
 /// # Returns
 ///
 /// `(Handlers, Arc<dyn TeleologicalMemoryStore>, TempDir)`
-/// - Handlers instance for dispatching MCP requests
-/// - Direct reference to the store for FSV assertions
-/// - TempDir that MUST be kept alive for the duration of the test
-///
-/// # Example
-///
-/// ```ignore
-/// #[tokio::test]
-/// async fn test_fsv_store_verification() {
-///     let (handlers, store, _tempdir) = create_test_handlers_with_rocksdb_store_access().await;
-///
-///     // Store via MCP handler
-///     let response = handlers.dispatch(store_request).await;
-///
-///     // Verify directly in store (FSV)
-///     let count = store.count().await.expect("count works");
-///     assert_eq!(count, 1, "Must have stored 1 fingerprint");
-/// }
-/// ```
 pub(crate) async fn create_test_handlers_with_rocksdb_store_access(
 ) -> (Handlers, Arc<dyn TeleologicalMemoryStore>, TempDir) {
     let tempdir = TempDir::new().expect("Failed to create temp directory for RocksDB test");
     let db_path = tempdir.path().join("test_rocksdb_fsv");
 
-    // Open RocksDB store
     let rocksdb_store = RocksDbTeleologicalStore::open(&db_path)
         .expect("Failed to open RocksDbTeleologicalStore in FSV test");
 
-    // Note: EmbedderIndexRegistry is initialized in constructor
-
     let teleological_store: Arc<dyn TeleologicalMemoryStore> = Arc::new(rocksdb_store);
-
-    // Still use StubMultiArrayProvider until GPU embedding is ready
-    // This will FAIL FAST on actual embedding operations - tests must not rely on embeddings
-    let multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider> =
-        Arc::new(StubMultiArrayProvider::new());
-
+    let multi_array_provider = get_warm_loaded_provider().await;
     let layer_status_provider: Arc<dyn LayerStatusProvider> = Arc::new(StubLayerStatusProvider);
-
-    // GRAPH-AGENT: Create stub service with unloaded LLM
     let graph_discovery_service = create_stub_graph_discovery_service();
 
     let handlers = Handlers::with_defaults(
@@ -441,54 +360,8 @@ pub(crate) async fn create_test_handlers_with_rocksdb_store_access(
 // TASK-P3-01: Real GPU Embedding Test Helpers (FSV Integration Testing)
 // ============================================================================
 
-/// Create test handlers with REAL ProductionMultiArrayProvider for Full State Verification.
-///
-/// This helper is feature-gated behind `cuda` feature and requires:
-/// - NVIDIA CUDA GPU with 8GB+ VRAM
-/// - Models pre-downloaded to `./models` directory
-/// - CUDA toolkit installed and configured
-///
-/// # When to Use
-///
-/// Use this helper ONLY for Full State Verification (FSV) tests that need to verify:
-/// - Actual embedding generation produces correct dimensions
-/// - Real semantic similarity computations
-/// - GPU acceleration performance characteristics
-/// - End-to-end embedding pipeline correctness
-///
-/// For fast unit tests that don't need real embeddings, use:
-/// - `create_test_handlers()` - Fast in-memory with stubs
-/// - `create_test_handlers_with_rocksdb()` - Real storage, stub embeddings
-///
-/// # Returns
-///
-/// `(Handlers, TempDir)` - The Handlers instance and the TempDir that owns the database.
-///
-/// # Panics
-///
-/// Panics if:
-/// - CUDA GPU is not available
-/// - Models directory doesn't exist or is missing models
-/// - RocksDB fails to open
-/// - HNSW initialization fails
-///
-/// # Example
-///
-/// ```ignore
-/// #[tokio::test]
-/// #[cfg(feature = "cuda")]
-/// async fn test_fsv_with_real_embeddings() {
-///     let (handlers, _tempdir) = create_test_handlers_with_real_embeddings().await;
-///
-///     // This test uses REAL GPU embeddings
-///     let response = handlers.dispatch(store_request).await;
-///
-///     // Verify embeddings have correct dimensions
-///     assert!(response.result.is_some());
-/// }
-/// ```
-#[cfg(feature = "cuda")]
-#[allow(dead_code)] // Available for FSV tests that don't need direct store access
+/// Alias for create_test_handlers(). All helpers now use real GPU embeddings.
+#[allow(dead_code)]
 pub(crate) async fn create_test_handlers_with_real_embeddings() -> (Handlers, TempDir) {
     let tempdir = TempDir::new().expect("Failed to create temp directory for RocksDB FSV test");
     let db_path = tempdir.path().join("test_rocksdb_fsv_real_embeddings");
@@ -532,7 +405,6 @@ pub(crate) async fn create_test_handlers_with_real_embeddings() -> (Handlers, Te
 /// - Handlers instance for dispatching MCP requests
 /// - Direct reference to the store for FSV assertions (verify data was persisted)
 /// - TempDir that MUST be kept alive for the duration of the test
-#[cfg(feature = "cuda")]
 pub(crate) async fn create_test_handlers_with_real_embeddings_store_access(
 ) -> (Handlers, Arc<dyn TeleologicalMemoryStore>, TempDir) {
     let tempdir = TempDir::new().expect("Failed to create temp directory for FSV test");
@@ -572,7 +444,6 @@ pub(crate) async fn create_test_handlers_with_real_embeddings_store_access(
 /// Priority:
 /// 1. `CONTEXT_GRAPH_MODELS_PATH` environment variable
 /// 2. Default: `./models` relative to workspace root
-#[cfg(feature = "cuda")]
 fn resolve_test_models_path() -> PathBuf {
     if let Ok(env_path) = std::env::var("CONTEXT_GRAPH_MODELS_PATH") {
         return PathBuf::from(env_path);

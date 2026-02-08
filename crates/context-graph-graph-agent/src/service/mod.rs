@@ -441,9 +441,14 @@ impl GraphDiscoveryService {
                         break;
                     }
                     _ = tokio::time::sleep(service.config.interval) => {
-                        // In background mode, we would load memories from storage
-                        // For now, just log that a cycle would run
-                        debug!("Background discovery cycle would run here");
+                        // CRIT-02 FIX: Emit warn! instead of silent debug! so operators
+                        // know discovery is NOT running. The background loop is a facade:
+                        // it never loads memories or calls run_discovery_cycle().
+                        warn!(
+                            "Graph discovery cycle tick: NOT IMPLEMENTED. \
+                             Background loop is running but no discovery occurs. \
+                             Use discover_graph_relationships MCP tool for on-demand analysis."
+                        );
                     }
                 }
             }

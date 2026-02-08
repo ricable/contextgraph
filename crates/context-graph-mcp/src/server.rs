@@ -84,6 +84,73 @@ use crate::transport::{create_sse_router, SseAppState, SseConfig};
 // from context-graph-embeddings crate (TASK-F007 COMPLETED)
 
 // ============================================================================
+// AGT-04 FIX: Bounded read_line to prevent OOM from unbounded input
+// ============================================================================
+
+/// Maximum line size in bytes (10 MB). Lines exceeding this are rejected.
+/// Prevents OOM from clients sending multi-gigabyte data without newlines.
+const MAX_LINE_BYTES: usize = 10 * 1024 * 1024;
+
+/// Read a line from an async buffered reader with a byte size limit.
+///
+/// AGT-04 FIX: `BufReader::read_line()` allocates unboundedly until it finds
+/// a newline. A malicious client can send gigabytes without a newline, causing
+/// OOM. This function reads in chunks via `fill_buf()` and enforces a limit.
+///
+/// Returns the number of bytes read, or an IO error if the limit is exceeded.
+async fn read_line_bounded<R: tokio::io::AsyncBufRead + Unpin>(
+    reader: &mut R,
+    buf: &mut String,
+    max_bytes: usize,
+) -> std::io::Result<usize> {
+    let mut total = 0usize;
+    let mut raw = Vec::new();
+
+    loop {
+        let available = reader.fill_buf().await?;
+        if available.is_empty() {
+            // EOF
+            break;
+        }
+
+        // Find newline in available data
+        let (end, found_newline) = match available.iter().position(|&b| b == b'\n') {
+            Some(pos) => (pos + 1, true),
+            None => (available.len(), false),
+        };
+
+        if total + end > max_bytes {
+            // Consume what we've seen so far to avoid leaving stale data in the buffer
+            reader.consume(end);
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "Line exceeds {} byte limit ({} bytes read so far)",
+                    max_bytes,
+                    total + end
+                ),
+            ));
+        }
+
+        raw.extend_from_slice(&available[..end]);
+        total += end;
+        reader.consume(end);
+
+        if found_newline {
+            break;
+        }
+    }
+
+    // Convert to UTF-8
+    match String::from_utf8(raw) {
+        Ok(s) => buf.push_str(&s),
+        Err(e) => buf.push_str(&String::from_utf8_lossy(e.as_bytes())),
+    }
+
+    Ok(total)
+}
+
+// ============================================================================
 // MCP Server
 // ============================================================================
 
@@ -621,11 +688,14 @@ impl McpServer {
         loop {
             line.clear();
 
-            // Async read line - does NOT block the runtime
-            let bytes_read = reader.read_line(&mut line).await.map_err(|e| {
-                error!("FATAL: Failed to read from stdin: {}", e);
-                anyhow::anyhow!("stdin read error: {}", e)
-            })?;
+            // AGT-04 FIX: Use bounded read_line to prevent OOM from unbounded input.
+            // read_line() allocates until newline; a malicious/broken client can OOM the process.
+            let bytes_read = read_line_bounded(&mut reader, &mut line, MAX_LINE_BYTES)
+                .await
+                .map_err(|e| {
+                    error!("FATAL: Failed to read from stdin: {}", e);
+                    anyhow::anyhow!("stdin read error: {}", e)
+                })?;
 
             // EOF - client closed connection
             if bytes_read == 0 {
@@ -1483,8 +1553,9 @@ impl McpServer {
         loop {
             line.clear();
 
-            // Read a line (newline-delimited JSON)
-            let bytes_read = reader.read_line(&mut line).await?;
+            // AGT-04 FIX: Use bounded read_line to prevent OOM from unbounded input.
+            // TCP is externally exploitable - a malicious client can send multi-GB data without newlines.
+            let bytes_read = read_line_bounded(&mut reader, &mut line, MAX_LINE_BYTES).await?;
 
             // EOF - client closed connection
             if bytes_read == 0 {

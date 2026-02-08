@@ -164,6 +164,11 @@ impl RocksDbTeleologicalStore {
         file_path: &str,
         fingerprint_id: Uuid,
     ) -> CoreResult<()> {
+        // STG-10 FIX: Hold secondary_index_lock for the entire read-modify-write cycle.
+        // Without this, concurrent calls for the same file_path race on the read-then-write,
+        // causing one caller's fingerprint_id to be silently dropped from the index.
+        let _index_guard = self.secondary_index_lock.lock();
+
         let cf = self.cf_file_index();
         let key = file_path.as_bytes();
 
@@ -241,6 +246,9 @@ impl RocksDbTeleologicalStore {
         file_path: &str,
         fingerprint_id: Uuid,
     ) -> CoreResult<bool> {
+        // STG-10 FIX: Hold lock during read-modify-write of file index
+        let _index_guard = self.secondary_index_lock.lock();
+
         let cf = self.cf_file_index();
         let key = file_path.as_bytes();
 
@@ -339,6 +347,10 @@ impl RocksDbTeleologicalStore {
     /// # Returns
     /// Number of fingerprints that were in the index before clearing.
     pub(crate) async fn clear_file_index_async(&self, file_path: &str) -> CoreResult<usize> {
+        // STG-10 FIX: Hold lock to prevent concurrent index_file_fingerprint_async
+        // from adding entries between our read and delete.
+        let _index_guard = self.secondary_index_lock.lock();
+
         let cf = self.cf_file_index();
         let key = file_path.as_bytes();
 

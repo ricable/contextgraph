@@ -47,7 +47,18 @@ impl RocksDbTeleologicalStore {
 
         for fp in fingerprints {
             let id = fp.id;
+            // Store in RocksDB (primary storage)
             self.store_fingerprint_internal(&fp)?;
+
+            // CRIT-03 FIX: Add to per-embedder HNSW indexes for O(log n) search.
+            // Without this, batch-stored fingerprints are invisible to all search
+            // strategies until server restart triggers rebuild_indexes_from_store().
+            self.add_to_indexes(&fp)
+                .map_err(|e| CoreError::IndexError(format!(
+                    "Failed to add fingerprint {} to HNSW indexes during batch store: {}",
+                    id, e
+                )))?;
+
             ids.push(id);
         }
 
@@ -97,7 +108,7 @@ impl RocksDbTeleologicalStore {
                 let key = fingerprint_key(&id);
                 match db.get_cf(cf, key) {
                     Ok(Some(data)) => {
-                        let fp = deserialize_teleological_fingerprint(&data);
+                        let fp = deserialize_teleological_fingerprint(&data)?;
                         results.push(Some(fp));
                     }
                     Ok(None) => results.push(None),
@@ -314,9 +325,51 @@ impl RocksDbTeleologicalStore {
     }
 
     /// Compact all column families (internal async wrapper).
+    ///
+    /// CRIT-04 FIX: Hard-deletes soft-deleted entries from RocksDB BEFORE
+    /// draining the in-memory HashMap. Previously, draining without hard-delete
+    /// caused soft-deleted data to reappear after compaction.
     pub(crate) async fn compact_async(&self) -> CoreResult<()> {
         debug!("Starting compaction of all column families");
 
+        // CRIT-04 FIX: Hard-delete soft-deleted entries from RocksDB first.
+        // Collect IDs while holding the read lock, then release before mutation.
+        let soft_deleted_ids: Vec<Uuid> = self.soft_deleted.read().keys().copied().collect();
+
+        if !soft_deleted_ids.is_empty() {
+            info!(
+                count = soft_deleted_ids.len(),
+                "Hard-deleting {} soft-deleted entries from RocksDB during compaction",
+                soft_deleted_ids.len()
+            );
+
+            for id in &soft_deleted_ids {
+                // Use the existing hard-delete path which removes from all CFs + indexes
+                match self.delete_async(*id, false).await {
+                    Ok(true) => {
+                        debug!(id = %id, "Hard-deleted soft-deleted entry during compaction");
+                    }
+                    Ok(false) => {
+                        // Entry was already gone from RocksDB, just clean up tracking
+                        warn!(
+                            id = %id,
+                            "Soft-deleted entry not found in RocksDB during compaction (already cleaned)"
+                        );
+                    }
+                    Err(e) => {
+                        // Log but continue - don't fail entire compaction for one entry
+                        warn!(
+                            id = %id,
+                            error = %e,
+                            "Failed to hard-delete soft-deleted entry during compaction, \
+                             entry will remain in soft_deleted tracking"
+                        );
+                    }
+                }
+            }
+        }
+
+        // Now compact RocksDB column families
         for cf_name in TELEOLOGICAL_CFS {
             let cf = self.get_cf(cf_name)?;
             self.db.compact_range_cf(cf, None::<&[u8]>, None::<&[u8]>);
@@ -327,10 +380,17 @@ impl RocksDbTeleologicalStore {
             self.db.compact_range_cf(cf, None::<&[u8]>, None::<&[u8]>);
         }
 
-        // Purge soft-deleted entries
-        for (id, _) in self.soft_deleted.write().drain() {
-            debug!("Purging soft-deleted entry {} from tracking", id);
+        // Drain remaining soft-deleted tracking (entries that were successfully hard-deleted
+        // will already have been removed by delete_async)
+        let remaining = self.soft_deleted.read().len();
+        if remaining > 0 {
+            warn!(
+                count = remaining,
+                "Draining {} remaining soft-deleted entries from tracking after compaction",
+                remaining
+            );
         }
+        self.soft_deleted.write().drain();
 
         info!("Compaction complete");
         Ok(())
@@ -543,7 +603,16 @@ impl RocksDbTeleologicalStore {
 
                 // Deserialize fingerprint using the custom serialization format
                 // (has version prefix, not plain bincode)
-                let fp = deserialize_teleological_fingerprint(&value);
+                let fp = match deserialize_teleological_fingerprint(&value) {
+                    Ok(fp) => fp,
+                    Err(e) => {
+                        warn!(
+                            "Skipping corrupted fingerprint {} during clustering scan: {}",
+                            id, e
+                        );
+                        continue;
+                    }
+                };
 
                 // Extract the 13 embeddings as cluster array
                 let cluster_array = fp.semantic.to_cluster_array();
@@ -609,7 +678,16 @@ impl RocksDbTeleologicalStore {
                     continue;
                 }
 
-                let fp = deserialize_teleological_fingerprint(&value);
+                let fp = match deserialize_teleological_fingerprint(&value) {
+                    Ok(fp) => fp,
+                    Err(e) => {
+                        warn!(
+                            "Skipping corrupted fingerprint {} during unbiased scan: {}",
+                            id, e
+                        );
+                        continue;
+                    }
+                };
                 results.push(fp);
 
                 if results.len() >= limit {

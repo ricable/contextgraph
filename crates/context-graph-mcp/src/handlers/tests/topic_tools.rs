@@ -23,7 +23,7 @@ use super::{create_test_handlers, extract_mcp_tool_data, make_request};
 
 #[tokio::test]
 async fn test_get_topic_portfolio_empty_memories() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "get_topic_portfolio",
         "arguments": {}
@@ -78,7 +78,7 @@ async fn test_get_topic_portfolio_empty_memories() {
 
 #[tokio::test]
 async fn test_get_topic_portfolio_format_brief() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "get_topic_portfolio",
         "arguments": {"format": "brief"}
@@ -97,7 +97,7 @@ async fn test_get_topic_portfolio_format_brief() {
 
 #[tokio::test]
 async fn test_get_topic_portfolio_format_verbose() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "get_topic_portfolio",
         "arguments": {"format": "verbose"}
@@ -116,7 +116,7 @@ async fn test_get_topic_portfolio_format_verbose() {
 
 #[tokio::test]
 async fn test_get_topic_portfolio_invalid_format() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "get_topic_portfolio",
         "arguments": {"format": "invalid_format_xyz"}
@@ -148,7 +148,7 @@ async fn test_get_topic_portfolio_invalid_format() {
 
 #[tokio::test]
 async fn test_get_topic_stability_default_hours() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "get_topic_stability",
         "arguments": {}
@@ -189,7 +189,7 @@ async fn test_get_topic_stability_default_hours() {
 
 #[tokio::test]
 async fn test_get_topic_stability_custom_hours() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "get_topic_stability",
         "arguments": {"hours": 24}
@@ -208,7 +208,7 @@ async fn test_get_topic_stability_custom_hours() {
 
 #[tokio::test]
 async fn test_get_topic_stability_zero_hours_rejected() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "get_topic_stability",
         "arguments": {"hours": 0}
@@ -227,7 +227,7 @@ async fn test_get_topic_stability_zero_hours_rejected() {
 
 #[tokio::test]
 async fn test_get_topic_stability_max_hours_boundary() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     // Per constitution: max hours is 168 (1 week)
     let params = json!({
         "name": "get_topic_stability",
@@ -247,7 +247,7 @@ async fn test_get_topic_stability_max_hours_boundary() {
 
 #[tokio::test]
 async fn test_get_topic_stability_over_max_hours_rejected() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "get_topic_stability",
         "arguments": {"hours": 169}
@@ -270,7 +270,7 @@ async fn test_get_topic_stability_over_max_hours_rejected() {
 
 #[tokio::test]
 async fn test_detect_topics_insufficient_memories() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "detect_topics",
         "arguments": {}
@@ -303,7 +303,7 @@ async fn test_detect_topics_insufficient_memories() {
 #[tokio::test]
 async fn test_detect_topics_force_parameter() {
     // This just verifies the force parameter is accepted
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "detect_topics",
         "arguments": {"force": true}
@@ -327,7 +327,7 @@ async fn test_detect_topics_force_parameter() {
 
 #[tokio::test]
 async fn test_get_divergence_alerts_default_lookback() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "get_divergence_alerts",
         "arguments": {}
@@ -371,7 +371,7 @@ async fn test_get_divergence_alerts_default_lookback() {
 
 #[tokio::test]
 async fn test_get_divergence_alerts_custom_lookback() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "get_divergence_alerts",
         "arguments": {"lookback_hours": 12}
@@ -390,7 +390,7 @@ async fn test_get_divergence_alerts_custom_lookback() {
 
 #[tokio::test]
 async fn test_get_divergence_alerts_zero_lookback_rejected() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "get_divergence_alerts",
         "arguments": {"lookback_hours": 0}
@@ -409,7 +409,7 @@ async fn test_get_divergence_alerts_zero_lookback_rejected() {
 
 #[tokio::test]
 async fn test_get_divergence_alerts_max_lookback_boundary() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     // Per constitution: max lookback is 48 hours
     let params = json!({
         "name": "get_divergence_alerts",
@@ -432,7 +432,7 @@ async fn test_get_divergence_alerts_max_lookback_boundary() {
 
 #[tokio::test]
 async fn test_get_divergence_alerts_over_max_lookback_rejected() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "get_divergence_alerts",
         "arguments": {"lookback_hours": 100}
@@ -455,7 +455,7 @@ async fn test_get_divergence_alerts_over_max_lookback_rejected() {
 
 #[tokio::test]
 async fn test_topic_portfolio_response_structure() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "get_topic_portfolio",
         "arguments": {}
@@ -489,7 +489,7 @@ async fn test_topic_portfolio_response_structure() {
 
 #[tokio::test]
 async fn test_unknown_tool_returns_tool_not_found() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "nonexistent_topic_tool_xyz",
         "arguments": {}

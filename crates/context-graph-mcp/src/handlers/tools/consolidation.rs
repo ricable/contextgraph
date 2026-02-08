@@ -97,14 +97,9 @@ impl ConsolidationService {
         pairs
             .iter()
             .filter_map(|pair| {
-                // Compute similarity
-                let sim: f32 = pair
-                    .first
-                    .embedding
-                    .iter()
-                    .zip(pair.second.embedding.iter())
-                    .map(|(a, b)| a * b)
-                    .sum();
+                // MCP-05 FIX: Use cosine similarity instead of raw dot product.
+                // Dot product can exceed 1.0 for non-normalized embeddings.
+                let sim = cosine_similarity(&pair.first.embedding, &pair.second.embedding);
 
                 // Compute alignment difference
                 let alignment_diff = (pair.first.alignment - pair.second.alignment).abs();
@@ -126,6 +121,33 @@ impl ConsolidationService {
             .take(self.config.max_daily_merges)
             .collect()
     }
+}
+
+/// Compute cosine similarity between two embedding vectors.
+///
+/// Returns dot(a, b) / (||a|| * ||b||), or 0.0 if either vector has zero norm.
+/// MCP-05 FIX: Replaces raw dot product which can exceed 1.0 for non-normalized embeddings.
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+
+    let mut dot = 0.0f32;
+    let mut norm_a = 0.0f32;
+    let mut norm_b = 0.0f32;
+
+    for (x, y) in a.iter().zip(b.iter()) {
+        dot += x * y;
+        norm_a += x * x;
+        norm_b += y * y;
+    }
+
+    let denom = norm_a.sqrt() * norm_b.sqrt();
+    if denom < f32::EPSILON {
+        return 0.0;
+    }
+
+    dot / denom
 }
 
 // ============================================================================
@@ -277,12 +299,11 @@ impl Handlers {
 
                 for i in 0..memory_contents.len() {
                     for j in (i + 1)..memory_contents.len() {
-                        let sim: f32 = memory_contents[i]
-                            .embedding
-                            .iter()
-                            .zip(memory_contents[j].embedding.iter())
-                            .map(|(a, b)| a * b)
-                            .sum();
+                        // MCP-05 FIX: Use cosine similarity instead of raw dot product.
+                        let sim = cosine_similarity(
+                            &memory_contents[i].embedding,
+                            &memory_contents[j].embedding,
+                        );
 
                         if sim >= threshold {
                             pairs.push(MemoryPair::new(

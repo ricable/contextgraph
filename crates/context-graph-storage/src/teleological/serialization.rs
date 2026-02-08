@@ -3,19 +3,20 @@
 //! Uses bincode 1.3 for efficient binary serialization.
 //! Expected serialized size: ~30KB per fingerprint (based on SemanticFingerprint with 7,424 dense dims).
 //!
-//! # FAIL FAST Policy
+//! # Error Handling Policy (STG-01)
 //!
-//! All serialization functions panic on error. This ensures:
-//! 1. Data corruption is immediately detected
-//! 2. No partial or corrupted data is stored
-//! 3. Clear error messages with full context
+//! Serialization functions (write path) panic on error because the data originates
+//! from in-memory structs we control. Deserialization functions (read path) return
+//! `Result<T, CoreError>` so that a single corrupted record in RocksDB does NOT
+//! crash the entire server during iteration.
 //!
 //! # Version Handling
 //!
 //! Each serialized type is prefixed with a version byte.
-//! Version mismatches cause immediate panic (no migration support).
+//! Version mismatches return errors (no migration support).
 
 use bincode::{deserialize, serialize};
+use context_graph_core::error::CoreError;
 use context_graph_core::types::fingerprint::TeleologicalFingerprint;
 use uuid::Uuid;
 
@@ -103,12 +104,12 @@ pub fn serialize_teleological_fingerprint(fp: &TeleologicalFingerprint) -> Vec<u
 /// * `data` - Serialized bytes (from `serialize_teleological_fingerprint`)
 ///
 /// # Returns
-/// The deserialized TeleologicalFingerprint
+/// `Ok(TeleologicalFingerprint)` on success, `Err(CoreError::SerializationError)` on failure.
 ///
-/// # Panics
-/// - Panics if data is empty
-/// - Panics if version mismatch (no migration support)
-/// - Panics if deserialization fails (indicates corruption)
+/// # Errors
+/// - Empty data
+/// - Version mismatch (no migration support)
+/// - Bincode deserialization failure (indicates corruption)
 ///
 /// # Example
 /// ```ignore
@@ -119,41 +120,41 @@ pub fn serialize_teleological_fingerprint(fp: &TeleologicalFingerprint) -> Vec<u
 ///
 /// let original = TeleologicalFingerprint::new(...);
 /// let bytes = serialize_teleological_fingerprint(&original);
-/// let restored = deserialize_teleological_fingerprint(&bytes);
+/// let restored = deserialize_teleological_fingerprint(&bytes)?;
 /// assert_eq!(original.id, restored.id);
 /// ```
-pub fn deserialize_teleological_fingerprint(data: &[u8]) -> TeleologicalFingerprint {
+pub fn deserialize_teleological_fingerprint(data: &[u8]) -> Result<TeleologicalFingerprint, CoreError> {
     if data.is_empty() {
-        panic!(
-            "DESERIALIZATION ERROR: Empty data for TeleologicalFingerprint. \
+        return Err(CoreError::SerializationError(
+            "Empty data for TeleologicalFingerprint. \
              This indicates missing fingerprint or wrong CF lookup. \
              Verify the key exists in the fingerprints column family."
-        );
+                .to_string(),
+        ));
     }
 
     let version = data[0];
     if version != TELEOLOGICAL_VERSION {
-        panic!(
-            "DESERIALIZATION ERROR: Version mismatch. Expected {}, got {}. \
+        return Err(CoreError::SerializationError(format!(
+            "Version mismatch for TeleologicalFingerprint. Expected {}, got {}. \
              Data length: {} bytes. \
              This indicates stale data requiring migration. \
              No automatic migration is supported - data must be regenerated.",
             TELEOLOGICAL_VERSION,
             version,
             data.len()
-        );
+        )));
     }
 
-    deserialize(&data[1..]).unwrap_or_else(|e| {
-        panic!(
-            "DESERIALIZATION ERROR: Failed to deserialize TeleologicalFingerprint. \
+    deserialize(&data[1..]).map_err(|e| {
+        CoreError::SerializationError(format!(
+            "Failed to deserialize TeleologicalFingerprint. \
              Error: {}. Data length: {} bytes, version: {}. \
-             This indicates corrupted storage or incompatible struct changes. \
-             Check that TeleologicalFingerprint struct matches the stored version.",
+             This indicates corrupted storage or incompatible struct changes.",
             e,
             data.len(),
             version
-        );
+        ))
     })
 }
 
@@ -186,20 +187,19 @@ pub fn serialize_topic_profile(vector: &[f32; 13]) -> [u8; 52] {
 /// * `data` - Exactly 52 bytes
 ///
 /// # Returns
-/// The 13-element topic profile vector
+/// `Ok([f32; 13])` on success, `Err(CoreError::SerializationError)` on failure.
 ///
-/// # Panics
-/// Panics if data is not exactly 52 bytes.
-pub fn deserialize_topic_profile(data: &[u8]) -> [f32; 13] {
+/// # Errors
+/// Returns error if data is not exactly 52 bytes.
+pub fn deserialize_topic_profile(data: &[u8]) -> Result<[f32; 13], CoreError> {
     if data.len() != 52 {
-        panic!(
-            "DESERIALIZATION ERROR: Topic profile must be 52 bytes, got {}. \
-             Data: {:02x?}. \
-             This indicates corrupted storage or wrong CF lookup. \
-             Verify the key points to the topic profile column family.",
+        return Err(CoreError::SerializationError(format!(
+            "Topic profile must be 52 bytes, got {}. \
+             Data prefix: {:02x?}. \
+             This indicates corrupted storage or wrong CF lookup.",
             data.len(),
             if data.len() <= 20 { data } else { &data[..20] }
-        );
+        )));
     }
 
     let mut result = [0.0f32; 13];
@@ -209,7 +209,7 @@ pub fn deserialize_topic_profile(data: &[u8]) -> [f32; 13] {
             .expect("slice is exactly 4 bytes");
         result[i] = f32::from_le_bytes(bytes);
     }
-    result
+    Ok(result)
 }
 
 /// Serialize E1 Matryoshka 128D vector (128 × f32 = 512 bytes).
@@ -284,29 +284,29 @@ pub fn serialize_memory_id_list(ids: &[Uuid]) -> Vec<u8> {
 /// * `data` - Serialized bytes (from `serialize_memory_id_list`)
 ///
 /// # Returns
-/// Vector of memory IDs
+/// `Ok(Vec<Uuid>)` on success, `Err(CoreError::SerializationError)` on failure.
 ///
-/// # Panics
-/// - Panics if data is less than 4 bytes (missing count)
-/// - Panics if data length doesn't match count × 16 + 4
-/// - Panics if any UUID is invalid
-pub fn deserialize_memory_id_list(data: &[u8]) -> Vec<Uuid> {
+/// # Errors
+/// - Data is less than 4 bytes (missing count)
+/// - Data length doesn't match count x 16 + 4
+/// - Any UUID is invalid
+pub fn deserialize_memory_id_list(data: &[u8]) -> Result<Vec<Uuid>, CoreError> {
     if data.len() < 4 {
-        panic!(
-            "DESERIALIZATION ERROR: Memory ID list must have at least 4 bytes (count), got {}. \
+        return Err(CoreError::SerializationError(format!(
+            "Memory ID list must have at least 4 bytes (count), got {}. \
              Data: {:02x?}. \
              This indicates corrupted storage or truncated write.",
             data.len(),
             data
-        );
+        )));
     }
 
     let count = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
     let expected_len = 4 + count * 16;
 
     if data.len() != expected_len {
-        panic!(
-            "DESERIALIZATION ERROR: Memory ID list with {} entries should be {} bytes, got {}. \
+        return Err(CoreError::SerializationError(format!(
+            "Memory ID list with {} entries should be {} bytes, got {}. \
              This indicates corrupted storage or partial write. \
              Count bytes: {:02x?}, Total data length: {}.",
             count,
@@ -314,23 +314,23 @@ pub fn deserialize_memory_id_list(data: &[u8]) -> Vec<Uuid> {
             data.len(),
             &data[0..4],
             data.len()
-        );
+        )));
     }
 
     let mut result = Vec::with_capacity(count);
     for i in 0..count {
         let start = 4 + i * 16;
-        let uuid = Uuid::from_slice(&data[start..start + 16]).unwrap_or_else(|e| {
-            panic!(
-                "DESERIALIZATION ERROR: Invalid UUID at index {} in memory ID list. \
+        let uuid = Uuid::from_slice(&data[start..start + 16]).map_err(|e| {
+            CoreError::SerializationError(format!(
+                "Invalid UUID at index {} in memory ID list. \
                  Error: {}. Bytes: {:02x?}. \
                  This indicates data corruption.",
                 i,
                 e,
                 &data[start..start + 16]
-            );
-        });
+            ))
+        })?;
         result.push(uuid);
     }
-    result
+    Ok(result)
 }

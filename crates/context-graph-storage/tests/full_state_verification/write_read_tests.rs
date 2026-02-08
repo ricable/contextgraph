@@ -63,7 +63,8 @@ async fn test_physical_write_read_verification() {
     );
 
     // Deserialize and verify
-    let retrieved = deserialize_teleological_fingerprint(&bytes);
+    let retrieved = deserialize_teleological_fingerprint(&bytes)
+        .expect("Failed to deserialize fingerprint");
 
     println!("\n[3] DATA INTEGRITY VERIFICATION");
     println!("    ID match: {}", retrieved.id == id);

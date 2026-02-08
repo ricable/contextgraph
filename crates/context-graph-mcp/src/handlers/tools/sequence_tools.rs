@@ -163,26 +163,56 @@ impl Handlers {
         // Apply sequence options
         options.temporal_options.sequence_options = Some(seq_opts);
 
-        // Generate a query embedding - use provided query or a generic context query
-        let query_text = query.unwrap_or("conversation context");
-        let query_embedding = match self.multi_array_provider.embed_all(query_text).await {
-            Ok(output) => output.fingerprint,
-            Err(e) => {
-                error!(error = %e, "get_conversation_context: Query embedding FAILED");
-                return self.tool_error(id, &format!("Query embedding failed: {}", e));
-            }
-        };
+        // MCP-08 FIX: When no explicit query is provided, skip semantic search entirely
+        // and return results purely based on sequence ordering (which is what the user
+        // expects from a conversation context tool). Using a hardcoded "conversation context"
+        // string would bias retrieval toward memories that happen to match that phrase.
+        let results: Vec<TeleologicalSearchResult> = if let Some(query_text) = query {
+            // User provided an explicit query - use semantic search with it
+            let query_embedding = match self.multi_array_provider.embed_all(query_text).await {
+                Ok(output) => output.fingerprint,
+                Err(e) => {
+                    error!(error = %e, "get_conversation_context: Query embedding FAILED");
+                    return self.tool_error(id, &format!("Query embedding failed: {}", e));
+                }
+            };
 
-        let results: Vec<TeleologicalSearchResult> = match self
-            .teleological_store
-            .search_semantic(&query_embedding, options)
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                error!(error = %e, "get_conversation_context: Search FAILED");
-                return self.tool_error(id, &format!("Search failed: {}", e));
+            match self
+                .teleological_store
+                .search_semantic(&query_embedding, options)
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    error!(error = %e, "get_conversation_context: Search FAILED");
+                    return self.tool_error(id, &format!("Search failed: {}", e));
+                }
             }
+        } else {
+            // No query provided - use unbiased fingerprint listing with sequence ordering
+            let unbiased = match self
+                .teleological_store
+                .list_fingerprints_unbiased(window_size as usize * 2)
+                .await
+            {
+                Ok(fps) => fps,
+                Err(e) => {
+                    error!(error = %e, "get_conversation_context: Unbiased scan FAILED");
+                    return self.tool_error(id, &format!("Fingerprint scan failed: {}", e));
+                }
+            };
+
+            unbiased
+                .into_iter()
+                .map(|fp| TeleologicalSearchResult {
+                    fingerprint: fp,
+                    similarity: 1.0, // No semantic bias
+                    embedder_scores: [0.0; 13],
+                    stage_scores: [0.0; 5],
+                    content: None,
+                    temporal_breakdown: None,
+                })
+                .collect()
         };
 
         // Limit results to window size
@@ -549,26 +579,55 @@ impl Handlers {
 
         options.temporal_options.sequence_options = Some(seq_opts);
 
-        // Use semantic filter or generic query
-        let query_text = semantic_filter.unwrap_or("memory chain traversal");
-        let query_embedding = match self.multi_array_provider.embed_all(query_text).await {
-            Ok(output) => output.fingerprint,
-            Err(e) => {
-                error!(error = %e, "traverse_memory_chain: Query embedding FAILED");
-                return self.tool_error(id, &format!("Query embedding failed: {}", e));
-            }
-        };
+        // MCP-12 FIX: When no explicit semanticFilter is provided, skip semantic search
+        // entirely and return results based on sequence ordering from the anchor point.
+        // Using a hardcoded "memory chain traversal" string would bias retrieval.
+        let results: Vec<TeleologicalSearchResult> = if let Some(filter_text) = semantic_filter {
+            // User provided an explicit semantic filter - use semantic search
+            let query_embedding = match self.multi_array_provider.embed_all(filter_text).await {
+                Ok(output) => output.fingerprint,
+                Err(e) => {
+                    error!(error = %e, "traverse_memory_chain: Query embedding FAILED");
+                    return self.tool_error(id, &format!("Query embedding failed: {}", e));
+                }
+            };
 
-        let results: Vec<TeleologicalSearchResult> = match self
-            .teleological_store
-            .search_semantic(&query_embedding, options)
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                error!(error = %e, "traverse_memory_chain: Search FAILED");
-                return self.tool_error(id, &format!("Search failed: {}", e));
+            match self
+                .teleological_store
+                .search_semantic(&query_embedding, options)
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    error!(error = %e, "traverse_memory_chain: Search FAILED");
+                    return self.tool_error(id, &format!("Search failed: {}", e));
+                }
             }
+        } else {
+            // No semantic filter - use unbiased listing for sequence-based traversal
+            let unbiased = match self
+                .teleological_store
+                .list_fingerprints_unbiased(hops as usize * 2)
+                .await
+            {
+                Ok(fps) => fps,
+                Err(e) => {
+                    error!(error = %e, "traverse_memory_chain: Unbiased scan FAILED");
+                    return self.tool_error(id, &format!("Fingerprint scan failed: {}", e));
+                }
+            };
+
+            unbiased
+                .into_iter()
+                .map(|fp| TeleologicalSearchResult {
+                    fingerprint: fp,
+                    similarity: 1.0, // No semantic bias
+                    embedder_scores: [0.0; 13],
+                    stage_scores: [0.0; 5],
+                    content: None,
+                    temporal_breakdown: None,
+                })
+                .collect()
         };
 
         // Limit to requested hops

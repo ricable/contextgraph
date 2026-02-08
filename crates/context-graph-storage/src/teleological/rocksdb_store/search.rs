@@ -8,12 +8,18 @@
 //!
 //! - **E1Only**: Original E1-only HNSW search (backward compatible)
 //! - **MultiSpace**: Weighted fusion of semantic embedders
-//! - **Pipeline**: Full 3-stage retrieval
+//! - **Pipeline**: 2-stage retrieval (E13 recall + multi-space scoring)
 //!
 //! ## Key Research Insights
 //!
 //! Temporal embedders (E2-E4) measure TIME proximity, not TOPIC similarity.
 //! They are excluded from similarity scoring and applied as post-retrieval boosts.
+//!
+//! # Embedder-Specific Search (CRIT-06)
+//!
+//! When `embedder_indices` is set on search options, the search is routed to the
+//! specific HNSW index(es) rather than always defaulting to E1. This enables
+//! `search_by_embedder` to actually search the requested embedder's space.
 //!
 //! # Fusion Strategies (ARCH-18)
 //!
@@ -107,6 +113,236 @@ fn is_soft_deleted_sync(soft_deleted: &Arc<RwLock<HashMap<Uuid, bool>>>, id: &Uu
         .get(id)
         .copied()
         .unwrap_or(false) // False here is correct: unknown IDs are not deleted
+}
+
+/// Get the query vector for a given embedder index (0-12).
+///
+/// Returns the appropriate vector slice from the SemanticFingerprint for searching
+/// the embedder's HNSW index. Returns None for non-HNSW embedders (E6=5, E12=11, E13=12).
+///
+/// CRIT-06: This mapping is the single source of truth for embedder -> query vector routing.
+fn get_query_vector_for_embedder<'a>(query: &'a SemanticFingerprint, embedder_idx: usize) -> Option<&'a [f32]> {
+    match embedder_idx {
+        0 => Some(&query.e1_semantic),              // E1 Semantic
+        1 => Some(&query.e2_temporal_recent),       // E2 Temporal Recent
+        2 => Some(&query.e3_temporal_periodic),     // E3 Temporal Periodic
+        3 => Some(&query.e4_temporal_positional),   // E4 Temporal Positional
+        4 => Some(query.e5_active_vector()),        // E5 Causal
+        5 => None,                                  // E6 Sparse (NOT HNSW)
+        6 => Some(&query.e7_code),                  // E7 Code
+        7 => Some(query.e8_active_vector()),        // E8 Graph
+        8 => Some(&query.e9_hdc),                   // E9 HDC
+        9 => Some(query.e10_active_vector()),       // E10 Multimodal
+        10 => Some(&query.e11_entity),              // E11 Entity
+        11 => None,                                 // E12 LateInteraction (NOT HNSW)
+        12 => None,                                 // E13 SPLADE (NOT HNSW)
+        _ => None,
+    }
+}
+
+/// Single-embedder search: search a specific HNSW index directly (CRIT-06).
+///
+/// When `embedder_indices` contains exactly one HNSW-capable index, this function
+/// searches that specific index instead of always routing to E1.
+fn search_single_embedder_sync(
+    db: &Arc<DB>,
+    index_registry: &Arc<EmbedderIndexRegistry>,
+    soft_deleted: &Arc<RwLock<HashMap<Uuid, bool>>>,
+    query: &SemanticFingerprint,
+    options: &TeleologicalSearchOptions,
+    embedder_idx: usize,
+) -> CoreResult<Vec<TeleologicalSearchResult>> {
+    let embedder = EmbedderIndex::from_index(embedder_idx);
+
+    if !embedder.uses_hnsw() {
+        return Err(CoreError::ValidationError {
+            field: "embedder_indices".to_string(),
+            message: format!(
+                "Embedder index {} ({:?}) does not use HNSW and cannot be searched directly",
+                embedder_idx, embedder
+            ),
+        });
+    }
+
+    let query_vec = get_query_vector_for_embedder(query, embedder_idx).ok_or_else(|| {
+        CoreError::ValidationError {
+            field: "embedder_indices".to_string(),
+            message: format!("No query vector available for embedder index {}", embedder_idx),
+        }
+    })?;
+
+    let entry_index = index_registry.get(embedder).ok_or_else(|| {
+        CoreError::IndexError(format!("HNSW index {:?} not found in registry", embedder))
+    })?;
+
+    let k = (options.top_k * 2).max(20);
+    let candidates = entry_index
+        .search(query_vec, k, None)
+        .map_err(|e| {
+            error!("Single-embedder search for {:?} failed: {}", embedder, e);
+            CoreError::IndexError(e.to_string())
+        })?;
+
+    debug!(
+        "Single-embedder search: {:?} returned {} raw candidates",
+        embedder,
+        candidates.len()
+    );
+
+    let mut results = Vec::with_capacity(candidates.len());
+
+    for (id, distance) in candidates {
+        let similarity = 1.0 - distance.min(1.0);
+
+        if !options.include_deleted && is_soft_deleted_sync(soft_deleted, &id) {
+            continue;
+        }
+
+        if similarity < options.min_similarity {
+            continue;
+        }
+
+        if let Some(data) = get_fingerprint_raw_sync(db, id)? {
+            let fp = deserialize_teleological_fingerprint(&data)?;
+            let code_query_type = options.effective_code_query_type();
+            let embedder_scores = if options.causal_direction != CausalDirection::Unknown {
+                compute_embedder_scores_with_direction_sync(
+                    query,
+                    &fp.semantic,
+                    code_query_type,
+                    options.causal_direction,
+                )
+            } else {
+                compute_embedder_scores_sync(query, &fp.semantic, code_query_type)
+            };
+            results.push(TeleologicalSearchResult::new(fp, similarity, embedder_scores));
+        }
+    }
+
+    results.sort_by(|a, b| {
+        b.similarity
+            .partial_cmp(&a.similarity)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    results.truncate(options.top_k);
+
+    debug!(
+        "Single-embedder search: {:?} returned {} final results",
+        embedder,
+        results.len()
+    );
+    Ok(results)
+}
+
+/// Multi-embedder filtered search: MultiSpace but restricted to specific embedders (CRIT-06).
+///
+/// When `embedder_indices` contains multiple indices, this function runs MultiSpace
+/// but only queries the specified HNSW indexes, ignoring all others.
+fn search_filtered_multi_space_sync(
+    db: &Arc<DB>,
+    index_registry: &Arc<EmbedderIndexRegistry>,
+    soft_deleted: &Arc<RwLock<HashMap<Uuid, bool>>>,
+    query: &SemanticFingerprint,
+    options: &TeleologicalSearchOptions,
+    embedder_indices: &[usize],
+) -> CoreResult<Vec<TeleologicalSearchResult>> {
+    let weights = resolve_weights_sync(options)?;
+    let k = (options.top_k * 3).max(50);
+
+    let mut embedder_rankings: Vec<EmbedderRanking> = Vec::new();
+
+    // Embedder name lookup for ranking labels
+    let embedder_names: [&str; 13] = [
+        "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11", "E12", "E13",
+    ];
+
+    for &idx in embedder_indices {
+        if idx >= 13 {
+            return Err(CoreError::ValidationError {
+                field: "embedder_indices".to_string(),
+                message: format!("Embedder index {} out of range (0-12)", idx),
+            });
+        }
+
+        let embedder = EmbedderIndex::from_index(idx);
+        if !embedder.uses_hnsw() {
+            debug!("Skipping non-HNSW embedder {:?} in filtered multi-space", embedder);
+            continue;
+        }
+
+        let query_vec = match get_query_vector_for_embedder(query, idx) {
+            Some(v) => v,
+            None => continue,
+        };
+
+        if let Some(index) = index_registry.get(embedder) {
+            if let Ok(candidates) = index.search(query_vec, k, None) {
+                let ranked: Vec<(Uuid, f32)> = candidates
+                    .into_iter()
+                    .filter(|(id, _)| options.include_deleted || !is_soft_deleted_sync(soft_deleted, id))
+                    .map(|(id, dist)| (id, 1.0 - dist.min(1.0)))
+                    .collect();
+
+                if !ranked.is_empty() && weights[idx] > 0.0 {
+                    embedder_rankings.push(EmbedderRanking::new(embedder_names[idx], weights[idx], ranked));
+                }
+            }
+        }
+    }
+
+    debug!(
+        "Filtered multi-space search: {} embedder rankings from {:?}",
+        embedder_rankings.len(),
+        embedder_indices
+    );
+
+    let fused_results = fuse_rankings(&embedder_rankings, options.fusion_strategy, options.top_k * 2);
+
+    let code_query_type = options.effective_code_query_type();
+    let mut results = Vec::with_capacity(fused_results.len());
+
+    for fused in fused_results {
+        if let Some(data) = get_fingerprint_raw_sync(db, fused.doc_id)? {
+            let fp = deserialize_teleological_fingerprint(&data)?;
+            let embedder_scores = if options.causal_direction != CausalDirection::Unknown {
+                compute_embedder_scores_with_direction_sync(
+                    query,
+                    &fp.semantic,
+                    code_query_type,
+                    options.causal_direction,
+                )
+            } else {
+                compute_embedder_scores_sync(query, &fp.semantic, code_query_type)
+            };
+
+            // Always compute actual cosine similarity for the returned score.
+            // RRF is used for CANDIDATE SELECTION (which docs to retrieve from
+            // multiple HNSW indexes), but the user-facing similarity score must
+            // be a weighted cosine similarity in the 0.0-1.0 range.
+            // Raw RRF scores max out at sum(weights)/(1+k) ≈ 0.016 with k=60,
+            // which is misleading when returned as "similarity".
+            let final_score = compute_semantic_fusion(&embedder_scores, &weights);
+
+            if final_score < options.min_similarity {
+                continue;
+            }
+
+            results.push(TeleologicalSearchResult::new(fp, final_score, embedder_scores));
+        }
+    }
+
+    results.sort_by(|a, b| {
+        b.similarity
+            .partial_cmp(&a.similarity)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    results.truncate(options.top_k);
+
+    debug!(
+        "Filtered multi-space search returned {} results",
+        results.len()
+    );
+    Ok(results)
 }
 
 /// Compute embedder scores with code query type (pure function).
@@ -221,7 +457,7 @@ fn search_e1_only_sync(
         }
 
         if let Some(data) = get_fingerprint_raw_sync(db, id)? {
-            let fp = deserialize_teleological_fingerprint(&data);
+            let fp = deserialize_teleological_fingerprint(&data)?;
             let code_query_type = options.effective_code_query_type();
             let embedder_scores = if options.causal_direction != CausalDirection::Unknown {
                 compute_embedder_scores_with_direction_sync(
@@ -372,7 +608,7 @@ fn search_multi_space_sync(
 
     for fused in fused_results {
         if let Some(data) = get_fingerprint_raw_sync(db, fused.doc_id)? {
-            let fp = deserialize_teleological_fingerprint(&data);
+            let fp = deserialize_teleological_fingerprint(&data)?;
             let embedder_scores = if options.causal_direction != CausalDirection::Unknown {
                 compute_embedder_scores_with_direction_sync(
                     query,
@@ -384,10 +620,13 @@ fn search_multi_space_sync(
                 compute_embedder_scores_sync(query, &fp.semantic, code_query_type)
             };
 
-            let final_score = match options.fusion_strategy {
-                FusionStrategy::WeightedSum => compute_semantic_fusion(&embedder_scores, &weights),
-                FusionStrategy::WeightedRRF => fused.fused_score * 10.0,
-            };
+            // Always compute actual cosine similarity for the returned score.
+            // RRF is used for CANDIDATE SELECTION (which docs to retrieve from
+            // multiple HNSW indexes), but the user-facing similarity score must
+            // be a weighted cosine similarity in the 0.0-1.0 range.
+            // Raw RRF scores max out at sum(weights)/(1+k) ≈ 0.016 with k=60,
+            // which is misleading when returned as "similarity".
+            let final_score = compute_semantic_fusion(&embedder_scores, &weights);
 
             if final_score < options.min_similarity {
                 continue;
@@ -412,7 +651,13 @@ fn search_multi_space_sync(
     Ok(results)
 }
 
-/// Pipeline search (sync version for spawn_blocking).
+/// Pipeline search: 2-stage retrieval (sync version for spawn_blocking).
+///
+/// Stage 1: Fast recall via E13 SPLADE + E1/E5/E7/E8/E11 HNSW.
+/// Stage 2: Multi-space scoring with weighted fusion across all candidates.
+///
+/// Note: E12 MaxSim reranking (Stage 3) is NOT implemented. See AP-74.
+///
 /// Takes Arc<RwLock<HashMap>> to avoid expensive HashMap cloning before spawn_blocking.
 fn search_pipeline_sync(
     db: &Arc<DB>,
@@ -466,37 +711,57 @@ fn search_pipeline_sync(
 
     // E5 Causal
     if let Some(e5_index) = index_registry.get(EmbedderIndex::E5Causal) {
-        if let Ok(e5_candidates) = e5_index.search(query.e5_active_vector(), recall_k / 2, None) {
-            let e5_count = e5_candidates.len();
-            candidate_ids.extend(e5_candidates.into_iter().map(|(id, _)| id));
-            debug!("Stage 1: E5 Causal returned {} additional candidates", e5_count);
+        match e5_index.search(query.e5_active_vector(), recall_k / 2, None) {
+            Ok(e5_candidates) => {
+                let e5_count = e5_candidates.len();
+                candidate_ids.extend(e5_candidates.into_iter().map(|(id, _)| id));
+                debug!("Stage 1: E5 Causal returned {} additional candidates", e5_count);
+            }
+            Err(e) => {
+                warn!("Stage 1: E5 Causal search failed: {}, continuing without E5 candidates", e);
+            }
         }
     }
 
     // E7 Code
     if let Some(e7_index) = index_registry.get(EmbedderIndex::E7Code) {
-        if let Ok(e7_candidates) = e7_index.search(&query.e7_code, recall_k / 2, None) {
-            let e7_count = e7_candidates.len();
-            candidate_ids.extend(e7_candidates.into_iter().map(|(id, _)| id));
-            debug!("Stage 1: E7 Code returned {} additional candidates", e7_count);
+        match e7_index.search(&query.e7_code, recall_k / 2, None) {
+            Ok(e7_candidates) => {
+                let e7_count = e7_candidates.len();
+                candidate_ids.extend(e7_candidates.into_iter().map(|(id, _)| id));
+                debug!("Stage 1: E7 Code returned {} additional candidates", e7_count);
+            }
+            Err(e) => {
+                warn!("Stage 1: E7 Code search failed: {}, continuing without E7 candidates", e);
+            }
         }
     }
 
     // E8 Graph (connectivity/structure)
     if let Some(e8_index) = index_registry.get(EmbedderIndex::E8Graph) {
-        if let Ok(e8_candidates) = e8_index.search(query.e8_active_vector(), recall_k / 2, None) {
-            let e8_count = e8_candidates.len();
-            candidate_ids.extend(e8_candidates.into_iter().map(|(id, _)| id));
-            debug!("Stage 1: E8 Graph returned {} additional candidates", e8_count);
+        match e8_index.search(query.e8_active_vector(), recall_k / 2, None) {
+            Ok(e8_candidates) => {
+                let e8_count = e8_candidates.len();
+                candidate_ids.extend(e8_candidates.into_iter().map(|(id, _)| id));
+                debug!("Stage 1: E8 Graph returned {} additional candidates", e8_count);
+            }
+            Err(e) => {
+                warn!("Stage 1: E8 Graph search failed: {}, continuing without E8 candidates", e);
+            }
         }
     }
 
     // E11 Entity (KEPLER entity embeddings)
     if let Some(e11_index) = index_registry.get(EmbedderIndex::E11Entity) {
-        if let Ok(e11_candidates) = e11_index.search(&query.e11_entity, recall_k / 2, None) {
-            let e11_count = e11_candidates.len();
-            candidate_ids.extend(e11_candidates.into_iter().map(|(id, _)| id));
-            debug!("Stage 1: E11 Entity returned {} additional candidates", e11_count);
+        match e11_index.search(&query.e11_entity, recall_k / 2, None) {
+            Ok(e11_candidates) => {
+                let e11_count = e11_candidates.len();
+                candidate_ids.extend(e11_candidates.into_iter().map(|(id, _)| id));
+                debug!("Stage 1: E11 Entity returned {} additional candidates", e11_count);
+            }
+            Err(e) => {
+                warn!("Stage 1: E11 Entity search failed: {}, continuing without E11 candidates", e);
+            }
         }
     }
 
@@ -521,7 +786,7 @@ fn search_pipeline_sync(
             continue;
         }
         if let Some(data) = get_fingerprint_raw_sync(db, id)? {
-            let fp = deserialize_teleological_fingerprint(&data);
+            let fp = deserialize_teleological_fingerprint(&data)?;
             valid_candidates.push((id, fp));
         }
     }
@@ -591,8 +856,10 @@ fn search_pipeline_sync(
                     .into_iter()
                     .filter_map(|f| {
                         candidate_map.get(&f.doc_id).map(|(scores, semantic)| {
-                            let scaled_score = f.fused_score * 10.0;
-                            (f.doc_id, scaled_score, *scores, semantic.clone())
+                            // RRF scores are in range [0, ~1.0] for typical result sets.
+                            // max possible = sum(weight_i / (1 + k)) across active embedders.
+                            // We leave them as-is for consistent comparison with min_similarity.
+                            (f.doc_id, f.fused_score, *scores, semantic.clone())
                         })
                     })
                     .filter(|(_, score, _, _)| *score >= options.min_similarity)
@@ -614,17 +881,20 @@ fn search_pipeline_sync(
         return Ok(Vec::new());
     }
 
-    // STAGE 3: Optional E12 re-ranking (skip in sync version for now)
+    // Truncate to final top_k (E12 MaxSim reranking is not yet implemented per AP-74)
     scored_candidates.truncate(options.top_k);
 
-    info!("Stage 3 complete: {} final results", scored_candidates.len());
+    debug!(
+        "Pipeline 2-stage search: {} final results (E12 MaxSim reranking not yet implemented)",
+        scored_candidates.len()
+    );
 
     // BUILD FINAL RESULTS
     let mut results = Vec::with_capacity(scored_candidates.len());
 
     for (id, score, embedder_scores, _semantic) in scored_candidates {
         if let Some(data) = get_fingerprint_raw_sync(db, id)? {
-            let fp = deserialize_teleological_fingerprint(&data);
+            let fp = deserialize_teleological_fingerprint(&data)?;
             results.push(TeleologicalSearchResult::new(fp, score, embedder_scores));
         }
     }
@@ -748,7 +1018,7 @@ fn search_sparse_sync(
         if let Some(data) = db.get_cf(cf, term_key).map_err(|e| {
             CoreError::StorageError(format!("Failed to get E13 SPLADE term: {}", e))
         })? {
-            let doc_ids = deserialize_memory_id_list(&data);
+            let doc_ids = deserialize_memory_id_list(&data)?;
             let df = doc_ids.len() as f32;
             let idf = ((total_docs - df + 0.5) / (df + 0.5) + 1.0).ln();
             term_data.push(TermData { query_weight, doc_ids, idf });
@@ -806,13 +1076,14 @@ const DEFAULT_SEMANTIC_WEIGHTS: [f32; 13] = [
 
 // =============================================================================
 // PIPELINE CONFIGURATION
-// Per AP-76: Stage 1 (sparse recall) → Stage 2 (dense scoring) → Stage 3 (rerank)
+// 2-stage pipeline: Stage 1 (sparse+dense recall) -> Stage 2 (multi-space scoring)
+// E12 MaxSim reranking (Stage 3) is not yet implemented (AP-74).
 // =============================================================================
 
 /// Stage 1 recall multiplier (how many candidates to retrieve)
 const STAGE1_RECALL_MULTIPLIER: usize = 10;
 
-/// Stage 2 scoring keeps this many candidates for optional re-ranking
+/// Stage 2 scoring candidate multiplier (intermediate set size before final truncation)
 const STAGE2_CANDIDATE_MULTIPLIER: usize = 3;
 
 // =============================================================================
@@ -858,9 +1129,17 @@ impl RocksDbTeleologicalStore {
     /// Supports three strategies:
     /// - `E1Only`: Original E1-only HNSW search (backward compatible)
     /// - `MultiSpace`: Weighted fusion of semantic embedders
-    /// - `Pipeline`: Full 3-stage retrieval
+    /// - `Pipeline`: 2-stage retrieval (E13 recall + multi-space scoring)
     ///
-    /// Also supports temporal options (ARCH-14):
+    /// # Embedder-Specific Routing (CRIT-06)
+    ///
+    /// When `embedder_indices` is set on options, the search is routed to the specific
+    /// HNSW index(es) regardless of the strategy field:
+    /// - Single HNSW index: Direct search in that embedder's space
+    /// - Multiple HNSW indices: Filtered multi-space search across only those embedders
+    ///
+    /// # Temporal Options (ARCH-14)
+    ///
     /// - E2 Recency: Decay functions, time windows, session filtering
     /// - E3 Periodic: Hour-of-day, day-of-week pattern matching
     /// - E4 Sequence: Before/after anchor memory retrieval
@@ -875,8 +1154,9 @@ impl RocksDbTeleologicalStore {
         options: TeleologicalSearchOptions,
     ) -> CoreResult<Vec<TeleologicalSearchResult>> {
         debug!(
-            "Searching semantic with strategy={:?}, top_k={}, min_similarity={}, temporal_weight={}",
+            "Searching semantic with strategy={:?}, top_k={}, min_similarity={}, embedder_indices={:?}, temporal_weight={}",
             options.strategy, options.top_k, options.min_similarity,
+            options.embedder_indices,
             options.temporal_options.temporal_weight
         );
 
@@ -891,7 +1171,34 @@ impl RocksDbTeleologicalStore {
 
         // Move synchronous search work to blocking thread pool
         let mut results = tokio::task::spawn_blocking(move || {
-            // Branch based on search strategy
+            // CRIT-06: When embedder_indices is set, route to specific HNSW index(es)
+            // instead of always defaulting to E1 or the strategy-based dispatch.
+            if !options_clone.embedder_indices.is_empty() {
+                let indices = &options_clone.embedder_indices;
+                if indices.len() == 1 {
+                    // Single embedder: search that specific HNSW index directly
+                    debug!(
+                        "Embedder-specific routing: single embedder index {}",
+                        indices[0]
+                    );
+                    return search_single_embedder_sync(
+                        &db, &index_registry, &soft_deleted, &query_clone, &options_clone,
+                        indices[0],
+                    );
+                } else {
+                    // Multiple embedders: filtered multi-space across only those embedders
+                    debug!(
+                        "Embedder-specific routing: filtered multi-space with {:?}",
+                        indices
+                    );
+                    return search_filtered_multi_space_sync(
+                        &db, &index_registry, &soft_deleted, &query_clone, &options_clone,
+                        indices,
+                    );
+                }
+            }
+
+            // Standard strategy-based dispatch when no specific embedders requested
             match options_clone.strategy {
                 SearchStrategy::E1Only => {
                     search_e1_only_sync(&db, &index_registry, &soft_deleted, &query_clone, &options_clone)
@@ -900,6 +1207,10 @@ impl RocksDbTeleologicalStore {
                     search_multi_space_sync(&db, &index_registry, &soft_deleted, &query_clone, &options_clone)
                 }
                 SearchStrategy::Pipeline => {
+                    warn!(
+                        "Pipeline strategy uses 2-stage retrieval (E13 recall + multi-space scoring). \
+                         E12 MaxSim reranking is not yet implemented."
+                    );
                     search_pipeline_sync(&db, &index_registry, &soft_deleted, &query_clone, &options_clone)
                 }
             }
@@ -1026,7 +1337,16 @@ impl RocksDbTeleologicalStore {
                 // Try to fetch anchor fingerprint from storage
                 match self.get_fingerprint_raw(seq_opts.anchor_id) {
                     Ok(Some(data)) => {
-                        let anchor = deserialize_teleological_fingerprint(&data);
+                        let anchor = match deserialize_teleological_fingerprint(&data) {
+                            Ok(fp) => fp,
+                            Err(e) => {
+                                warn!(
+                                    "Temporal boost: Could not deserialize anchor fingerprint {}: {}, skipping sequence boost",
+                                    seq_opts.anchor_id, e
+                                );
+                                return Ok(());
+                            }
+                        };
                         let ts = anchor.created_at.timestamp_millis();
 
                         // E4-FIX Phase 3: Also fetch anchor's sequence from SourceMetadata

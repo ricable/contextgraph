@@ -284,23 +284,25 @@ impl MultiArrayEmbeddingProvider for StubMultiArrayProvider {
         fingerprint.e2_temporal_recent = Self::fill_dense_embedding(content, 512, 1);
         fingerprint.e3_temporal_periodic = Self::fill_dense_embedding(content, 512, 2);
         fingerprint.e4_temporal_positional = Self::fill_dense_embedding(content, 512, 3);
-        // E5: Fill both dual format fields (new) and legacy field for compatibility
-        let e5_vec = Self::fill_dense_embedding(content, 768, 4);
-        fingerprint.e5_causal_as_cause = e5_vec.clone();
-        fingerprint.e5_causal_as_effect = e5_vec.clone();
-        fingerprint.e5_causal = e5_vec; // Legacy field for backward compatibility
+        // E5: CORE-01 FIX: Generate DISTINCT vectors for asymmetric cause/effect fields.
+        // Using different embedder indices (4 vs 17) produces different dimensional patterns
+        // so that tests can actually verify asymmetric search logic.
+        fingerprint.e5_causal_as_cause = Self::fill_dense_embedding(content, 768, 4);
+        fingerprint.e5_causal_as_effect = Self::fill_dense_embedding(content, 768, 17);
+        // Legacy field uses cause vector for backward compatibility
+        fingerprint.e5_causal = fingerprint.e5_causal_as_cause.clone();
         fingerprint.e7_code = Self::fill_dense_embedding(content, 1536, 6);
-        // E8: Fill both dual format fields (new) and legacy field for compatibility
-        let e8_vec = Self::fill_dense_embedding(content, 1024, 7); // Upgraded to 1024D
-        fingerprint.e8_graph_as_source = e8_vec.clone();
-        fingerprint.e8_graph_as_target = e8_vec.clone();
-        fingerprint.e8_graph = e8_vec; // Legacy field for backward compatibility
+        // E8: CORE-01 FIX: Generate DISTINCT vectors for asymmetric source/target fields.
+        fingerprint.e8_graph_as_source = Self::fill_dense_embedding(content, 1024, 7);
+        fingerprint.e8_graph_as_target = Self::fill_dense_embedding(content, 1024, 19);
+        // Legacy field uses source vector for backward compatibility
+        fingerprint.e8_graph = fingerprint.e8_graph_as_source.clone();
         fingerprint.e9_hdc = Self::fill_dense_embedding(content, 1024, 8); // HDC projected
-        // E10: Fill both dual format fields (new) and legacy field for compatibility
-        let e10_vec = Self::fill_dense_embedding(content, 768, 9);
-        fingerprint.e10_multimodal_as_intent = e10_vec.clone();
-        fingerprint.e10_multimodal_as_context = e10_vec.clone();
-        fingerprint.e10_multimodal = e10_vec; // Legacy field for backward compatibility
+        // E10: CORE-01 FIX: Generate DISTINCT vectors for asymmetric intent/context fields.
+        fingerprint.e10_multimodal_as_intent = Self::fill_dense_embedding(content, 768, 9);
+        fingerprint.e10_multimodal_as_context = Self::fill_dense_embedding(content, 768, 21);
+        // Legacy field uses intent vector for backward compatibility
+        fingerprint.e10_multimodal = fingerprint.e10_multimodal_as_intent.clone();
         fingerprint.e11_entity = Self::fill_dense_embedding(content, 768, 10); // KEPLER
 
         // Fill sparse embeddings

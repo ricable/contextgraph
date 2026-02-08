@@ -16,7 +16,7 @@ use super::{create_test_handlers, extract_mcp_tool_data, make_request};
 /// TC-CONTENT-01: inject_context stores content alongside fingerprint
 #[tokio::test]
 async fn test_inject_context_stores_content() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let test_content = "Unique test content for inject_context verification - TASK-CONTENT-001";
 
     // Call inject_context with test content
@@ -57,7 +57,7 @@ async fn test_inject_context_stores_content() {
 /// TC-CONTENT-02: search_graph returns content when includeContent=true
 #[tokio::test]
 async fn test_search_graph_returns_content() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let test_content = "Machine learning optimization techniques for neural networks";
 
     // First, inject some content
@@ -112,32 +112,28 @@ async fn test_search_graph_returns_content() {
         results.map(|r| r.len()).unwrap_or(0)
     );
 
-    // If we have results, verify the content field is present
-    if let Some(results_array) = results {
-        if !results_array.is_empty() {
-            let first_result = &results_array[0];
+    // TST-05 FIX: The old code skipped all assertions when results were empty,
+    // always printing "PASSED". Now we require non-empty results.
+    let results_array = results.expect("[TC-CONTENT-02] search must return results array");
+    assert!(
+        !results_array.is_empty(),
+        "[TC-CONTENT-02] search_graph must return at least 1 result with includeContent=true"
+    );
 
-            // Verify content field exists when includeContent=true
-            let has_content_field = first_result.get("content").is_some();
-            println!(
-                "[TC-CONTENT-02] First result has content field: {}",
-                has_content_field
-            );
-
-            if has_content_field {
-                let content_value = first_result.get("content");
-                println!("[TC-CONTENT-02] Content value: {:?}", content_value);
-            }
-        }
-    }
-
+    let first_result = &results_array[0];
+    let has_content_field = first_result.get("content").is_some();
+    println!(
+        "[TC-CONTENT-02] First result has content field: {}",
+        has_content_field
+    );
+    // Note: content may be null if store_content wasn't called, but the field should exist
     println!("[TC-CONTENT-02] PASSED: search_graph with includeContent works");
 }
 
 /// TC-CONTENT-03: search_graph omits content when includeContent=false
 #[tokio::test]
 async fn test_search_graph_omits_content_by_default() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
 
     // First, inject some content
     let inject_request = make_request(
@@ -199,7 +195,7 @@ async fn test_search_graph_omits_content_by_default() {
 /// TC-CONTENT-05: Full round-trip: inject_context -> search_graph with content
 #[tokio::test]
 async fn test_content_storage_round_trip() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let unique_content = "UNIQUE_MARKER_FOR_ROUND_TRIP_TEST_12345_TELEOLOGICAL_FINGERPRINT";
 
     // Step 1: Inject unique content
@@ -260,54 +256,55 @@ async fn test_content_storage_round_trip() {
         .expect("search_graph should return result");
     let search_data = extract_mcp_tool_data(&search_result);
 
-    // Step 3: Verify content is retrieved
-    if let Some(results_array) = search_data.get("results").and_then(|v| v.as_array()) {
+    // TST-04 FIX: The old code had NO assertions if the fingerprint wasn't found
+    // in search results. It would just print a note and pass, creating false confidence.
+    // Now we assert that results are non-empty and our fingerprint is present.
+    let results_array = search_data
+        .get("results")
+        .and_then(|v| v.as_array())
+        .expect("[TC-CONTENT-05] search_graph must return a 'results' array");
+
+    println!(
+        "[TC-CONTENT-05] Step 2: Search returned {} results",
+        results_array.len()
+    );
+
+    assert!(
+        !results_array.is_empty(),
+        "[TC-CONTENT-05] Search must return at least 1 result (got 0). \
+         If using stub embeddings, ensure the store returns stored fingerprints."
+    );
+
+    // Look for our specific fingerprint
+    let our_result = results_array.iter().find(|r| {
+        r.get("fingerprintId")
+            .and_then(|v| v.as_str())
+            .map(|id| id == fingerprint_id)
+            .unwrap_or(false)
+    });
+
+    assert!(
+        our_result.is_some(),
+        "[TC-CONTENT-05] Our fingerprint {} must appear in search results. \
+         Got {} results but none matched.",
+        fingerprint_id,
+        results_array.len()
+    );
+
+    let our_result = our_result.unwrap();
+    let content = our_result.get("content");
+    println!("[TC-CONTENT-05] Step 3: Content field = {:?}", content);
+
+    // Content should be present when includeContent=true was specified
+    if let Some(serde_json::Value::String(c)) = content {
+        assert_eq!(c, unique_content, "Retrieved content must match original");
+        println!("[TC-CONTENT-05] PASSED: Content matches original!");
+    } else {
         println!(
-            "[TC-CONTENT-05] Step 2: Search returned {} results",
-            results_array.len()
+            "[TC-CONTENT-05] WARNING: Content field is {:?}. Content hydration \
+             may not be working. Test passes if fingerprint was found.",
+            content
         );
-
-        // Look for our specific fingerprint
-        let found = results_array.iter().any(|r| {
-            r.get("fingerprintId")
-                .and_then(|v| v.as_str())
-                .map(|id| id == fingerprint_id)
-                .unwrap_or(false)
-        });
-
-        if found {
-            println!("[TC-CONTENT-05] Step 3: Found our fingerprint in search results");
-
-            // Find and verify content
-            for result in results_array {
-                if result
-                    .get("fingerprintId")
-                    .and_then(|v| v.as_str())
-                    .map(|id| id == fingerprint_id)
-                    .unwrap_or(false)
-                {
-                    let content = result.get("content");
-                    println!("[TC-CONTENT-05] Step 4: Content field = {:?}", content);
-
-                    if let Some(serde_json::Value::String(c)) = content {
-                        assert_eq!(c, unique_content, "Retrieved content must match original");
-                        println!("[TC-CONTENT-05] PASSED: Content matches original!");
-                    } else if content.is_some() {
-                        // Content is present but might be null (store_content might have failed)
-                        println!(
-                            "[TC-CONTENT-05] WARNING: Content present but not matching. \
-                             This indicates store_content may have been called but content \
-                             hydration returned None. Value: {:?}",
-                            content
-                        );
-                    }
-                }
-            }
-        } else {
-            println!(
-                "[TC-CONTENT-05] Note: Our fingerprint not in top results (expected with stub embeddings)"
-            );
-        }
     }
 
     println!("[TC-CONTENT-05] COMPLETE: Round-trip test finished");

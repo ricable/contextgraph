@@ -569,12 +569,28 @@ impl E5EmbedderActivator {
 }
 
 /// Truncate content to create a node name.
+///
+/// AGT-06 FIX: Uses char_indices() for UTF-8 safe truncation.
+/// The old code used byte slicing (&trimmed[..max_len - 3]) which panics
+/// when the offset falls in the middle of a multi-byte UTF-8 character
+/// (e.g., Chinese, Japanese, Korean, emoji content).
 fn truncate_name(content: &str, max_len: usize) -> String {
     let trimmed = content.trim();
     if trimmed.len() <= max_len {
         trimmed.to_string()
     } else {
-        format!("{}...", &trimmed[..max_len - 3])
+        let suffix = "...";
+        let target_bytes = max_len.saturating_sub(suffix.len());
+        // Find the last complete character that fits within target_bytes
+        let mut end = 0;
+        for (i, c) in trimmed.char_indices() {
+            let next = i + c.len_utf8();
+            if next > target_bytes {
+                break;
+            }
+            end = next;
+        }
+        format!("{}{}", &trimmed[..end], suffix)
     }
 }
 

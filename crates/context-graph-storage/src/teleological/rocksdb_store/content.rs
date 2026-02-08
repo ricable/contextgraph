@@ -52,7 +52,7 @@ impl RocksDbTeleologicalStore {
 
         // 3. Verify hash matches if fingerprint exists
         if let Some(data) = self.get_fingerprint_raw(id)? {
-            let fp = deserialize_teleological_fingerprint(&data);
+            let fp = deserialize_teleological_fingerprint(&data)?;
             if fp.content_hash != computed_hash {
                 error!(
                     "CONTENT ERROR: Hash mismatch for fingerprint {}. \

@@ -65,7 +65,8 @@ async fn test_edge_case_minimal_fingerprint() {
 
     println!("[2] Stored {} bytes", bytes.len());
 
-    let retrieved = deserialize_teleological_fingerprint(&bytes);
+    let retrieved = deserialize_teleological_fingerprint(&bytes)
+        .expect("Failed to deserialize fingerprint");
 
     println!("[3] Retrieved sparse vectors:");
     println!("    E6 sparse nnz: {}", retrieved.semantic.e6_sparse.nnz());
@@ -145,7 +146,8 @@ async fn test_edge_case_maximum_size_fingerprint() {
     );
 
     let start = std::time::Instant::now();
-    let retrieved = deserialize_teleological_fingerprint(&bytes);
+    let retrieved = deserialize_teleological_fingerprint(&bytes)
+        .expect("Failed to deserialize fingerprint");
     let deser_time = start.elapsed();
 
     println!("[4] Deserialize time: {:?}", deser_time);

@@ -11,24 +11,23 @@ pub fn hex_encode(bytes: &[u8]) -> String {
 
 /// Compute cosine similarity between two dense vectors.
 ///
-/// # Panics (Debug Mode)
-/// Panics if vectors have different dimensions. This catches embedding
-/// dimension mismatches early during development.
-///
-/// # Returns (Release Mode)
-/// Returns 0.0 for mismatched dimensions to avoid crashing production.
+/// # Panics
+/// STG-06 FIX: Panics in ALL build modes if vectors have different dimensions.
+/// Dimension mismatches indicate upstream embedding pipeline bugs that must
+/// be caught immediately, not silently hidden by returning 0.0.
 pub fn compute_cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-    // FAIL FAST in debug mode - catches dimension mismatches during development
-    debug_assert_eq!(
+    // STG-06 FIX: FAIL FAST in ALL build modes. Dimension mismatches are programming
+    // bugs that must be caught immediately. Previously, release mode silently returned
+    // 0.0, hiding upstream bugs and suppressing legitimate search results.
+    assert_eq!(
         a.len(),
         b.len(),
-        "FAIL FAST: Cosine similarity dimension mismatch: {} vs {}",
+        "FATAL: Cosine similarity dimension mismatch: vector A has {} dimensions, \
+         vector B has {} dimensions. This indicates a bug in the embedding pipeline \
+         or a cross-embedder comparison (AP-02 violation). Fix the caller.",
         a.len(),
         b.len()
     );
-    if a.len() != b.len() {
-        return 0.0;
-    }
 
     let mut dot = 0.0f32;
     let mut norm_a = 0.0f32;

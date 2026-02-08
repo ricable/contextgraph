@@ -11,6 +11,7 @@
 
 use std::ffi::{c_void, CString};
 use std::os::raw::c_int;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Once;
 
 use crate::error::{CudaError, CudaResult};
@@ -79,18 +80,18 @@ extern "C" {
 // =============================================================================
 
 static INIT: Once = Once::new();
-static mut INIT_RESULT: CUresult = CUDA_SUCCESS;
+// BLD-03 FIX: Replace `static mut` with AtomicI32 (CUresult = c_int = i32).
+// `static mut` is deprecated and will become a hard error in Rust edition 2024.
+static INIT_RESULT: AtomicI32 = AtomicI32::new(CUDA_SUCCESS);
 
 /// Initialize CUDA driver. Thread-safe, idempotent.
 fn ensure_cuda_initialized() -> CudaResult<()> {
     INIT.call_once(|| {
         let result = unsafe { cuInit(0) };
-        unsafe {
-            INIT_RESULT = result;
-        }
+        INIT_RESULT.store(result, Ordering::Release);
     });
 
-    let result = unsafe { INIT_RESULT };
+    let result = INIT_RESULT.load(Ordering::Acquire);
     if result == CUDA_SUCCESS {
         Ok(())
     } else {
@@ -381,11 +382,31 @@ pub fn compute_core_distances_gpu(
     d_vectors.copy_from_host(vectors_bytes)?;
 
     // Set up kernel parameters (bounds-checked to prevent i32 truncation)
+    // BLD-08 FIX: Validate ALL three parameters before i32 cast, not just n_points.
+    // The original code only checked n_points but cast dimension and k unchecked.
     if n_points > i32::MAX as usize {
         return Err(CudaError::CudaRuntimeError {
             operation: format!(
                 "compute_core_distances_kernel: n_points {} exceeds i32::MAX ({})",
                 n_points, i32::MAX
+            ),
+            code: -1,
+        });
+    }
+    if dimension > i32::MAX as usize {
+        return Err(CudaError::CudaRuntimeError {
+            operation: format!(
+                "compute_core_distances_kernel: dimension {} exceeds i32::MAX ({})",
+                dimension, i32::MAX
+            ),
+            code: -1,
+        });
+    }
+    if k > i32::MAX as usize {
+        return Err(CudaError::CudaRuntimeError {
+            operation: format!(
+                "compute_core_distances_kernel: k {} exceeds i32::MAX ({})",
+                k, i32::MAX
             ),
             code: -1,
         });
@@ -478,7 +499,18 @@ pub fn compute_pairwise_distances_gpu(
         });
     }
 
-    let num_pairs = n_points * (n_points - 1) / 2;
+    // BLD-04 FIX: Use checked arithmetic to prevent overflow on 32-bit platforms.
+    // n_points * (n_points - 1) can overflow usize before the division.
+    let num_pairs = n_points
+        .checked_mul(n_points - 1)
+        .and_then(|v| v.checked_div(2))
+        .ok_or_else(|| CudaError::CudaRuntimeError {
+            operation: format!(
+                "compute_pairwise_distances_kernel: num_pairs overflow for n_points={}",
+                n_points,
+            ),
+            code: -1,
+        })?;
 
     // Initialize CUDA
     ensure_cuda_initialized()?;
@@ -501,6 +533,28 @@ pub fn compute_pairwise_distances_gpu(
     let vectors_bytes =
         unsafe { std::slice::from_raw_parts(vectors.as_ptr() as *const u8, vectors_size) };
     d_vectors.copy_from_host(vectors_bytes)?;
+
+    // BLD-02 FIX: Bounds check n_points and dimension before i32 cast.
+    // Sibling function compute_core_distances_gpu validates n_points but this function
+    // was missed. Unchecked truncation would silently corrupt kernel parameters.
+    if n_points > i32::MAX as usize {
+        return Err(CudaError::CudaRuntimeError {
+            operation: format!(
+                "compute_pairwise_distances_kernel: n_points {} exceeds i32::MAX ({})",
+                n_points, i32::MAX
+            ),
+            code: -1,
+        });
+    }
+    if dimension > i32::MAX as usize {
+        return Err(CudaError::CudaRuntimeError {
+            operation: format!(
+                "compute_pairwise_distances_kernel: dimension {} exceeds i32::MAX ({})",
+                dimension, i32::MAX
+            ),
+            code: -1,
+        });
+    }
 
     // Set up kernel parameters
     let n_points_i32 = n_points as i32;

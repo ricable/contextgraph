@@ -43,7 +43,8 @@ async fn test_update_delete_physical_verification() {
         .get_raw_bytes(CF_FINGERPRINTS, &key)
         .expect("Read failed")
         .expect("Not found");
-    let retrieved1 = deserialize_teleological_fingerprint(&raw1);
+    let retrieved1 = deserialize_teleological_fingerprint(&raw1)
+        .expect("Failed to deserialize fingerprint");
 
     println!("[2] Physical verification of initial state:");
     println!("    Content hash[0]: {:02x}", retrieved1.content_hash[0]);
@@ -67,7 +68,8 @@ async fn test_update_delete_physical_verification() {
         .get_raw_bytes(CF_FINGERPRINTS, &key)
         .expect("Read failed")
         .expect("Not found after update");
-    let retrieved2 = deserialize_teleological_fingerprint(&raw2);
+    let retrieved2 = deserialize_teleological_fingerprint(&raw2)
+        .expect("Failed to deserialize fingerprint");
 
     println!("[4] Physical verification after update:");
     println!("    Content hash[0]: {:02x}", retrieved2.content_hash[0]);
@@ -137,7 +139,8 @@ async fn test_persistence_across_reopen() {
         assert!(raw.is_some(), "Data lost after reopen!");
         let bytes = raw.unwrap();
 
-        let retrieved = deserialize_teleological_fingerprint(&bytes);
+        let retrieved = deserialize_teleological_fingerprint(&bytes)
+            .expect("Failed to deserialize fingerprint");
 
         println!("[4] Physical verification after reopen:");
         println!("    ID match: {}", retrieved.id == id);

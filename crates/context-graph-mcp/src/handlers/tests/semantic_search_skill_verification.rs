@@ -29,7 +29,7 @@ async fn test_basic_search_response_structure() {
     println!("TC-SKILL-001: Basic Search Response Structure");
     println!("======================================================================\n");
 
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
 
     // First, store some content to search
     let inject_request = make_request(
@@ -110,7 +110,7 @@ async fn test_topk_parameter_limits_results() {
     println!("TC-SKILL-002: topK Parameter Limits Results");
     println!("======================================================================\n");
 
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
 
     // Store multiple items
     for i in 0..5 {
@@ -169,7 +169,7 @@ async fn test_include_content_returns_text() {
     println!("TC-SKILL-003: includeContent Parameter Returns Text");
     println!("======================================================================\n");
 
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let test_content = "Unique content string XYZ789 for includeContent test";
 
     // Store content
@@ -235,7 +235,7 @@ async fn test_default_omits_content() {
     println!("TC-SKILL-004: Default Behavior Omits Content");
     println!("======================================================================\n");
 
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
 
     // Store content
     let inject_request = make_request(
@@ -293,7 +293,7 @@ async fn test_empty_query_returns_error() {
     println!("TC-SKILL-005: Empty Query Returns Error");
     println!("======================================================================\n");
 
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
 
     let search_request = make_request(
         "tools/call",
@@ -324,7 +324,7 @@ async fn test_missing_query_returns_error() {
     println!("TC-SKILL-006: Missing Query Parameter Returns Error");
     println!("======================================================================\n");
 
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
 
     let search_request = make_request(
         "tools/call",
@@ -354,7 +354,7 @@ async fn test_high_min_similarity_filters_all() {
     println!("TC-SKILL-007: High minSimilarity Filters All Results");
     println!("======================================================================\n");
 
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
 
     // Store content
     let inject_request = make_request(
@@ -407,7 +407,7 @@ async fn test_empty_graph_returns_empty_results() {
     println!("TC-SKILL-008: Empty Graph Returns Empty Results");
     println!("======================================================================\n");
 
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
 
     // Search without storing anything first - use enrichMode: "off" for legacy format
     let search_request = make_request(
@@ -455,7 +455,7 @@ async fn test_unicode_query_handled() {
     println!("TC-SKILL-009: Unicode Query Handled Correctly");
     println!("======================================================================\n");
 
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
 
     // Store unicode content
     let inject_request = make_request(
@@ -507,7 +507,7 @@ async fn test_max_topk_handled() {
     println!("TC-SKILL-010: Maximum topK (100) Handled");
     println!("======================================================================\n");
 
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
 
     // Store some content
     let inject_request = make_request(
@@ -555,7 +555,7 @@ async fn test_modality_filter() {
     println!("TC-SKILL-011: Modality Filter Parameter Works");
     println!("======================================================================\n");
 
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
 
     // Store code content
     let inject_request = make_request(

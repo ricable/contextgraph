@@ -478,10 +478,14 @@ impl CausalDiscoveryService {
                         break;
                     }
                     _ = tokio::time::sleep(service.config.interval) => {
-                        // Run discovery cycle
-                        // In production, this would fetch memories from the store
-                        // For now, we log that a cycle would run
-                        debug!("Discovery cycle tick (no memories provided)");
+                        // CRIT-01 FIX: Emit warn! instead of silent debug! so operators
+                        // know discovery is NOT running. The background loop is a facade:
+                        // it never calls run_discovery_cycle() or fetches memories.
+                        warn!(
+                            "Causal discovery cycle tick: NOT IMPLEMENTED. \
+                             Background loop is running but no discovery occurs. \
+                             Use trigger_causal_discovery MCP tool for on-demand analysis."
+                        );
                     }
                 }
             }

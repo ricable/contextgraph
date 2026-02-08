@@ -6,7 +6,7 @@ use super::{create_test_handlers, make_request};
 
 #[tokio::test]
 async fn test_initialize_returns_protocol_version_2024_11_05() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let request = make_request("initialize", Some(JsonRpcId::Number(1)), None);
 
     let response = handlers.dispatch(request).await;
@@ -31,7 +31,7 @@ async fn test_initialize_returns_protocol_version_2024_11_05() {
 
 #[tokio::test]
 async fn test_initialized_notification_no_response_needed() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     // Notifications have no ID
     let request = make_request("notifications/initialized", None, None);
 
@@ -47,7 +47,7 @@ async fn test_initialized_notification_no_response_needed() {
 
 #[tokio::test]
 async fn test_id_echoed_correctly_number() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let request = make_request("initialize", Some(JsonRpcId::Number(42)), None);
 
     let response = handlers.dispatch(request).await;
@@ -63,7 +63,7 @@ async fn test_id_echoed_correctly_number() {
 
 #[tokio::test]
 async fn test_id_echoed_correctly_string() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let request = make_request(
         "initialize",
         Some(JsonRpcId::String("request-abc-123".to_string())),
@@ -82,7 +82,7 @@ async fn test_id_echoed_correctly_string() {
 
 #[tokio::test]
 async fn test_id_echoed_on_error() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let request = make_request("unknown/method", Some(JsonRpcId::Number(999)), None);
 
     let response = handlers.dispatch(request).await;
@@ -98,7 +98,7 @@ async fn test_id_echoed_on_error() {
 
 #[tokio::test]
 async fn test_response_jsonrpc_version_is_2_0() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let request = make_request("initialize", Some(JsonRpcId::Number(1)), None);
 
     let response = handlers.dispatch(request).await;

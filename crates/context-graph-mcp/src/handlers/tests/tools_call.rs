@@ -12,7 +12,7 @@ use super::{create_test_handlers, make_request};
 
 #[tokio::test]
 async fn test_tools_call_inject_context_valid() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "inject_context",
         "arguments": {
@@ -77,7 +77,7 @@ async fn test_tools_call_inject_context_valid() {
 
 #[tokio::test]
 async fn test_tools_call_get_memetic_status() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "get_memetic_status",
         "arguments": {}
@@ -118,7 +118,7 @@ async fn test_tools_call_get_memetic_status() {
 
 #[tokio::test]
 async fn test_tools_call_store_memory_valid() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "store_memory",
         "arguments": {
@@ -156,7 +156,7 @@ async fn test_tools_call_store_memory_valid() {
 
 #[tokio::test]
 async fn test_tools_call_search_graph_valid() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "search_graph",
         "arguments": {
@@ -195,7 +195,7 @@ async fn test_tools_call_search_graph_valid() {
 
 #[tokio::test]
 async fn test_tools_call_search_graph_missing_query() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "search_graph",
         "arguments": {
@@ -214,7 +214,7 @@ async fn test_tools_call_search_graph_missing_query() {
 
 #[tokio::test]
 async fn test_tool_error_sets_is_error_true() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     // inject_context without required 'content' parameter
     let params = json!({
         "name": "inject_context",

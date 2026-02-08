@@ -6,7 +6,7 @@ use super::{create_test_handlers, make_request};
 
 #[tokio::test]
 async fn test_tools_list_each_tool_has_required_fields() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let request = make_request("tools/list", Some(JsonRpcId::Number(1)), None);
 
     let response = handlers.dispatch(request).await;

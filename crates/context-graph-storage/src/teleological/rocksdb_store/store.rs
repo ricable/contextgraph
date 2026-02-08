@@ -90,6 +90,20 @@ pub struct RocksDbTeleologicalStore {
     /// Enables O(log n) entity search instead of O(n) brute-force RocksDB scan.
     /// See causal_hnsw_index.rs for implementation details.
     pub(crate) causal_e11_index: Arc<CausalE11Index>,
+    /// STG-03/04/10 FIX: Mutex serializing secondary index read-modify-write operations.
+    ///
+    /// Protects against lost-update races where concurrent writes to the same
+    /// posting list (inverted indexes, causal_by_source, file index) cause one
+    /// write to silently overwrite the other's additions.
+    ///
+    /// Covers:
+    /// - E13 SPLADE inverted index (store_fingerprint_internal)
+    /// - E6 sparse inverted index (store_fingerprint_internal)
+    /// - Causal by-source secondary index (store_causal_relationship)
+    /// - File path index (index_file_fingerprint_async)
+    ///
+    /// Uses parking_lot::Mutex for non-poisonable, fast uncontended locking.
+    pub(crate) secondary_index_lock: parking_lot::Mutex<()>,
 }
 
 // ============================================================================
@@ -191,6 +205,7 @@ impl RocksDbTeleologicalStore {
             soft_deleted: Arc::new(RwLock::new(HashMap::new())),
             index_registry,
             causal_e11_index,
+            secondary_index_lock: parking_lot::Mutex::new(()),
         };
 
         // CRITICAL: Rebuild HNSW indexes from existing RocksDB fingerprints
@@ -456,8 +471,18 @@ impl RocksDbTeleologicalStore {
                 continue;
             }
 
-            // Deserialize fingerprint
-            let fp = deserialize_teleological_fingerprint(&value);
+            // Deserialize fingerprint - skip corrupted records
+            let fp = match deserialize_teleological_fingerprint(&value) {
+                Ok(fp) => fp,
+                Err(e) => {
+                    warn!(
+                        "Skipping corrupted fingerprint {} during index rebuild: {}",
+                        id, e
+                    );
+                    error_count += 1;
+                    continue;
+                }
+            };
 
             // Add to HNSW indexes - FAIL FAST on error
             match self.add_to_indexes(&fp) {
@@ -590,10 +615,14 @@ impl RocksDbTeleologicalStore {
         let elapsed = start.elapsed();
 
         if error_count > 0 {
-            warn!(
-                "Causal E11 index rebuild completed with {} errors (indexed: {}, skipped: {}) in {:?}",
+            error!(
+                "FAIL FAST: Causal E11 index rebuild failed with {} errors (indexed: {}, skipped: {}) in {:?}",
                 error_count, success_count, skip_count, elapsed
             );
+            return Err(TeleologicalStoreError::Internal(format!(
+                "Causal E11 index rebuild failed: {} relationships could not be processed",
+                error_count
+            )));
         } else if success_count > 0 {
             info!(
                 "Rebuilt causal E11 HNSW index: {} relationships indexed, {} skipped (no E11) in {:?}",
@@ -626,6 +655,12 @@ impl RocksDbTeleologicalStore {
     ) -> TeleologicalStoreResult<()> {
         let id = fp.id;
         let key = fingerprint_key(&id);
+
+        // STG-04 FIX: Hold secondary_index_lock for the entire read-modify-write cycle.
+        // Without this, concurrent calls to store_fingerprint_internal that share
+        // inverted index terms (E13/E6) can race on the read-then-write of posting
+        // lists, causing one caller's ID to be silently dropped from the index.
+        let _index_guard = self.secondary_index_lock.lock();
 
         let mut batch = WriteBatch::default();
 
@@ -683,11 +718,13 @@ impl RocksDbTeleologicalStore {
             );
         }
 
-        // Execute atomic batch write
+        // Execute atomic batch write (still under lock)
         self.db.write(batch).map_err(|e| {
             error!("Failed to write fingerprint batch for {}: {}", id, e);
             TeleologicalStoreError::rocksdb_op("write_batch", CF_FINGERPRINTS, Some(id), e)
         })?;
+
+        // Lock released here via drop(_index_guard)
 
         // Invalidate count cache
         *self.fingerprint_count.write() = None;

@@ -22,13 +22,16 @@ use crate::ffi::cuda_driver::{
 };
 use std::ffi::CStr;
 use std::ptr;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Once;
 
 /// Global once-guard for CUDA driver initialization.
 static CUDA_INIT: Once = Once::new();
 
 /// Result of CUDA initialization (stored for error reporting).
-static mut CUDA_INIT_RESULT: CUresult = CUDA_SUCCESS;
+/// BLD-03 FIX: Replace `static mut` with AtomicI32 (CUresult = c_int = i32).
+/// `static mut` is deprecated and will become a hard error in Rust edition 2024.
+static CUDA_INIT_RESULT: AtomicI32 = AtomicI32::new(CUDA_SUCCESS);
 
 /// RAII wrapper for CUDA device with automatic context cleanup.
 ///
@@ -92,15 +95,11 @@ impl GpuDevice {
         CUDA_INIT.call_once(|| {
             // SAFETY: cuInit(0) is thread-safe and idempotent
             let result = unsafe { cuInit(0) };
-            // SAFETY: This is only written once inside call_once
-            unsafe {
-                CUDA_INIT_RESULT = result;
-            }
+            CUDA_INIT_RESULT.store(result, Ordering::Release);
         });
 
         // Check if initialization succeeded
-        // SAFETY: CUDA_INIT_RESULT is only written once in call_once above
-        let init_result = unsafe { CUDA_INIT_RESULT };
+        let init_result = CUDA_INIT_RESULT.load(Ordering::Acquire);
         if init_result != CUDA_SUCCESS {
             return match init_result {
                 CUDA_ERROR_NO_DEVICE => Err(CudaError::NoDevice),

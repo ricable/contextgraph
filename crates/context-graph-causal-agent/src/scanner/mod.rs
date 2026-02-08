@@ -241,8 +241,10 @@ impl MemoryScanner {
                         later.created_at,
                     ));
 
-                    // Mark as analyzed
-                    self.analyzed_pairs.insert(pair_key);
+                    // AGT-01 FIX: Do NOT mark as analyzed here. This runs BEFORE
+                    // LLM confirmation. If the LLM fails (timeout, error, unavailable),
+                    // the pair would be permanently skipped with no retry.
+                    // Callers must use mark_analyzed() AFTER successful LLM analysis.
                 }
             }
         }

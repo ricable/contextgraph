@@ -681,8 +681,12 @@ impl BackgroundGraphBuilder {
     ///
     /// Returns a JoinHandle that can be awaited for graceful shutdown.
     pub fn start_worker(self: Arc<Self>) -> JoinHandle<()> {
+        // AGT-09 FIX: If already running, return a no-op handle instead of spawning
+        // a duplicate worker. The old code logged a warning but continued execution,
+        // creating two workers processing the same queue concurrently.
         if self.running.swap(true, Ordering::SeqCst) {
-            warn!("Background worker already running");
+            warn!("Background worker already running, skipping duplicate start");
+            return tokio::spawn(async {});
         }
 
         let this = Arc::clone(&self);

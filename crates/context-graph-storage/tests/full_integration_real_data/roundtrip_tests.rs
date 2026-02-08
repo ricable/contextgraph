@@ -187,7 +187,8 @@ fn test_serialization_size_verification() {
     );
 
     // Deserialize
-    let restored = deserialize_teleological_fingerprint(&bytes);
+    let restored = deserialize_teleological_fingerprint(&bytes)
+        .expect("Failed to deserialize fingerprint");
 
     // Verify integrity
     assert_eq!(restored.id, id, "ID mismatch after roundtrip");

@@ -102,6 +102,12 @@ impl RocksDbTeleologicalStore {
         }
 
         // 3. Atomically store relationship + update secondary index using WriteBatch
+        //
+        // STG-03 FIX: Hold secondary_index_lock for the entire read-modify-write cycle.
+        // Without this, two concurrent stores for the same source_fingerprint_id race
+        // on reading the causal_by_source list, and the loser's ID is silently dropped.
+        let _index_guard = self.secondary_index_lock.lock();
+
         let cf_rel = self.cf_causal_relationships();
         let cf_idx = self.cf_causal_by_source();
         let rel_key = causal_relationship_key(&relationship.id);
@@ -158,6 +164,9 @@ impl RocksDbTeleologicalStore {
                 e,
             )
         })?;
+
+        // STG-03: Release the lock before HNSW operations (which don't need it)
+        drop(_index_guard);
 
         debug!(
             source_id = %relationship.source_fingerprint_id,
@@ -1025,6 +1034,9 @@ impl RocksDbTeleologicalStore {
         source_id: Uuid,
         causal_id: Uuid,
     ) -> CoreResult<()> {
+        // STG-03 FIX: Hold lock during read-modify-write of secondary index
+        let _index_guard = self.secondary_index_lock.lock();
+
         let cf = self.cf_causal_by_source();
         let key = causal_by_source_key(&source_id);
 

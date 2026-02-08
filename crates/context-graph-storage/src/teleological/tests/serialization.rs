@@ -22,7 +22,8 @@ fn test_serialize_teleological_roundtrip() {
     println!("  - Version byte: {}", serialized[0]);
     println!("  - Payload size: {} bytes", serialized.len() - 1);
 
-    let deserialized = deserialize_teleological_fingerprint(&serialized);
+    let deserialized = deserialize_teleological_fingerprint(&serialized)
+        .expect("deserialize should succeed for valid data");
     println!("AFTER: Deserialized fingerprint ID: {}", deserialized.id);
 
     assert_eq!(original.id, deserialized.id);
@@ -74,7 +75,8 @@ fn test_topic_profile_roundtrip() {
     assert_eq!(serialized.len(), 52);
     println!("SERIALIZED: {} bytes", serialized.len());
 
-    let deserialized = deserialize_topic_profile(&serialized);
+    let deserialized = deserialize_topic_profile(&serialized)
+        .expect("deserialize should succeed for valid data");
     println!("AFTER: {:?}", deserialized);
 
     for i in 0..13 {
@@ -137,7 +139,8 @@ fn test_memory_id_list_roundtrip() {
     );
     assert_eq!(serialized.len(), 4 + 10 * 16);
 
-    let deserialized = deserialize_memory_id_list(&serialized);
+    let deserialized = deserialize_memory_id_list(&serialized)
+        .expect("deserialize should succeed for valid data");
     println!("AFTER: {} UUIDs", deserialized.len());
     for (i, id) in deserialized.iter().enumerate() {
         println!("  [{}]: {}", i, id);
@@ -166,7 +169,8 @@ fn edge_case_empty_memory_id_list() {
     assert_eq!(serialized.len(), 4);
     assert_eq!(&serialized[..4], &[0, 0, 0, 0]); // count = 0
 
-    let deserialized = deserialize_memory_id_list(&serialized);
+    let deserialized = deserialize_memory_id_list(&serialized)
+        .expect("deserialize should succeed for empty list");
     println!("AFTER: {} UUIDs", deserialized.len());
 
     assert!(deserialized.is_empty());
@@ -191,7 +195,8 @@ fn edge_case_large_memory_id_list() {
     );
     assert_eq!(serialized.len(), expected_size);
 
-    let deserialized = deserialize_memory_id_list(&serialized);
+    let deserialized = deserialize_memory_id_list(&serialized)
+        .expect("deserialize should succeed for large list");
     println!("AFTER: {} UUIDs", deserialized.len());
     println!("  First: {}", deserialized[0]);
     println!("  Last: {}", deserialized[999]);
@@ -227,7 +232,8 @@ fn edge_case_topic_profile_extreme_values() {
     let serialized = serialize_topic_profile(&original);
     println!("SERIALIZED: {} bytes", serialized.len());
 
-    let deserialized = deserialize_topic_profile(&serialized);
+    let deserialized = deserialize_topic_profile(&serialized)
+        .expect("deserialize should succeed for extreme values");
     println!("AFTER: Deserialized values");
     for (i, v) in deserialized.iter().enumerate() {
         println!("  [{}]: {:e}", i, v);
@@ -269,7 +275,8 @@ fn test_multiple_fingerprint_roundtrips() {
     for i in 0..10 {
         let original = create_real_fingerprint();
         let serialized = serialize_teleological_fingerprint(&original);
-        let deserialized = deserialize_teleological_fingerprint(&serialized);
+        let deserialized = deserialize_teleological_fingerprint(&serialized)
+            .expect("deserialize should succeed for valid data");
 
         assert_eq!(original.id, deserialized.id, "Mismatch on iteration {}", i);
         assert_eq!(

@@ -8,7 +8,7 @@ use super::{create_test_handlers, make_request};
 
 #[tokio::test]
 async fn test_method_not_found_error() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let request = make_request("unknown/method", Some(JsonRpcId::Number(1)), None);
 
     let response = handlers.dispatch(request).await;
@@ -26,7 +26,7 @@ async fn test_method_not_found_error() {
 
 #[tokio::test]
 async fn test_invalid_params_missing_tools_call_params() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let request = make_request("tools/call", Some(JsonRpcId::Number(1)), None);
 
     let response = handlers.dispatch(request).await;
@@ -40,7 +40,7 @@ async fn test_invalid_params_missing_tools_call_params() {
 
 #[tokio::test]
 async fn test_invalid_params_missing_tool_name() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "arguments": {}
     });
@@ -55,7 +55,7 @@ async fn test_invalid_params_missing_tool_name() {
 
 #[tokio::test]
 async fn test_tool_not_found_error() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let params = json!({
         "name": "nonexistent_tool",
         "arguments": {}
@@ -71,7 +71,7 @@ async fn test_tool_not_found_error() {
 
 #[tokio::test]
 async fn test_error_response_has_correct_id() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let request = make_request("unknown/method", Some(JsonRpcId::Number(42)), None);
 
     let response = handlers.dispatch(request).await;
@@ -81,7 +81,7 @@ async fn test_error_response_has_correct_id() {
 
 #[tokio::test]
 async fn test_error_response_has_string_id() {
-    let handlers = create_test_handlers();
+    let (handlers, _tempdir) = create_test_handlers().await;
     let request = make_request(
         "unknown/method",
         Some(JsonRpcId::String("test-id".to_string())),

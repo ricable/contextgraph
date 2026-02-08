@@ -21,7 +21,7 @@ use context_graph_core::types::audit::{AuditOperation, AuditRecord};
 use context_graph_core::retrieval::config::low_thresholds;
 use context_graph_core::retrieval::divergence::DIVERGENCE_SPACES;
 use context_graph_core::teleological::Embedder;
-use context_graph_core::traits::TeleologicalSearchOptions;
+use context_graph_core::traits::{TeleologicalSearchOptions, TeleologicalSearchResult};
 
 use crate::protocol::{error_codes, JsonRpcId, JsonRpcResponse};
 
@@ -99,6 +99,47 @@ fn topic_to_summary(topic: &Topic) -> TopicSummary {
     }
 }
 
+
+/// Compute Shannon entropy from topic member counts.
+///
+/// Shannon entropy = -sum(p_i * log2(p_i)) where p_i is the normalized weight
+/// of each topic (member_count / total_members). The result is normalized to [0.0, 1.0]
+/// by dividing by log2(N) where N is the number of topics.
+///
+/// Returns None if there are fewer than 2 topics (entropy is undefined/trivial).
+fn compute_topic_entropy(
+    topics: &std::collections::HashMap<uuid::Uuid, Topic>,
+) -> Option<f32> {
+    if topics.len() < 2 {
+        return None;
+    }
+
+    let total_members: usize = topics.values().map(|t| t.member_count()).sum();
+    if total_members == 0 {
+        return Some(0.0);
+    }
+
+    let total = total_members as f64;
+    let mut entropy = 0.0f64;
+
+    for topic in topics.values() {
+        let count = topic.member_count() as f64;
+        if count > 0.0 {
+            let p = count / total;
+            entropy -= p * p.log2();
+        }
+    }
+
+    // Normalize to [0.0, 1.0] by dividing by max entropy (log2(N))
+    let max_entropy = (topics.len() as f64).log2();
+    let normalized = if max_entropy > 0.0 {
+        (entropy / max_entropy) as f32
+    } else {
+        0.0
+    };
+
+    Some(normalized.clamp(0.0, 1.0))
+}
 
 /// Compute phase breakdown from topics.
 ///
@@ -290,9 +331,14 @@ impl Handlers {
         let topics = cluster_manager.get_topics();
         let phases = compute_phase_breakdown(topics);
 
+        // MCP-13 FIX: Compute actual Shannon entropy from the topic distribution.
+        // Shannon entropy = -sum(p_i * log2(p_i)) where p_i is the normalized weight
+        // (member_count / total_members) of each topic.
+        let entropy = compute_topic_entropy(topics);
+
         let response = TopicStabilityResponse {
             churn_rate,
-            entropy: None, // Not currently computed
+            entropy,
             phases,
             high_churn_warning,
             average_churn,
@@ -574,31 +620,33 @@ impl Handlers {
         // Divergence detection compares current context against recent memories
         // using only SEMANTIC embedders
 
-        // Step 1: Generate a broad query embedding to find recent memories
-        // Using a neutral/common phrase that should have reasonable matches
-        let broad_query = match self.multi_array_provider.embed_all("context memory").await {
-            Ok(output) => output.fingerprint,
-            Err(e) => {
-                error!(error = %e, "get_divergence_alerts: Failed to generate query embedding");
-                return self.tool_error(id, &format!("Embedding error: {}", e));
-            }
-        };
-
-        let search_options = TeleologicalSearchOptions::quick(100)
-            .with_min_similarity(0.0)
-            .with_include_content(true);
-
-        let all_results = match self
+        // MCP-09 FIX: Use list_fingerprints_unbiased instead of a hardcoded "context memory"
+        // query that biases retrieval toward memories matching that specific phrase.
+        // Divergence detection needs ALL recent memories, not just semantically similar ones.
+        let unbiased_fingerprints = match self
             .teleological_store
-            .search_semantic(&broad_query, search_options)
+            .list_fingerprints_unbiased(200)
             .await
         {
-            Ok(results) => results,
+            Ok(fps) => fps,
             Err(e) => {
-                error!(error = %e, "get_divergence_alerts: Failed to search memories");
-                return self.tool_error(id, &format!("Search error: {}", e));
+                error!(error = %e, "get_divergence_alerts: Failed to list fingerprints");
+                return self.tool_error(id, &format!("Storage error: {}", e));
             }
         };
+
+        // Convert to TeleologicalSearchResult for compatibility with downstream code
+        let all_results: Vec<_> = unbiased_fingerprints
+            .into_iter()
+            .map(|fp| TeleologicalSearchResult {
+                fingerprint: fp,
+                similarity: 1.0, // No semantic bias
+                embedder_scores: [0.0; 13],
+                stage_scores: [0.0; 5],
+                content: None,
+                temporal_breakdown: None,
+            })
+            .collect();
 
         // Step 2: Filter to memories within lookback window
         let cutoff = Utc::now() - chrono::Duration::hours(lookback_hours);
