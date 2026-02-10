@@ -20,9 +20,18 @@ use crate::gpu::init_gpu;
 use crate::traits::{EmbeddingModel, SingleModelConfig};
 use crate::types::{InputType, ModelEmbedding, ModelId, ModelInput};
 
-use super::forward::{gpu_forward, gpu_forward_dual};
+use super::forward::{gpu_forward, gpu_forward_dual, gpu_forward_dual_trained, gpu_forward_single_trained};
 use super::loader::load_nomic_weights;
-use super::weights::NomicWeights;
+use super::weights::{NomicWeights, TrainableProjection};
+use crate::training::lora::{LoraConfig, LoraLayers};
+
+/// Trained LoRA + projection weights for fine-tuned inference.
+pub(crate) struct TrainedState {
+    /// LoRA adapters for Q+V attention layers.
+    pub lora: LoraLayers,
+    /// Trained cause/effect projection heads.
+    pub projection: TrainableProjection,
+}
 
 /// Internal state for CausalModel weight management.
 pub(crate) enum ModelState {
@@ -35,6 +44,8 @@ pub(crate) enum ModelState {
         weights: NomicWeights,
         /// HuggingFace tokenizer for text encoding (boxed to reduce enum size).
         tokenizer: Box<Tokenizer>,
+        /// Optional trained LoRA + projection weights.
+        trained: Option<TrainedState>,
     },
 }
 
@@ -168,6 +179,7 @@ impl CausalModel {
         *state = ModelState::Loaded {
             weights,
             tokenizer: Box::new(tokenizer),
+            trained: None,
         };
         self.loaded.store(true, Ordering::SeqCst);
         Ok(())
@@ -220,7 +232,7 @@ impl CausalModel {
     /// Uses instruction prefix "search_query: Identify the cause in: " to
     /// produce a cause-role embedding via a single forward pass.
     pub async fn embed_as_cause(&self, content: &str) -> EmbeddingResult<Vec<f32>> {
-        self.embed_single_role(content, super::config::CAUSE_INSTRUCTION).await
+        self.embed_single_role(content, super::config::CAUSE_INSTRUCTION, true).await
     }
 
     /// Embed text as a potential EFFECT in causal relationships.
@@ -228,11 +240,19 @@ impl CausalModel {
     /// Uses instruction prefix "search_query: Identify the effect of: " to
     /// produce an effect-role embedding via a single forward pass.
     pub async fn embed_as_effect(&self, content: &str) -> EmbeddingResult<Vec<f32>> {
-        self.embed_single_role(content, super::config::EFFECT_INSTRUCTION).await
+        self.embed_single_role(content, super::config::EFFECT_INSTRUCTION, false).await
     }
 
     /// Embed text with a single instruction prefix (one forward pass).
-    async fn embed_single_role(&self, content: &str, instruction: &str) -> EmbeddingResult<Vec<f32>> {
+    ///
+    /// When trained LoRA + projection weights are loaded, uses the fine-tuned
+    /// forward path. Otherwise falls back to the base model.
+    async fn embed_single_role(
+        &self,
+        content: &str,
+        instruction: &str,
+        is_cause: bool,
+    ) -> EmbeddingResult<Vec<f32>> {
         self.ensure_initialized()?;
 
         let state = self
@@ -243,9 +263,17 @@ impl CausalModel {
             })?;
 
         match &*state {
-            ModelState::Loaded { weights, tokenizer } => {
+            ModelState::Loaded { weights, tokenizer, trained } => {
                 let text = format!("{}{}", instruction, content);
-                let vec = gpu_forward(&text, weights, tokenizer)?;
+
+                let vec = if let Some(ref t) = trained {
+                    gpu_forward_single_trained(
+                        &text, weights, tokenizer, &t.lora, &t.projection, is_cause,
+                    )?
+                } else {
+                    gpu_forward(&text, weights, tokenizer)?
+                };
+
                 if vec.len() != 768 {
                     return Err(EmbeddingError::InternalError {
                         message: format!(
@@ -305,9 +333,15 @@ impl CausalModel {
             ModelState::Loaded {
                 weights,
                 tokenizer,
+                trained,
             } => {
-                let (cause_vec, effect_vec) =
-                    gpu_forward_dual(content, weights, tokenizer)?;
+                let (cause_vec, effect_vec) = if let Some(ref t) = trained {
+                    gpu_forward_dual_trained(
+                        content, weights, tokenizer, &t.lora, &t.projection,
+                    )?
+                } else {
+                    gpu_forward_dual(content, weights, tokenizer)?
+                };
 
                 // Validate dimensions (fail fast on implementation error)
                 if cause_vec.len() != 768 || effect_vec.len() != 768 {
@@ -326,6 +360,101 @@ impl CausalModel {
                 model_id: ModelId::Causal,
             }),
         }
+    }
+
+    /// Load trained LoRA + projection weights from a checkpoint directory.
+    ///
+    /// Looks for `lora_best.safetensors` and `projection_best.safetensors` in
+    /// the given directory. When both are found, loads them into the model's
+    /// forward path so that `embed()`/`embed_dual()`/`embed_as_cause()`/
+    /// `embed_as_effect()` all use the fine-tuned weights.
+    ///
+    /// Falls back to base model if no checkpoint files exist.
+    ///
+    /// # Arguments
+    /// * `checkpoint_dir` - Directory containing trained weight files
+    ///
+    /// # Returns
+    /// `true` if trained weights were loaded, `false` if no checkpoints found.
+    pub fn load_trained_weights(&self, checkpoint_dir: &Path) -> EmbeddingResult<bool> {
+        self.ensure_initialized()?;
+
+        let lora_path = checkpoint_dir.join("lora_best.safetensors");
+        let projection_path = checkpoint_dir.join("projection_best.safetensors");
+
+        if !lora_path.exists() && !projection_path.exists() {
+            tracing::info!(
+                "No trained weights found in {}, using base model",
+                checkpoint_dir.display()
+            );
+            return Ok(false);
+        }
+
+        if !lora_path.exists() || !projection_path.exists() {
+            tracing::warn!(
+                "Incomplete checkpoint: lora={}, projection={} — both required, using base model",
+                lora_path.exists(),
+                projection_path.exists()
+            );
+            return Ok(false);
+        }
+
+        // Get device from loaded weights
+        let device = {
+            let state = self.model_state.read().map_err(|e| EmbeddingError::InternalError {
+                message: format!("Failed to acquire read lock: {}", e),
+            })?;
+            match &*state {
+                ModelState::Loaded { weights, .. } => weights.device.clone(),
+                ModelState::Unloaded => {
+                    return Err(EmbeddingError::NotInitialized {
+                        model_id: ModelId::Causal,
+                    });
+                }
+            }
+        };
+
+        // Load LoRA weights
+        let lora_config = LoraConfig::default(); // 12 layers, rank 16, Q+V
+        let lora = LoraLayers::load_from_safetensors(&lora_path, lora_config, &device)?;
+
+        // Load projection weights
+        let projection = TrainableProjection::load_trained(&projection_path, &device)?;
+
+        tracing::info!(
+            "Loaded trained weights: LoRA {} params, projection {}x{} from {}",
+            lora.total_params(),
+            projection.hidden_size,
+            projection.hidden_size,
+            checkpoint_dir.display()
+        );
+
+        // Store trained weights in model state
+        let mut state = self.model_state.write().map_err(|e| EmbeddingError::InternalError {
+            message: format!("Failed to acquire write lock: {}", e),
+        })?;
+
+        match &mut *state {
+            ModelState::Loaded { trained, .. } => {
+                *trained = Some(TrainedState { lora, projection });
+            }
+            ModelState::Unloaded => {
+                return Err(EmbeddingError::NotInitialized {
+                    model_id: ModelId::Causal,
+                });
+            }
+        }
+
+        Ok(true)
+    }
+
+    /// Check if trained weights are currently loaded.
+    pub fn has_trained_weights(&self) -> bool {
+        let state = match self.model_state.read() {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+        matches!(&*state, ModelState::Loaded { trained: Some(_), .. })
     }
 
     /// Ensure model is initialized, returning an error if not.
@@ -397,7 +526,7 @@ impl EmbeddingModel for CausalModel {
                 let latency_us = start.elapsed().as_micros() as u64;
                 Ok(ModelEmbedding::new(ModelId::Causal, vector, latency_us))
             }
-            _ => Err(EmbeddingError::NotInitialized {
+            ModelState::Unloaded => Err(EmbeddingError::NotInitialized {
                 model_id: ModelId::Causal,
             }),
         }

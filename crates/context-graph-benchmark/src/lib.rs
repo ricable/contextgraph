@@ -47,6 +47,7 @@
 
 pub mod ablation;
 pub mod baseline;
+pub mod causal_bench;
 pub mod config;
 pub mod datasets;
 pub mod metrics;

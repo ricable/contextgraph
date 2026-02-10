@@ -43,6 +43,8 @@ struct Args {
     eval_every: u32,
     /// Random seed.
     seed: u64,
+    /// Disable multi-task heads (saves VRAM).
+    no_multitask: bool,
 }
 
 impl Default for Args {
@@ -52,10 +54,11 @@ impl Default for Args {
             data_path: None,
             output: PathBuf::from("models/causal/trained"),
             epochs: None,
-            batch_size: 16,
+            batch_size: 2,
             lora_rank: 16,
             eval_every: 5,
             seed: 42,
+            no_multitask: false,
         }
     }
 }
@@ -115,6 +118,9 @@ fn parse_args() -> Args {
                     result.seed = args[i].parse().unwrap_or(42);
                 }
             }
+            "--no-multitask" => {
+                result.no_multitask = true;
+            }
             "--help" | "-h" => {
                 println!("train-causal: E5 causal embedder fine-tuning");
                 println!();
@@ -125,10 +131,11 @@ fn parse_args() -> Args {
                 println!("  -d, --data <PATH>        Additional JSONL training data");
                 println!("  -o, --output <PATH>      Output directory (default: models/causal/trained)");
                 println!("  -e, --epochs <N>         Total epochs (overrides per-stage defaults)");
-                println!("  -b, --batch-size <N>     Batch size (default: 16)");
+                println!("  -b, --batch-size <N>     Batch size (default: 2)");
                 println!("      --lora-rank <N>      LoRA rank (default: 16)");
                 println!("      --eval-every <N>     Evaluate every N epochs (default: 5)");
                 println!("      --seed <N>           Random seed (default: 42)");
+                println!("      --no-multitask       Disable multi-task heads (saves VRAM)");
                 println!("  -h, --help               Show this help");
                 std::process::exit(0);
             }
@@ -261,6 +268,12 @@ fn main() {
         seed: args.seed,
         ..Default::default()
     };
+
+    // Disable multi-task heads if requested (saves ~790K params + optimizer state)
+    if args.no_multitask {
+        pipeline_config.multitask_config = None;
+        println!("Multi-task heads: DISABLED (--no-multitask)");
+    }
 
     // Override per-stage epochs if total specified
     if let Some(total) = args.epochs {

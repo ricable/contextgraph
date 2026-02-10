@@ -269,3 +269,7 @@ path = "src/bin/causal_perf_bench.rs"
 name = "causal-prompt-experiment"
 path = "src/bin/causal_prompt_experiment_bench.rs"
 required-features = ["real-embeddings"]
+
+[[bin]]
+name = "causal-embedding-bench"
+path = "src/bin/causal_embedding_bench.rs"

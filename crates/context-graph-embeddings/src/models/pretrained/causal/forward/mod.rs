@@ -288,6 +288,8 @@ pub fn gpu_forward_with_lora_tensor(
 /// GPU forward pass with LoRA adapters, returning Vec<f32>.
 ///
 /// Convenience wrapper that detaches the tensor for inference.
+/// Used by `load_trained_weights()` forward-path integration (not yet wired).
+#[allow(dead_code)]
 pub fn gpu_forward_with_lora(
     text: &str,
     weights: &NomicWeights,
@@ -304,6 +306,79 @@ pub fn gpu_forward_with_lora(
         .to_vec1()
         .map_err(|e| EmbeddingError::GpuError {
             message: format!("CausalModel to_vec1 failed: {}", e),
+        })
+}
+
+/// GPU dual forward pass with trained LoRA + projection, returning Vec<f32>.
+///
+/// Inference-mode version of `gpu_forward_dual_trainable_tensor`:
+/// 1. LoRA-augmented forward for cause and effect instruction prefixes
+/// 2. Trainable cause/effect projection heads
+/// 3. L2 normalization
+/// 4. Detach to Vec<f32> (no gradient tracking)
+pub fn gpu_forward_dual_trained(
+    text: &str,
+    weights: &NomicWeights,
+    tokenizer: &Tokenizer,
+    lora_layers: &crate::training::lora::LoraLayers,
+    projection: &super::weights::TrainableProjection,
+) -> EmbeddingResult<(Vec<f32>, Vec<f32>)> {
+    let (cause_tensor, effect_tensor) = gpu_forward_dual_trainable_tensor(
+        text, weights, tokenizer, lora_layers, projection,
+    )?;
+
+    let cause_vec: Vec<f32> = cause_tensor
+        .flatten_all()
+        .map_err(|e| EmbeddingError::GpuError {
+            message: format!("Trained cause flatten failed: {}", e),
+        })?
+        .to_vec1()
+        .map_err(|e| EmbeddingError::GpuError {
+            message: format!("Trained cause to_vec1 failed: {}", e),
+        })?;
+
+    let effect_vec: Vec<f32> = effect_tensor
+        .flatten_all()
+        .map_err(|e| EmbeddingError::GpuError {
+            message: format!("Trained effect flatten failed: {}", e),
+        })?
+        .to_vec1()
+        .map_err(|e| EmbeddingError::GpuError {
+            message: format!("Trained effect to_vec1 failed: {}", e),
+        })?;
+
+    Ok((cause_vec, effect_vec))
+}
+
+/// GPU single-role forward with trained LoRA + projection, returning Vec<f32>.
+///
+/// Applies LoRA-augmented encoding + the specified projection head.
+pub fn gpu_forward_single_trained(
+    text_with_instruction: &str,
+    weights: &NomicWeights,
+    tokenizer: &Tokenizer,
+    lora_layers: &crate::training::lora::LoraLayers,
+    projection: &super::weights::TrainableProjection,
+    is_cause: bool,
+) -> EmbeddingResult<Vec<f32>> {
+    let emb = gpu_forward_with_lora_tensor(text_with_instruction, weights, tokenizer, lora_layers)?;
+
+    let projected = if is_cause {
+        projection.project_cause_trainable(&emb)?
+    } else {
+        projection.project_effect_trainable(&emb)?
+    };
+
+    let normalized = l2_normalize(&projected)?;
+
+    normalized
+        .flatten_all()
+        .map_err(|e| EmbeddingError::GpuError {
+            message: format!("Trained single flatten failed: {}", e),
+        })?
+        .to_vec1()
+        .map_err(|e| EmbeddingError::GpuError {
+            message: format!("Trained single to_vec1 failed: {}", e),
         })
 }
 

@@ -279,7 +279,7 @@ impl CausalDataLoader {
 
 /// Seed causal training pairs spanning multiple domains.
 ///
-/// Returns ~50 high-quality seed pairs for LLM paraphrase expansion.
+/// Returns ~60 high-quality seed pairs for LLM paraphrase expansion.
 pub fn seed_training_pairs() -> Vec<CausalTrainingPair> {
     vec![
         // === Health / Biological ===
@@ -571,6 +571,241 @@ pub fn seed_training_pairs() -> Vec<CausalTrainingPair> {
         .with_domain("social")
         .with_hard_negative("Public transit ridership varies significantly between cities"),
 
+        // === Physics ===
+        CausalTrainingPair::new(
+            "Heating a gas in a closed container increases molecular kinetic energy".into(),
+            "Increased molecular collisions raise pressure inside the container".into(),
+            TrainingDirection::Forward,
+            0.94,
+        )
+        .with_mechanism("physical")
+        .with_domain("physics")
+        .with_hard_negative("The ideal gas law relates pressure, volume, and temperature"),
+        CausalTrainingPair::new(
+            "Gravitational attraction between two massive bodies".into(),
+            "Orbital motion of planets around stars follows Keplerian trajectories".into(),
+            TrainingDirection::Forward,
+            0.92,
+        )
+        .with_mechanism("physical")
+        .with_domain("physics")
+        .with_hard_negative("Kepler's laws describe the motion of planets in the solar system"),
+        CausalTrainingPair::new(
+            "Electric current flowing through a resistor dissipates energy as heat".into(),
+            "Joule heating raises the temperature of the conductor".into(),
+            TrainingDirection::Forward,
+            0.91,
+        )
+        .with_mechanism("physical")
+        .with_domain("physics")
+        .with_hard_negative("Ohm's law states voltage equals current times resistance"),
+        CausalTrainingPair::new(
+            "A net external force acts on a stationary object".into(),
+            "The object accelerates in the direction of the applied force".into(),
+            TrainingDirection::Forward,
+            0.96,
+        )
+        .with_mechanism("physical")
+        .with_domain("physics")
+        .with_hard_negative("Newton's three laws of motion form the basis of classical mechanics"),
+        CausalTrainingPair::new(
+            "Electromagnetic radiation strikes a metal surface with photon energy above the work function".into(),
+            "Electrons are ejected from the metal via the photoelectric effect".into(),
+            TrainingDirection::Forward,
+            0.93,
+        )
+        .with_mechanism("quantum")
+        .with_domain("physics")
+        .with_hard_negative("Einstein won the Nobel Prize for his explanation of the photoelectric effect"),
+
+        // === Nutrition ===
+        CausalTrainingPair::new(
+            "Excessive refined sugar consumption causes rapid blood glucose spikes".into(),
+            "Repeated glucose spikes promote insulin resistance and metabolic syndrome".into(),
+            TrainingDirection::Forward,
+            0.88,
+        )
+        .with_mechanism("biological")
+        .with_domain("nutrition")
+        .with_hard_negative("The glycemic index ranks carbohydrates by their effect on blood glucose"),
+        CausalTrainingPair::new(
+            "Vitamin D deficiency impairs calcium absorption in the intestine".into(),
+            "Inadequate calcium leads to decreased bone density and osteoporosis risk".into(),
+            TrainingDirection::Forward,
+            0.90,
+        )
+        .with_mechanism("biological")
+        .with_domain("nutrition")
+        .with_hard_negative("Dairy products are a common dietary source of calcium"),
+        CausalTrainingPair::new(
+            "Chronic iron deficiency reduces hemoglobin production".into(),
+            "Low hemoglobin impairs oxygen transport, causing fatigue and anemia".into(),
+            TrainingDirection::Forward,
+            0.91,
+        )
+        .with_mechanism("biological")
+        .with_domain("nutrition")
+        .with_hard_negative("Red meat and leafy greens are rich sources of dietary iron"),
+        CausalTrainingPair::new(
+            "High dietary fiber intake promotes beneficial gut bacteria growth".into(),
+            "A healthy microbiome improves nutrient absorption and immune function".into(),
+            TrainingDirection::Forward,
+            0.83,
+        )
+        .with_mechanism("biological")
+        .with_domain("nutrition")
+        .with_hard_negative("The recommended daily fiber intake is 25-30 grams for adults"),
+        CausalTrainingPair::new(
+            "Excess caloric intake beyond daily energy expenditure".into(),
+            "Surplus energy is stored as adipose tissue, leading to weight gain".into(),
+            TrainingDirection::Forward,
+            0.93,
+        )
+        .with_mechanism("metabolic")
+        .with_domain("nutrition")
+        .with_hard_negative("Basal metabolic rate accounts for 60-70% of daily energy expenditure"),
+
+        // === Cybersecurity ===
+        CausalTrainingPair::new(
+            "Phishing emails trick users into revealing credentials".into(),
+            "Stolen credentials enable unauthorized access to corporate networks".into(),
+            TrainingDirection::Forward,
+            0.92,
+        )
+        .with_mechanism("technical")
+        .with_domain("cybersecurity")
+        .with_hard_negative("Multi-factor authentication adds an additional layer of security"),
+        CausalTrainingPair::new(
+            "Unpatched software vulnerabilities expose exploitable attack surfaces".into(),
+            "Attackers gain remote code execution through known CVEs".into(),
+            TrainingDirection::Forward,
+            0.94,
+        )
+        .with_mechanism("technical")
+        .with_domain("cybersecurity")
+        .with_hard_negative("The CVE database catalogs publicly disclosed cybersecurity vulnerabilities"),
+        CausalTrainingPair::new(
+            "Ransomware encrypts files on the victim's system".into(),
+            "Organizations lose access to critical data and face operational disruption".into(),
+            TrainingDirection::Forward,
+            0.91,
+        )
+        .with_mechanism("technical")
+        .with_domain("cybersecurity")
+        .with_hard_negative("Regular offline backups are a key defense against ransomware"),
+        CausalTrainingPair::new(
+            "Weak password policies allow brute-force credential guessing".into(),
+            "Compromised accounts provide lateral movement across the network".into(),
+            TrainingDirection::Forward,
+            0.87,
+        )
+        .with_mechanism("technical")
+        .with_domain("cybersecurity")
+        .with_hard_negative("Password managers generate and store complex unique passwords"),
+        CausalTrainingPair::new(
+            "Supply chain compromise injects malicious code into trusted software updates".into(),
+            "Thousands of downstream users unknowingly install backdoored software".into(),
+            TrainingDirection::Forward,
+            0.90,
+        )
+        .with_mechanism("technical")
+        .with_domain("cybersecurity")
+        .with_hard_negative("Software bill of materials tracks third-party dependencies"),
+
+        // === Psychology ===
+        CausalTrainingPair::new(
+            "Early childhood trauma disrupts attachment bond formation".into(),
+            "Insecure attachment patterns persist into adult relationships".into(),
+            TrainingDirection::Forward,
+            0.84,
+        )
+        .with_mechanism("psychological")
+        .with_domain("psychology")
+        .with_hard_negative("Attachment theory was developed by John Bowlby in the 1960s"),
+        CausalTrainingPair::new(
+            "Chronic social isolation reduces dopamine reward circuit activation".into(),
+            "Diminished reward response contributes to depression and anhedonia".into(),
+            TrainingDirection::Forward,
+            0.82,
+        )
+        .with_mechanism("neuropsychological")
+        .with_domain("psychology")
+        .with_hard_negative("Dopamine is a neurotransmitter involved in reward and motivation"),
+        CausalTrainingPair::new(
+            "Repeated exposure to feared stimuli without negative consequences".into(),
+            "Fear response gradually extinguishes through habituation".into(),
+            TrainingDirection::Forward,
+            0.89,
+        )
+        .with_mechanism("behavioral")
+        .with_domain("psychology")
+        .with_hard_negative("Exposure therapy is based on principles of classical conditioning"),
+        CausalTrainingPair::new(
+            "Cognitive distortions magnify perceived threats and failures".into(),
+            "Distorted thinking patterns maintain anxiety and depressive disorders".into(),
+            TrainingDirection::Forward,
+            0.86,
+        )
+        .with_mechanism("cognitive")
+        .with_domain("psychology")
+        .with_hard_negative("Cognitive behavioral therapy identifies and challenges thought patterns"),
+        CausalTrainingPair::new(
+            "Sleep deprivation impairs prefrontal cortex executive function".into(),
+            "Reduced impulse control leads to poor decision-making and emotional dysregulation".into(),
+            TrainingDirection::Forward,
+            0.87,
+        )
+        .with_mechanism("neuropsychological")
+        .with_domain("psychology")
+        .with_hard_negative("Adults need 7-9 hours of sleep per night for optimal functioning"),
+
+        // === History ===
+        CausalTrainingPair::new(
+            "The assassination of Archduke Franz Ferdinand destabilized European alliances".into(),
+            "Cascading treaty obligations triggered the outbreak of World War I".into(),
+            TrainingDirection::Forward,
+            0.88,
+        )
+        .with_mechanism("political")
+        .with_domain("history")
+        .with_hard_negative("World War I lasted from 1914 to 1918"),
+        CausalTrainingPair::new(
+            "The invention of the printing press enabled mass production of texts".into(),
+            "Widespread literacy and information access accelerated the Reformation and scientific revolution".into(),
+            TrainingDirection::Forward,
+            0.85,
+        )
+        .with_mechanism("technological")
+        .with_domain("history")
+        .with_hard_negative("Johannes Gutenberg introduced the movable-type printing press around 1440"),
+        CausalTrainingPair::new(
+            "The Black Death killed a third of Europe's population".into(),
+            "Severe labor shortages shifted economic power to surviving workers and weakened feudalism".into(),
+            TrainingDirection::Forward,
+            0.87,
+        )
+        .with_mechanism("socioeconomic")
+        .with_domain("history")
+        .with_hard_negative("The Black Death peaked in Europe between 1347 and 1351"),
+        CausalTrainingPair::new(
+            "Harsh reparations imposed by the Treaty of Versailles crippled Germany's economy".into(),
+            "Economic desperation and resentment fueled the rise of extremist political movements".into(),
+            TrainingDirection::Forward,
+            0.84,
+        )
+        .with_mechanism("political")
+        .with_domain("history")
+        .with_hard_negative("The Treaty of Versailles was signed on June 28, 1919"),
+        CausalTrainingPair::new(
+            "The Industrial Revolution mechanized manufacturing processes".into(),
+            "Mass migration from rural areas to factory cities transformed social structures".into(),
+            TrainingDirection::Forward,
+            0.86,
+        )
+        .with_mechanism("socioeconomic")
+        .with_domain("history")
+        .with_hard_negative("The Industrial Revolution began in Britain in the late 18th century"),
+
         // === Non-causal pairs (hard negatives for training) ===
         CausalTrainingPair::new(
             "The Pacific Ocean is the largest ocean on Earth".into(),
@@ -632,7 +867,7 @@ hard-negative ::= "\"hard_negative\"" ws ":" ws string
 rationale ::= "\"rationale\"" ws ":" ws string
 confidence ::= "\"confidence\"" ws ":" ws number
 domain ::= "\"domain\"" ws ":" ws domain-value
-domain-value ::= "\"health\"" | "\"environment\"" | "\"economics\"" | "\"technology\"" | "\"social\"" | "\"general\""
+domain-value ::= "\"health\"" | "\"environment\"" | "\"economics\"" | "\"technology\"" | "\"social\"" | "\"physics\"" | "\"nutrition\"" | "\"cybersecurity\"" | "\"psychology\"" | "\"history\"" | "\"general\""
 number ::= "0" ("." [0-9] [0-9]?)? | "1" ("." "0" "0"?)?
 string ::= "\"" ([^"\\] | "\\" .)* "\""
 ws ::= [ \t\n\r]*"#;
@@ -787,15 +1022,27 @@ mod tests {
     #[test]
     fn test_seed_pairs_coverage() {
         let pairs = seed_training_pairs();
-        assert!(pairs.len() >= 30, "Should have at least 30 seed pairs");
+        assert!(pairs.len() >= 60, "Should have at least 60 seed pairs, got {}", pairs.len());
 
-        // Check domain coverage
+        // Check all 10 domain coverage
         let domains: std::collections::HashSet<_> = pairs.iter().map(|p| p.domain.as_str()).collect();
         assert!(domains.contains("health"), "Missing health domain");
         assert!(domains.contains("environment"), "Missing environment domain");
         assert!(domains.contains("economics"), "Missing economics domain");
         assert!(domains.contains("technology"), "Missing technology domain");
         assert!(domains.contains("social"), "Missing social domain");
+        assert!(domains.contains("physics"), "Missing physics domain");
+        assert!(domains.contains("nutrition"), "Missing nutrition domain");
+        assert!(domains.contains("cybersecurity"), "Missing cybersecurity domain");
+        assert!(domains.contains("psychology"), "Missing psychology domain");
+        assert!(domains.contains("history"), "Missing history domain");
+
+        // Verify each domain has at least 4 pairs
+        for domain in &["health", "environment", "economics", "technology", "social",
+                         "physics", "nutrition", "cybersecurity", "psychology", "history"] {
+            let count = pairs.iter().filter(|p| p.domain == *domain).count();
+            assert!(count >= 4, "Domain '{}' should have >= 4 pairs, got {}", domain, count);
+        }
     }
 
     #[test]

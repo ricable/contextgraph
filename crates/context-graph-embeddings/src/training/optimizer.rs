@@ -188,11 +188,13 @@ impl AdamW {
             let bc2 = 1.0 - self.config.beta2.powi(t as i32);
 
             // Update first moment: m = β1 * m + (1 - β1) * grad
+            // Detach to break computation graph chain (m/v are optimizer state, not model params)
             param.m = param.m
                 .affine(self.config.beta1, 0.0)
                 .map_err(map_candle)?
                 .add(&clipped_grad.affine(1.0 - self.config.beta1, 0.0).map_err(map_candle)?)
-                .map_err(map_candle)?;
+                .map_err(map_candle)?
+                .detach();
 
             // Update second moment: v = β2 * v + (1 - β2) * grad^2
             let grad_sq = clipped_grad.sqr().map_err(map_candle)?;
@@ -200,7 +202,8 @@ impl AdamW {
                 .affine(self.config.beta2, 0.0)
                 .map_err(map_candle)?
                 .add(&grad_sq.affine(1.0 - self.config.beta2, 0.0).map_err(map_candle)?)
-                .map_err(map_candle)?;
+                .map_err(map_candle)?
+                .detach();
 
             // Bias-corrected estimates
             let m_hat = param.m.affine(1.0 / bc1, 0.0).map_err(map_candle)?;
@@ -222,11 +225,13 @@ impl AdamW {
                 .map_err(map_candle)?;
 
             // Combined update: θ = θ + step_update + decay
+            // Detach to prevent computation graph from growing through Var across steps
             let new_val = current
                 .add(&step_update)
                 .map_err(map_candle)?
                 .add(&decay)
-                .map_err(map_candle)?;
+                .map_err(map_candle)?
+                .detach();
 
             param.var.set(&new_val).map_err(map_candle)?;
         }

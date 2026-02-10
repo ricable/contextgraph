@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use candle_core::{Device, Tensor};
+use candle_core::{backend::BackendDevice, Device, Tensor};
 use tokenizers::Tokenizer;
 
 use crate::error::{EmbeddingError, EmbeddingResult};
@@ -20,6 +20,9 @@ use crate::training::data::{CausalDataLoader, CausalTrainingPair, TrainingBatch}
 use crate::training::evaluation::{EvaluationMetrics, Evaluator};
 use crate::training::lora::{LoraConfig, LoraLayers};
 use crate::training::loss::{LossComponents, LossConfig};
+use crate::training::multitask::{
+    DirectionLabel, MechanismLabel, MultiTaskConfig, MultiTaskHeads,
+};
 use crate::training::optimizer::{AdamWConfig, ParamGroup};
 use crate::training::trainer::{CausalTrainer, EpochResult, TrainingConfig};
 
@@ -48,6 +51,9 @@ pub struct PipelineConfig {
     pub output_dir: PathBuf,
     /// Random seed.
     pub seed: u64,
+    /// Multi-task head configuration (direction + mechanism classification).
+    /// Active in Stages 2+3 only. Set to None to disable multi-task learning.
+    pub multitask_config: Option<MultiTaskConfig>,
 }
 
 impl Default for PipelineConfig {
@@ -64,6 +70,7 @@ impl Default for PipelineConfig {
             early_stopping_patience: 10,
             output_dir: PathBuf::from("models/causal/trained"),
             seed: 42,
+            multitask_config: Some(MultiTaskConfig::default()),
         }
     }
 }
@@ -105,8 +112,12 @@ pub struct PipelineResult {
 pub struct CausalTrainingPipeline {
     /// LoRA adapters (trainable).
     pub lora: LoraLayers,
-    /// Trainable projection heads.
+    /// Trainable projection heads (used for initialization only;
+    /// each stage gets its own projection via checkpoint loading).
     pub projection: TrainableProjection,
+    /// Multi-task classification heads (direction + mechanism).
+    /// Active in Stages 2+3 for auxiliary gradient signal.
+    pub multitask_heads: Option<MultiTaskHeads>,
     /// Pipeline configuration.
     pub config: PipelineConfig,
     /// Device for tensor operations.
@@ -119,15 +130,28 @@ impl CausalTrainingPipeline {
         let lora = LoraLayers::new(config.lora_config.clone(), &device)?;
         let projection = TrainableProjection::new(CAUSAL_DIMENSION, &device)?;
 
+        let multitask_heads = if let Some(ref mt_config) = config.multitask_config {
+            let heads = MultiTaskHeads::new(mt_config.clone(), &device)?;
+            tracing::info!(
+                "Multi-task heads created: {} params (direction 3-class + mechanism 7-class)",
+                heads.total_params()
+            );
+            Some(heads)
+        } else {
+            None
+        };
+
         tracing::info!(
-            "Pipeline created: LoRA params={}, projection params={}",
+            "Pipeline created: LoRA params={}, projection params={}, multitask={}",
             lora.total_params(),
             CAUSAL_DIMENSION * CAUSAL_DIMENSION * 2 + CAUSAL_DIMENSION * 2,
+            multitask_heads.as_ref().map(|h| h.total_params()).unwrap_or(0),
         );
 
         Ok(Self {
             lora,
             projection,
+            multitask_heads,
             config,
             device,
         })
@@ -135,12 +159,17 @@ impl CausalTrainingPipeline {
 
     /// Embed a batch of texts using LoRA-augmented forward + trainable projection.
     ///
+    /// The `projection` parameter must be the SAME projection whose Var tensors
+    /// are registered with the optimizer. This ensures gradients computed by
+    /// `loss.backward()` flow to the correct Var objects.
+    ///
     /// Returns (cause_tensors [N, D], effect_tensors [N, D]) with preserved grad graph.
     pub fn embed_batch_dual(
         &self,
         batch: &TrainingBatch,
         weights: &NomicWeights,
         tokenizer: &Tokenizer,
+        projection: &TrainableProjection,
     ) -> EmbeddingResult<(Tensor, Tensor)> {
         let mut cause_vecs = Vec::new();
         let mut effect_vecs = Vec::new();
@@ -151,7 +180,7 @@ impl CausalTrainingPipeline {
                 weights,
                 tokenizer,
                 &self.lora,
-                &self.projection,
+                projection,
             )?;
             cause_vecs.push(cause);
             effect_vecs.push(effect);
@@ -195,12 +224,20 @@ impl CausalTrainingPipeline {
     }
 
     /// Run one training epoch.
+    ///
+    /// Uses the trainer's projection for the forward pass, ensuring gradients
+    /// flow to the same Var objects tracked by the optimizer.
+    ///
+    /// When `use_multitask` is true and multi-task heads are configured,
+    /// computes auxiliary direction + mechanism classification losses that
+    /// provide additional gradient signal to the shared encoder.
     pub fn train_epoch(
         &self,
         trainer: &mut CausalTrainer,
         data_loader: &mut CausalDataLoader,
         weights: &NomicWeights,
         tokenizer: &Tokenizer,
+        use_multitask: bool,
     ) -> EmbeddingResult<(LossComponents, usize)> {
         data_loader.shuffle_epoch();
 
@@ -214,7 +251,9 @@ impl CausalTrainingPipeline {
                 continue;
             }
 
-            let (cause_vecs, effect_vecs) = self.embed_batch_dual(&batch, weights, tokenizer)?;
+            // Use trainer's projection so gradients flow to optimizer-tracked Vars
+            let (cause_vecs, effect_vecs) =
+                self.embed_batch_dual(&batch, weights, tokenizer, trainer.projection())?;
             let confidences = Tensor::from_slice(
                 &batch.soft_labels(),
                 batch.len(),
@@ -224,7 +263,19 @@ impl CausalTrainingPipeline {
                 message: format!("Confidence tensor failed: {}", e),
             })?;
 
-            let components = trainer.train_step(&cause_vecs, &effect_vecs, &confidences)?;
+            // Compute multi-task auxiliary loss if active
+            let auxiliary_loss = if use_multitask {
+                self.compute_multitask_loss(&batch, &cause_vecs, &effect_vecs)?
+            } else {
+                None
+            };
+
+            let components = trainer.train_step_with_auxiliary(
+                &cause_vecs,
+                &effect_vecs,
+                &confidences,
+                auxiliary_loss.as_ref(),
+            )?;
 
             total_loss.contrastive += components.contrastive;
             total_loss.directional += components.directional;
@@ -248,12 +299,106 @@ impl CausalTrainingPipeline {
         Ok((total_loss, num_batches))
     }
 
-    /// Evaluate on a held-out set.
+    /// Compute multi-task auxiliary loss from batch pairs.
+    ///
+    /// Returns weighted sum: lambda_dir * direction_CE + lambda_mech * mechanism_CE.
+    fn compute_multitask_loss(
+        &self,
+        batch: &TrainingBatch,
+        cause_vecs: &Tensor,
+        effect_vecs: &Tensor,
+    ) -> EmbeddingResult<Option<Tensor>> {
+        let heads = match &self.multitask_heads {
+            Some(h) => h,
+            None => return Ok(None),
+        };
+
+        let n = batch.len();
+        if n == 0 {
+            return Ok(None);
+        }
+
+        // Concatenate cause + effect -> [N, 2*D]
+        let cat = Tensor::cat(&[cause_vecs, effect_vecs], 1).map_err(|e| {
+            EmbeddingError::GpuError {
+                message: format!("Multi-task concat failed: {}", e),
+            }
+        })?;
+
+        // Derive direction labels from training pair metadata
+        let dir_labels: Vec<u32> = batch
+            .pairs
+            .iter()
+            .map(|p| match p.direction {
+                crate::training::data::TrainingDirection::Forward => {
+                    DirectionLabel::Forward.index()
+                }
+                crate::training::data::TrainingDirection::Backward => {
+                    DirectionLabel::Backward.index()
+                }
+                _ => DirectionLabel::None.index(),
+            })
+            .collect();
+
+        // Derive mechanism labels from training pair metadata
+        let mech_labels: Vec<u32> = batch
+            .pairs
+            .iter()
+            .map(|p| MechanismLabel::from_str(&p.mechanism).index())
+            .collect();
+
+        let dir_label_tensor =
+            Tensor::from_slice(&dir_labels, n, &self.device).map_err(|e| {
+                EmbeddingError::GpuError {
+                    message: format!("Direction label tensor failed: {}", e),
+                }
+            })?;
+
+        let mech_label_tensor =
+            Tensor::from_slice(&mech_labels, n, &self.device).map_err(|e| {
+                EmbeddingError::GpuError {
+                    message: format!("Mechanism label tensor failed: {}", e),
+                }
+            })?;
+
+        // Compute classification losses
+        let dir_loss = heads.direction_loss(&cat, &dir_label_tensor)?;
+        let mech_loss = heads.mechanism_loss(&cat, &mech_label_tensor)?;
+
+        // Weighted sum: lambda_dir * L_dir + lambda_mech * L_mech
+        let lambda_dir = heads.config.lambda_direction as f64;
+        let lambda_mech = heads.config.lambda_mechanism as f64;
+
+        let weighted = (dir_loss.affine(lambda_dir, 0.0).map_err(|e| {
+            EmbeddingError::GpuError {
+                message: format!("Direction loss scaling failed: {}", e),
+            }
+        })? + mech_loss.affine(lambda_mech, 0.0).map_err(|e| {
+            EmbeddingError::GpuError {
+                message: format!("Mechanism loss scaling failed: {}", e),
+            }
+        })?)
+        .map_err(|e| EmbeddingError::GpuError {
+            message: format!("Multi-task loss sum failed: {}", e),
+        })?;
+
+        // Squeeze [1] -> [] scalar to match main loss shape
+        let scalar = weighted.sum_all().map_err(|e| EmbeddingError::GpuError {
+            message: format!("Multi-task loss squeeze failed: {}", e),
+        })?;
+
+        Ok(Some(scalar))
+    }
+
+    /// Evaluate on a held-out set using the given projection.
+    ///
+    /// Tensors are detached from the grad graph to avoid VRAM accumulation.
     pub fn evaluate(
         &self,
         eval_loader: &mut CausalDataLoader,
         weights: &NomicWeights,
         tokenizer: &Tokenizer,
+        projection: &TrainableProjection,
     ) -> EmbeddingResult<EvaluationMetrics> {
         eval_loader.shuffle_epoch();
 
@@ -268,7 +413,12 @@ impl CausalTrainingPipeline {
                 continue;
             }
 
-            let (cause_vecs, effect_vecs) = self.embed_batch_dual(&batch, weights, tokenizer)?;
+            let (cause_vecs, effect_vecs) =
+                self.embed_batch_dual(&batch, weights, tokenizer, projection)?;
+
+            // Detach from grad graph for evaluation (saves VRAM)
+            let cause_vecs = cause_vecs.detach();
+            let effect_vecs = effect_vecs.detach();
 
             // Collect non-causal similarity scores for AUC
             for (i, pair) in batch.pairs.iter().enumerate() {
@@ -327,8 +477,14 @@ impl CausalTrainingPipeline {
         weights: &NomicWeights,
         tokenizer: &Tokenizer,
         num_epochs: u32,
+        use_multitask: bool,
     ) -> EmbeddingResult<StageResult> {
-        tracing::info!("=== Stage {} starting ({} epochs) ===", stage, num_epochs);
+        tracing::info!(
+            "=== Stage {} starting ({} epochs, multitask={}) ===",
+            stage,
+            num_epochs,
+            use_multitask
+        );
 
         let mut best_metrics: Option<EvaluationMetrics> = None;
         let mut final_loss = LossComponents::default();
@@ -336,7 +492,8 @@ impl CausalTrainingPipeline {
         let mut epochs_without_improvement = 0u32;
 
         for epoch in 1..=num_epochs {
-            let (loss, num_batches) = self.train_epoch(trainer, train_loader, weights, tokenizer)?;
+            let (loss, num_batches) =
+                self.train_epoch(trainer, train_loader, weights, tokenizer, use_multitask)?;
             final_loss = loss.clone();
             epochs_completed = epoch;
 
@@ -355,7 +512,7 @@ impl CausalTrainingPipeline {
 
             // Evaluate periodically
             if epoch % self.config.eval_every == 0 || epoch == num_epochs {
-                let metrics = self.evaluate(eval_loader, weights, tokenizer)?;
+                let metrics = self.evaluate(eval_loader, weights, tokenizer, trainer.projection())?;
                 tracing::info!("Stage {} Eval: {}", stage, metrics.summary());
 
                 let is_better = best_metrics
@@ -367,12 +524,12 @@ impl CausalTrainingPipeline {
                     best_metrics = Some(metrics);
                     epochs_without_improvement = 0;
 
-                    // Save checkpoint
+                    // Save checkpoint (from trainer's projection, which has the learned weights)
                     let ckpt_path = self.config.output_dir.join(format!(
                         "projection_stage{}_best.safetensors",
                         stage
                     ));
-                    self.projection.save_trained(&ckpt_path)?;
+                    trainer.projection().save_trained(&ckpt_path)?;
                     tracing::info!("Stage {} best checkpoint saved to {}", stage, ckpt_path.display());
                 } else {
                     epochs_without_improvement += self.config.eval_every;
@@ -427,6 +584,98 @@ impl CausalTrainingPipeline {
         })
     }
 
+    /// Quick benchmark callback: sample pairs, compute 3 fast metrics, log to trajectory file.
+    ///
+    /// Called after each training stage to track improvement over time.
+    fn log_benchmark_snapshot(
+        &self,
+        stage: u32,
+        eval_loader: &mut CausalDataLoader,
+        weights: &NomicWeights,
+        tokenizer: &Tokenizer,
+        best_spread: &mut f32,
+        projection: &TrainableProjection,
+    ) {
+        let snapshot_start = std::time::Instant::now();
+
+        match self.evaluate(eval_loader, weights, tokenizer, projection) {
+            Ok(metrics) => {
+                let snapshot = serde_json::json!({
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                    "stage": stage,
+                    "score_spread": metrics.score_spread,
+                    "directional_accuracy": metrics.directional_accuracy,
+                    "standalone_top1": metrics.standalone_accuracy,
+                    "direction_ratio": metrics.direction_ratio,
+                    "duration_ms": snapshot_start.elapsed().as_millis() as u64,
+                });
+
+                // Warn on regression
+                if metrics.score_spread < *best_spread && *best_spread > 0.0 {
+                    tracing::warn!(
+                        "Benchmark regression: score_spread {:.4} < previous best {:.4}",
+                        metrics.score_spread,
+                        *best_spread
+                    );
+                }
+                if metrics.score_spread > *best_spread {
+                    *best_spread = metrics.score_spread;
+                }
+
+                // Append to trajectory file
+                let trajectory_path = self.config.output_dir.join("training_trajectory.jsonl");
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&trajectory_path)
+                {
+                    use std::io::Write;
+                    let _ = writeln!(file, "{}", snapshot);
+                    tracing::info!(
+                        "Benchmark snapshot (stage {}): spread={:.4}, dir_acc={:.4}, top1={:.4}",
+                        stage,
+                        metrics.score_spread,
+                        metrics.directional_accuracy,
+                        metrics.standalone_accuracy,
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Benchmark snapshot failed: {}", e);
+            }
+        }
+    }
+
+    /// Load a projection from a previous stage checkpoint, falling back to fresh init.
+    fn load_stage_projection(
+        &self,
+        prev_stage: u32,
+    ) -> EmbeddingResult<TrainableProjection> {
+        let prev_path = self.config.output_dir.join(format!(
+            "projection_stage{}_best.safetensors",
+            prev_stage
+        ));
+        if prev_path.exists() {
+            match TrainableProjection::load_trained(&prev_path, &self.device) {
+                Ok(proj) => {
+                    tracing::info!(
+                        "Loaded stage {} projection checkpoint for cross-stage continuity",
+                        prev_stage
+                    );
+                    return Ok(proj);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to load stage {} checkpoint ({}), using fresh init",
+                        prev_stage,
+                        e
+                    );
+                }
+            }
+        }
+        TrainableProjection::new(CAUSAL_DIMENSION, &self.device)
+    }
+
     /// Run the full 3-stage progressive training pipeline.
     pub fn run_full_pipeline(
         &self,
@@ -444,6 +693,8 @@ impl CausalTrainingPipeline {
 
         let mut stages = Vec::new();
         let mut best_overall: Option<EvaluationMetrics> = None;
+        let mut best_spread: f32 = 0.0;
+        let mut best_stage: u32 = 0;
 
         // === Stage 1: Projection-only warm-up with easy pairs ===
         {
@@ -474,8 +725,10 @@ impl CausalTrainingPipeline {
                 ..Default::default()
             };
 
+            // Stage 1: fresh projection (no prior checkpoint)
+            let stage1_projection = TrainableProjection::new(CAUSAL_DIMENSION, &self.device)?;
             let mut trainer = CausalTrainer::new(
-                self.projection.clone_for_training()?,
+                stage1_projection,
                 training_config,
                 self.device.clone(),
             )?;
@@ -489,12 +742,27 @@ impl CausalTrainingPipeline {
                 weights,
                 tokenizer,
                 self.config.stage1_epochs,
+                false, // No multi-task in Stage 1 (projection warm-up only)
             )?;
 
             if let Some(ref m) = stage1_result.best_metrics {
                 best_overall = Some(m.clone());
+                best_stage = 1;
             }
             stages.push(stage1_result);
+
+            // Benchmark snapshot after stage 1 (use trainer's projection before it's dropped)
+            let mut snapshot_eval = CausalDataLoader::new(eval_pairs.clone(), self.config.batch_size, self.config.seed + 100);
+            self.log_benchmark_snapshot(1, &mut snapshot_eval, weights, tokenizer, &mut best_spread, trainer.projection());
+
+            // Explicitly drop trainer to free optimizer state + Var tensors before Stage 2
+            drop(trainer);
+            drop(snapshot_eval);
+        }
+
+        // Sync GPU to ensure all Stage 1 memory is freed before Stage 2 allocation
+        if let Device::Cuda(cuda_dev) = &self.device {
+            let _ = cuda_dev.synchronize();
         }
 
         // === Stage 2: LoRA activation with all pairs ===
@@ -518,8 +786,10 @@ impl CausalTrainingPipeline {
                 ..Default::default()
             };
 
+            // Load Stage 1's best projection for cross-stage continuity
+            let stage2_projection = self.load_stage_projection(1)?;
             let mut trainer = CausalTrainer::new(
-                self.projection.clone_for_training()?,
+                stage2_projection,
                 training_config,
                 self.device.clone(),
             )?;
@@ -531,6 +801,15 @@ impl CausalTrainingPipeline {
                 optimizer.add_param(var.clone(), ParamGroup::Lora)?;
             }
 
+            // Register multi-task head parameters (direction + mechanism classifiers)
+            if let Some(ref heads) = self.multitask_heads {
+                let optimizer = trainer.optimizer_mut();
+                for var in heads.all_trainable_vars() {
+                    optimizer.add_param(var.clone(), ParamGroup::Markers)?;
+                }
+                tracing::info!("Stage 2: registered {} multi-task params", heads.total_params());
+            }
+
             let stage2_result = self.run_stage(
                 2,
                 &mut trainer,
@@ -539,6 +818,7 @@ impl CausalTrainingPipeline {
                 weights,
                 tokenizer,
                 self.config.stage2_epochs,
+                true, // Multi-task active in Stage 2
             )?;
 
             if let Some(ref m) = stage2_result.best_metrics {
@@ -547,9 +827,23 @@ impl CausalTrainingPipeline {
                     .unwrap_or(true);
                 if is_better {
                     best_overall = Some(m.clone());
+                    best_stage = 2;
                 }
             }
             stages.push(stage2_result);
+
+            // Benchmark snapshot after stage 2 (use trainer's projection before it's dropped)
+            let mut snapshot_eval = CausalDataLoader::new(eval_pairs.clone(), self.config.batch_size, self.config.seed + 101);
+            self.log_benchmark_snapshot(2, &mut snapshot_eval, weights, tokenizer, &mut best_spread, trainer.projection());
+
+            // Explicitly drop trainer to free optimizer state + Var tensors before Stage 3
+            drop(trainer);
+            drop(snapshot_eval);
+        }
+
+        // Sync GPU to ensure all Stage 2 memory is freed before Stage 3 allocation
+        if let Device::Cuda(cuda_dev) = &self.device {
+            let _ = cuda_dev.synchronize();
         }
 
         // === Stage 3: Directional emphasis ===
@@ -579,8 +873,10 @@ impl CausalTrainingPipeline {
                 ..Default::default()
             };
 
+            // Load Stage 2's best projection for cross-stage continuity
+            let stage3_projection = self.load_stage_projection(2)?;
             let mut trainer = CausalTrainer::new(
-                self.projection.clone_for_training()?,
+                stage3_projection,
                 training_config,
                 self.device.clone(),
             )?;
@@ -591,6 +887,14 @@ impl CausalTrainingPipeline {
                 optimizer.add_param(var.clone(), ParamGroup::Lora)?;
             }
 
+            // Register multi-task head parameters for Stage 3
+            if let Some(ref heads) = self.multitask_heads {
+                let optimizer = trainer.optimizer_mut();
+                for var in heads.all_trainable_vars() {
+                    optimizer.add_param(var.clone(), ParamGroup::Markers)?;
+                }
+            }
+
             let stage3_result = self.run_stage(
                 3,
                 &mut trainer,
@@ -599,6 +903,7 @@ impl CausalTrainingPipeline {
                 weights,
                 tokenizer,
                 self.config.stage3_epochs,
+                true, // Multi-task active in Stage 3
             )?;
 
             if let Some(ref m) = stage3_result.best_metrics {
@@ -607,27 +912,53 @@ impl CausalTrainingPipeline {
                     .unwrap_or(true);
                 if is_better {
                     best_overall = Some(m.clone());
+                    best_stage = 3;
                 }
             }
             stages.push(stage3_result);
+
+            // Final benchmark snapshot after stage 3 (use trainer's projection before it's dropped)
+            let mut snapshot_eval = CausalDataLoader::new(eval_pairs.clone(), self.config.batch_size, self.config.seed + 102);
+            self.log_benchmark_snapshot(3, &mut snapshot_eval, weights, tokenizer, &mut best_spread, trainer.projection());
         }
 
         let total_epochs: u32 = stages.iter().map(|s| s.epochs_completed).sum();
 
-        // Save final best checkpoint
-        let checkpoint_path = if best_overall.is_some() {
-            let path = self.config.output_dir.join("projection_best.safetensors");
-            self.projection.save_trained(&path)?;
-            tracing::info!("Final best checkpoint saved to {}", path.display());
-            Some(path)
+        // Save final best checkpoint (projection + LoRA)
+        let checkpoint_path = if best_overall.is_some() && best_stage > 0 {
+            // Copy best stage's projection checkpoint as the final best
+            let best_stage_path = self.config.output_dir.join(format!(
+                "projection_stage{}_best.safetensors",
+                best_stage
+            ));
+            let final_path = self.config.output_dir.join("projection_best.safetensors");
+
+            if best_stage_path.exists() {
+                std::fs::copy(&best_stage_path, &final_path).map_err(|e| {
+                    EmbeddingError::InternalError {
+                        message: format!("Failed to copy best projection checkpoint: {}", e),
+                    }
+                })?;
+                tracing::info!(
+                    "Final best projection (stage {}) saved to {}",
+                    best_stage,
+                    final_path.display()
+                );
+            }
+
+            let lora_path = self.config.output_dir.join("lora_best.safetensors");
+            self.save_lora(&lora_path)?;
+
+            Some(final_path)
         } else {
             None
         };
 
         tracing::info!(
-            "Pipeline complete: {} stages, {} total epochs",
+            "Pipeline complete: {} stages, {} total epochs, best stage={}",
             stages.len(),
-            total_epochs
+            total_epochs,
+            best_stage,
         );
         if let Some(ref m) = best_overall {
             tracing::info!("Best metrics: {}", m.summary());
@@ -710,8 +1041,11 @@ impl CausalTrainingPipeline {
 
 // Helper: TrainableProjection needs a clone method for creating per-stage trainers.
 impl TrainableProjection {
-    /// Create a new TrainableProjection with the same initialization for a training stage.
-    pub fn clone_for_training(&self) -> EmbeddingResult<Self> {
+    /// Create a fresh TrainableProjection for a new training stage.
+    ///
+    /// Returns a newly-initialized projection (not a weight clone).
+    /// Prefer `load_stage_projection()` for cross-stage continuity.
+    pub fn new_for_stage(&self) -> EmbeddingResult<Self> {
         let device = self.cause_projection_var.as_tensor().device().clone();
         Self::new(self.hidden_size, &device)
     }
@@ -728,6 +1062,7 @@ mod tests {
         assert_eq!(config.stage2_epochs, 20);
         assert_eq!(config.stage3_epochs, 20);
         assert_eq!(config.batch_size, 16);
+        assert!(config.multitask_config.is_some());
     }
 
     #[test]
@@ -739,9 +1074,33 @@ mod tests {
                 rank: 4,
                 ..Default::default()
             },
+            multitask_config: Some(MultiTaskConfig {
+                input_dim: 8,
+                hidden_dim: 4,
+                ..Default::default()
+            }),
             ..Default::default()
         };
         let pipeline = CausalTrainingPipeline::new(config, Device::Cpu).unwrap();
         assert!(pipeline.lora.total_params() > 0);
+        assert!(pipeline.multitask_heads.is_some());
+        assert!(pipeline.multitask_heads.as_ref().unwrap().total_params() > 0);
+    }
+
+    #[test]
+    fn test_pipeline_creation_no_multitask() {
+        let config = PipelineConfig {
+            lora_config: LoraConfig {
+                num_layers: 2,
+                hidden_size: 8,
+                rank: 4,
+                ..Default::default()
+            },
+            multitask_config: None,
+            ..Default::default()
+        };
+        let pipeline = CausalTrainingPipeline::new(config, Device::Cpu).unwrap();
+        assert!(pipeline.lora.total_params() > 0);
+        assert!(pipeline.multitask_heads.is_none());
     }
 }

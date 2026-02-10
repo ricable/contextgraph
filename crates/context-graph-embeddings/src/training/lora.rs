@@ -223,6 +223,79 @@ impl LoraLayers {
     }
 }
 
+impl LoraLayers {
+    /// Load LoRA adapters from a safetensors checkpoint.
+    ///
+    /// Expects tensor names like `lora.query.{layer}.a`, `lora.query.{layer}.b`,
+    /// `lora.value.{layer}.a`, `lora.value.{layer}.b` — matching the save format
+    /// in `CausalTrainingPipeline::save_lora()`.
+    pub fn load_from_safetensors(
+        path: &std::path::Path,
+        config: LoraConfig,
+        device: &Device,
+    ) -> EmbeddingResult<Self> {
+        let data = std::fs::read(path).map_err(|e| EmbeddingError::InternalError {
+            message: format!("Failed to read LoRA checkpoint: {}", e),
+        })?;
+
+        let safetensors = safetensors::SafeTensors::deserialize(&data)
+            .map_err(|e| EmbeddingError::InternalError {
+                message: format!("Failed to deserialize LoRA checkpoint: {}", e),
+            })?;
+
+        let scale = config.scale();
+
+        let load_tensor = |name: &str| -> EmbeddingResult<Tensor> {
+            let view = safetensors.tensor(name).map_err(|e| {
+                EmbeddingError::InternalError {
+                    message: format!("Missing LoRA tensor '{}': {}", name, e),
+                }
+            })?;
+            let shape: Vec<usize> = view.shape().to_vec();
+            let float_data: &[f32] = bytemuck::cast_slice(view.data());
+            Tensor::from_slice(float_data, shape, device).map_err(|e| {
+                EmbeddingError::GpuError {
+                    message: format!("Failed to create LoRA tensor '{}': {}", name, e),
+                }
+            })
+        };
+
+        let mut query_adapters = Vec::new();
+        let mut value_adapters = Vec::new();
+
+        for i in 0..config.num_layers {
+            if config.apply_query {
+                let a_tensor = load_tensor(&format!("lora.query.{}.a", i))?;
+                let b_tensor = load_tensor(&format!("lora.query.{}.b", i))?;
+                let a = Var::from_tensor(&a_tensor).map_err(map_candle)?;
+                let b = Var::from_tensor(&b_tensor).map_err(map_candle)?;
+                query_adapters.push(LoraAdapter { a, b, scale });
+            }
+            if config.apply_value {
+                let a_tensor = load_tensor(&format!("lora.value.{}.a", i))?;
+                let b_tensor = load_tensor(&format!("lora.value.{}.b", i))?;
+                let a = Var::from_tensor(&a_tensor).map_err(map_candle)?;
+                let b = Var::from_tensor(&b_tensor).map_err(map_candle)?;
+                value_adapters.push(LoraAdapter { a, b, scale });
+            }
+        }
+
+        tracing::info!(
+            "Loaded LoRA weights from {}: {} query + {} value adapters, {} total params",
+            path.display(),
+            query_adapters.len(),
+            value_adapters.len(),
+            query_adapters.iter().chain(value_adapters.iter()).map(|a| a.num_params()).sum::<usize>(),
+        );
+
+        Ok(Self {
+            query_adapters,
+            value_adapters,
+            config,
+        })
+    }
+}
+
 /// Map candle errors to EmbeddingError.
 fn map_candle(e: candle_core::Error) -> EmbeddingError {
     EmbeddingError::GpuError {

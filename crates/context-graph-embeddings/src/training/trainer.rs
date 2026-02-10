@@ -124,6 +124,10 @@ impl MomentumProjection {
     }
 
     /// Update momentum weights: W_mom ← τ * W_mom + (1 - τ) * W_online
+    ///
+    /// Detaches results to prevent computation graph chains from accumulating
+    /// across training steps (momentum tensors are running averages, not
+    /// differentiable parameters).
     pub fn update(&mut self, online: &TrainableProjection) -> EmbeddingResult<()> {
         let tau = self.tau;
         let one_minus_tau = 1.0 - tau;
@@ -136,11 +140,12 @@ impl MomentumProjection {
                 &online
                     .cause_projection_var
                     .as_tensor()
-                    .clone()
+                    .detach()
                     .affine(one_minus_tau, 0.0)
                     .map_err(map_candle)?,
             )
-            .map_err(map_candle)?;
+            .map_err(map_candle)?
+            .detach();
 
         self.cause_bias = self
             .cause_bias
@@ -150,11 +155,12 @@ impl MomentumProjection {
                 &online
                     .cause_bias_var
                     .as_tensor()
-                    .clone()
+                    .detach()
                     .affine(one_minus_tau, 0.0)
                     .map_err(map_candle)?,
             )
-            .map_err(map_candle)?;
+            .map_err(map_candle)?
+            .detach();
 
         self.effect_projection = self
             .effect_projection
@@ -164,11 +170,12 @@ impl MomentumProjection {
                 &online
                     .effect_projection_var
                     .as_tensor()
-                    .clone()
+                    .detach()
                     .affine(one_minus_tau, 0.0)
                     .map_err(map_candle)?,
             )
-            .map_err(map_candle)?;
+            .map_err(map_candle)?
+            .detach();
 
         self.effect_bias = self
             .effect_bias
@@ -178,11 +185,12 @@ impl MomentumProjection {
                 &online
                     .effect_bias_var
                     .as_tensor()
-                    .clone()
+                    .detach()
                     .affine(one_minus_tau, 0.0)
                     .map_err(map_candle)?,
             )
-            .map_err(map_candle)?;
+            .map_err(map_candle)?
+            .detach();
 
         Ok(())
     }
@@ -276,35 +284,6 @@ impl CausalTrainer {
         Ok(())
     }
 
-    /// Run a single training step on a batch of pre-computed embeddings.
-    ///
-    /// # Arguments
-    /// * `cause_vecs` - Cause embeddings [N, D] (L2-normalized, from trainable projection)
-    /// * `effect_vecs` - Effect embeddings [N, D] (L2-normalized, from trainable projection)
-    /// * `confidences` - LLM confidence scores [N]
-    ///
-    /// # Returns
-    /// Loss components for logging.
-    pub fn train_step(
-        &mut self,
-        cause_vecs: &Tensor,
-        effect_vecs: &Tensor,
-        confidences: &Tensor,
-    ) -> EmbeddingResult<LossComponents> {
-        // Compute combined loss
-        let (total_loss, components) = self.loss_fn.compute(cause_vecs, effect_vecs, confidences)?;
-
-        // Backward pass + optimizer step
-        self.optimizer.step(&total_loss)?;
-
-        // Update momentum encoder
-        self.momentum.update(&self.projection)?;
-
-        self.history.total_steps += 1;
-
-        Ok(components)
-    }
-
     /// Get the trainable projection (for applying to embeddings in forward pass).
     pub fn projection(&self) -> &TrainableProjection {
         &self.projection
@@ -378,6 +357,32 @@ impl CausalTrainer {
     /// Get mutable access to the optimizer for registering additional parameters.
     pub fn optimizer_mut(&mut self) -> &mut AdamW {
         &mut self.optimizer
+    }
+
+    /// Run a training step with an optional auxiliary loss (e.g., multi-task heads).
+    ///
+    /// The auxiliary loss is added to the main contrastive loss before the backward
+    /// pass, so both share the same gradient computation.
+    pub fn train_step_with_auxiliary(
+        &mut self,
+        cause_vecs: &Tensor,
+        effect_vecs: &Tensor,
+        confidences: &Tensor,
+        auxiliary_loss: Option<&Tensor>,
+    ) -> EmbeddingResult<LossComponents> {
+        let (total_loss, components) = self.loss_fn.compute(cause_vecs, effect_vecs, confidences)?;
+
+        let combined_loss = if let Some(aux) = auxiliary_loss {
+            (&total_loss + aux).map_err(map_candle)?
+        } else {
+            total_loss
+        };
+
+        self.optimizer.step(&combined_loss)?;
+        self.momentum.update(&self.projection)?;
+        self.history.total_steps += 1;
+
+        Ok(components)
     }
 }
 
