@@ -29,8 +29,8 @@ use sha2::{Digest, Sha256};
 use tracing::{debug, error, info, warn};
 
 use context_graph_core::causal::asymmetric::{
-    compute_e5_asymmetric_fingerprint_similarity, detect_causal_query_intent,
-    direction_mod, CausalDirection,
+    apply_causal_gate, compute_e5_asymmetric_fingerprint_similarity, detect_causal_query_intent,
+    CausalDirection,
 };
 use context_graph_core::types::audit::{AuditOperation, AuditRecord};
 use context_graph_core::teleological::matrix_search::embedder_names;
@@ -1183,7 +1183,7 @@ impl Handlers {
                     && causal_direction != CausalDirection::Unknown
                     && !results.is_empty()
                 {
-                    // Get E5 weight from the effective profile (default to 0.45 for causal_reasoning)
+                    // Get E5 weight from the effective profile (default to 0.10 for causal_reasoning)
                     let e5_weight = get_e5_causal_weight(
                         effective_weight_profile.as_deref().unwrap_or("causal_reasoning")
                     );
@@ -1201,6 +1201,7 @@ impl Handlers {
                         causal_direction,
                         e5_weight,
                     );
+                    apply_direction_aware_reranking(&mut results, causal_direction);
                     true
                 } else {
                     false
@@ -1655,85 +1656,84 @@ use context_graph_core::traits::TeleologicalSearchResult;
 /// * `profile_name` - Name of the weight profile
 ///
 /// # Returns
-/// E5 weight (index 4) from the profile, or 0.45 if profile not found
+/// E5 weight (index 4) from the profile, or 0.10 if profile not found
 fn get_e5_causal_weight(profile_name: &str) -> f32 {
     get_weight_profile(profile_name)
         .map(|weights| weights[4]) // E5 is at index 4
-        .unwrap_or(0.45) // Default to causal_reasoning E5 weight
+        .unwrap_or(0.10) // Default to causal_reasoning E5 weight (demoted from 0.45)
 }
 
-/// Apply asymmetric E5 reranking to search results.
+/// Apply asymmetric E5 reranking to search results using binary causal gate.
 ///
-/// This function implements Phase 2 of the causal integration:
-/// - Computes asymmetric E5 similarity between query and each result
-/// - Applies direction modifiers (1.2x cause→effect, 0.8x effect→cause)
-/// - Blends asymmetric E5 score with original similarity
-/// - Re-sorts results by adjusted score
+/// E5 scores are degenerate (0.93-0.98 for all text). Instead of continuous
+/// blending which injects noise, we use a binary gate:
+/// - E5 >= 0.94 → result is "definitely causal" → 1.05x boost
+/// - E5 <= 0.92 → result is "definitely non-causal" → 0.90x demotion
+/// - E5 in (0.92, 0.94) → ambiguous → no change
+///
+/// This is Occam's razor: the simplest model that matches E5's actual signal.
 ///
 /// # Arguments
 /// * `results` - Mutable reference to search results to rerank
 /// * `query_embedding` - Query's semantic fingerprint
 /// * `query_direction` - Detected causal direction of the query
-/// * `e5_weight` - Weight for E5 causal similarity (from profile)
-///
-/// # Formula
-/// ```text
-/// adjusted_sim = (1 - e5_weight) × original_sim + e5_weight × asymmetric_e5_sim × direction_mod
-/// ```
+/// * `_e5_weight` - Kept for signature stability, not used in gate logic
 fn apply_asymmetric_e5_reranking(
     results: &mut [TeleologicalSearchResult],
     query_embedding: &SemanticFingerprint,
     query_direction: CausalDirection,
-    e5_weight: f32,
+    _e5_weight: f32,
 ) {
-    // Skip if no results or weight is zero
-    if results.is_empty() || e5_weight <= 0.0 {
+    if results.is_empty() {
         return;
     }
+    let is_causal = !matches!(query_direction, CausalDirection::Unknown);
 
-    // Compute adjusted similarities for all results
     for result in results.iter_mut() {
-        // Get result's causal direction by checking which E5 vector has higher similarity
-        let result_direction = infer_result_causal_direction(&result.fingerprint.semantic);
-
-        // Compute asymmetric E5 similarity
-        // Per CAWAI research: cause queries use query.e5_as_cause vs doc.e5_as_effect
         let query_is_cause = matches!(query_direction, CausalDirection::Cause);
-        let asymmetric_e5_sim = compute_e5_asymmetric_fingerprint_similarity(
+        let e5_sim = compute_e5_asymmetric_fingerprint_similarity(
             query_embedding,
             &result.fingerprint.semantic,
             query_is_cause,
         );
-
-        // Get direction modifier
-        let direction_mod = get_direction_modifier(query_direction, result_direction);
-
-        // Blend original similarity with asymmetric E5 score
-        // Formula: (1 - e5_weight) × original + e5_weight × asymmetric × direction_mod
-        let original_weight = 1.0 - e5_weight;
-        let adjusted_sim = original_weight * result.similarity
-            + e5_weight * asymmetric_e5_sim * direction_mod;
-
-        // Update the result's similarity score
-        result.similarity = adjusted_sim.clamp(0.0, 1.5); // Allow slight amplification
+        result.similarity = apply_causal_gate(result.similarity, e5_sim, is_causal);
     }
 
-    // Re-sort results by adjusted similarity (descending)
-    results.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal));
+    results.sort_by(|a, b| {
+        b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal)
+    });
 }
 
-/// Get direction modifier for query→result comparison.
+/// Direction-aware reranking using keyword-detected query direction.
 ///
-/// Uses the `direction_mod` module from asymmetric.rs (Constitution-compliant):
-/// - cause→effect: 1.2 (forward inference amplified)
-/// - effect→cause: 0.8 (backward inference dampened)
-/// - same direction or unknown: 1.0 (no modification)
-fn get_direction_modifier(query_direction: CausalDirection, result_direction: CausalDirection) -> f32 {
-    match (query_direction, result_direction) {
-        (CausalDirection::Cause, CausalDirection::Effect) => direction_mod::CAUSE_TO_EFFECT,
-        (CausalDirection::Effect, CausalDirection::Cause) => direction_mod::EFFECT_TO_CAUSE,
-        _ => direction_mod::SAME_DIRECTION,
+/// Uses infer_result_causal_direction() (E5 vector norm comparison) to determine
+/// if a result describes a cause or effect, then boosts results whose direction
+/// matches what the query seeks.
+///
+/// This is applied AFTER the binary causal gate to provide a secondary ranking signal.
+fn apply_direction_aware_reranking(
+    results: &mut [TeleologicalSearchResult],
+    query_direction: CausalDirection,
+) {
+    if matches!(query_direction, CausalDirection::Unknown) || results.is_empty() {
+        return;
     }
+
+    const DIRECTION_MATCH_BOOST: f32 = 1.08;
+
+    for result in results.iter_mut() {
+        let result_dir = infer_result_causal_direction(&result.fingerprint.semantic);
+        let boost = match (&query_direction, &result_dir) {
+            (CausalDirection::Cause, CausalDirection::Cause) => DIRECTION_MATCH_BOOST,
+            (CausalDirection::Effect, CausalDirection::Effect) => DIRECTION_MATCH_BOOST,
+            _ => 1.0,
+        };
+        result.similarity *= boost;
+    }
+
+    results.sort_by(|a, b| {
+        b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal)
+    });
 }
 
 /// Infer a document's causal direction by analyzing its E5 embeddings.
@@ -2205,65 +2205,50 @@ mod tests {
     // =========================================================================
 
     use super::{
-        expand_causal_query, get_direction_modifier, get_e5_causal_weight,
-        CausalDirection, direction_mod,
+        apply_causal_gate, expand_causal_query, get_e5_causal_weight,
+        CausalDirection,
     };
+    use context_graph_core::causal::asymmetric::causal_gate;
 
     #[test]
-    fn test_direction_modifier_cause_to_effect() {
-        // Per Constitution: cause→effect = 1.2 (forward inference amplified)
-        let modifier = get_direction_modifier(CausalDirection::Cause, CausalDirection::Effect);
-        assert_eq!(modifier, direction_mod::CAUSE_TO_EFFECT);
-        assert_eq!(modifier, 1.2);
-        println!("[VERIFIED] cause→effect direction_mod = 1.2");
+    fn test_causal_gate_boost_above_threshold() {
+        // E5 score above CAUSAL_THRESHOLD → 1.05x boost on causal query
+        let result = apply_causal_gate(0.80, 0.95, true);
+        let expected = 0.80 * causal_gate::CAUSAL_BOOST;
+        assert!((result - expected).abs() < 1e-6, "got {result}, expected {expected}");
+        println!("[VERIFIED] causal gate boost: 0.80 * 1.05 = {result}");
     }
 
     #[test]
-    fn test_direction_modifier_effect_to_cause() {
-        // Per Constitution: effect→cause = 0.8 (backward inference dampened)
-        let modifier = get_direction_modifier(CausalDirection::Effect, CausalDirection::Cause);
-        assert_eq!(modifier, direction_mod::EFFECT_TO_CAUSE);
-        assert_eq!(modifier, 0.8);
-        println!("[VERIFIED] effect→cause direction_mod = 0.8");
+    fn test_causal_gate_demotion_below_threshold() {
+        // E5 score below NON_CAUSAL_THRESHOLD → 0.90x demotion on causal query
+        let result = apply_causal_gate(0.80, 0.91, true);
+        let expected = 0.80 * causal_gate::NON_CAUSAL_DEMOTION;
+        assert!((result - expected).abs() < 1e-6, "got {result}, expected {expected}");
+        println!("[VERIFIED] causal gate demotion: 0.80 * 0.90 = {result}");
     }
 
     #[test]
-    fn test_direction_modifier_same_direction() {
-        // Per Constitution: same_direction = 1.0 (no modification)
-        assert_eq!(
-            get_direction_modifier(CausalDirection::Cause, CausalDirection::Cause),
-            direction_mod::SAME_DIRECTION
-        );
-        assert_eq!(
-            get_direction_modifier(CausalDirection::Effect, CausalDirection::Effect),
-            direction_mod::SAME_DIRECTION
-        );
-        println!("[VERIFIED] same_direction direction_mod = 1.0");
+    fn test_causal_gate_passthrough_non_causal_query() {
+        // Non-causal query → no modification regardless of E5 score
+        let result = apply_causal_gate(0.80, 0.99, false);
+        assert!((result - 0.80).abs() < 1e-6, "non-causal should pass through, got {result}");
+        println!("[VERIFIED] non-causal query passthrough: {result}");
     }
 
     #[test]
-    fn test_direction_modifier_unknown() {
-        // Unknown directions get no modification (1.0)
-        assert_eq!(
-            get_direction_modifier(CausalDirection::Unknown, CausalDirection::Cause),
-            direction_mod::SAME_DIRECTION
-        );
-        assert_eq!(
-            get_direction_modifier(CausalDirection::Effect, CausalDirection::Unknown),
-            direction_mod::SAME_DIRECTION
-        );
-        assert_eq!(
-            get_direction_modifier(CausalDirection::Unknown, CausalDirection::Unknown),
-            direction_mod::SAME_DIRECTION
-        );
-        println!("[VERIFIED] unknown directions get direction_mod = 1.0");
+    fn test_causal_gate_dead_zone() {
+        // E5 score between thresholds (0.92-0.94) → no modification
+        let result = apply_causal_gate(0.80, 0.93, true);
+        assert!((result - 0.80).abs() < 1e-6, "dead zone should pass through, got {result}");
+        println!("[VERIFIED] causal gate dead zone: {result}");
     }
 
     #[test]
     fn test_get_e5_causal_weight_causal_reasoning() {
-        // causal_reasoning profile has E5 = 0.45
+        // causal_reasoning profile has E5 = 0.10 (demoted from 0.45 — E5 is degenerate)
         let weight = get_e5_causal_weight("causal_reasoning");
-        assert!((weight - 0.45).abs() < 0.01);
+        assert!((weight - 0.10).abs() < 0.01);
         println!("[VERIFIED] causal_reasoning E5 weight = {}", weight);
     }
 
@@ -2277,9 +2262,9 @@ mod tests {
 
     #[test]
     fn test_get_e5_causal_weight_unknown_profile() {
-        // Unknown profile defaults to 0.45 (causal_reasoning default)
+        // Unknown profile defaults to 0.10 (causal_reasoning default, demoted from 0.45)
         let weight = get_e5_causal_weight("nonexistent_profile");
-        assert!((weight - 0.45).abs() < 0.01);
+        assert!((weight - 0.10).abs() < 0.01);
         println!("[VERIFIED] Unknown profile defaults to E5 weight = {}", weight);
     }
 
@@ -2328,6 +2313,7 @@ mod tests {
 
     #[test]
     fn test_direction_modifiers_asymmetric() {
+        use context_graph_core::causal::asymmetric::direction_mod;
         // The asymmetry ratio should be 1.2 / 0.8 = 1.5
         let ratio = direction_mod::CAUSE_TO_EFFECT / direction_mod::EFFECT_TO_CAUSE;
         assert!((ratio - 1.5).abs() < 0.01);
@@ -2336,6 +2322,7 @@ mod tests {
 
     #[test]
     fn test_constitution_compliance_direction_modifiers() {
+        use context_graph_core::causal::asymmetric::direction_mod;
         // Verify all direction modifiers match Constitution spec
         assert_eq!(direction_mod::CAUSE_TO_EFFECT, 1.2, "Constitution: cause_to_effect must be 1.2");
         assert_eq!(direction_mod::EFFECT_TO_CAUSE, 0.8, "Constitution: effect_to_cause must be 0.8");

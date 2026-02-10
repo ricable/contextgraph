@@ -44,8 +44,8 @@ impl Handlers {
     /// # Algorithm
     ///
     /// 1. Embed the effect query using all 13 embedders
-    /// 2. Search for candidates using causal_reasoning weight profile (5x over-fetch)
-    /// 3. Apply abductive scoring using asymmetric E5 similarity
+    /// 2. Search for candidates using semantic_search weight profile (5x over-fetch)
+    /// 3. Apply abductive scoring using 80% E1 + 20% E5 blend
     /// 4. Apply 0.8x dampening per AP-77 (effect→cause direction)
     /// 5. Filter by minScore and return top-K ranked causes
     ///
@@ -149,7 +149,7 @@ impl Handlers {
 
             let options = TeleologicalSearchOptions::quick(fetch_top_k)
                 .with_strategy(strategy)
-                .with_weight_profile("causal_reasoning")
+                .with_weight_profile("semantic_search")
                 .with_min_similarity(0.0)
                 .with_causal_direction(CausalDirection::Cause)
                 .with_rerank(enable_rerank)
@@ -386,8 +386,8 @@ impl Handlers {
     /// # Algorithm
     ///
     /// 1. Embed the cause query using all 13 embedders
-    /// 2. Search for candidates using causal_reasoning weight profile (5x over-fetch)
-    /// 3. Apply predictive scoring using asymmetric E5 similarity
+    /// 2. Search for candidates using semantic_search weight profile (5x over-fetch)
+    /// 3. Apply predictive scoring using 80% E1 + 20% E5 blend
     /// 4. Apply 1.2x boost per AP-77 (cause→effect direction)
     /// 5. Filter by minScore and return top-K ranked effects
     ///
@@ -491,7 +491,7 @@ impl Handlers {
 
             let options = TeleologicalSearchOptions::quick(fetch_top_k)
                 .with_strategy(strategy)
-                .with_weight_profile("causal_reasoning")
+                .with_weight_profile("semantic_search")
                 .with_min_similarity(0.0)
                 .with_causal_direction(CausalDirection::Effect)
                 .with_rerank(enable_rerank)

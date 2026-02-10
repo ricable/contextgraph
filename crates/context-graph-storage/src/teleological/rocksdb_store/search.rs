@@ -299,8 +299,10 @@ fn search_filtered_multi_space_sync(
     let fused_results = fuse_rankings(&embedder_rankings, options.fusion_strategy, options.top_k * 2);
 
     let code_query_type = options.effective_code_query_type();
-    let mut results = Vec::with_capacity(fused_results.len());
 
+    // Two-pass scoring: collect all embedder scores first, then suppress degenerate weights
+    // Pass 1: Collect candidates with their embedder scores
+    let mut candidates: Vec<(TeleologicalFingerprint, [f32; 13])> = Vec::with_capacity(fused_results.len());
     for fused in fused_results {
         if let Some(data) = get_fingerprint_raw_sync(db, fused.doc_id)? {
             let fp = deserialize_teleological_fingerprint(&data)?;
@@ -314,21 +316,25 @@ fn search_filtered_multi_space_sync(
             } else {
                 compute_embedder_scores_sync(query, &fp.semantic, code_query_type)
             };
-
-            // Always compute actual cosine similarity for the returned score.
-            // RRF is used for CANDIDATE SELECTION (which docs to retrieve from
-            // multiple HNSW indexes), but the user-facing similarity score must
-            // be a weighted cosine similarity in the 0.0-1.0 range.
-            // Raw RRF scores max out at sum(weights)/(1+k) ≈ 0.016 with k=60,
-            // which is misleading when returned as "similarity".
-            let final_score = compute_semantic_fusion(&embedder_scores, &weights);
-
-            if final_score < options.min_similarity {
-                continue;
-            }
-
-            results.push(TeleologicalSearchResult::new(fp, final_score, embedder_scores));
+            candidates.push((fp, embedder_scores));
         }
+    }
+
+    // Suppress degenerate embedder weights based on cross-candidate variance
+    let all_scores: Vec<[f32; 13]> = candidates.iter().map(|(_, s)| *s).collect();
+    let adjusted_weights = suppress_degenerate_weights(&all_scores, &weights);
+
+    // Pass 2: Score with adjusted weights
+    // RRF is used for CANDIDATE SELECTION (which docs to retrieve from
+    // multiple HNSW indexes), but the user-facing similarity score must
+    // be a weighted cosine similarity in the 0.0-1.0 range.
+    let mut results = Vec::with_capacity(candidates.len());
+    for (fp, embedder_scores) in candidates {
+        let final_score = compute_semantic_fusion(&embedder_scores, &adjusted_weights);
+        if final_score < options.min_similarity {
+            continue;
+        }
+        results.push(TeleologicalSearchResult::new(fp, final_score, embedder_scores));
     }
 
     results.sort_by(|a, b| {
@@ -604,8 +610,10 @@ fn search_multi_space_sync(
     let fused_results = fuse_rankings(&embedder_rankings, options.fusion_strategy, options.top_k * 2);
 
     let code_query_type = options.effective_code_query_type();
-    let mut results = Vec::with_capacity(fused_results.len());
 
+    // Two-pass scoring: collect all embedder scores first, then suppress degenerate weights
+    // Pass 1: Collect candidates with their embedder scores
+    let mut candidates: Vec<(TeleologicalFingerprint, [f32; 13])> = Vec::with_capacity(fused_results.len());
     for fused in fused_results {
         if let Some(data) = get_fingerprint_raw_sync(db, fused.doc_id)? {
             let fp = deserialize_teleological_fingerprint(&data)?;
@@ -619,21 +627,25 @@ fn search_multi_space_sync(
             } else {
                 compute_embedder_scores_sync(query, &fp.semantic, code_query_type)
             };
-
-            // Always compute actual cosine similarity for the returned score.
-            // RRF is used for CANDIDATE SELECTION (which docs to retrieve from
-            // multiple HNSW indexes), but the user-facing similarity score must
-            // be a weighted cosine similarity in the 0.0-1.0 range.
-            // Raw RRF scores max out at sum(weights)/(1+k) ≈ 0.016 with k=60,
-            // which is misleading when returned as "similarity".
-            let final_score = compute_semantic_fusion(&embedder_scores, &weights);
-
-            if final_score < options.min_similarity {
-                continue;
-            }
-
-            results.push(TeleologicalSearchResult::new(fp, final_score, embedder_scores));
+            candidates.push((fp, embedder_scores));
         }
+    }
+
+    // Suppress degenerate embedder weights based on cross-candidate variance
+    let all_scores: Vec<[f32; 13]> = candidates.iter().map(|(_, s)| *s).collect();
+    let adjusted_weights = suppress_degenerate_weights(&all_scores, &weights);
+
+    // Pass 2: Score with adjusted weights
+    // RRF is used for CANDIDATE SELECTION (which docs to retrieve from
+    // multiple HNSW indexes), but the user-facing similarity score must
+    // be a weighted cosine similarity in the 0.0-1.0 range.
+    let mut results = Vec::with_capacity(candidates.len());
+    for (fp, embedder_scores) in candidates {
+        let final_score = compute_semantic_fusion(&embedder_scores, &adjusted_weights);
+        if final_score < options.min_similarity {
+            continue;
+        }
+        results.push(TeleologicalSearchResult::new(fp, final_score, embedder_scores));
     }
 
     results.sort_by(|a, b| {
@@ -808,24 +820,28 @@ fn search_pipeline_sync(
         })
         .collect();
 
+    // Suppress degenerate embedder weights based on cross-candidate variance
+    let all_scores: Vec<[f32; 13]> = candidate_data.iter().map(|(_, s, _)| *s).collect();
+    let adjusted_weights = suppress_degenerate_weights(&all_scores, &weights);
+
     let mut scored_candidates: Vec<(Uuid, f32, [f32; 13], SemanticFingerprint)> =
         match options.fusion_strategy {
             FusionStrategy::WeightedSum => candidate_data
                 .into_iter()
                 .map(|(id, scores, semantic)| {
-                    let fusion_score = compute_semantic_fusion(&scores, &weights);
+                    let fusion_score = compute_semantic_fusion(&scores, &adjusted_weights);
                     (id, fusion_score, scores, semantic)
                 })
                 .filter(|(_, score, _, _)| *score >= options.min_similarity)
                 .collect(),
             FusionStrategy::WeightedRRF => {
                 let semantic_indices = [
-                    (0, "E1", weights[0]),
-                    (4, "E5", weights[4]),
-                    (6, "E7", weights[6]),
-                    (7, "E8", weights[7]),
-                    (9, "E10", weights[9]),
-                    (10, "E11", weights[10]),
+                    (0, "E1", adjusted_weights[0]),
+                    (4, "E5", adjusted_weights[4]),
+                    (6, "E7", adjusted_weights[6]),
+                    (7, "E8", adjusted_weights[7]),
+                    (9, "E10", adjusted_weights[9]),
+                    (10, "E11", adjusted_weights[10]),
                 ];
 
                 let mut embedder_rankings: Vec<EmbedderRanking> = Vec::new();
@@ -1103,6 +1119,54 @@ const STAGE2_CANDIDATE_MULTIPLIER: usize = 3;
 /// # Returns
 ///
 /// Weighted average of scores (0.0-1.0)
+/// Suppress embedders with near-zero score variance before fusion.
+///
+/// If an embedder produces nearly identical scores for all candidates,
+/// it contributes noise, not signal. Reduce its weight by SUPPRESSION_FACTOR.
+/// This is defense-in-depth against degenerate embedders (e.g. E5 anisotropy).
+fn suppress_degenerate_weights(
+    all_scores: &[[f32; 13]],
+    weights: &[f32; 13],
+) -> [f32; 13] {
+    const MIN_VARIANCE: f32 = 0.001;
+    const SUPPRESSION_FACTOR: f32 = 0.25;
+
+    if all_scores.len() < 3 {
+        return *weights;
+    }
+
+    let mut adjusted = *weights;
+
+    for idx in 0..13 {
+        if weights[idx] <= 0.0 {
+            continue;
+        }
+        let scores: Vec<f32> = all_scores.iter()
+            .map(|s| s[idx])
+            .filter(|s| *s > 0.0)
+            .collect();
+        if scores.len() < 3 {
+            continue;
+        }
+        let mean = scores.iter().sum::<f32>() / scores.len() as f32;
+        let variance = scores.iter()
+            .map(|s| (s - mean).powi(2))
+            .sum::<f32>() / scores.len() as f32;
+        if variance < MIN_VARIANCE {
+            tracing::debug!(
+                embedder_idx = idx,
+                variance = variance,
+                original_weight = weights[idx],
+                suppressed_weight = weights[idx] * SUPPRESSION_FACTOR,
+                "Suppressing degenerate embedder weight (variance < {MIN_VARIANCE})"
+            );
+            adjusted[idx] *= SUPPRESSION_FACTOR;
+        }
+    }
+
+    adjusted
+}
+
 fn compute_semantic_fusion(scores: &[f32; 13], weights: &[f32; 13]) -> f32 {
     let mut weighted_sum = 0.0f32;
     let mut weight_total = 0.0f32;

@@ -50,6 +50,49 @@ pub mod direction_mod {
     pub const UNKNOWN: f32 = 1.0;
 }
 
+/// Causal content gate thresholds.
+///
+/// E5 scores cluster 0.93-0.98 for causal text and 0.90-0.94 for non-causal.
+/// These thresholds convert the compressed continuous signal into a binary gate.
+pub mod causal_gate {
+    /// Minimum E5 score to consider content "definitely causal"
+    pub const CAUSAL_THRESHOLD: f32 = 0.94;
+    /// Maximum E5 score to consider content "definitely non-causal"
+    pub const NON_CAUSAL_THRESHOLD: f32 = 0.92;
+    /// Boost applied to results that pass the causal gate (for causal queries)
+    pub const CAUSAL_BOOST: f32 = 1.05;
+    /// Demotion applied to results that fail the causal gate (for causal queries)
+    pub const NON_CAUSAL_DEMOTION: f32 = 0.90;
+}
+
+/// Apply E5 causal gating to a result score.
+///
+/// Converts E5's compressed continuous score into a binary boost/demotion.
+/// Between CAUSAL_THRESHOLD and NON_CAUSAL_THRESHOLD: no change (ambiguous zone).
+///
+/// # Arguments
+///
+/// * `original_score` - The current similarity score for this result
+/// * `e5_score` - The E5 asymmetric similarity score
+/// * `is_causal_query` - Whether the query was detected as causal
+///
+/// # Returns
+///
+/// Adjusted score: boosted if E5 >= CAUSAL_THRESHOLD, demoted if E5 <= NON_CAUSAL_THRESHOLD,
+/// unchanged in the ambiguous zone.
+pub fn apply_causal_gate(original_score: f32, e5_score: f32, is_causal_query: bool) -> f32 {
+    if !is_causal_query {
+        return original_score;
+    }
+    if e5_score >= causal_gate::CAUSAL_THRESHOLD {
+        original_score * causal_gate::CAUSAL_BOOST
+    } else if e5_score <= causal_gate::NON_CAUSAL_THRESHOLD {
+        original_score * causal_gate::NON_CAUSAL_DEMOTION
+    } else {
+        original_score
+    }
+}
+
 /// Causal direction for asymmetric similarity computation.
 ///
 /// Simplified direction enum specifically for similarity computation.

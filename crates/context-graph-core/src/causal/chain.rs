@@ -343,18 +343,23 @@ pub fn rank_causes_by_abduction(
     let mut results: Vec<AbductionResult> = candidate_causes
         .iter()
         .map(|(id, cause_fp)| {
-            // Effect looking for cause: use effect→cause direction
-            // query_is_cause = false because we ARE the effect looking for causes
-            let raw_sim =
+            // E5 asymmetric similarity (effect→cause direction)
+            let e5_sim =
                 compute_e5_asymmetric_fingerprint_similarity(effect_fingerprint, cause_fp, false);
 
+            // E1 semantic similarity (topical discrimination — proven 17x better than E5)
+            let e1_sim = cosine_similarity(&effect_fingerprint.e1_semantic, &cause_fp.e1_semantic);
+
+            // Blend: 80% E1 (topical signal) + 20% E5 (causal structure signal)
+            let blended = 0.80 * e1_sim + 0.20 * e5_sim;
+
             // Apply abductive dampening (effect→cause modifier)
-            let adjusted_score = raw_sim * direction_mod::EFFECT_TO_CAUSE;
+            let adjusted_score = blended * direction_mod::EFFECT_TO_CAUSE;
 
             AbductionResult {
                 cause_id: *id,
                 score: adjusted_score,
-                raw_similarity: raw_sim,
+                raw_similarity: e5_sim,
             }
         })
         .collect();
@@ -430,18 +435,23 @@ pub fn rank_effects_by_prediction(
     let mut results: Vec<PredictionResult> = candidate_effects
         .iter()
         .map(|(id, effect_fp)| {
-            // Cause looking for effects: use cause→effect direction
-            // query_is_cause = true because we ARE the cause looking for effects
-            let raw_sim =
+            // E5 asymmetric similarity (cause→effect direction)
+            let e5_sim =
                 compute_e5_asymmetric_fingerprint_similarity(cause_fingerprint, effect_fp, true);
 
+            // E1 semantic similarity (topical discrimination — proven 17x better than E5)
+            let e1_sim = cosine_similarity(&cause_fingerprint.e1_semantic, &effect_fp.e1_semantic);
+
+            // Blend: 80% E1 (topical signal) + 20% E5 (causal structure signal)
+            let blended = 0.80 * e1_sim + 0.20 * e5_sim;
+
             // Apply predictive boost (cause→effect modifier)
-            let adjusted_score = (raw_sim * direction_mod::CAUSE_TO_EFFECT).clamp(0.0, 1.0);
+            let adjusted_score = (blended * direction_mod::CAUSE_TO_EFFECT).clamp(0.0, 1.0);
 
             PredictionResult {
                 effect_id: *id,
                 score: adjusted_score,
-                raw_similarity: raw_sim,
+                raw_similarity: e5_sim,
             }
         })
         .collect();

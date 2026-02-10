@@ -137,21 +137,23 @@ pub const WEIGHT_PROFILES: &[(&str, [f32; NUM_EMBEDDERS])] = &[
         ],
     ),
 
-    // Causal Reasoning: "Why" questions - E5 primary
+    // Causal Reasoning: "Why" questions - E1 primary, E5 binary gate signal only
+    // E5 demoted from 0.45→0.10: produces degenerate embeddings (0.93-0.98 for all text)
+    // E1 promoted to 0.40: proven 3/3 correct top-1, 17x better discrimination than E5
     (
         "causal_reasoning",
         [
-            0.20, // E1_Semantic
+            0.40, // E1_Semantic (primary — proven 3/3 top-1 correct)
             0.0,  // E2_Temporal_Recent - NOT for semantic search
             0.0,  // E3_Temporal_Periodic - NOT for semantic search
             0.0,  // E4_Temporal_Positional - NOT for semantic search
-            0.45, // E5_Causal (primary)
+            0.10, // E5_Causal (demoted — binary structure signal only)
             0.05, // E6_Sparse
-            0.10, // E7_Code
+            0.15, // E7_Code (handles technical/scientific causal text)
             0.10, // E8_Graph (causal chains)
             0.0,  // E9_HDC
-            0.05, // E10_Multimodal
-            0.05, // E11_Entity
+            0.10, // E10_Multimodal (paraphrase matching for same-concept causes)
+            0.10, // E11_Entity (entity-aware discrimination)
             0.0,  // E12_Late_Interaction
             0.0,  // E13_SPLADE
         ],
