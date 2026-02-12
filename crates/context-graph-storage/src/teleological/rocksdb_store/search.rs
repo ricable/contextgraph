@@ -1188,6 +1188,21 @@ fn suppress_degenerate_weights(
         if weights[idx] <= 0.0 {
             continue;
         }
+
+        // F-8 fix: detect all-zero scores BEFORE filtering.
+        // If every candidate scored 0.0 for this embedder, the embedder produced
+        // no signal — suppress its weight to prevent denominator inflation in fusion.
+        let all_zero = all_scores.iter().all(|s| s[idx] == 0.0);
+        if all_zero {
+            tracing::debug!(
+                embedder_idx = idx,
+                original_weight = weights[idx],
+                "Suppressing all-zero embedder weight (no signal produced)"
+            );
+            adjusted[idx] = 0.0;
+            continue;
+        }
+
         let scores: Vec<f32> = all_scores.iter()
             .map(|s| s[idx])
             .filter(|s| *s > 0.0)
@@ -1219,8 +1234,10 @@ fn compute_semantic_fusion(scores: &[f32; 13], weights: &[f32; 13]) -> f32 {
     let mut weight_total = 0.0f32;
 
     for (&score, &weight) in scores.iter().zip(weights.iter()) {
-        // Skip zero-weight embedders (temporal)
-        if weight > 0.0 {
+        // F-8 fix: skip embedders with zero weight OR zero score.
+        // Including a zero-score embedder in the denominator inflates weight_total
+        // without contributing signal, deflating the fusion score by ~15%.
+        if weight > 0.0 && score > 0.0 {
             weighted_sum += score * weight;
             weight_total += weight;
         }

@@ -1,7 +1,7 @@
 //! LoRA (Low-Rank Adaptation) adapters for NomicBERT attention.
 //!
 //! Rank-16 LoRA on Q, V attention projections:
-//! - ~2.4M additional trainable parameters
+//! - 589,824 trainable parameters (2 adapters × 12 layers × 2 × 768 × 16)
 //! - Teaches encoder to produce better causal representations before projection
 //! - Phase 2b: only after projection training (Phase 2a) proves the approach
 //!
@@ -14,9 +14,11 @@
 //! ```
 //!
 //! Where A is [hidden_size, rank] and B is [rank, hidden_size].
-//! Total params per layer: 2 × (hidden_size × rank + rank × hidden_size)
-//! = 2 × 2 × 768 × 16 = 98,304 per layer
-//! × 12 layers = 1,179,648 total LoRA params
+//! Total params per adapter: hidden_size × rank + rank × hidden_size
+//! = 2 × 768 × 16 = 24,576 per adapter
+//! × 2 adapters (Q, V) × 12 layers = 589,824 total LoRA params
+
+use std::cell::Cell;
 
 use candle_core::{DType, Device, Tensor, Var};
 
@@ -78,6 +80,8 @@ pub struct LoraAdapter {
     pub b: Var,
     /// Scaling factor
     scale: f32,
+    /// Dropout rate (applied during training only)
+    dropout: f32,
 }
 
 impl LoraAdapter {
@@ -89,6 +93,7 @@ impl LoraAdapter {
         hidden_size: usize,
         rank: usize,
         scale: f32,
+        dropout: f32,
         device: &Device,
     ) -> EmbeddingResult<Self> {
         // A: Kaiming uniform initialization for stable gradients
@@ -110,16 +115,40 @@ impl LoraAdapter {
             Tensor::zeros((rank, hidden_size), DType::F32, device).map_err(map_candle)?;
         let b = Var::from_tensor(&b_tensor).map_err(map_candle)?;
 
-        Ok(Self { a, b, scale })
+        Ok(Self { a, b, scale, dropout })
     }
 
-    /// Apply LoRA: output = scale * (x @ A @ B)
+    /// Apply LoRA (inference): output = scale * (x @ A @ B)
+    ///
+    /// No dropout applied — use `forward_train` during training.
     pub fn forward(&self, x: &Tensor) -> EmbeddingResult<Tensor> {
         let low_rank = x
             .matmul(self.a.as_tensor())
             .map_err(map_candle)?
             .matmul(self.b.as_tensor())
             .map_err(map_candle)?;
+
+        low_rank
+            .affine(self.scale as f64, 0.0)
+            .map_err(map_candle)
+    }
+
+    /// Apply LoRA (training): output = scale * dropout(x @ A @ B)
+    ///
+    /// Applies dropout between the low-rank computation and scaling to
+    /// regularize LoRA adaptation and prevent overfitting.
+    pub fn forward_train(&self, x: &Tensor) -> EmbeddingResult<Tensor> {
+        let low_rank = x
+            .matmul(self.a.as_tensor())
+            .map_err(map_candle)?
+            .matmul(self.b.as_tensor())
+            .map_err(map_candle)?;
+
+        let low_rank = if self.dropout > 0.0 {
+            apply_dropout(&low_rank, self.dropout)?
+        } else {
+            low_rank
+        };
 
         low_rank
             .affine(self.scale as f64, 0.0)
@@ -147,6 +176,9 @@ pub struct LoraLayers {
     pub value_adapters: Vec<LoraAdapter>,
     /// Configuration.
     pub config: LoraConfig,
+    /// Whether dropout is active (true during training, false during inference).
+    /// Uses Cell for interior mutability so `&self` methods can toggle training mode.
+    pub training: Cell<bool>,
 }
 
 impl LoraLayers {
@@ -163,6 +195,7 @@ impl LoraLayers {
                     config.hidden_size,
                     config.rank,
                     scale,
+                    config.dropout,
                     device,
                 )?);
             }
@@ -171,6 +204,7 @@ impl LoraLayers {
                     config.hidden_size,
                     config.rank,
                     scale,
+                    config.dropout,
                     device,
                 )?);
             }
@@ -180,6 +214,7 @@ impl LoraLayers {
             query_adapters,
             value_adapters,
             config,
+            training: Cell::new(false),
         })
     }
 
@@ -205,21 +240,40 @@ impl LoraLayers {
     }
 
     /// Apply LoRA to a query projection output at a given layer.
+    ///
+    /// When `self.training` is true, applies dropout for regularization.
     pub fn apply_query(&self, layer: usize, x: &Tensor) -> EmbeddingResult<Tensor> {
         if layer < self.query_adapters.len() {
-            self.query_adapters[layer].forward(x)
+            if self.training.get() {
+                self.query_adapters[layer].forward_train(x)
+            } else {
+                self.query_adapters[layer].forward(x)
+            }
         } else {
             Tensor::zeros_like(x).map_err(map_candle)
         }
     }
 
     /// Apply LoRA to a value projection output at a given layer.
+    ///
+    /// When `self.training` is true, applies dropout for regularization.
     pub fn apply_value(&self, layer: usize, x: &Tensor) -> EmbeddingResult<Tensor> {
         if layer < self.value_adapters.len() {
-            self.value_adapters[layer].forward(x)
+            if self.training.get() {
+                self.value_adapters[layer].forward_train(x)
+            } else {
+                self.value_adapters[layer].forward(x)
+            }
         } else {
             Tensor::zeros_like(x).map_err(map_candle)
         }
+    }
+
+    /// Set training mode (enables/disables dropout in LoRA forward pass).
+    /// Takes `&self` (not `&mut self`) thanks to Cell<bool> interior mutability,
+    /// allowing training mode changes through immutable pipeline references.
+    pub fn set_training(&self, training: bool) {
+        self.training.set(training);
     }
 }
 
@@ -269,14 +323,14 @@ impl LoraLayers {
                 let b_tensor = load_tensor(&format!("lora.query.{}.b", i))?;
                 let a = Var::from_tensor(&a_tensor).map_err(map_candle)?;
                 let b = Var::from_tensor(&b_tensor).map_err(map_candle)?;
-                query_adapters.push(LoraAdapter { a, b, scale });
+                query_adapters.push(LoraAdapter { a, b, scale, dropout: config.dropout });
             }
             if config.apply_value {
                 let a_tensor = load_tensor(&format!("lora.value.{}.a", i))?;
                 let b_tensor = load_tensor(&format!("lora.value.{}.b", i))?;
                 let a = Var::from_tensor(&a_tensor).map_err(map_candle)?;
                 let b = Var::from_tensor(&b_tensor).map_err(map_candle)?;
-                value_adapters.push(LoraAdapter { a, b, scale });
+                value_adapters.push(LoraAdapter { a, b, scale, dropout: config.dropout });
             }
         }
 
@@ -292,8 +346,32 @@ impl LoraLayers {
             query_adapters,
             value_adapters,
             config,
+            training: Cell::new(false),
         })
     }
+}
+
+/// Apply dropout to a tensor: randomly zero elements with probability `p`,
+/// then scale remaining elements by 1/(1-p) to maintain expected magnitude.
+fn apply_dropout(x: &Tensor, p: f32) -> EmbeddingResult<Tensor> {
+    if p <= 0.0 || p >= 1.0 {
+        return Ok(x.clone());
+    }
+    let keep_prob = (1.0 - p) as f64;
+    // Create Bernoulli mask: floor(uniform[0,1) + keep_prob)
+    // This yields 1.0 with probability keep_prob, 0.0 with probability p
+    let rand_t = Tensor::rand(0.0f32, 1.0f32, x.shape(), x.device())
+        .map_err(map_candle)?;
+    let mask = rand_t
+        .affine(1.0, keep_prob)
+        .map_err(map_candle)?
+        .floor()
+        .map_err(map_candle)?;
+    let scale = 1.0 / keep_prob;
+    x.mul(&mask)
+        .map_err(map_candle)?
+        .affine(scale, 0.0)
+        .map_err(map_candle)
 }
 
 /// Map candle errors to EmbeddingError.
@@ -327,7 +405,7 @@ mod tests {
     #[test]
     fn test_lora_adapter_zero_init() {
         let device = Device::Cpu;
-        let adapter = LoraAdapter::new(8, 4, 1.0, &device).unwrap();
+        let adapter = LoraAdapter::new(8, 4, 1.0, 0.0, &device).unwrap();
 
         // B initialized to zero → LoRA output should be zero
         let x = Tensor::ones((2, 8), DType::F32, &device).unwrap();
@@ -361,7 +439,7 @@ mod tests {
     #[test]
     fn test_lora_forward_shape() {
         let device = Device::Cpu;
-        let adapter = LoraAdapter::new(8, 4, 1.0, &device).unwrap();
+        let adapter = LoraAdapter::new(8, 4, 1.0, 0.0, &device).unwrap();
 
         let x = Tensor::ones((3, 8), DType::F32, &device).unwrap();
         let output = adapter.forward(&x).unwrap();

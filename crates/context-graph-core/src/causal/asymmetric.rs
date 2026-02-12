@@ -52,17 +52,17 @@ pub mod direction_mod {
 
 /// Causal content gate thresholds.
 ///
-/// Post-training E5 score distribution (GPU benchmark 2026-02-11, re-trained):
-///   causal mean=0.384, non-causal mean=0.140, gap=0.244
-/// Thresholds calibrated for 3-stage trained LoRA+projection model (nomic-embed-text-v1.5).
+/// Post-training E5 score distribution (GPU benchmark 2026-02-12, forensic-fixes re-trained):
+///   causal mean=0.170, non-causal mean=0.011, gap=0.159
+/// Thresholds calibrated for 3-stage trained LoRA+projection+dropout model (nomic-embed-text-v1.5).
 /// Untrained model scores 0.93-0.98 (all above CAUSAL_THRESHOLD → gate boosts everything equally, no-op).
 pub mod causal_gate {
     /// Minimum E5 score to consider content "definitely causal"
-    /// Calibrated: causal mean=0.384, this captures ~90% of causal content (TPR=0.93)
-    pub const CAUSAL_THRESHOLD: f32 = 0.30;
+    /// Calibrated: causal mean=0.170, this captures ~80% of causal content
+    pub const CAUSAL_THRESHOLD: f32 = 0.12;
     /// Maximum E5 score to consider content "definitely non-causal"
-    /// Calibrated: non-causal mean=0.140, this catches ~85% of non-causal content
-    pub const NON_CAUSAL_THRESHOLD: f32 = 0.22;
+    /// Calibrated: non-causal mean=0.011, this catches ~90% of non-causal content
+    pub const NON_CAUSAL_THRESHOLD: f32 = 0.06;
     /// Boost applied to results that pass the causal gate (for causal queries).
     /// Increased from 1.05 to 1.10 — the 98% TNR gives confidence in gate accuracy,
     /// and a stronger boost ensures causal content outranks non-causal noise.
@@ -103,9 +103,11 @@ pub fn apply_causal_gate(original_score: f32, e5_score: f32, is_causal_query: bo
 
 /// Infer causal direction from a fingerprint's E5 dual vectors.
 ///
-/// Compares the L2 norms of the cause and effect projections.
-/// Content that is cause-oriented will have a stronger cause vector;
-/// content that is effect-oriented will have a stronger effect vector.
+/// Compares the component variance of the cause and effect projections.
+/// Both vectors are L2-normalized (magnitude ≈ 1.0), so comparing L2 norms
+/// is useless. Instead, higher component variance indicates a more peaked/
+/// concentrated distribution, meaning the projection head found a more
+/// specific representation for that causal role.
 ///
 /// # Arguments
 ///
@@ -113,8 +115,8 @@ pub fn apply_causal_gate(original_score: f32, e5_score: f32, is_causal_query: bo
 ///
 /// # Returns
 ///
-/// - `Cause` if cause vector norm > effect * 1.1 (10% threshold)
-/// - `Effect` if effect vector norm > cause * 1.1
+/// - `Cause` if cause vector variance > effect variance × 1.05 (5% threshold)
+/// - `Effect` if effect vector variance > cause variance × 1.05
 /// - `Unknown` if roughly equal or vectors are empty
 pub fn infer_direction_from_fingerprint(
     fp: &crate::types::fingerprint::SemanticFingerprint,
@@ -126,17 +128,39 @@ pub fn infer_direction_from_fingerprint(
         return CausalDirection::Unknown;
     }
 
-    let cause_mag_sq: f32 = cause_vec.iter().map(|x| x * x).sum();
-    let effect_mag_sq: f32 = effect_vec.iter().map(|x| x * x).sum();
+    // Compare component variance: higher variance = more peaked distribution.
+    // For L2-normalized vectors, variance = (1/D) - mean², so comparing variances
+    // detects which projection head produced a more concentrated representation.
+    let cause_var = component_variance(cause_vec);
+    let effect_var = component_variance(effect_vec);
 
-    // Use 10% threshold for significance (1.1^2 = 1.21)
-    if cause_mag_sq > effect_mag_sq * 1.21 {
+    // Guard against both-zero variance (e.g. uniform or constant vectors)
+    if cause_var < 1e-12 && effect_var < 1e-12 {
+        return CausalDirection::Unknown;
+    }
+
+    // 5% threshold to avoid classifying noise as direction
+    if cause_var > effect_var * 1.05 {
         CausalDirection::Cause
-    } else if effect_mag_sq > cause_mag_sq * 1.21 {
+    } else if effect_var > cause_var * 1.05 {
         CausalDirection::Effect
     } else {
         CausalDirection::Unknown
     }
+}
+
+/// Compute variance of vector components.
+///
+/// For L2-normalized vectors, higher variance indicates a more peaked/concentrated
+/// distribution (fewer dominant dimensions), while lower variance indicates a more
+/// uniform distribution (energy spread across many dimensions).
+fn component_variance(vec: &[f32]) -> f32 {
+    let n = vec.len() as f32;
+    if n < 1.0 {
+        return 0.0;
+    }
+    let mean = vec.iter().sum::<f32>() / n;
+    vec.iter().map(|x| (x - mean).powi(2)).sum::<f32>() / n
 }
 
 /// Causal direction for asymmetric similarity computation.
@@ -916,6 +940,9 @@ pub fn detect_causal_query_intent(query: &str) -> CausalDirection {
 fn is_negated_at(text: &str, match_pos: usize, negation_tokens: &[&str]) -> bool {
     let window_start = match_pos.saturating_sub(15);
     let window_end = (match_pos + 1).min(text.len());
+    // Snap to char boundaries to avoid panicking on multi-byte UTF-8 characters
+    let window_start = text.floor_char_boundary(window_start);
+    let window_end = text.ceil_char_boundary(window_end);
     let window = &text[window_start..window_end];
     negation_tokens.iter().any(|neg| window.contains(neg))
 }

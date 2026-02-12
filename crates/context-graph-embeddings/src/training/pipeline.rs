@@ -533,6 +533,9 @@ impl CausalTrainingPipeline {
 
             // Evaluate periodically
             if epoch % self.config.eval_every == 0 || epoch == num_epochs {
+                // Disable dropout for evaluation (inference mode)
+                let was_training = self.lora.training.get();
+                self.lora.set_training(false);
                 let metrics = self.evaluate(eval_loader, weights, tokenizer, trainer.projection(), use_lora)?;
                 tracing::info!("Stage {} Eval: {}", stage, metrics.summary());
 
@@ -569,6 +572,7 @@ impl CausalTrainingPipeline {
                         stage,
                         epoch
                     );
+                    // No need to restore training flag — we're returning
                     return Ok(StageResult {
                         stage,
                         epochs_completed,
@@ -577,6 +581,9 @@ impl CausalTrainingPipeline {
                         early_stopped: true,
                     });
                 }
+
+                // Restore training mode after evaluation
+                self.lora.set_training(was_training);
             }
 
             // Early stopping check
@@ -735,6 +742,11 @@ impl CausalTrainingPipeline {
             // If no easy pairs, use all pairs
             let stage1_pairs = if easy_count < 4 { train_pairs.clone() } else { easy_pairs };
 
+            // Compute total_steps from data size (not default 1000) for correct LR schedule.
+            let mut stage1_optimizer_config = AdamWConfig::default();
+            let stage1_total_steps = (stage1_pairs.len() / self.config.batch_size + 1) * self.config.stage1_epochs as usize;
+            stage1_optimizer_config.total_steps = stage1_total_steps;
+
             let mut stage1_train = CausalDataLoader::new(stage1_pairs, self.config.batch_size, self.config.seed);
             let mut stage1_eval = CausalDataLoader::new(eval_pairs.clone(), self.config.batch_size, self.config.seed + 1);
 
@@ -744,6 +756,7 @@ impl CausalTrainingPipeline {
                 eval_every: self.config.eval_every,
                 early_stopping_patience: self.config.early_stopping_patience,
                 checkpoint_dir: self.config.output_dir.clone(),
+                optimizer_config: stage1_optimizer_config,
                 ..Default::default()
             };
 
@@ -833,6 +846,9 @@ impl CausalTrainingPipeline {
                 tracing::info!("Stage 2: registered {} multi-task params", heads.total_params());
             }
 
+            // Enable LoRA dropout for training regularization (F-7 fix)
+            self.lora.set_training(true);
+
             let stage2_result = self.run_stage(
                 2,
                 &mut trainer,
@@ -844,6 +860,9 @@ impl CausalTrainingPipeline {
                 true, // Multi-task active in Stage 2
                 true, // LoRA active in Stage 2
             )?;
+
+            // Disable LoRA dropout for inference/checkpointing
+            self.lora.set_training(false);
 
             if let Some(ref m) = stage2_result.best_metrics {
                 let is_better = best_overall.as_ref()
@@ -926,6 +945,9 @@ impl CausalTrainingPipeline {
                 }
             }
 
+            // Enable LoRA dropout for training regularization (F-7 fix)
+            self.lora.set_training(true);
+
             let stage3_result = self.run_stage(
                 3,
                 &mut trainer,
@@ -937,6 +959,9 @@ impl CausalTrainingPipeline {
                 true, // Multi-task active in Stage 3
                 true, // LoRA active in Stage 3
             )?;
+
+            // Disable LoRA dropout for inference/checkpointing
+            self.lora.set_training(false);
 
             if let Some(ref m) = stage3_result.best_metrics {
                 let is_better = best_overall.as_ref()

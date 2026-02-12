@@ -278,38 +278,11 @@ pub fn compute_similarity_for_space_with_direction(
 
 /// Infer causal direction from a stored fingerprint's E5 vectors.
 ///
-/// Compares the magnitude of cause vs effect vectors to determine
-/// which direction the document emphasizes.
-///
-/// # Returns
-/// - `Cause` if cause vector magnitude > effect * 1.1
-/// - `Effect` if effect vector magnitude > cause * 1.1
-/// - `Unknown` if roughly equal (within 10%)
+/// Delegates to the canonical implementation in `causal::asymmetric`.
 fn infer_direction_from_fingerprint(
     fp: &SemanticFingerprint,
 ) -> crate::causal::asymmetric::CausalDirection {
-    use crate::causal::asymmetric::CausalDirection;
-
-    let cause_vec = fp.get_e5_as_cause();
-    let effect_vec = fp.get_e5_as_effect();
-
-    // Handle empty vectors
-    if cause_vec.is_empty() || effect_vec.is_empty() {
-        return CausalDirection::Unknown;
-    }
-
-    let cause_mag_sq: f32 = cause_vec.iter().map(|x| x * x).sum();
-    let effect_mag_sq: f32 = effect_vec.iter().map(|x| x * x).sum();
-
-    // Use 10% threshold for significance
-    if cause_mag_sq > effect_mag_sq * 1.21 {
-        // 1.1^2 = 1.21
-        CausalDirection::Cause
-    } else if effect_mag_sq > cause_mag_sq * 1.21 {
-        CausalDirection::Effect
-    } else {
-        CausalDirection::Unknown
-    }
+    crate::causal::asymmetric::infer_direction_from_fingerprint(fp)
 }
 
 /// Compute all 13 similarities between query and memory fingerprints.
@@ -1078,32 +1051,55 @@ mod tests {
     fn test_infer_direction_from_fingerprint() {
         use crate::causal::asymmetric::CausalDirection;
 
-        // Test cause-dominant fingerprint
+        // Test cause-dominant fingerprint (peaked cause vector, uniform effect vector).
+        // Both vectors are L2-normalized (as in production), so direction is inferred
+        // from component variance, not magnitude.
         let mut cause_doc = SemanticFingerprint::zeroed();
-        cause_doc.e5_causal_as_cause = vec![1.0; 768];  // High cause magnitude
-        cause_doc.e5_causal_as_effect = vec![0.1; 768]; // Low effect magnitude
+        // Peaked cause vector: first 20 dims large, rest small → high variance
+        let mut cause_v = vec![0.01_f32; 768];
+        for v in cause_v.iter_mut().take(20) {
+            *v = 0.2;
+        }
+        let norm: f32 = cause_v.iter().map(|x| x * x).sum::<f32>().sqrt();
+        for v in cause_v.iter_mut() {
+            *v /= norm;
+        }
+        cause_doc.e5_causal_as_cause = cause_v;
+        // Uniform effect vector: all components equal → zero variance
+        cause_doc.e5_causal_as_effect = vec![1.0 / (768.0_f32).sqrt(); 768];
+
         let dir = infer_direction_from_fingerprint(&cause_doc);
         assert!(
             matches!(dir, CausalDirection::Cause),
-            "Expected Cause for cause-dominant fingerprint, got {:?}",
+            "Expected Cause for peaked-cause fingerprint, got {:?}",
             dir
         );
 
-        // Test effect-dominant fingerprint
+        // Test effect-dominant fingerprint (uniform cause, peaked effect)
         let mut effect_doc = SemanticFingerprint::zeroed();
-        effect_doc.e5_causal_as_cause = vec![0.1; 768];  // Low cause magnitude
-        effect_doc.e5_causal_as_effect = vec![1.0; 768]; // High effect magnitude
+        effect_doc.e5_causal_as_cause = vec![1.0 / (768.0_f32).sqrt(); 768];
+        let mut effect_v = vec![0.01_f32; 768];
+        for v in effect_v.iter_mut().take(20) {
+            *v = 0.2;
+        }
+        let norm: f32 = effect_v.iter().map(|x| x * x).sum::<f32>().sqrt();
+        for v in effect_v.iter_mut() {
+            *v /= norm;
+        }
+        effect_doc.e5_causal_as_effect = effect_v;
+
         let dir = infer_direction_from_fingerprint(&effect_doc);
         assert!(
             matches!(dir, CausalDirection::Effect),
-            "Expected Effect for effect-dominant fingerprint, got {:?}",
+            "Expected Effect for peaked-effect fingerprint, got {:?}",
             dir
         );
 
-        // Test balanced fingerprint (within 10% threshold)
+        // Test balanced fingerprint (same distribution → same variance → Unknown)
         let mut balanced_doc = SemanticFingerprint::zeroed();
-        balanced_doc.e5_causal_as_cause = vec![1.0; 768];
-        balanced_doc.e5_causal_as_effect = vec![1.0; 768]; // Same magnitude
+        let uniform = vec![1.0 / (768.0_f32).sqrt(); 768];
+        balanced_doc.e5_causal_as_cause = uniform.clone();
+        balanced_doc.e5_causal_as_effect = uniform;
         let dir = infer_direction_from_fingerprint(&balanced_doc);
         assert!(
             matches!(dir, CausalDirection::Unknown),
@@ -1111,7 +1107,7 @@ mod tests {
             dir
         );
 
-        println!("[PASS] infer_direction_from_fingerprint correctly categorizes documents");
+        println!("[PASS] infer_direction_from_fingerprint correctly categorizes L2-normalized documents");
     }
 
     #[test]
