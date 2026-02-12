@@ -19,28 +19,6 @@ fn test_validation_fails_zero_payload() {
 }
 
 // =========================================================================
-// TC-GHOST-006: Configuration & Infrastructure Tests - Validation
-// =========================================================================
-
-#[test]
-fn test_config_validation_embedding_dimension_zero() {
-    // TC-GHOST-006: Embedding dimension 0 must fail validation
-    let mut config = Config::default_config();
-    config.embedding.dimension = 0;
-
-    let result = config.validate();
-    assert!(
-        result.is_err(),
-        "Embedding dimension 0 must fail validation"
-    );
-    let err_msg = result.unwrap_err().to_string();
-    assert!(
-        err_msg.contains("embedding.dimension"),
-        "Error must mention embedding.dimension"
-    );
-}
-
-// =========================================================================
 // Phase-Aware Safety Validation Tests (P0-FIX-2)
 // Per Constitution AP-007: No stubs or fallbacks in production code paths
 // =========================================================================
@@ -278,8 +256,6 @@ fn test_production_phase_accepts_valid_config() {
         phase: Phase::Production,
         embedding: EmbeddingConfig {
             model: "multi_array_13".to_string(),
-            dimension: 11264,
-            max_input_length: 8191,
         },
         storage: StorageConfig {
             backend: "rocksdb".to_string(),
@@ -293,7 +269,6 @@ fn test_production_phase_accepts_valid_config() {
         },
         utl: UtlConfig {
             mode: "real".to_string(),
-            default_emotional_weight: 1.0,
             consolidation_threshold: 0.7,
         },
         ..Default::default()

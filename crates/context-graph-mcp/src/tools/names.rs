@@ -122,11 +122,6 @@ pub const TRAVERSE_GRAPH: &str = "traverse_graph";
 /// Per AP-60: Temporal embedders (E2-E4) excluded from semantic fusion.
 pub const GET_UNIFIED_NEIGHBORS: &str = "get_unified_neighbors";
 
-// ========== TRAINING TOOLS (Causal Embedder Fine-Tuning) ==========
-/// Train, evaluate, or incrementally update the E5 causal embedder projections.
-/// Supports full training, evaluation-only, and incremental distillation modes.
-pub const TRAIN_CAUSAL_EMBEDDER: &str = "train_causal_embedder";
-
 // ========== PROVENANCE TOOLS (Phase P3 - Provenance Queries) ==========
 /// Query audit log for a specific memory or time range.
 pub const GET_AUDIT_TRAIL: &str = "get_audit_trail";

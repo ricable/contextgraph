@@ -40,11 +40,6 @@ mod marker_detection;
 mod model;
 mod state;
 
-// DEPRECATED: projections.rs is kept for reference but no longer used.
-// E5-base-v2 uses prefix-based asymmetry, not projection matrices.
-// Items inside are marked #[deprecated] individually.
-mod projections;
-
 // Re-export public API
 pub use constants::{
     CONTEXTUAL_DIMENSION, CONTEXTUAL_HIDDEN_SIZE, CONTEXTUAL_INTERMEDIATE_SIZE,
@@ -61,7 +56,3 @@ pub use marker_detection::{
 };
 
 pub use model::ContextualModel;
-
-// DEPRECATED exports - kept for backwards compatibility but will be removed
-#[allow(deprecated)]
-pub use projections::{ContextProjectionWeights, CONTEXT_PROJECTION_SEED};

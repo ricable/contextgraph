@@ -733,7 +733,7 @@ impl Handlers {
                             }));
 
                             if let Err(e) = self.teleological_store.append_audit_record(&audit_record).await {
-                                warn!(error = %e, "trigger_causal_discovery: Failed to write audit record (non-fatal)");
+                                error!(error = %e, "trigger_causal_discovery: Failed to write audit record (non-fatal)");
                             }
                         }
 

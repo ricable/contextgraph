@@ -547,7 +547,7 @@ impl Handlers {
                     }));
 
                     if let Err(e) = self.teleological_store.append_audit_record(&audit_record).await {
-                        warn!(error = %e, topic_id = %topic_id, "detect_topics: Failed to write TopicDetected audit (non-fatal)");
+                        error!(error = %e, topic_id = %topic_id, "detect_topics: Failed to write TopicDetected audit (non-fatal)");
                     }
                 }
 

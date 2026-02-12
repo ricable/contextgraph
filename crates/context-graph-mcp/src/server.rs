@@ -463,7 +463,11 @@ impl McpServer {
         // 3. Create Handlers (PRD v6 Section 10 - 14 tools)
         // ==========================================================================
         let layer_status_provider: Arc<dyn context_graph_core::monitoring::LayerStatusProvider> =
-            Arc::new(context_graph_core::monitoring::StubLayerStatusProvider::new());
+            Arc::new(crate::monitoring::LiveLayerStatusProvider::new(
+                Arc::clone(&models_loading),
+                Arc::clone(&models_failed),
+                Arc::clone(&teleological_store),
+            ));
 
         // ==========================================================================
         // 3a. E7-WIRING: Optional Code Pipeline Initialization

@@ -410,7 +410,7 @@ impl Handlers {
         }));
 
         if let Err(e) = self.teleological_store.append_audit_record(&audit_record).await {
-            warn!(error = %e, "delete_file_content: Failed to write audit record (non-fatal)");
+            error!(error = %e, "delete_file_content: Failed to write audit record (non-fatal)");
         }
 
         let response = DeleteFileContentResponse {
@@ -562,7 +562,7 @@ impl Handlers {
             }));
 
             if let Err(e) = self.teleological_store.append_audit_record(&audit_record).await {
-                warn!(error = %e, "reconcile_files: Failed to write audit record (non-fatal)");
+                error!(error = %e, "reconcile_files: Failed to write audit record (non-fatal)");
             }
         }
 

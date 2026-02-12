@@ -114,20 +114,6 @@ impl Embedder {
     /// Total number of embedders in the system.
     pub const COUNT: usize = 13;
 
-    /// Deprecated alias for E8_Emotional.
-    ///
-    /// # Deprecation
-    ///
-    /// Use `Embedder::Emotional` instead. This alias will be removed
-    /// in a future release.
-    ///
-    /// # Warning
-    ///
-    /// Using this constant emits a deprecation warning at compile time.
-    #[deprecated(since = "0.9.0", note = "Use Embedder::Emotional instead")]
-    #[allow(non_upper_case_globals)]
-    pub const Graph: Self = Self::Emotional;
-
     /// Get the array index for this embedder (0-12).
     #[inline]
     pub fn index(self) -> usize {

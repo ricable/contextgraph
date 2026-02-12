@@ -1,7 +1,7 @@
 //! Maintenance tool handlers for data repair and cleanup.
 
 use serde_json::json;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use context_graph_core::types::audit::{AuditOperation, AuditRecord};
@@ -52,7 +52,7 @@ impl Handlers {
                 }));
 
                 if let Err(e) = self.teleological_store.append_audit_record(&audit_record).await {
-                    warn!(error = %e, "repair_causal_relationships: Failed to write audit record (non-fatal)");
+                    error!(error = %e, "repair_causal_relationships: Failed to write audit record (non-fatal)");
                 }
 
                 self.tool_result(

@@ -253,16 +253,12 @@ impl Default for StorageConfig {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EmbeddingConfig {
     pub model: String,
-    pub dimension: usize,
-    pub max_input_length: usize,
 }
 
 impl Default for EmbeddingConfig {
     fn default() -> Self {
         Self {
             model: "stub".to_string(),
-            dimension: 1536,
-            max_input_length: 8191,
         }
     }
 }
@@ -289,7 +285,6 @@ impl Default for IndexConfig {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UtlConfig {
     pub mode: String,
-    pub default_emotional_weight: f32,
     pub consolidation_threshold: f32,
 }
 
@@ -297,30 +292,7 @@ impl Default for UtlConfig {
     fn default() -> Self {
         Self {
             mode: "stub".to_string(),
-            default_emotional_weight: 1.0,
             consolidation_threshold: 0.7,
-        }
-    }
-}
-
-/// Feature flags for enabling/disabling system components.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct FeatureFlags {
-    pub utl_enabled: bool,
-    pub dream_enabled: bool,
-    pub neuromodulation_enabled: bool,
-    pub active_inference_enabled: bool,
-    pub immune_enabled: bool,
-}
-
-impl Default for FeatureFlags {
-    fn default() -> Self {
-        Self {
-            utl_enabled: true,
-            dream_enabled: false,
-            neuromodulation_enabled: false,
-            active_inference_enabled: false,
-            immune_enabled: false,
         }
     }
 }
@@ -328,7 +300,6 @@ impl Default for FeatureFlags {
 /// CUDA/GPU configuration.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CudaConfig {
-    pub enabled: bool,
     pub device_id: u32,
     pub memory_limit_gb: f32,
 }
@@ -336,7 +307,6 @@ pub struct CudaConfig {
 impl Default for CudaConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
             device_id: 0,
             memory_limit_gb: 4.0,
         }

@@ -60,13 +60,17 @@ mod tests {
         let results = batch_quantize(&embeddings, Precision::Int8);
 
         assert_eq!(results.len(), 5);
-        for result in results {
-            assert!(result.is_ok());
+        for (i, result) in results.iter().enumerate() {
+            let quantized = result.as_ref().unwrap_or_else(|e| {
+                panic!("batch_quantize[{}] failed: {}", i, e)
+            });
+            assert_eq!(quantized.precision, Precision::Int8);
+            assert!(!quantized.data.is_empty(), "quantized data should not be empty");
         }
     }
 
     #[test]
-    fn test_batch_dequantize() {
+    fn test_batch_dequantize_round_trip() {
         let embeddings: Vec<_> = (0..5).map(|_| test_embedding(10)).collect();
         let quantized: Vec<_> = embeddings
             .iter()
@@ -76,8 +80,20 @@ mod tests {
         let results: Vec<Result<TokenPruningEmbedding, _>> = batch_dequantize(&quantized);
 
         assert_eq!(results.len(), 5);
-        for result in results {
-            assert!(result.is_ok());
+        for (i, result) in results.iter().enumerate() {
+            let reconstructed = result.as_ref().unwrap_or_else(|e| {
+                panic!("batch_dequantize[{}] failed: {}", i, e)
+            });
+            // Verify round-trip preserves structure
+            assert_eq!(reconstructed.num_tokens, embeddings[i].num_tokens,
+                "round-trip should preserve token count");
+            assert_eq!(reconstructed.values.len(), embeddings[i].values.len(),
+                "round-trip should preserve value count");
+            // Int8 quantization introduces error; verify values are close
+            for (j, (orig, recon)) in embeddings[i].values.iter().zip(reconstructed.values.iter()).enumerate() {
+                assert!((orig - recon).abs() < 0.01,
+                    "round-trip error too large at [{}][{}]: orig={}, reconstructed={}", i, j, orig, recon);
+            }
         }
     }
 

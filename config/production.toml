@@ -15,16 +15,13 @@ postgres_url = "${POSTGRES_URL}"
 
 [embeddings]
 provider = "local"
-dimension = 1536
 model_path = "models/all-MiniLM-L6-v2"
 
 [cuda]
-enabled = true
 device_id = 0
 
 [utl]
 consolidation_threshold = 0.7
-default_emotional_weight = 1.0
 
 [graph]
 max_edges_per_node = 1000

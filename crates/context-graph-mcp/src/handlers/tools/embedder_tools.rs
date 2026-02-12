@@ -258,7 +258,7 @@ impl Handlers {
             }));
 
             if let Err(e) = self.teleological_store.append_audit_record(&audit_record).await {
-                warn!(error = %e, "search_by_embedder: Failed to write audit record (non-fatal)");
+                error!(error = %e, "search_by_embedder: Failed to write audit record (non-fatal)");
             }
         }
 
@@ -639,7 +639,7 @@ impl Handlers {
             }));
 
             if let Err(e) = self.teleological_store.append_audit_record(&audit_record).await {
-                warn!(error = %e, "compare_embedder_views: Failed to write audit record (non-fatal)");
+                error!(error = %e, "compare_embedder_views: Failed to write audit record (non-fatal)");
             }
         }
 
@@ -1297,7 +1297,7 @@ impl Handlers {
             }));
 
             if let Err(e) = self.teleological_store.append_audit_record(&audit_record).await {
-                warn!(error = %e, "search_cross_embedder_anomalies: Failed to write audit record (non-fatal)");
+                error!(error = %e, "search_cross_embedder_anomalies: Failed to write audit record (non-fatal)");
             }
         }
 

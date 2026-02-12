@@ -100,4 +100,3 @@ path = "src/bin/train_causal.rs"
 default = ["candle"]
 candle = ["dep:candle-core", "dep:candle-nn", "dep:tokenizers", "dep:tracing-subscriber"]  # Candle ML framework with CUDA 13.x (REQUIRED)
 cuda = ["candle"]   # Alias for candle - Full CUDA acceleration via Candle (RTX 5090)
-onnx = []           # Future: ONNX Runtime support

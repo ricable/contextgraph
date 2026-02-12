@@ -40,9 +40,6 @@ pub use contextual::{
     // E5-base-v2 prefix constants
     INTENT_PREFIX, CONTEXT_PREFIX,
 };
-// Deprecated re-exports for backwards compatibility
-#[allow(deprecated)]
-pub use contextual::{ContextProjectionWeights, CONTEXT_PROJECTION_SEED};
 pub use code::{
     CodeModel, CODE_LATENCY_BUDGET_MS, CODE_MAX_TOKENS, CODE_MODEL_NAME, CODE_NATIVE_DIMENSION,
     CODE_PROJECTED_DIMENSION,

@@ -1335,14 +1335,6 @@ impl RocksDbTeleologicalStore {
             }
         }
 
-        // Apply legacy recency boost if configured (backward compatibility)
-        // Note: recency_boost is deprecated, use temporal_options.temporal_weight instead
-        #[allow(deprecated)]
-        if options.recency_boost > 0.0 {
-            #[allow(deprecated)]
-            self.apply_recency_boost(&mut results, query, options.recency_boost);
-        }
-
         // Apply full temporal boost system (ARCH-14) if configured
         if options.temporal_options.has_any_boost() {
             self.apply_full_temporal_boosts(&mut results, query, &options).await?;
@@ -1350,40 +1342,6 @@ impl RocksDbTeleologicalStore {
 
         debug!("Semantic search returned {} results", results.len());
         Ok(results)
-    }
-
-    /// Apply recency boost POST-retrieval.
-    ///
-    /// Per ARCH-14: Temporal is a POST-retrieval boost, not similarity.
-    /// Formula: final = semantic * (1.0 - boost) + temporal * boost
-    fn apply_recency_boost(
-        &self,
-        results: &mut [TeleologicalSearchResult],
-        _query: &SemanticFingerprint,
-        boost_factor: f32,
-    ) {
-        debug!("Applying recency boost factor: {}", boost_factor);
-
-        for result in results.iter_mut() {
-            // E2 temporal recent score (index 1)
-            let temporal_score = result.embedder_scores[1];
-
-            // Blend semantic and temporal scores
-            let original = result.similarity;
-            result.similarity = original * (1.0 - boost_factor) + temporal_score * boost_factor;
-
-            debug!(
-                "Recency boost: {} -> {} (temporal: {})",
-                original, result.similarity, temporal_score
-            );
-        }
-
-        // Re-sort after boosting
-        results.sort_by(|a, b| {
-            b.similarity
-                .partial_cmp(&a.similarity)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
     }
 
     /// Apply full temporal boost system POST-retrieval (ARCH-14).

@@ -805,7 +805,7 @@ impl Handlers {
             }));
 
             if let Err(e) = self.teleological_store.append_audit_record(&audit_record).await {
-                warn!(error = %e, "discover_graph_relationships: Failed to write audit record (non-fatal)");
+                error!(error = %e, "discover_graph_relationships: Failed to write audit record (non-fatal)");
             }
         }
 
@@ -952,7 +952,7 @@ impl Handlers {
                         }));
 
                         if let Err(e) = self.teleological_store.append_audit_record(&audit_record).await {
-                            warn!(error = %e, "validate_graph_link: Failed to write audit record (non-fatal)");
+                            error!(error = %e, "validate_graph_link: Failed to write audit record (non-fatal)");
                         }
                     }
 
@@ -1023,7 +1023,7 @@ impl Handlers {
                         }));
 
                         if let Err(e) = self.teleological_store.append_audit_record(&audit_record).await {
-                            warn!(error = %e, "validate_graph_link: Failed to write audit record (non-fatal)");
+                            error!(error = %e, "validate_graph_link: Failed to write audit record (non-fatal)");
                         }
                     }
 

@@ -87,5 +87,3 @@ tower = { version = "0.5", features = ["util"] }
 default = ["cuda"]
 candle = ["context-graph-embeddings/candle"]
 cuda = ["context-graph-cuda/cuda", "context-graph-embeddings/cuda", "context-graph-storage/cuda", "context-graph-causal-agent/cuda", "candle"]
-# Integration tests requiring real GPU/model files
-integration = []

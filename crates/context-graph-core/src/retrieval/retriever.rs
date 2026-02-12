@@ -360,11 +360,11 @@ mod tests {
     fn test_retriever_component_access() {
         let (retriever, _tmp) = create_test_retriever();
 
-        // Verify components are accessible
-        let _store_ref = retriever.store();
-        let _sim_ref = retriever.similarity();
-        let _det_ref = retriever.detector();
-        println!("[PASS] Component references accessible");
+        // Verify components return valid references with expected defaults
+        assert_eq!(retriever.detector().max_recent(), MAX_RECENT_MEMORIES);
+        // Store and similarity are accessible (would fail to compile if API changed)
+        let _store = retriever.store();
+        let _sim = retriever.similarity();
     }
 
     // =========================================================================

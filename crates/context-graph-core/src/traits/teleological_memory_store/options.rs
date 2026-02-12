@@ -1222,35 +1222,6 @@ pub struct TeleologicalSearchOptions {
     #[serde(default)]
     pub exclude_embedders: Vec<usize>,
 
-    /// **DEPRECATED**: Use `temporal_options.temporal_weight` instead.
-    ///
-    /// Legacy recency boost factor [0.0, 1.0].
-    ///
-    /// Applied POST-retrieval as: `final = semantic * (1.0 - boost) + temporal * boost`.
-    /// Uses E2 temporal embedding similarity for recency scoring.
-    ///
-    /// - `0.0`: No recency boost (default)
-    /// - `0.5`: Balance semantic and recency
-    /// - `1.0`: Strong recency preference
-    ///
-    /// Per ARCH-14: Temporal is a POST-retrieval boost, not similarity.
-    ///
-    /// # Migration
-    ///
-    /// ```ignore
-    /// // Old:
-    /// let options = TeleologicalSearchOptions::quick(10).with_recency_boost(0.3);
-    ///
-    /// // New:
-    /// let options = TeleologicalSearchOptions::quick(10)
-    ///     .with_temporal_options(TemporalSearchOptions::default()
-    ///         .with_temporal_weight(0.3)
-    ///         .with_decay_function(DecayFunction::Exponential));
-    /// ```
-    #[deprecated(since = "6.1.0", note = "Use temporal_options.temporal_weight instead")]
-    #[serde(default)]
-    pub recency_boost: f32,
-
     /// Enable E12 ColBERT re-ranking (Stage 3 in Pipeline strategy).
     ///
     /// More accurate but slower. Per AP-73: ColBERT is for re-ranking only.
@@ -1373,7 +1344,6 @@ impl TeleologicalSearchOptions {
 }
 
 impl Default for TeleologicalSearchOptions {
-    #[allow(deprecated)]
     fn default() -> Self {
         Self {
             top_k: 10,
@@ -1387,7 +1357,6 @@ impl Default for TeleologicalSearchOptions {
             weight_profile: None,
             custom_weights: None,
             exclude_embedders: Vec::new(),
-            recency_boost: 0.0, // Deprecated: use temporal_options.temporal_weight
             enable_rerank: false,
             rerank_weight: Self::default_rerank_weight(),
             normalization: NormalizationStrategyOption::default(),
@@ -1509,52 +1478,6 @@ impl TeleologicalSearchOptions {
     #[inline]
     pub fn with_exclude_embedders(mut self, indices: Vec<usize>) -> Self {
         self.exclude_embedders = indices;
-        self
-    }
-
-    /// Set the recency boost factor.
-    ///
-    /// Applied POST-retrieval as: `final = semantic * (1.0 - boost) + temporal * boost`.
-    ///
-    /// # Arguments
-    ///
-    /// * `factor` - Boost factor [0.0, 1.0]. Clamped to valid range.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use context_graph_core::traits::TeleologicalSearchOptions;
-    ///
-    /// // DEPRECATED: Use with_temporal_options instead
-    /// let opts = TeleologicalSearchOptions::quick(10)
-    ///     .with_recency_boost(0.3);
-    /// ```
-    #[deprecated(since = "6.1.0", note = "Use with_temporal_options instead")]
-    #[inline]
-    #[allow(deprecated)]
-    pub fn with_recency_boost(mut self, factor: f32) -> Self {
-        self.recency_boost = factor.clamp(0.0, 1.0);
-        self
-    }
-
-    /// Migrate legacy recency_boost to temporal_options.
-    ///
-    /// Call this on options to ensure backward compatibility.
-    /// If recency_boost is set (>0) but temporal_options.temporal_weight is not,
-    /// this will migrate the value.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let mut opts = legacy_options.migrate_legacy();
-    /// // Now uses temporal_options.temporal_weight instead of recency_boost
-    /// ```
-    #[allow(deprecated)]
-    pub fn migrate_legacy(mut self) -> Self {
-        if self.recency_boost > 0.0 && self.temporal_options.temporal_weight == 0.0 {
-            self.temporal_options.temporal_weight = self.recency_boost;
-            self.temporal_options.decay_function = DecayFunction::Exponential;
-        }
         self
     }
 
@@ -1728,8 +1651,7 @@ impl TeleologicalSearchOptions {
     ///
     /// Applied as: `final = semantic * (1.0 - weight) + temporal * weight`.
     ///
-    /// Note: This sets `temporal_options.temporal_weight`. If you need the legacy
-    /// `recency_boost` behavior, use `with_recency_boost()` instead.
+    /// This sets `temporal_options.temporal_weight`.
     ///
     /// # Arguments
     ///

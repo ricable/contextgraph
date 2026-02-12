@@ -176,6 +176,7 @@ impl TeleologicalMemoryStore for InMemoryTeleologicalStore {
 
     async fn compact(&self) -> CoreResult<()> {
         let deleted_ids: Vec<Uuid> = self.deleted.iter().map(|r| *r.key()).collect();
+        let removed_count = deleted_ids.len();
         for id in deleted_ids {
             if let Some((_, fp)) = self.data.remove(&id) {
                 let size = Self::estimate_fingerprint_size(&fp);
@@ -185,7 +186,7 @@ impl TeleologicalMemoryStore for InMemoryTeleologicalStore {
         }
         info!(
             "Compaction complete: removed {} soft-deleted entries",
-            self.deleted.len()
+            removed_count
         );
         Ok(())
     }

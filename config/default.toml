@@ -24,22 +24,16 @@ sqlite_path = "data/context-graph.db"
 [embeddings]
 # Embedding provider: "stub", "local", "openai"
 provider = "stub"
-# Embedding dimension
-dimension = 1536
 # Local model path (only used when provider = "local")
 # model_path = "models/all-MiniLM-L6-v2"
 
 [cuda]
-# Enable CUDA acceleration
-enabled = false
 # Target device ID
 device_id = 0
 
 [utl]
 # Consolidation threshold for memory nodes
 consolidation_threshold = 0.7
-# Default emotional state weight
-default_emotional_weight = 1.0
 
 [graph]
 # Maximum edges per node

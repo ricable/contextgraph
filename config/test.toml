@@ -13,10 +13,9 @@ backend = "memory"
 
 [embeddings]
 provider = "stub"
-dimension = 384  # Smaller for faster tests
 
 [cuda]
-enabled = false
+device_id = 0
 
 [utl]
 consolidation_threshold = 0.5

@@ -404,7 +404,7 @@ impl Handlers {
 
                     if let Err(e) = self.teleological_store.append_audit_record(&audit_record).await {
                         // Non-fatal: audit is secondary to the main operation
-                        warn!(
+                        error!(
                             fingerprint_id = %fingerprint_id,
                             error = %e,
                             "store_memory: Failed to append audit record (memory stored successfully)"
@@ -1656,7 +1656,7 @@ impl Handlers {
                     }));
 
                     if let Err(e) = self.teleological_store.append_audit_record(&audit_record).await {
-                        warn!(error = %e, "search_graph: Failed to write audit record (non-fatal)");
+                        error!(error = %e, "search_graph: Failed to write audit record (non-fatal)");
                     }
                 }
 
@@ -1691,11 +1691,10 @@ fn get_e5_causal_weight(profile_name: &str) -> f32 {
 
 /// Apply asymmetric E5 reranking to search results using binary causal gate.
 ///
-/// E5 scores are degenerate (0.93-0.98 for all text). Instead of continuous
-/// blending which injects noise, we use a binary gate:
-/// - E5 >= 0.94 → result is "definitely causal" → 1.05x boost
-/// - E5 <= 0.92 → result is "definitely non-causal" → 0.90x demotion
-/// - E5 in (0.92, 0.94) → ambiguous → no change
+/// After LoRA training, E5 scores are calibrated (0.05-0.58 range). Binary gate:
+/// - E5 >= 0.30 (CAUSAL_THRESHOLD) → "definitely causal" → 1.10x boost
+/// - E5 <= 0.22 (NON_CAUSAL_THRESHOLD) → "definitely non-causal" → 0.85x demotion
+/// - E5 in (0.22, 0.30) → ambiguous dead zone → no change
 ///
 /// This is Occam's razor: the simplest model that matches E5's actual signal.
 ///
@@ -2147,83 +2146,69 @@ mod tests {
     use super::{MAX_RATIONALE_LEN, MAX_TOP_K, MIN_RATIONALE_LEN, MIN_TOP_K};
 
     #[test]
-    fn rationale_constants_match_prd() {
-        // Per PRD 0.3: rationale is REQUIRED (1-1024 chars)
-        assert_eq!(MIN_RATIONALE_LEN, 1);
-        assert_eq!(MAX_RATIONALE_LEN, 1024);
-    }
-
-    #[test]
-    fn topk_constants_match_prd() {
-        // Per PRD Section 10: topK must be 1-100
-        assert_eq!(MIN_TOP_K, 1);
-        assert_eq!(MAX_TOP_K, 100);
-    }
-
-    #[test]
     fn rationale_validation_boundary_cases() {
-        // Empty rationale should fail
-        let empty = "";
-        assert!(empty.len() < MIN_RATIONALE_LEN);
+        use crate::middleware::validation::validate_string_length;
 
-        // Single char (minimum valid) should pass
-        let min_valid = "x";
-        assert!(min_valid.len() >= MIN_RATIONALE_LEN);
-        assert!(min_valid.len() <= MAX_RATIONALE_LEN);
+        // Empty rationale should fail the actual validator
+        assert!(validate_string_length("rationale", "", MIN_RATIONALE_LEN, MAX_RATIONALE_LEN).is_err());
 
-        // Exactly 1024 chars (maximum valid) should pass
+        // Single char (minimum valid) should pass the actual validator
+        assert!(validate_string_length("rationale", "x", MIN_RATIONALE_LEN, MAX_RATIONALE_LEN).is_ok());
+
+        // Exactly 1024 chars (maximum valid) should pass the actual validator
         let max_valid = "x".repeat(MAX_RATIONALE_LEN);
-        assert!(max_valid.len() <= MAX_RATIONALE_LEN);
+        assert!(validate_string_length("rationale", &max_valid, MIN_RATIONALE_LEN, MAX_RATIONALE_LEN).is_ok());
 
-        // 1025 chars should fail
+        // 1025 chars should fail the actual validator
         let too_long = "x".repeat(MAX_RATIONALE_LEN + 1);
-        assert!(too_long.len() > MAX_RATIONALE_LEN);
+        assert!(validate_string_length("rationale", &too_long, MIN_RATIONALE_LEN, MAX_RATIONALE_LEN).is_err());
     }
 
     #[test]
     fn topk_validation_boundary_cases() {
-        // topK = 0 should fail
-        assert!(0 < MIN_TOP_K);
+        use crate::middleware::validation::validate_range;
+
+        // topK = 0 should fail the actual validator
+        assert!(validate_range("topK", 0_u64, MIN_TOP_K, MAX_TOP_K).is_err());
 
         // topK = 1 (minimum valid) should pass
-        assert!(1 >= MIN_TOP_K);
-        assert!(1 <= MAX_TOP_K);
+        assert!(validate_range("topK", 1_u64, MIN_TOP_K, MAX_TOP_K).is_ok());
 
         // topK = 100 (maximum valid) should pass
-        assert!(100 <= MAX_TOP_K);
+        assert!(validate_range("topK", 100_u64, MIN_TOP_K, MAX_TOP_K).is_ok());
 
         // topK = 101 should fail
-        assert!(101 > MAX_TOP_K);
+        assert!(validate_range("topK", 101_u64, MIN_TOP_K, MAX_TOP_K).is_err());
 
         // topK = 500 (original BUG-001 case) should fail
-        assert!(500 > MAX_TOP_K);
+        assert!(validate_range("topK", 500_u64, MIN_TOP_K, MAX_TOP_K).is_err());
     }
 
     #[test]
-    fn rationale_error_message_format() {
-        // Verify error message format matches handler implementation
-        let empty_error = "rationale is REQUIRED (min 1 char)";
-        assert!(empty_error.contains("REQUIRED"));
-        assert!(empty_error.contains("min 1 char"));
+    fn rationale_validation_error_fields() {
+        use crate::middleware::validation::validate_string_length;
 
-        let too_long_len = 2000_usize;
-        let too_long_error = format!(
-            "rationale must be at most {} characters, got {}",
-            MAX_RATIONALE_LEN, too_long_len
-        );
-        assert!(too_long_error.contains(&MAX_RATIONALE_LEN.to_string()));
-        assert!(too_long_error.contains(&too_long_len.to_string()));
+        // Verify the validator's error references the correct field
+        let err = validate_string_length("rationale", "", MIN_RATIONALE_LEN, MAX_RATIONALE_LEN)
+            .unwrap_err();
+        assert_eq!(err.field_name(), "rationale");
+
+        let long = "x".repeat(2000);
+        let err = validate_string_length("rationale", &long, MIN_RATIONALE_LEN, MAX_RATIONALE_LEN)
+            .unwrap_err();
+        assert_eq!(err.field_name(), "rationale");
     }
 
     #[test]
-    fn topk_error_message_format() {
-        // Verify error message format matches handler implementation
-        let too_small_error = format!("topK must be at least {}, got {}", MIN_TOP_K, 0);
-        assert!(too_small_error.contains(&MIN_TOP_K.to_string()));
+    fn topk_validation_error_fields() {
+        use crate::middleware::validation::validate_range;
 
-        let too_large_error = format!("topK must be at most {}, got {}", MAX_TOP_K, 500);
-        assert!(too_large_error.contains(&MAX_TOP_K.to_string()));
-        assert!(too_large_error.contains("500"));
+        // Verify the validator's error references the correct field
+        let err = validate_range("topK", 0_u64, MIN_TOP_K, MAX_TOP_K).unwrap_err();
+        assert_eq!(err.field_name(), "topK");
+
+        let err = validate_range("topK", 500_u64, MIN_TOP_K, MAX_TOP_K).unwrap_err();
+        assert_eq!(err.field_name(), "topK");
     }
 
     // =========================================================================

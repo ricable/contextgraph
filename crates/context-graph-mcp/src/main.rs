@@ -43,6 +43,7 @@
 mod adapters;
 mod handlers;
 mod middleware;
+mod monitoring;
 mod protocol;
 mod server;
 mod tools;

@@ -1,43 +1,20 @@
 //! Tests for default configuration values.
 
 use crate::config::{
-    Config, CudaConfig, EmbeddingConfig, FeatureFlags, LoggingConfig, McpConfig, ServerConfig,
-    StorageConfig, UtlConfig,
+    Config, CudaConfig, EmbeddingConfig, LoggingConfig, McpConfig, ServerConfig, StorageConfig,
+    UtlConfig,
 };
 
 #[test]
 fn test_default_config() {
     let config = Config::default_config();
     assert_eq!(config.server.name, "context-graph");
-    assert_eq!(config.embedding.dimension, 1536);
-    assert!(!config.cuda.enabled);
+    assert_eq!(config.cuda.device_id, 0);
 }
 
 // =========================================================================
 // TC-GHOST-006: Configuration & Infrastructure Tests - Default Values
 // =========================================================================
-
-#[test]
-fn test_feature_flags_default_values() {
-    // TC-GHOST-006: Feature flags must have correct defaults
-    let features = FeatureFlags::default();
-
-    // Ghost System phase: UTL enabled, everything else disabled
-    assert!(features.utl_enabled, "UTL must be enabled by default");
-    assert!(!features.dream_enabled, "Dream must be disabled by default");
-    assert!(
-        !features.neuromodulation_enabled,
-        "Neuromodulation must be disabled by default"
-    );
-    assert!(
-        !features.active_inference_enabled,
-        "Active inference must be disabled by default"
-    );
-    assert!(
-        !features.immune_enabled,
-        "Immune system must be disabled by default"
-    );
-}
 
 #[test]
 fn test_server_config_defaults() {
@@ -105,14 +82,6 @@ fn test_embedding_config_defaults() {
     let embedding = EmbeddingConfig::default();
 
     assert_eq!(embedding.model, "stub", "Default model must be stub");
-    assert_eq!(
-        embedding.dimension, 1536,
-        "Dimension must be 1536 (OpenAI compatible)"
-    );
-    assert_eq!(
-        embedding.max_input_length, 8191,
-        "Max input length must be 8191"
-    );
 }
 
 #[test]
@@ -121,10 +90,6 @@ fn test_utl_config_defaults() {
     let utl = UtlConfig::default();
 
     assert_eq!(utl.mode, "stub", "Default mode must be stub");
-    assert_eq!(
-        utl.default_emotional_weight, 1.0,
-        "Default emotional weight must be 1.0"
-    );
     assert_eq!(
         utl.consolidation_threshold, 0.7,
         "Consolidation threshold must be 0.7"
@@ -136,7 +101,6 @@ fn test_cuda_config_defaults() {
     // TC-GHOST-006: CUDA config must have correct defaults
     let cuda = CudaConfig::default();
 
-    assert!(!cuda.enabled, "CUDA must be disabled by default");
     assert_eq!(cuda.device_id, 0, "Default device ID must be 0");
     assert_eq!(
         cuda.memory_limit_gb, 4.0,

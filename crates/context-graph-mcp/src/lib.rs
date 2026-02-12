@@ -14,6 +14,7 @@ pub mod adapters;
 pub mod gpu_clustering;
 pub mod handlers;
 pub mod middleware;
+pub mod monitoring;
 pub mod protocol;
 pub mod server;
 pub mod tools;

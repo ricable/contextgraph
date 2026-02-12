@@ -12,11 +12,9 @@
 //! - **GroupAggregator** (011): 13D → 6D group aggregation
 //! - **FusionEngine** (012): Multi-embedding fusion orchestration
 //! - **MultiSpaceRetriever** (013): Teleological-aware retrieval
-//! - **FeedbackLearner** (014): Coherence feedback learning loop
 //! - **ProfileManager** (015): Task-specific profile management
 
 pub mod correlation_extractor;
-pub mod feedback_learner;
 pub mod fusion_engine;
 pub mod group_aggregator;
 pub mod meaning_pipeline;
@@ -27,9 +25,6 @@ pub mod tucker_decomposer;
 
 // Re-exports
 pub use correlation_extractor::CorrelationExtractor;
-pub use feedback_learner::{
-    FeedbackEvent, FeedbackLearner, FeedbackLearnerConfig, FeedbackType, LearningResult,
-};
 pub use fusion_engine::FusionEngine;
 pub use group_aggregator::GroupAggregator;
 pub use meaning_pipeline::MeaningPipeline;

@@ -103,7 +103,7 @@ impl Handlers {
                     }
 
                     if let Err(e) = self.teleological_store.append_audit_record(&audit_record).await {
-                        warn!(
+                        error!(
                             node_id = %node_id,
                             error = %e,
                             "forget_concept: Failed to append audit record (deletion completed successfully)"
@@ -268,7 +268,7 @@ impl Handlers {
                     }));
 
                     if let Err(e) = self.teleological_store.append_audit_record(&audit_record).await {
-                        warn!(
+                        error!(
                             node_id = %node_id,
                             error = %e,
                             "boost_importance: Failed to append audit record (update completed successfully)"
@@ -296,7 +296,7 @@ impl Handlers {
                     };
 
                     if let Err(e) = self.teleological_store.append_importance_change(&change_record).await {
-                        warn!(
+                        error!(
                             node_id = %node_id,
                             error = %e,
                             "boost_importance: Failed to write importance history (update completed successfully)"

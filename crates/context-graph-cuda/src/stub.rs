@@ -40,16 +40,11 @@ use crate::ops::VectorOps;
 ///
 /// Production code MUST use real CUDA implementations. This stub is
 /// gated with `#[cfg(test)]` to prevent production usage.
-#[deprecated(
-    since = "0.1.0",
-    note = "TEST ONLY: StubVectorOps violates AP-007 if used in production. Use real CUDA implementations."
-)]
 #[derive(Debug, Clone, Default)]
 pub struct StubVectorOps {
     device_name: String,
 }
 
-#[allow(deprecated)]
 impl StubVectorOps {
     /// Create a new stub vector ops instance.
     pub fn new() -> Self {
@@ -59,7 +54,6 @@ impl StubVectorOps {
     }
 }
 
-#[allow(deprecated)]
 #[async_trait]
 impl VectorOps for StubVectorOps {
     async fn cosine_similarity(&self, a: &[f32], b: &[f32]) -> CudaResult<f32> {
@@ -156,7 +150,6 @@ impl VectorOps for StubVectorOps {
 }
 
 #[cfg(test)]
-#[allow(deprecated)]
 mod tests {
     use super::*;
 

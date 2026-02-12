@@ -32,7 +32,6 @@ pub(crate) mod robustness;
 pub(crate) mod sequence;
 pub(crate) mod temporal;
 pub(crate) mod topic;
-pub(crate) mod training;
 
 use crate::tools::types::ToolDefinition;
 

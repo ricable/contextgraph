@@ -28,7 +28,6 @@
 //! assert_eq!(options.top_k, 10);
 //! ```
 
-pub mod atc;
 pub mod causal;
 pub mod clustering;
 pub mod code;
@@ -46,9 +45,7 @@ pub mod memory;
 pub mod monitoring;
 pub mod quantization;
 pub mod retrieval;
-pub mod session;
 pub mod similarity;
-pub mod steering;
 pub mod stubs;
 pub mod teleological;
 pub mod traits;

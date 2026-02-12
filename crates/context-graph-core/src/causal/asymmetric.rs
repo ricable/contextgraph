@@ -2062,15 +2062,6 @@ mod tests {
     // ============================================================================
 
     #[test]
-    fn test_causal_gate_thresholds_updated() {
-        // Verify thresholds calibrated for re-trained model (2026-02-11):
-        // causal mean=0.384, non-causal mean=0.140, gap=0.244
-        assert_eq!(causal_gate::CAUSAL_THRESHOLD, 0.30);
-        assert_eq!(causal_gate::NON_CAUSAL_THRESHOLD, 0.22);
-        println!("[VERIFIED] Gate thresholds calibrated: CAUSAL=0.30, NON_CAUSAL=0.22");
-    }
-
-    #[test]
     fn test_causal_gate_new_thresholds() {
         // Score above 0.30 → boosted (trained model: causal content mean=0.384)
         let boosted = apply_causal_gate(0.5, 0.35, true);

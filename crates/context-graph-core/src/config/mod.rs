@@ -14,8 +14,8 @@ use crate::error::{CoreError, CoreResult};
 
 // Re-export all sub-config types for backwards compatibility
 pub use sub_configs::{
-    CudaConfig, EmbeddingConfig, FeatureFlags, IndexConfig, LoggingConfig, McpConfig, ServerConfig,
-    StorageConfig, UtlConfig, WatcherConfig,
+    CudaConfig, EmbeddingConfig, IndexConfig, LoggingConfig, McpConfig, ServerConfig, StorageConfig,
+    UtlConfig, WatcherConfig,
 };
 
 // Re-export embedder configuration types (TASK-L04)
@@ -50,7 +50,6 @@ pub struct Config {
     pub embedding: EmbeddingConfig,
     pub index: IndexConfig,
     pub utl: UtlConfig,
-    pub features: FeatureFlags,
     pub cuda: CudaConfig,
     /// File watcher configuration for ./docs/ monitoring
     #[serde(default)]
@@ -88,7 +87,6 @@ impl Config {
             embedding: EmbeddingConfig::default(),
             index: IndexConfig::default(),
             utl: UtlConfig::default(),
-            features: FeatureFlags::default(),
             cuda: CudaConfig::default(),
             watcher: WatcherConfig::default(),
         }
@@ -129,12 +127,6 @@ impl Config {
         // TASK-INTEG-017: Validate MCP config including TCP transport fields
         // FAIL FAST: Any invalid MCP config stops startup immediately
         self.mcp.validate()?;
-
-        if self.embedding.dimension == 0 {
-            return Err(CoreError::ConfigError(
-                "embedding.dimension must be greater than 0".into(),
-            ));
-        }
 
         if self.storage.backend != "memory" {
             let path = PathBuf::from(&self.storage.path);
