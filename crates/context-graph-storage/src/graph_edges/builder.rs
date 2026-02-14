@@ -448,16 +448,34 @@ impl BackgroundGraphBuilder {
     ) -> GraphEdgeStorageResult<(usize, Vec<TypedEdge>)> {
         let node_ids: Vec<Uuid> = fingerprints.iter().map(|fp| fp.id).collect();
 
-        // Create embedding lookup
+        // Create embedding lookup with detailed logging
         let mut embedding_map: HashMap<(Uuid, u8), Vec<f32>> = HashMap::new();
+        let mut per_embedder_count: HashMap<u8, usize> = HashMap::new();
         for fp in fingerprints {
             for &emb_id in &self.config.active_embedders {
                 if let Some(emb) = Self::get_embedding(fp, emb_id) {
                     if !emb.is_empty() {
                         embedding_map.insert((fp.id, emb_id), emb);
+                        *per_embedder_count.entry(emb_id).or_insert(0) += 1;
                     }
                 }
             }
+        }
+
+        info!(
+            embeddings = embedding_map.len(),
+            fingerprints = node_ids.len(),
+            per_embedder = ?per_embedder_count,
+            "build_graphs_for_fingerprints: extracted embeddings"
+        );
+
+        if embedding_map.is_empty() {
+            error!(
+                "build_graphs_for_fingerprints: ZERO embeddings extracted from {} fingerprints. \
+                 Active embedders: {:?}. This means fingerprints have no embedding data.",
+                fingerprints.len(), self.config.active_embedders,
+            );
+            return Ok((0, Vec::new()));
         }
 
         // Configure graph link service
@@ -478,14 +496,15 @@ impl BackgroundGraphBuilder {
                 &node_ids,
                 |id, emb_id| embedding_map.get(&(id, emb_id)).cloned(),
                 |a, b| {
-                    // Cosine similarity
+                    // Cosine similarity — clamp to [-1, 1] to handle f32 rounding
+                    // (normalized vectors can produce dot/(|a|·|b|) slightly > 1.0)
                     let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
                     let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
                     let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
                     if norm_a == 0.0 || norm_b == 0.0 {
                         0.0
                     } else {
-                        dot / (norm_a * norm_b)
+                        (dot / (norm_a * norm_b)).clamp(-1.0, 1.0)
                     }
                 },
             )
@@ -493,19 +512,43 @@ impl BackgroundGraphBuilder {
                 message: format!("NN-Descent build failed: {}", e),
             })?;
 
-        // Store K-NN edges per embedder
+        // Log per-embedder graph statistics
+        for (embedder_id, graph) in &build_result.graphs {
+            info!(
+                embedder_id = *embedder_id,
+                nodes = graph.nodes().count(),
+                edges = graph.edges().count(),
+                "build_graphs_for_fingerprints: K-NN graph built for embedder"
+            );
+        }
+
+        // Store K-NN edges per embedder — iterate over NODES, not edges
+        // Each node's neighbor list is stored once under (embedder_id, source_id)
         let mut knn_edges_created = 0;
         for (embedder_id, graph) in &build_result.graphs {
-            for edge in graph.edges() {
-                // Store edges for this source
-                let edges = graph.get_neighbors(edge.source());
-                if !edges.is_empty() {
+            let mut sources_stored = 0;
+            for source_id in graph.nodes() {
+                let neighbors = graph.get_neighbors(source_id);
+                if !neighbors.is_empty() {
                     self.edge_repository
-                        .store_embedder_edges(*embedder_id, edge.source(), &edges)?;
-                    knn_edges_created += edges.len();
+                        .store_embedder_edges(*embedder_id, source_id, &neighbors)?;
+                    knn_edges_created += neighbors.len();
+                    sources_stored += 1;
                 }
             }
+            info!(
+                embedder_id = *embedder_id,
+                sources_stored = sources_stored,
+                edges_stored = knn_edges_created,
+                "build_graphs_for_fingerprints: stored K-NN edges for embedder"
+            );
         }
+
+        info!(
+            total_knn_edges = knn_edges_created,
+            typed_edges = build_result.typed_edges.len(),
+            "build_graphs_for_fingerprints: complete"
+        );
 
         Ok((knn_edges_created, build_result.typed_edges))
     }
@@ -516,10 +559,10 @@ impl BackgroundGraphBuilder {
     /// This is a heavy operation and should be used sparingly.
     pub async fn rebuild_all(&self) -> GraphEdgeStorageResult<RebuildResult> {
         let start = Instant::now();
-        info!("Starting full K-NN graph rebuild");
+
+        info!("rebuild_all: Starting full K-NN graph rebuild");
 
         // Get all fingerprints from store using scan_fingerprints_for_clustering
-        // This returns (id, embeddings) tuples which we can use to reconstruct fingerprints
         let all_fingerprints = self
             .teleological_store
             .scan_fingerprints_for_clustering(None)
@@ -529,7 +572,7 @@ impl BackgroundGraphBuilder {
             })?;
 
         let total_count = all_fingerprints.len();
-        info!(fingerprint_count = total_count, "Retrieved fingerprints for rebuild");
+        info!("rebuild_all: scanned {} fingerprints from store", total_count);
 
         if total_count == 0 {
             return Ok(RebuildResult {
@@ -553,12 +596,10 @@ impl BackgroundGraphBuilder {
             // Queue all IDs in this chunk, preserving any concurrently-enqueued items
             {
                 let mut queue = self.pending_queue.lock().await;
-                // Drain existing items so concurrent store_memory enqueues aren't lost
                 let saved: Vec<Uuid> = queue.drain(..).collect();
                 for id in chunk {
                     queue.push_back(*id);
                 }
-                // Re-enqueue saved items at the back so they'll be processed next
                 for id in saved {
                     if !chunk.contains(&id) {
                         queue.push_back(id);
@@ -567,38 +608,30 @@ impl BackgroundGraphBuilder {
             }
 
             // Process this batch - force processing even for small batches during rebuild
-            let result = self.process_batch_internal(1).await;
+            let result = self.process_batch_internal(1).await?;
 
-            match result {
-                Ok(result) => {
-                    batch_count += 1;
-                    total_knn_edges += result.knn_edges_created;
-                    total_typed_edges += result.typed_edges_created;
+            batch_count += 1;
+            total_knn_edges += result.knn_edges_created;
+            total_typed_edges += result.typed_edges_created;
 
-                    if !result.warnings.is_empty() {
-                        warn!(
-                            batch = batch_count,
-                            warnings = ?result.warnings,
-                            "Batch completed with warnings"
-                        );
-                    }
-                }
-                Err(e) => {
-                    error!(batch = batch_count, error = %e, "Batch processing failed");
-                    return Err(e);
-                }
+            if !result.warnings.is_empty() {
+                warn!(
+                    batch = batch_count,
+                    warnings = ?result.warnings,
+                    "Batch completed with warnings"
+                );
             }
         }
 
         let elapsed_ms = start.elapsed().as_millis() as u64;
 
         info!(
-            total_processed = total_count,
-            batch_count = batch_count,
-            total_knn_edges = total_knn_edges,
-            total_typed_edges = total_typed_edges,
+            total = total_count,
+            knn_edges = total_knn_edges,
+            typed_edges = total_typed_edges,
             elapsed_ms = elapsed_ms,
-            "Full K-NN graph rebuild complete"
+            batches = batch_count,
+            "rebuild_all: complete"
         );
 
         Ok(RebuildResult {
@@ -637,22 +670,44 @@ impl BackgroundGraphBuilder {
         };
 
         let processed_count = fingerprint_ids.len();
+        info!(
+            queued_count = processed_count,
+            "process_batch_internal: drained {} fingerprint IDs from queue",
+            processed_count
+        );
 
         // Retrieve fingerprints from store
         let mut fingerprints: Vec<TeleologicalFingerprint> = Vec::with_capacity(processed_count);
+        let mut retrieve_errors = 0usize;
+        let mut not_found = 0usize;
         for id in &fingerprint_ids {
             match self.teleological_store.retrieve(*id).await {
                 Ok(Some(fp)) => fingerprints.push(fp),
                 Ok(None) => {
+                    not_found += 1;
                     warnings.push(format!("Fingerprint {} not found in store", id));
                 }
                 Err(e) => {
+                    retrieve_errors += 1;
                     warnings.push(format!("Failed to retrieve fingerprint {}: {}", id, e));
                 }
             }
         }
 
+        info!(
+            retrieved = fingerprints.len(),
+            queued = processed_count,
+            not_found = not_found,
+            errors = retrieve_errors,
+            "process_batch_internal: retrieved fingerprints"
+        );
+
         if fingerprints.is_empty() {
+            error!(
+                "process_batch_internal: ZERO fingerprints retrieved from {} queued IDs \
+                 (not_found={}, errors={}). Warnings: {:?}",
+                processed_count, not_found, retrieve_errors, warnings
+            );
             return Ok(BatchBuildResult {
                 processed_count: 0,
                 knn_edges_created: 0,

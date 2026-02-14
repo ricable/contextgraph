@@ -707,23 +707,38 @@ impl McpServer {
             Err(e) => warn!("Failed to start background graph builder: {}", e),
         }
 
-        // BACKFILL: If edge repository has no data, trigger full rebuild for previous-session memories
+        // BACKFILL: If edge repository has no data, run full rebuild SYNCHRONOUSLY.
+        // Constitution: "JoinHandle must be awaited or aborted — never silently dropped"
+        // This blocks the server for 1-5s (acceptable for 260 fingerprints) but guarantees
+        // graph link tools have edges ready when the first request arrives.
         if let Some(ref builder) = self.graph_builder {
             let needs_rebuild = self.handlers.edge_repository()
                 .map(|repo| repo.is_empty().unwrap_or(true))
                 .unwrap_or(false);
             if needs_rebuild {
-                info!("Edge repository empty - scheduling full K-NN graph rebuild for existing fingerprints");
-                let builder_clone = Arc::clone(builder);
-                tokio::spawn(async move {
-                    match builder_clone.rebuild_all().await {
-                        Ok(result) => info!(
-                            "K-NN graph rebuild complete: {} fingerprints processed, {} K-NN edges + {} typed edges in {}ms",
-                            result.total_processed, result.total_knn_edges, result.total_typed_edges, result.elapsed_ms
-                        ),
-                        Err(e) => error!("K-NN graph rebuild failed: {}", e),
+                info!("Edge repository empty — running SYNCHRONOUS K-NN graph rebuild (FAIL FAST)");
+                match builder.rebuild_all().await {
+                    Ok(result) => {
+                        if result.total_knn_edges == 0 && result.total_processed > 0 {
+                            error!(
+                                "K-NN graph rebuild produced ZERO edges from {} fingerprints in {}ms. \
+                                 This indicates an embedding or NN-Descent issue. \
+                                 Check that fingerprints have non-empty E1 embeddings.",
+                                result.total_processed, result.elapsed_ms
+                            );
+                        } else {
+                            info!(
+                                "K-NN graph rebuild complete: {} fingerprints → {} K-NN edges + {} typed edges in {}ms",
+                                result.total_processed, result.total_knn_edges, result.total_typed_edges, result.elapsed_ms
+                            );
+                        }
                     }
-                });
+                    Err(e) => {
+                        error!("K-NN graph rebuild FAILED (FAIL FAST): {}", e);
+                    }
+                }
+            } else {
+                info!("Edge repository has data — skipping K-NN graph rebuild");
             }
         }
 

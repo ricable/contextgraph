@@ -1133,6 +1133,23 @@ pub fn transe_score_to_confidence(score: f32) -> f32 {
     normalized.clamp(0.0, 1.0)
 }
 
+/// Convert cosine similarity score to confidence in [0, 1].
+///
+/// Used by `infer_relationship` which scores relations via cosine similarity
+/// between predicted relation vector (r̂ = t-h) and known relation embeddings.
+///
+/// # Score Interpretation
+///
+/// | Score | Confidence | Interpretation |
+/// |-------|------------|----------------|
+/// | 1.0 | 1.0 | Perfect directional match |
+/// | 0.5 | 0.75 | Strong match |
+/// | 0.0 | 0.5 | No correlation |
+/// | -1.0 | 0.0 | Opposite direction |
+pub fn cosine_to_confidence(score: f32) -> f32 {
+    ((score + 1.0) / 2.0).clamp(0.0, 1.0)
+}
+
 /// Determine validation result from TransE score.
 ///
 /// KEPLER thresholds:

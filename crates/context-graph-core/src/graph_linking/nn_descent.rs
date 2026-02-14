@@ -255,9 +255,17 @@ impl NnDescent {
             // Sort by similarity descending
             candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
-            // Take top k
+            // Take top k — use with_direction for asymmetric embedders (E5=4, E8=7)
+            let is_asymmetric = self.embedder_id == 4 || self.embedder_id == 7;
             for (target, sim) in candidates.into_iter().take(self.config.k) {
-                let edge = EmbedderEdge::new(*id_i, target, self.embedder_id, sim)?;
+                let edge = if is_asymmetric {
+                    EmbedderEdge::with_direction(
+                        *id_i, target, self.embedder_id, sim,
+                        DirectedRelation::Forward,
+                    )?
+                } else {
+                    EmbedderEdge::new(*id_i, target, self.embedder_id, sim)?
+                };
                 graph.add_edge(edge);
             }
         }
@@ -406,13 +414,23 @@ impl NnDescent {
             self.nodes.len(),
         );
 
+        // Asymmetric embedders (E5=4, E8=7) require with_direction() instead of new()
+        let is_asymmetric = self.embedder_id == 4 || self.embedder_id == 7;
+
         for (i, node_neighbors) in neighbors.into_iter().enumerate() {
             let source = self.nodes[i];
 
             for (j, similarity) in node_neighbors {
                 if similarity >= self.config.min_similarity {
                     let target = self.nodes[j];
-                    let edge = EmbedderEdge::new(source, target, self.embedder_id, similarity)?;
+                    let edge = if is_asymmetric {
+                        EmbedderEdge::with_direction(
+                            source, target, self.embedder_id, similarity,
+                            DirectedRelation::Forward,
+                        )?
+                    } else {
+                        EmbedderEdge::new(source, target, self.embedder_id, similarity)?
+                    };
                     graph.add_edge(edge);
                 }
             }

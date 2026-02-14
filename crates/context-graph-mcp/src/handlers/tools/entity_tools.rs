@@ -64,13 +64,13 @@ use crate::protocol::JsonRpcId;
 use crate::protocol::JsonRpcResponse;
 
 use super::entity_dtos::{
-    transe_score_to_confidence, validation_from_score, EntityByType, EntityEdge, EntityLinkDto,
-    EntityNode, EntitySearchResult, ExtractEntitiesRequest, ExtractEntitiesResponse,
-    FindRelatedEntitiesRequest, FindRelatedEntitiesResponse, GetEntityGraphRequest,
-    GetEntityGraphResponse, InferRelationshipRequest, InferRelationshipResponse,
-    KnowledgeTripleDto, RelatedEntity, RelationCandidate, SearchByEntitiesRequest,
-    SearchByEntitiesResponse, ValidateKnowledgeRequest, ValidateKnowledgeResponse,
-    UNCERTAIN_THRESHOLD, VALID_THRESHOLD,
+    cosine_to_confidence, transe_score_to_confidence, validation_from_score, EntityByType,
+    EntityEdge, EntityLinkDto, EntityNode, EntitySearchResult, ExtractEntitiesRequest,
+    ExtractEntitiesResponse, FindRelatedEntitiesRequest, FindRelatedEntitiesResponse,
+    GetEntityGraphRequest, GetEntityGraphResponse, InferRelationshipRequest,
+    InferRelationshipResponse, KnowledgeTripleDto, RelatedEntity, RelationCandidate,
+    SearchByEntitiesRequest, SearchByEntitiesResponse, ValidateKnowledgeRequest,
+    ValidateKnowledgeResponse, UNCERTAIN_THRESHOLD, VALID_THRESHOLD,
 };
 
 use super::super::Handlers;
@@ -912,12 +912,18 @@ impl Handlers {
         // Step 3: Compute predicted relation using TransE: r̂ = t - h
         let predicted_r = KeplerModel::predict_relation(head_e11, tail_e11);
 
+        let predicted_r_norm: f32 = predicted_r.iter().map(|x| x * x).sum::<f32>().sqrt();
         debug!(
-            predicted_r_norm = predicted_r.iter().map(|x| x * x).sum::<f32>().sqrt(),
+            predicted_r_norm = predicted_r_norm,
             "infer_relationship: Computed predicted relation vector"
         );
 
-        // Step 4: Score each known relation using TransE: score = -||h + r - t||₂
+        // Step 4: Score each known relation using cosine similarity between r̂ and r_known.
+        //
+        // Why cosine instead of TransE L2: E11 embeds relation *text* (not learned TransE
+        // relation vectors). L2 scores are magnitude-dominated and produce nearly identical
+        // results for all short relation phrases. Cosine similarity is direction-sensitive
+        // and differentiates relation directions effectively.
         let mut relation_scores: Vec<(&str, f32)> = Vec::with_capacity(KNOWN_RELATIONS.len());
 
         for (relation_name, _inverse) in KNOWN_RELATIONS {
@@ -937,12 +943,19 @@ impl Handlers {
 
             let relation_e11 = &relation_fingerprint.e11_entity;
 
-            // Compute TransE score: -||h + r - t||₂
-            let score = KeplerModel::transe_score(head_e11, relation_e11, tail_e11);
+            // Cosine similarity between predicted relation (r̂ = t-h) and known relation embedding
+            let dot: f32 = predicted_r.iter().zip(relation_e11.iter()).map(|(a, b)| a * b).sum();
+            let norm_r: f32 = relation_e11.iter().map(|x| x * x).sum::<f32>().sqrt();
+            let score = if predicted_r_norm > 0.0 && norm_r > 0.0 {
+                dot / (predicted_r_norm * norm_r)
+            } else {
+                0.0
+            };
+
             relation_scores.push((relation_name, score));
         }
 
-        // Step 5: Sort by score (higher/closer to 0 is better) and take top-K
+        // Step 5: Sort by cosine similarity (higher is better) and take top-K
         relation_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         relation_scores.truncate(top_k);
 
@@ -950,7 +963,7 @@ impl Handlers {
         let inferred_relations: Vec<RelationCandidate> = relation_scores
             .into_iter()
             .map(|(relation, score)| {
-                let confidence = transe_score_to_confidence(score);
+                let confidence = cosine_to_confidence(score);
                 RelationCandidate {
                     relation: relation.to_string(),
                     score: if include_score { Some(score) } else { None },

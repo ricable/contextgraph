@@ -69,6 +69,8 @@ impl Handlers {
         id: Option<JsonRpcId>,
         args: serde_json::Value,
     ) -> JsonRpcResponse {
+        // NO FALLBACKS — edges must be built at startup. If empty, fail fast.
+
         // TASK-GRAPHLINK: Require EdgeRepository - NO FALLBACKS
         let edge_repo = match &self.edge_repository {
             Some(repo) => repo,
@@ -151,6 +153,19 @@ impl Handlers {
 
         let candidates_evaluated = embedder_edges.len();
         let mut filtered_count = 0;
+
+        if candidates_evaluated == 0 {
+            // FAIL FAST: Report diagnostic info when no edges found
+            let repo_empty = edge_repo.is_empty().unwrap_or(true);
+            error!(
+                memory_id = %memory_uuid,
+                embedder_id = embedder_id,
+                repo_empty = repo_empty,
+                "get_memory_neighbors: ZERO K-NN edges found. \
+                 Repository empty={repo_empty}. If repo is empty, the startup \
+                 rebuild_all() failed or produced no edges. Check server startup logs."
+            );
+        }
 
         info!(
             candidates_evaluated = candidates_evaluated,
@@ -242,12 +257,42 @@ impl Handlers {
             },
         };
 
-        info!(
-            neighbors_found = response.count,
-            candidates_evaluated = candidates_evaluated,
-            filtered = filtered_count,
-            "get_memory_neighbors: Completed K-NN neighbor search via EdgeRepository"
-        );
+        // Surface diagnostic info in tool response when edges are empty
+        if candidates_evaluated == 0 {
+            let repo_empty = edge_repo.is_empty().unwrap_or(true);
+            let fp_count = self.teleological_store.count().await.unwrap_or(0);
+            let diagnostic = json!({
+                "memory_id": memory_uuid.to_string(),
+                "embedder_id": embedder_id,
+                "embedder_name": emb_name,
+                "neighbors": [],
+                "count": 0,
+                "metadata": {
+                    "candidates_evaluated": 0,
+                    "filtered_by_similarity": 0,
+                    "used_asymmetric": uses_asymmetric,
+                },
+                "diagnostic": {
+                    "edge_repository_empty": repo_empty,
+                    "total_fingerprints_in_store": fp_count,
+                    "explanation": if repo_empty {
+                        format!(
+                            "Edge repository has NO K-NN edges. {} fingerprints exist in store. \
+                             The startup rebuild_all() either failed or produced 0 edges. \
+                             Set RUST_LOG=info to see detailed rebuild diagnostics.",
+                            fp_count
+                        )
+                    } else {
+                        format!(
+                            "Edge repository has data but no edges for memory {} in embedder {}. \
+                             This memory may not have been included in the K-NN graph build.",
+                            memory_uuid, embedder_id
+                        )
+                    },
+                },
+            });
+            return self.tool_result(id, diagnostic);
+        }
 
         self.tool_result(id, serde_json::to_value(response).unwrap_or_else(|_| json!({})))
     }
@@ -280,6 +325,8 @@ impl Handlers {
         id: Option<JsonRpcId>,
         args: serde_json::Value,
     ) -> JsonRpcResponse {
+        // NO FALLBACKS — edges must be built at startup. If empty, fail fast.
+
         // TASK-GRAPHLINK: Require EdgeRepository - NO FALLBACKS
         let edge_repo = match &self.edge_repository {
             Some(repo) => repo,
@@ -527,6 +574,8 @@ impl Handlers {
         id: Option<JsonRpcId>,
         args: serde_json::Value,
     ) -> JsonRpcResponse {
+        // NO FALLBACKS — edges must be built at startup. If empty, fail fast.
+
         // TASK-GRAPHLINK: Require EdgeRepository - NO FALLBACKS
         let edge_repo = match &self.edge_repository {
             Some(repo) => repo,
@@ -815,6 +864,8 @@ impl Handlers {
         id: Option<JsonRpcId>,
         args: serde_json::Value,
     ) -> JsonRpcResponse {
+        // NO FALLBACKS — edges must be built at startup. If empty, fail fast.
+
         // TASK-GRAPHLINK: Require EdgeRepository - NO FALLBACKS
         let edge_repo = match &self.edge_repository {
             Some(repo) => repo,
