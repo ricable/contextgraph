@@ -1692,8 +1692,8 @@ fn get_e5_causal_weight(profile_name: &str) -> f32 {
 /// Apply asymmetric E5 reranking to search results using binary causal gate.
 ///
 /// After LoRA training, E5 scores are calibrated (0.05-0.58 range). Binary gate:
-/// - E5 >= 0.12 (CAUSAL_THRESHOLD) → "definitely causal" → 1.10x boost
-/// - E5 <= 0.06 (NON_CAUSAL_THRESHOLD) → "definitely non-causal" → 0.85x demotion
+/// - E5 >= 0.04 (CAUSAL_THRESHOLD) → "definitely causal" → 1.10x boost
+/// - E5 <= 0.008 (NON_CAUSAL_THRESHOLD) → "definitely non-causal" → 0.85x demotion
 /// - E5 in (0.06, 0.12) → ambiguous dead zone → no change
 ///
 /// This is Occam's razor: the simplest model that matches E5's actual signal.
@@ -2223,8 +2223,8 @@ mod tests {
 
     #[test]
     fn test_causal_gate_boost_above_threshold() {
-        // E5 score above CAUSAL_THRESHOLD (0.12) → 1.10x boost on causal query
-        let result = apply_causal_gate(0.80, 0.60, true);
+        // E5 score above CAUSAL_THRESHOLD (0.04) → 1.10x boost on causal query
+        let result = apply_causal_gate(0.80, 0.05, true);
         let expected = 0.80 * causal_gate::CAUSAL_BOOST;
         assert!((result - expected).abs() < 1e-6, "got {result}, expected {expected}");
         println!("[VERIFIED] causal gate boost: 0.80 * 1.10 = {result}");
@@ -2232,8 +2232,8 @@ mod tests {
 
     #[test]
     fn test_causal_gate_demotion_below_threshold() {
-        // E5 score below NON_CAUSAL_THRESHOLD (0.06) → 0.85x demotion on causal query
-        let result = apply_causal_gate(0.80, 0.03, true);
+        // E5 score below NON_CAUSAL_THRESHOLD (0.008) → 0.85x demotion on causal query
+        let result = apply_causal_gate(0.80, 0.005, true);
         let expected = 0.80 * causal_gate::NON_CAUSAL_DEMOTION;
         assert!((result - expected).abs() < 1e-6, "got {result}, expected {expected}");
         println!("[VERIFIED] causal gate demotion: 0.80 * 0.85 = {result}");
@@ -2249,8 +2249,8 @@ mod tests {
 
     #[test]
     fn test_causal_gate_dead_zone() {
-        // E5 score between thresholds (0.06-0.12) → no modification
-        let result = apply_causal_gate(0.80, 0.09, true);
+        // E5 score between thresholds (0.008-0.04) → no modification
+        let result = apply_causal_gate(0.80, 0.02, true);
         assert!((result - 0.80).abs() < 1e-6, "dead zone should pass through, got {result}");
         println!("[VERIFIED] causal gate dead zone: {result}");
     }

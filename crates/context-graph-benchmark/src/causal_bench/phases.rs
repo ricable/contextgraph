@@ -119,7 +119,7 @@ impl Default for BenchConfig {
             data_dir: std::path::PathBuf::from("data/causal_benchmark"),
             quick: false,
             verbose: false,
-            causal_gate_threshold: 0.12,
+            causal_gate_threshold: 0.04,
             e5_weight: 0.10,
             provider: Arc::new(super::provider::SyntheticProvider::new()),
             pair_score_cache: OnceCell::new(),

@@ -59,6 +59,10 @@ struct Args {
     /// Path to CausalModel weights directory (used with --gpu).
     #[arg(long, default_value = "models/causal")]
     model_path: PathBuf,
+
+    /// Enable E12 ColBERT MaxSim reranking in P6 simulated search.
+    #[arg(long)]
+    enable_rerank: bool,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -146,6 +150,7 @@ fn main() -> anyhow::Result<()> {
         quick: args.quick,
         verbose: args.verbose,
         provider,
+        enable_rerank: args.enable_rerank,
         ..Default::default()
     };
 

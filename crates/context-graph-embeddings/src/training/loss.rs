@@ -27,10 +27,11 @@ pub struct LossConfig {
     pub lambda_soft: f32,
     /// Minimum E1 similarity threshold to exclude potential false negatives.
     pub false_negative_threshold: f32,
-    /// Scale factor for hard negative logits in InfoNCE (default: 2.0).
-    /// Hard negatives (top-3 most similar incorrect pairs) get their logits
+    /// Scale factor for hard negative logits in InfoNCE (default: 1.0 = disabled).
+    /// Hard negatives (top-k most similar incorrect pairs) get their logits
     /// multiplied by this factor before softmax, amplifying gradient signal.
-    /// Set to 1.0 to disable hard negative mining.
+    /// WARNING: Values >= 2.0 with temperature=0.05 cause catastrophic score
+    /// collapse — cause/effect vectors become orthogonal. Use <= 1.3 if enabling.
     pub hard_negative_scale: f32,
     /// Number of hard negatives per sample to amplify (default: 3).
     pub hard_negative_count: usize,
@@ -46,7 +47,7 @@ impl Default for LossConfig {
             lambda_separation: 0.1,
             lambda_soft: 0.2,
             false_negative_threshold: 0.8,
-            hard_negative_scale: 2.0,
+            hard_negative_scale: 1.0,
             hard_negative_count: 3,
         }
     }

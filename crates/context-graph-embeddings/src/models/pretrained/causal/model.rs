@@ -245,8 +245,12 @@ impl CausalModel {
 
     /// Embed text with a single instruction prefix (one forward pass).
     ///
-    /// When trained LoRA + projection weights are loaded, uses the fine-tuned
-    /// forward path. Otherwise falls back to the base model.
+    /// When trained LoRA + projection weights are loaded, uses `search_document:`
+    /// prefix to match the training distribution. The cause/effect asymmetry comes
+    /// from the projection heads, not the instruction prefix.
+    ///
+    /// When no trained weights exist, uses the causal instruction prefix for
+    /// nomic-embed's built-in query/document asymmetry.
     async fn embed_single_role(
         &self,
         content: &str,
@@ -264,13 +268,19 @@ impl CausalModel {
 
         match &*state {
             ModelState::Loaded { weights, tokenizer, trained } => {
-                let text = format!("{}{}", instruction, content);
-
                 let vec = if let Some(ref t) = trained {
+                    // Use search_document: prefix to match training distribution.
+                    // Training pipeline (pipeline.rs) uses "search_document: " for all texts,
+                    // so inference must use the same prefix for the projection heads to work
+                    // correctly. Using causal instruction prefixes here causes a distribution
+                    // shift that compresses all scores toward zero.
+                    let text = format!("search_document: {}", content);
                     gpu_forward_single_trained(
                         &text, weights, tokenizer, &t.lora, &t.projection, is_cause,
                     )?
                 } else {
+                    // No trained weights: use causal instruction prefix for base model
+                    let text = format!("{}{}", instruction, content);
                     gpu_forward(&text, weights, tokenizer)?
                 };
 
@@ -292,17 +302,20 @@ impl CausalModel {
 
     /// Embed text as BOTH cause and effect roles simultaneously.
     ///
-    /// Produces two differentiated 768D vectors via two encoder passes
-    /// with different instruction prefixes.
+    /// When trained weights are loaded, uses `search_document:` prefix for both
+    /// passes (matching training distribution), with cause/effect asymmetry from
+    /// the projection heads. When no trained weights, uses causal instruction prefixes.
     ///
     /// ```text
     /// Input Text
     ///     |
     ///     +--------------------------------------+
     ///     |                                      |
-    /// "search_query: Identify cause..."    "search_query: Identify effect..."
+    /// "search_document: {text}"          "search_document: {text}"
     ///     |                                      |
-    /// [Full Forward Pass]                 [Full Forward Pass]
+    /// [LoRA Forward]                     [LoRA Forward]
+    ///     |                                      |
+    /// [Cause Projection]                 [Effect Projection]
     ///     |                                      |
     /// cause_vec (768D)                    effect_vec (768D)
     /// ```

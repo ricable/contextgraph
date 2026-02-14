@@ -448,9 +448,13 @@ pub fn gpu_forward_single_trained(
 /// Dual forward pass with LoRA + trainable projection, returning Tensors.
 ///
 /// Produces differentiated cause/effect embeddings via:
-/// 1. LoRA-augmented encoder (modifies internal representations)
+/// 1. LoRA-augmented encoder with `search_document:` prefix (matches training)
 /// 2. Trainable cause/effect projection heads (separates role vectors)
 /// 3. L2 normalization
+///
+/// Uses `search_document:` prefix to match the training pipeline (pipeline.rs),
+/// which trains all texts with this prefix. Cause/effect asymmetry comes from
+/// the separate projection heads, not from instruction prefixes.
 ///
 /// Returns (cause_tensor [1, 768], effect_tensor [1, 768]) with preserved grad graph.
 pub fn gpu_forward_dual_trainable_tensor(
@@ -460,8 +464,10 @@ pub fn gpu_forward_dual_trainable_tensor(
     lora_layers: &crate::training::lora::LoraLayers,
     projection: &super::weights::TrainableProjection,
 ) -> EmbeddingResult<(Tensor, Tensor)> {
-    let cause_text = format!("{}{}", super::config::CAUSE_INSTRUCTION, text);
-    let effect_text = format!("{}{}", super::config::EFFECT_INSTRUCTION, text);
+    // Use search_document: prefix for BOTH cause and effect to match training distribution.
+    // The projection heads provide cause/effect asymmetry.
+    let cause_text = format!("search_document: {}", text);
+    let effect_text = format!("search_document: {}", text);
 
     // LoRA-augmented forward for both cause and effect instruction prefixes
     let cause_emb = gpu_forward_with_lora_tensor(&cause_text, weights, tokenizer, lora_layers)?;

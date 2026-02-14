@@ -866,8 +866,7 @@ impl CausalTrainingPipeline {
 
             if let Some(ref m) = stage2_result.best_metrics {
                 let is_better = best_overall.as_ref()
-                    .map(|best| m.directional_accuracy > best.directional_accuracy
-                        || (m.directional_accuracy == best.directional_accuracy && best_stage < 2))
+                    .map(|best| m.score_spread > best.score_spread)
                     .unwrap_or(true);
                 if is_better {
                     best_overall = Some(m.clone());
@@ -881,6 +880,11 @@ impl CausalTrainingPipeline {
             let final_path = self.config.output_dir.join("projection_stage2_best.safetensors");
             trainer.projection().save_trained(&final_path)?;
             tracing::info!("Stage 2 final projection saved to {}", final_path.display());
+
+            // Save per-stage LoRA checkpoint (essential for correct best-stage selection)
+            let lora_stage2_path = self.config.output_dir.join("lora_stage2_best.safetensors");
+            self.save_lora(&lora_stage2_path)?;
+            tracing::info!("Stage 2 LoRA saved to {}", lora_stage2_path.display());
 
             // Benchmark snapshot after stage 2 (use trainer's projection before it's dropped)
             let mut snapshot_eval = CausalDataLoader::new(eval_pairs.clone(), self.config.batch_size, self.config.seed + 101);
@@ -965,8 +969,7 @@ impl CausalTrainingPipeline {
 
             if let Some(ref m) = stage3_result.best_metrics {
                 let is_better = best_overall.as_ref()
-                    .map(|best| m.directional_accuracy > best.directional_accuracy
-                        || (m.directional_accuracy == best.directional_accuracy && best_stage < 3))
+                    .map(|best| m.score_spread > best.score_spread)
                     .unwrap_or(true);
                 if is_better {
                     best_overall = Some(m.clone());
@@ -979,6 +982,11 @@ impl CausalTrainingPipeline {
             let final_path = self.config.output_dir.join("projection_stage3_best.safetensors");
             trainer.projection().save_trained(&final_path)?;
             tracing::info!("Stage 3 final projection saved to {}", final_path.display());
+
+            // Save per-stage LoRA checkpoint (essential for correct best-stage selection)
+            let lora_stage3_path = self.config.output_dir.join("lora_stage3_best.safetensors");
+            self.save_lora(&lora_stage3_path)?;
+            tracing::info!("Stage 3 LoRA saved to {}", lora_stage3_path.display());
 
             // Final benchmark snapshot after stage 3 (use trainer's projection before it's dropped)
             let mut snapshot_eval = CausalDataLoader::new(eval_pairs.clone(), self.config.batch_size, self.config.seed + 102);
@@ -1009,8 +1017,33 @@ impl CausalTrainingPipeline {
                 );
             }
 
+            // Copy best stage's LoRA (not final stage's LoRA) for correct pairing
             let lora_path = self.config.output_dir.join("lora_best.safetensors");
-            self.save_lora(&lora_path)?;
+            let best_lora_stage_path = self.config.output_dir.join(format!(
+                "lora_stage{}_best.safetensors",
+                best_stage
+            ));
+            if best_stage >= 2 && best_lora_stage_path.exists() {
+                // Copy best stage's LoRA checkpoint (stages 2+ have LoRA)
+                std::fs::copy(&best_lora_stage_path, &lora_path).map_err(|e| {
+                    EmbeddingError::InternalError {
+                        message: format!("Failed to copy best LoRA checkpoint: {}", e),
+                    }
+                })?;
+                tracing::info!(
+                    "Final best LoRA (stage {}) saved to {}",
+                    best_stage,
+                    lora_path.display()
+                );
+            } else {
+                // Stage 1 has no LoRA — save current (identity-like) LoRA state
+                self.save_lora(&lora_path)?;
+                tracing::info!(
+                    "Final LoRA (from pipeline state, best_stage={}) saved to {}",
+                    best_stage,
+                    lora_path.display()
+                );
+            }
 
             Some(final_path)
         } else {
