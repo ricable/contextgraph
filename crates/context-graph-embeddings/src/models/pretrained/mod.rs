@@ -12,6 +12,8 @@
 //!
 //! Without the feature, models use stub implementations for testing.
 
+pub(crate) mod shared;
+
 pub(crate) mod causal;
 mod code;
 mod contextual;

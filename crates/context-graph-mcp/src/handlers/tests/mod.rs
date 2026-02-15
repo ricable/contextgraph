@@ -52,6 +52,7 @@ use context_graph_core::traits::{MultiArrayEmbeddingProvider, TeleologicalMemory
 use context_graph_storage::teleological::RocksDbTeleologicalStore;
 
 // GRAPH-AGENT: Import stub for testing (enabled via test-utils feature in dev-dependencies)
+#[cfg(feature = "llm")]
 use context_graph_graph_agent::create_stub_graph_discovery_service;
 
 use context_graph_embeddings::{
@@ -231,6 +232,7 @@ pub(crate) fn extract_mcp_tool_data(result: &serde_json::Value) -> serde_json::V
 /// # Panics
 ///
 /// Panics if CUDA GPU not available, models not loaded, or RocksDB fails to open.
+#[cfg(feature = "llm")]
 pub(crate) async fn create_test_handlers() -> (Handlers, TempDir) {
     let tempdir = TempDir::new().expect("Failed to create temp directory for RocksDB test");
     let db_path = tempdir.path().join("test_rocksdb");
@@ -299,6 +301,7 @@ pub(crate) async fn create_test_handlers() -> (Handlers, TempDir) {
 ///
 /// Panics if TempDir creation, RocksDB opening, or HNSW initialization fails.
 /// This is intentional - tests should fail immediately if infrastructure cannot be set up.
+#[cfg(feature = "llm")]
 #[allow(dead_code)] // Available for integration tests that need real RocksDB
 pub(crate) async fn create_test_handlers_with_rocksdb() -> (Handlers, TempDir) {
     let tempdir = TempDir::new().expect("Failed to create temp directory for RocksDB test");
@@ -333,6 +336,7 @@ pub(crate) async fn create_test_handlers_with_rocksdb() -> (Handlers, TempDir) {
 /// # Returns
 ///
 /// `(Handlers, Arc<dyn TeleologicalMemoryStore>, TempDir)`
+#[cfg(feature = "llm")]
 pub(crate) async fn create_test_handlers_with_rocksdb_store_access(
 ) -> (Handlers, Arc<dyn TeleologicalMemoryStore>, TempDir) {
     let tempdir = TempDir::new().expect("Failed to create temp directory for RocksDB test");
@@ -361,6 +365,7 @@ pub(crate) async fn create_test_handlers_with_rocksdb_store_access(
 // ============================================================================
 
 /// Alias for create_test_handlers(). All helpers now use real GPU embeddings.
+#[cfg(feature = "llm")]
 #[allow(dead_code)]
 pub(crate) async fn create_test_handlers_with_real_embeddings() -> (Handlers, TempDir) {
     let tempdir = TempDir::new().expect("Failed to create temp directory for RocksDB FSV test");
@@ -405,6 +410,7 @@ pub(crate) async fn create_test_handlers_with_real_embeddings() -> (Handlers, Te
 /// - Handlers instance for dispatching MCP requests
 /// - Direct reference to the store for FSV assertions (verify data was persisted)
 /// - TempDir that MUST be kept alive for the duration of the test
+#[cfg(feature = "llm")]
 pub(crate) async fn create_test_handlers_with_real_embeddings_store_access(
 ) -> (Handlers, Arc<dyn TeleologicalMemoryStore>, TempDir) {
     let tempdir = TempDir::new().expect("Failed to create temp directory for FSV test");

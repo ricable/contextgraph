@@ -5,7 +5,11 @@ use std::sync::atomic::AtomicBool;
 
 use crate::gpu::BertWeights;
 use crate::traits::SingleModelConfig;
-use tokenizers::Tokenizer;
+
+pub(crate) use crate::models::pretrained::shared::ModelState;
+
+/// Concrete state type for KEPLER model (BERT/RoBERTa weights).
+pub(crate) type KeplerModelState = ModelState<Box<BertWeights>>;
 
 /// Native dimension for KEPLER (RoBERTa-base) embeddings.
 /// This is 768D, double the previous MiniLM 384D.
@@ -20,21 +24,6 @@ pub const KEPLER_LATENCY_BUDGET_MS: u64 = 5;
 
 /// Model name for logging and identification.
 pub const KEPLER_MODEL_NAME: &str = "KEPLER (RoBERTa-base + TransE)";
-
-/// Internal state that varies based on loading status.
-#[allow(dead_code)]
-pub(crate) enum ModelState {
-    /// Unloaded - no weights in memory.
-    Unloaded,
-
-    /// Loaded with candle model and tokenizer (GPU-accelerated).
-    Loaded {
-        /// BERT/RoBERTa model weights on GPU (boxed to reduce enum size).
-        weights: Box<BertWeights>,
-        /// RoBERTa tokenizer (GPT-2 BPE) for text encoding (boxed to reduce enum size).
-        tokenizer: Box<Tokenizer>,
-    },
-}
 
 /// KEPLER entity embedding model.
 ///
@@ -91,7 +80,7 @@ pub(crate) enum ModelState {
 pub struct KeplerModel {
     /// Model weights and inference engine.
     #[allow(dead_code)]
-    pub(crate) model_state: std::sync::RwLock<ModelState>,
+    pub(crate) model_state: std::sync::RwLock<KeplerModelState>,
 
     /// Path to model weights directory.
     #[allow(dead_code)]

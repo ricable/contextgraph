@@ -196,21 +196,11 @@ impl Handlers {
     ) -> JsonRpcResponse {
         debug!("Handling get_topic_portfolio");
 
-        // Parse request
-        let request: GetTopicPortfolioRequest = match serde_json::from_value(arguments) {
-            Ok(r) => r,
-            Err(e) => {
-                error!(error = %e, "get_topic_portfolio: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid params: {}", e));
-            }
+        // Parse and validate request
+        let request: GetTopicPortfolioRequest = match self.parse_request(id.clone(), arguments, "get_topic_portfolio") {
+            Ok(req) => req,
+            Err(resp) => return resp,
         };
-
-        // Validate format using DTO's validate method
-        if let Err(validation_error) = request.validate() {
-            error!(error = %validation_error, "get_topic_portfolio: Validation failed");
-            return self
-                .tool_error(id, &format!("Invalid params: {}", validation_error));
-        }
 
         // Get memory count to determine tier
         let memory_count = match self.teleological_store.count().await {
@@ -298,21 +288,11 @@ impl Handlers {
     ) -> JsonRpcResponse {
         debug!("Handling get_topic_stability");
 
-        // Parse request
-        let request: GetTopicStabilityRequest = match serde_json::from_value(arguments) {
-            Ok(r) => r,
-            Err(e) => {
-                error!(error = %e, "get_topic_stability: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid params: {}", e));
-            }
+        // Parse and validate request
+        let request: GetTopicStabilityRequest = match self.parse_request(id.clone(), arguments, "get_topic_stability") {
+            Ok(req) => req,
+            Err(resp) => return resp,
         };
-
-        // Validate hours range using DTO's validate method
-        if let Err(validation_error) = request.validate() {
-            error!(error = %validation_error, "get_topic_stability: Validation failed");
-            return self
-                .tool_error(id, &format!("Invalid params: {}", validation_error));
-        }
 
         debug!(
             hours = request.hours,
@@ -599,21 +579,11 @@ impl Handlers {
     ) -> JsonRpcResponse {
         debug!("Handling get_divergence_alerts");
 
-        // Parse request
-        let request: GetDivergenceAlertsRequest = match serde_json::from_value(arguments) {
-            Ok(r) => r,
-            Err(e) => {
-                error!(error = %e, "get_divergence_alerts: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid params: {}", e));
-            }
+        // Parse and validate request
+        let request: GetDivergenceAlertsRequest = match self.parse_request(id.clone(), arguments, "get_divergence_alerts") {
+            Ok(req) => req,
+            Err(resp) => return resp,
         };
-
-        // Validate lookback range using DTO's validate method
-        if let Err(validation_error) = request.validate() {
-            error!(error = %validation_error, "get_divergence_alerts: Validation failed");
-            return self
-                .tool_error(id, &format!("Invalid params: {}", validation_error));
-        }
 
         let lookback_hours = request.lookback_hours as i64;
         debug!(

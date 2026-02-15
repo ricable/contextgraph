@@ -218,6 +218,28 @@ impl GetDivergenceAlertsRequest {
 }
 
 // ============================================================================
+// TRAIT IMPLS (parse_request helper)
+// ============================================================================
+
+impl super::validate::Validate for GetTopicPortfolioRequest {
+    fn validate(&self) -> Result<(), String> {
+        self.validate()
+    }
+}
+
+impl super::validate::Validate for GetTopicStabilityRequest {
+    fn validate(&self) -> Result<(), String> {
+        self.validate()
+    }
+}
+
+impl super::validate::Validate for GetDivergenceAlertsRequest {
+    fn validate(&self) -> Result<(), String> {
+        self.validate()
+    }
+}
+
+// ============================================================================
 // RESPONSE DTOs
 // ============================================================================
 

@@ -84,20 +84,9 @@ impl Handlers {
         };
 
         // Parse and validate request
-        let request: GetMemoryNeighborsRequest = match serde_json::from_value(args) {
-            Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "get_memory_neighbors: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
-        };
-
-        let memory_uuid = match request.validate() {
-            Ok(uuid) => uuid,
-            Err(e) => {
-                error!(error = %e, "get_memory_neighbors: Validation failed");
-                return self.tool_error(id, &e);
-            }
+        let (request, memory_uuid) = match self.parse_request_validated::<GetMemoryNeighborsRequest>(id.clone(), args, "get_memory_neighbors") {
+            Ok(pair) => pair,
+            Err(resp) => return resp,
         };
 
         let embedder_id = request.embedder_id;
@@ -340,20 +329,9 @@ impl Handlers {
         };
 
         // Parse and validate request
-        let request: GetTypedEdgesRequest = match serde_json::from_value(args) {
-            Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "get_typed_edges: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
-        };
-
-        let memory_uuid = match request.validate() {
-            Ok(uuid) => uuid,
-            Err(e) => {
-                error!(error = %e, "get_typed_edges: Validation failed");
-                return self.tool_error(id, &e);
-            }
+        let (request, memory_uuid) = match self.parse_request_validated::<GetTypedEdgesRequest>(id.clone(), args, "get_typed_edges") {
+            Ok(pair) => pair,
+            Err(resp) => return resp,
         };
 
         let edge_type_filter = request.edge_type.clone();
@@ -589,20 +567,9 @@ impl Handlers {
         };
 
         // Parse and validate request
-        let request: TraverseGraphRequest = match serde_json::from_value(args) {
-            Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "traverse_graph: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
-        };
-
-        let start_uuid = match request.validate() {
-            Ok(uuid) => uuid,
-            Err(e) => {
-                error!(error = %e, "traverse_graph: Validation failed");
-                return self.tool_error(id, &e);
-            }
+        let (request, start_uuid) = match self.parse_request_validated::<TraverseGraphRequest>(id.clone(), args, "traverse_graph") {
+            Ok(pair) => pair,
+            Err(resp) => return resp,
         };
 
         let max_hops = request.max_hops;
@@ -879,20 +846,9 @@ impl Handlers {
         };
 
         // Parse and validate request
-        let request: GetUnifiedNeighborsRequest = match serde_json::from_value(args) {
-            Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "get_unified_neighbors: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
-        };
-
-        let memory_uuid = match request.validate() {
-            Ok(uuid) => uuid,
-            Err(e) => {
-                error!(error = %e, "get_unified_neighbors: Validation failed");
-                return self.tool_error(id, &e);
-            }
+        let (request, memory_uuid) = match self.parse_request_validated::<GetUnifiedNeighborsRequest>(id.clone(), args, "get_unified_neighbors") {
+            Ok(pair) => pair,
+            Err(resp) => return resp,
         };
 
         let weight_profile = &request.weight_profile;

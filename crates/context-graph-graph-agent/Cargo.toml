@@ -8,8 +8,11 @@ description = "Graph relationship discovery agent using local LLM"
 
 [features]
 default = []
+# Enable LLM backend for graph discovery (propagates to causal-agent).
+# Without this feature, LLM module and service are not compiled.
+llm = ["context-graph-causal-agent/llm"]
 # Enable CUDA acceleration via llama-cpp-2 (RTX 5090 optimized)
-cuda = ["llama-cpp-2/cuda", "context-graph-causal-agent/cuda"]
+cuda = ["llm", "context-graph-causal-agent/cuda"]
 # Test utilities - provides stub constructors that panic on usage
 # Use for tests that need Handlers but don't actually call graph discovery
 test-utils = []
@@ -36,9 +39,7 @@ context-graph-storage = { path = "../context-graph-storage" }
 context-graph-embeddings = { path = "../context-graph-embeddings" }
 context-graph-causal-agent = { path = "../context-graph-causal-agent" }
 
-# llama.cpp bindings for GGUF model inference with grammar constraints
-# Graph agent uses shared LLM from causal-agent crate
-llama-cpp-2 = "0.1"
+# Note: graph-agent uses CausalDiscoveryLLM from causal-agent (no direct llama-cpp-2 dependency)
 
 # Async utilities
 futures = "0.3"

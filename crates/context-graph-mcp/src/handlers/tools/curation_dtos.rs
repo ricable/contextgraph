@@ -164,6 +164,24 @@ impl BoostImportanceRequest {
 }
 
 // ============================================================================
+// TRAIT IMPLS (parse_request_validated helper)
+// ============================================================================
+
+impl super::validate::ValidateInto for ForgetConceptRequest {
+    type Output = Uuid;
+    fn validate(&self) -> Result<Self::Output, String> {
+        self.validate()
+    }
+}
+
+impl super::validate::ValidateInto for BoostImportanceRequest {
+    type Output = Uuid;
+    fn validate(&self) -> Result<Self::Output, String> {
+        self.validate()
+    }
+}
+
+// ============================================================================
 // RESPONSE DTOs
 // ============================================================================
 

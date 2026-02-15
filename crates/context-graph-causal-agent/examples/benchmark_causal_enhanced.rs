@@ -15,7 +15,6 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use context_graph_causal_agent::llm::{CausalDiscoveryLLM, LlmConfig};
-use context_graph_causal_agent::CausalLinkDirection;
 use serde::{Deserialize, Serialize};
 
 /// A query/claim from the dataset.
@@ -26,16 +25,15 @@ struct Query {
 }
 
 /// A document chunk from the dataset.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct Chunk {
     id: String,
-    #[allow(dead_code)]
     doc_id: String,
     original_doc_id: String,
     title: String,
     text: String,
     #[serde(default)]
-    #[allow(dead_code)]
     word_count: usize,
 }
 

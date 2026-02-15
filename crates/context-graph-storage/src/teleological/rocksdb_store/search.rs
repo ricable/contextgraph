@@ -107,12 +107,8 @@ fn get_fingerprint_raw_sync(db: &DB, id: Uuid) -> Result<Option<Vec<u8>>, Teleol
 /// Takes Arc<RwLock<HashMap>> to avoid expensive HashMap cloning before spawn_blocking.
 ///
 /// MED-11 FIX: Uses parking_lot::RwLock (non-poisonable).
-fn is_soft_deleted_sync(soft_deleted: &Arc<RwLock<HashMap<Uuid, bool>>>, id: &Uuid) -> bool {
-    soft_deleted
-        .read()
-        .get(id)
-        .copied()
-        .unwrap_or(false) // False here is correct: unknown IDs are not deleted
+fn is_soft_deleted_sync(soft_deleted: &Arc<RwLock<HashMap<Uuid, i64>>>, id: &Uuid) -> bool {
+    soft_deleted.read().contains_key(id)
 }
 
 /// Get the query vector for a given embedder index (0-12).
@@ -147,7 +143,7 @@ fn get_query_vector_for_embedder<'a>(query: &'a SemanticFingerprint, embedder_id
 fn search_single_embedder_sync(
     db: &Arc<DB>,
     index_registry: &Arc<EmbedderIndexRegistry>,
-    soft_deleted: &Arc<RwLock<HashMap<Uuid, bool>>>,
+    soft_deleted: &Arc<RwLock<HashMap<Uuid, i64>>>,
     query: &SemanticFingerprint,
     options: &TeleologicalSearchOptions,
     embedder_idx: usize,
@@ -241,7 +237,7 @@ fn search_single_embedder_sync(
 fn search_filtered_multi_space_sync(
     db: &Arc<DB>,
     index_registry: &Arc<EmbedderIndexRegistry>,
-    soft_deleted: &Arc<RwLock<HashMap<Uuid, bool>>>,
+    soft_deleted: &Arc<RwLock<HashMap<Uuid, i64>>>,
     query: &SemanticFingerprint,
     options: &TeleologicalSearchOptions,
     embedder_indices: &[usize],
@@ -453,7 +449,7 @@ fn compute_embedder_scores_with_direction_sync(
 fn search_e1_only_sync(
     db: &Arc<DB>,
     index_registry: &Arc<EmbedderIndexRegistry>,
-    soft_deleted: &Arc<RwLock<HashMap<Uuid, bool>>>,
+    soft_deleted: &Arc<RwLock<HashMap<Uuid, i64>>>,
     query: &SemanticFingerprint,
     options: &TeleologicalSearchOptions,
 ) -> CoreResult<Vec<TeleologicalSearchResult>> {
@@ -515,7 +511,7 @@ fn search_e1_only_sync(
 fn search_multi_space_sync(
     db: &Arc<DB>,
     index_registry: &Arc<EmbedderIndexRegistry>,
-    soft_deleted: &Arc<RwLock<HashMap<Uuid, bool>>>,
+    soft_deleted: &Arc<RwLock<HashMap<Uuid, i64>>>,
     query: &SemanticFingerprint,
     options: &TeleologicalSearchOptions,
 ) -> CoreResult<Vec<TeleologicalSearchResult>> {
@@ -710,7 +706,7 @@ fn search_multi_space_sync(
 fn search_pipeline_sync(
     db: &Arc<DB>,
     index_registry: &Arc<EmbedderIndexRegistry>,
-    soft_deleted: &Arc<RwLock<HashMap<Uuid, bool>>>,
+    soft_deleted: &Arc<RwLock<HashMap<Uuid, i64>>>,
     query: &SemanticFingerprint,
     options: &TeleologicalSearchOptions,
 ) -> CoreResult<Vec<TeleologicalSearchResult>> {
@@ -1078,7 +1074,7 @@ fn search_sparse_sync(
     db: &DB,
     sparse_query: &SparseVector,
     top_k: usize,
-    soft_deleted: &Arc<RwLock<HashMap<Uuid, bool>>>,
+    soft_deleted: &Arc<RwLock<HashMap<Uuid, i64>>>,
 ) -> CoreResult<Vec<(Uuid, f32)>> {
     debug!(
         "Searching sparse with {} active terms, top_k={} (BM25-IDF scoring)",

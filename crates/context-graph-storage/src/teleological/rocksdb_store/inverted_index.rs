@@ -4,7 +4,8 @@
 //! - E13 SPLADE inverted index (learned expansion)
 //! - E6 Sparse inverted index (exact keywords) - per e6upgrade.md
 //!
-//! Both indexes use the same posting list format (term_id → Vec<Uuid>).
+//! Posting lists are stored sorted by UUID for O(log n) binary search.
+//! Legacy unsorted lists are sorted on first access (one-time migration cost).
 
 use rocksdb::WriteBatch;
 use uuid::Uuid;
@@ -18,11 +19,24 @@ use crate::teleological::serialization::{deserialize_memory_id_list, serialize_m
 use super::store::RocksDbTeleologicalStore;
 use super::types::{TeleologicalStoreError, TeleologicalStoreResult};
 
+/// Deserialize a posting list, ensuring it is sorted for binary search.
+/// Handles legacy unsorted lists by sorting them in-place. Returns whether
+/// the list needed sorting (for write-back to fix the stored order).
+fn deserialize_sorted_posting_list(data: &[u8]) -> Result<(Vec<Uuid>, bool), context_graph_core::error::CoreError> {
+    let mut ids = deserialize_memory_id_list(data)?;
+    let was_unsorted = !ids.windows(2).all(|w| w[0] <= w[1]);
+    if was_unsorted {
+        ids.sort_unstable();
+    }
+    Ok((ids, was_unsorted))
+}
+
 impl RocksDbTeleologicalStore {
     /// Update the E13 SPLADE inverted index for a fingerprint.
     ///
     /// For each active term in the sparse vector, adds this fingerprint's ID
-    /// to the posting list if not already present.
+    /// to the posting list if not already present. Uses binary search on sorted
+    /// posting lists for O(log n) membership checks instead of O(n) linear scan.
     pub(crate) fn update_splade_inverted_index(
         &self,
         batch: &mut WriteBatch,
@@ -31,25 +45,32 @@ impl RocksDbTeleologicalStore {
     ) -> TeleologicalStoreResult<()> {
         let cf_inverted = self.get_cf(CF_E13_SPLADE_INVERTED)?;
 
-        // For each active term, update the posting list
         for &term_id in &sparse.indices {
             let term_key = e13_splade_inverted_key(term_id);
 
-            // Read existing posting list
             let existing = self.db.get_cf(cf_inverted, term_key).map_err(|e| {
                 TeleologicalStoreError::rocksdb_op("get", CF_E13_SPLADE_INVERTED, None, e)
             })?;
 
-            let mut ids: Vec<Uuid> = match existing {
-                Some(data) => deserialize_memory_id_list(&data)?,
-                None => Vec::new(),
+            let (mut ids, was_unsorted) = match existing {
+                Some(data) => deserialize_sorted_posting_list(&data)?,
+                None => (Vec::new(), false),
             };
 
-            // Add this ID if not already present
-            if !ids.contains(id) {
-                ids.push(*id);
-                let serialized = serialize_memory_id_list(&ids);
-                batch.put_cf(cf_inverted, term_key, &serialized);
+            // O(log n) binary search on sorted posting list
+            match ids.binary_search(id) {
+                Ok(_) => {
+                    // Already present, but fix sort order on disk if needed
+                    if was_unsorted {
+                        let serialized = serialize_memory_id_list(&ids);
+                        batch.put_cf(cf_inverted, term_key, &serialized);
+                    }
+                }
+                Err(pos) => {
+                    ids.insert(pos, *id);
+                    let serialized = serialize_memory_id_list(&ids);
+                    batch.put_cf(cf_inverted, term_key, &serialized);
+                }
             }
         }
 
@@ -98,7 +119,8 @@ impl RocksDbTeleologicalStore {
     /// Update the E6 Sparse inverted index for a fingerprint.
     ///
     /// For each active term in the sparse vector, adds this fingerprint's ID
-    /// to the posting list if not already present.
+    /// to the posting list if not already present. Uses binary search on sorted
+    /// posting lists for O(log n) membership checks instead of O(n) linear scan.
     ///
     /// # Usage
     /// - Stage 1: Dual sparse recall with E13 (union of candidates)
@@ -111,25 +133,31 @@ impl RocksDbTeleologicalStore {
     ) -> TeleologicalStoreResult<()> {
         let cf_inverted = self.get_cf(CF_E6_SPARSE_INVERTED)?;
 
-        // For each active term, update the posting list
         for &term_id in &sparse.indices {
             let term_key = e6_sparse_inverted_key(term_id);
 
-            // Read existing posting list
             let existing = self.db.get_cf(cf_inverted, term_key).map_err(|e| {
                 TeleologicalStoreError::rocksdb_op("get", CF_E6_SPARSE_INVERTED, None, e)
             })?;
 
-            let mut ids: Vec<Uuid> = match existing {
-                Some(data) => deserialize_memory_id_list(&data)?,
-                None => Vec::new(),
+            let (mut ids, was_unsorted) = match existing {
+                Some(data) => deserialize_sorted_posting_list(&data)?,
+                None => (Vec::new(), false),
             };
 
-            // Add this ID if not already present
-            if !ids.contains(id) {
-                ids.push(*id);
-                let serialized = serialize_memory_id_list(&ids);
-                batch.put_cf(cf_inverted, term_key, &serialized);
+            // O(log n) binary search on sorted posting list
+            match ids.binary_search(id) {
+                Ok(_) => {
+                    if was_unsorted {
+                        let serialized = serialize_memory_id_list(&ids);
+                        batch.put_cf(cf_inverted, term_key, &serialized);
+                    }
+                }
+                Err(pos) => {
+                    ids.insert(pos, *id);
+                    let serialized = serialize_memory_id_list(&ids);
+                    batch.put_cf(cf_inverted, term_key, &serialized);
+                }
             }
         }
 

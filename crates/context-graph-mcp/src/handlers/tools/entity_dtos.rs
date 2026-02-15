@@ -55,11 +55,6 @@ pub const VALID_THRESHOLD: f32 = -5.0;
 /// Score between -10.0 and -5.0 is uncertain.
 pub const UNCERTAIN_THRESHOLD: f32 = -10.0;
 
-/// Default weight for E11 embedding similarity in hybrid score.
-pub const DEFAULT_E11_WEIGHT: f32 = 0.7;
-
-/// Default weight for entity Jaccard overlap in hybrid score.
-pub const DEFAULT_ENTITY_JACCARD_WEIGHT: f32 = 0.3;
 
 // ============================================================================
 // ENTITY BOOST CONFIG (ARCH-17 Pattern)
@@ -235,6 +230,46 @@ impl EntityBoostConfig {
         let multiplier = 1.0 + boost;
 
         (e1_sim * multiplier).clamp(0.0, 1.0)
+    }
+}
+
+// ============================================================================
+// TRAIT IMPLS (parse_request helper)
+// ============================================================================
+
+impl super::validate::Validate for ExtractEntitiesRequest {
+    fn validate(&self) -> Result<(), String> {
+        self.validate()
+    }
+}
+
+impl super::validate::Validate for SearchByEntitiesRequest {
+    fn validate(&self) -> Result<(), String> {
+        self.validate()
+    }
+}
+
+impl super::validate::Validate for InferRelationshipRequest {
+    fn validate(&self) -> Result<(), String> {
+        self.validate()
+    }
+}
+
+impl super::validate::Validate for FindRelatedEntitiesRequest {
+    fn validate(&self) -> Result<(), String> {
+        self.validate()
+    }
+}
+
+impl super::validate::Validate for ValidateKnowledgeRequest {
+    fn validate(&self) -> Result<(), String> {
+        self.validate()
+    }
+}
+
+impl super::validate::Validate for GetEntityGraphRequest {
+    fn validate(&self) -> Result<(), String> {
+        self.validate()
     }
 }
 

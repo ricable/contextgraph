@@ -71,18 +71,10 @@ impl Handlers {
         let start = Instant::now();
 
         // Parse and validate request
-        let request: SearchByEmbedderRequest = match serde_json::from_value(args) {
+        let request: SearchByEmbedderRequest = match self.parse_request(id.clone(), args, "search_by_embedder") {
             Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "search_by_embedder: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
+            Err(resp) => return resp,
         };
-
-        if let Err(e) = request.validate() {
-            error!(error = %e, "search_by_embedder: Validation failed");
-            return self.tool_error(id, &e);
-        }
 
         let embedder_id = match request.embedder_id() {
             Some(eid) => eid,
@@ -106,12 +98,9 @@ impl Handlers {
         );
 
         // Step 1: Create query embedding (all 13 embedders)
-        let query_fingerprint = match self.multi_array_provider.embed_all(&request.query).await {
-            Ok(output) => output.fingerprint,
-            Err(e) => {
-                error!(error = %e, "search_by_embedder: Query embedding FAILED");
-                return self.tool_error(id, &format!("Query embedding failed: {}", e));
-            }
+        let query_fingerprint = match self.embed_query(id.clone(), &request.query, "search_by_embedder").await {
+            Ok(fp) => fp,
+            Err(resp) => return resp,
         };
 
         // Step 2: Search in the selected embedder's space
@@ -286,18 +275,10 @@ impl Handlers {
     ) -> JsonRpcResponse {
         let start = Instant::now();
 
-        let request: GetEmbedderClustersRequest = match serde_json::from_value(args) {
+        let request: GetEmbedderClustersRequest = match self.parse_request(id.clone(), args, "get_embedder_clusters") {
             Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "get_embedder_clusters: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
+            Err(resp) => return resp,
         };
-
-        if let Err(e) = request.validate() {
-            error!(error = %e, "get_embedder_clusters: Validation failed");
-            return self.tool_error(id, &e);
-        }
 
         let embedder_id = match request.embedder_id() {
             Some(eid) => eid,
@@ -450,18 +431,10 @@ impl Handlers {
         let start = Instant::now();
 
         // Parse and validate request
-        let request: CompareEmbedderViewsRequest = match serde_json::from_value(args) {
+        let request: CompareEmbedderViewsRequest = match self.parse_request(id.clone(), args, "compare_embedder_views") {
             Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "compare_embedder_views: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
+            Err(resp) => return resp,
         };
-
-        if let Err(e) = request.validate() {
-            error!(error = %e, "compare_embedder_views: Validation failed");
-            return self.tool_error(id, &e);
-        }
 
         let embedder_ids = request.embedder_ids();
 
@@ -473,12 +446,9 @@ impl Handlers {
         );
 
         // Step 1: Create query embedding (all 13 embedders)
-        let query_fingerprint = match self.multi_array_provider.embed_all(&request.query).await {
-            Ok(output) => output.fingerprint,
-            Err(e) => {
-                error!(error = %e, "compare_embedder_views: Query embedding FAILED");
-                return self.tool_error(id, &format!("Query embedding failed: {}", e));
-            }
+        let query_fingerprint = match self.embed_query(id.clone(), &request.query, "compare_embedder_views").await {
+            Ok(fp) => fp,
+            Err(resp) => return resp,
         };
 
         // Step 2: Search each embedder
@@ -806,18 +776,10 @@ impl Handlers {
     ) -> JsonRpcResponse {
         let start = Instant::now();
 
-        let request: GetMemoryFingerprintRequest = match serde_json::from_value(args) {
+        let request: GetMemoryFingerprintRequest = match self.parse_request(id.clone(), args, "get_memory_fingerprint") {
             Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "get_memory_fingerprint: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
+            Err(resp) => return resp,
         };
-
-        if let Err(e) = request.validate() {
-            error!(error = %e, "get_memory_fingerprint: Validation failed");
-            return self.tool_error(id, &e);
-        }
 
         let memory_uuid = match Uuid::parse_str(&request.memory_id) {
             Ok(u) => u,
@@ -1076,18 +1038,10 @@ impl Handlers {
         id: Option<JsonRpcId>,
         args: serde_json::Value,
     ) -> JsonRpcResponse {
-        let request: CreateWeightProfileRequest = match serde_json::from_value(args) {
+        let request: CreateWeightProfileRequest = match self.parse_request(id.clone(), args, "create_weight_profile") {
             Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "create_weight_profile: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
+            Err(resp) => return resp,
         };
-
-        if let Err(e) = request.validate() {
-            error!(error = %e, "create_weight_profile: Validation failed");
-            return self.tool_error(id, &e);
-        }
 
         // Reject names that conflict with built-in profiles
         let built_in = context_graph_core::weights::get_profile_names();
@@ -1165,18 +1119,10 @@ impl Handlers {
     ) -> JsonRpcResponse {
         let start = Instant::now();
 
-        let request: SearchCrossEmbedderAnomaliesRequest = match serde_json::from_value(args) {
+        let request: SearchCrossEmbedderAnomaliesRequest = match self.parse_request(id.clone(), args, "search_cross_embedder_anomalies") {
             Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "search_cross_embedder_anomalies: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
+            Err(resp) => return resp,
         };
-
-        if let Err(e) = request.validate() {
-            error!(error = %e, "search_cross_embedder_anomalies: Validation failed");
-            return self.tool_error(id, &e);
-        }
 
         // MED-22 FIX: Use proper error handling instead of .expect() - defense in depth
         let high_eid = match EmbedderId::from_str(&request.high_embedder) {
@@ -1204,12 +1150,9 @@ impl Handlers {
         );
 
         // Step 1: Embed the query
-        let query_fingerprint = match self.multi_array_provider.embed_all(&request.query).await {
-            Ok(output) => output.fingerprint,
-            Err(e) => {
-                error!(error = %e, "search_cross_embedder_anomalies: Query embedding FAILED");
-                return self.tool_error(id, &format!("Query embedding failed: {}", e));
-            }
+        let query_fingerprint = match self.embed_query(id.clone(), &request.query, "search_cross_embedder_anomalies").await {
+            Ok(fp) => fp,
+            Err(resp) => return resp,
         };
 
         // Step 2: Search in the HIGH embedder's space (get more candidates than topK for filtering)

@@ -60,18 +60,10 @@ impl Handlers {
         args: serde_json::Value,
     ) -> JsonRpcResponse {
         // Parse and validate request
-        let request: SearchByKeywordsRequest = match serde_json::from_value(args.clone()) {
+        let request: SearchByKeywordsRequest = match self.parse_request(id.clone(), args, "search_by_keywords") {
             Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "search_by_keywords: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
+            Err(resp) => return resp,
         };
-
-        if let Err(e) = request.validate() {
-            error!(error = %e, "search_by_keywords: Validation failed");
-            return self.tool_error(id, &e);
-        }
 
         let query = &request.query;
         let top_k = request.top_k;
@@ -89,12 +81,9 @@ impl Handlers {
         );
 
         // Step 1: Embed the keyword query
-        let query_embedding = match self.multi_array_provider.embed_all(query).await {
-            Ok(output) => output.fingerprint,
-            Err(e) => {
-                error!(error = %e, "search_by_keywords: Query embedding FAILED");
-                return self.tool_error(id, &format!("Query embedding failed: {}", e));
-            }
+        let query_embedding = match self.embed_query(id.clone(), query, "search_by_keywords").await {
+            Ok(fp) => fp,
+            Err(resp) => return resp,
         };
 
         // Extract keywords for metadata and scoring

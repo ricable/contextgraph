@@ -16,6 +16,7 @@ use serde_json::json;
 use context_graph_core::monitoring::{LayerStatusProvider, StubLayerStatusProvider};
 use context_graph_core::stubs::{InMemoryTeleologicalStore, StubMultiArrayProvider};
 use context_graph_core::traits::{MultiArrayEmbeddingProvider, TeleologicalMemoryStore};
+#[cfg(feature = "llm")]
 use context_graph_graph_agent::create_stub_graph_discovery_service;
 
 use crate::handlers::Handlers;
@@ -23,6 +24,7 @@ use crate::protocol::{JsonRpcId, JsonRpcRequest};
 
 /// Create test handlers using Handlers::with_defaults (which uses StubLayerStatusProvider).
 /// GRAPH-AGENT: Includes stub GraphDiscoveryService that FAILS FAST if called.
+#[cfg(feature = "llm")]
 fn create_handlers_with_stub_monitors() -> Handlers {
     let store: Arc<dyn TeleologicalMemoryStore> = Arc::new(InMemoryTeleologicalStore::new());
     let multi_array: Arc<dyn MultiArrayEmbeddingProvider> = Arc::new(StubMultiArrayProvider::new());

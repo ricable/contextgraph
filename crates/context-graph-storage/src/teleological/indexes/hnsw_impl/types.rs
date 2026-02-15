@@ -213,4 +213,86 @@ impl HnswEmbedderIndex {
     pub fn ids(&self) -> Vec<Uuid> {
         self.id_to_key.read().keys().copied().collect()
     }
+
+    /// Serialize the HNSW graph to a byte buffer.
+    ///
+    /// Uses usearch's `save_to_buffer` for the graph structure.
+    /// Returns None if the index is empty (nothing to persist).
+    pub fn serialize_graph(&self) -> Result<Option<Vec<u8>>, String> {
+        let idx = self.index.read();
+        if idx.size() == 0 {
+            return Ok(None);
+        }
+        let len = idx.serialized_length();
+        let mut buf = vec![0u8; len];
+        idx.save_to_buffer(&mut buf)
+            .map_err(|e| format!("usearch save_to_buffer failed for {:?}: {}", self.embedder, e))?;
+        Ok(Some(buf))
+    }
+
+    /// Serialize UUID↔key mappings + next_key as JSON.
+    ///
+    /// Returns None if the index is empty.
+    pub fn serialize_metadata(&self) -> Option<Vec<u8>> {
+        let id_to_key = self.id_to_key.read();
+        if id_to_key.is_empty() {
+            return None;
+        }
+        let next_key = *self.next_key.read();
+        let meta = HnswPersistMetadata {
+            mappings: id_to_key.iter().map(|(id, k)| (*id, *k)).collect(),
+            next_key,
+        };
+        Some(serde_json::to_vec(&meta).expect("HnswPersistMetadata serialization cannot fail"))
+    }
+
+    /// Restore index state from persisted graph + metadata bytes.
+    ///
+    /// Replaces the current HNSW graph and UUID mappings with the persisted data.
+    /// The usearch index options (dimension, metric, etc.) must match the persisted graph.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if usearch `load_from_buffer` fails or metadata is corrupted.
+    pub fn restore_from_persisted(
+        &self,
+        graph_data: &[u8],
+        meta_data: &[u8],
+    ) -> Result<usize, String> {
+        // Deserialize metadata first (cheaper, validates before touching index)
+        let meta: HnswPersistMetadata = serde_json::from_slice(meta_data)
+            .map_err(|e| format!("metadata deserialization failed for {:?}: {}", self.embedder, e))?;
+
+        // Load graph into usearch index
+        let idx = self.index.write();
+        idx.load_from_buffer(graph_data)
+            .map_err(|e| format!("usearch load_from_buffer failed for {:?}: {}", self.embedder, e))?;
+
+        // Rebuild UUID mappings
+        let mut id_to_key = self.id_to_key.write();
+        let mut key_to_id = self.key_to_id.write();
+        let mut next_key = self.next_key.write();
+
+        id_to_key.clear();
+        key_to_id.clear();
+
+        let count = meta.mappings.len();
+        id_to_key.reserve(count);
+        key_to_id.reserve(count);
+
+        for (uuid, key) in &meta.mappings {
+            id_to_key.insert(*uuid, *key);
+            key_to_id.insert(*key, *uuid);
+        }
+        *next_key = meta.next_key;
+
+        Ok(count)
+    }
+}
+
+/// Metadata for persisting HNSW UUID↔key mappings.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct HnswPersistMetadata {
+    mappings: Vec<(Uuid, u64)>,
+    next_key: u64,
 }

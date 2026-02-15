@@ -52,7 +52,7 @@ use context_graph_embeddings::models::KeplerModel;
 use serde_json::json;
 use std::collections::HashSet;
 use std::time::Instant;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use context_graph_core::entity::{
@@ -368,18 +368,10 @@ impl Handlers {
         let start = Instant::now();
 
         // Parse and validate request
-        let request: ExtractEntitiesRequest = match serde_json::from_value(args) {
+        let request: ExtractEntitiesRequest = match self.parse_request(id.clone(), args, "extract_entities") {
             Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "extract_entities: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
+            Err(resp) => return resp,
         };
-
-        if let Err(e) = request.validate() {
-            error!(error = %e, "extract_entities: Validation failed");
-            return self.tool_error(id, &e);
-        }
 
         let text = &request.text;
         let include_unknown = request.include_unknown;
@@ -515,18 +507,10 @@ impl Handlers {
         let start = Instant::now();
 
         // Parse and validate request
-        let request: SearchByEntitiesRequest = match serde_json::from_value(args) {
+        let request: SearchByEntitiesRequest = match self.parse_request(id.clone(), args, "search_by_entities") {
             Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "search_by_entities: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
+            Err(resp) => return resp,
         };
-
-        if let Err(e) = request.validate() {
-            error!(error = %e, "search_by_entities: Validation failed");
-            return self.tool_error(id, &e);
-        }
 
         let entities = &request.entities;
         let match_mode = &request.match_mode;
@@ -562,12 +546,9 @@ impl Handlers {
         );
 
         // Step 2: Create query embedding (all 13 embedders)
-        let query_embedding = match self.multi_array_provider.embed_all(&query_entity_text).await {
-            Ok(output) => output.fingerprint,
-            Err(e) => {
-                error!(error = %e, "search_by_entities: Query embedding FAILED");
-                return self.tool_error(id, &format!("Query embedding failed: {}", e));
-            }
+        let query_embedding = match self.embed_query(id.clone(), &query_entity_text, "search_by_entities").await {
+            Ok(fp) => fp,
+            Err(resp) => return resp,
         };
 
         // Step 3: Search E1 for semantic candidates
@@ -851,18 +832,10 @@ impl Handlers {
         let start = Instant::now();
 
         // Parse and validate request
-        let request: InferRelationshipRequest = match serde_json::from_value(args) {
+        let request: InferRelationshipRequest = match self.parse_request(id.clone(), args, "infer_relationship") {
             Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "infer_relationship: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
+            Err(resp) => return resp,
         };
-
-        if let Err(e) = request.validate() {
-            error!(error = %e, "infer_relationship: Validation failed");
-            return self.tool_error(id, &e);
-        }
 
         let head_entity = &request.head_entity;
         let tail_entity = &request.tail_entity;
@@ -890,20 +863,14 @@ impl Handlers {
         };
 
         // Step 2: Embed head and tail entities using E11
-        let head_fingerprint = match self.multi_array_provider.embed_all(&head_text).await {
-            Ok(output) => output.fingerprint,
-            Err(e) => {
-                error!(error = %e, "infer_relationship: Head embedding FAILED");
-                return self.tool_error(id, &format!("Head embedding failed: {}", e));
-            }
+        let head_fingerprint = match self.embed_query(id.clone(), &head_text, "infer_relationship").await {
+            Ok(fp) => fp,
+            Err(resp) => return resp,
         };
 
-        let tail_fingerprint = match self.multi_array_provider.embed_all(&tail_text).await {
-            Ok(output) => output.fingerprint,
-            Err(e) => {
-                error!(error = %e, "infer_relationship: Tail embedding FAILED");
-                return self.tool_error(id, &format!("Tail embedding failed: {}", e));
-            }
+        let tail_fingerprint = match self.embed_query(id.clone(), &tail_text, "infer_relationship").await {
+            Ok(fp) => fp,
+            Err(resp) => return resp,
         };
 
         let head_e11 = &head_fingerprint.e11_entity;
@@ -928,15 +895,11 @@ impl Handlers {
 
         for (relation_name, _inverse) in KNOWN_RELATIONS {
             // Embed the relation text
-            let relation_fingerprint = match self.multi_array_provider.embed_all(relation_name).await
+            let relation_fingerprint = match self.embed_query(id.clone(), relation_name, "infer_relationship").await
             {
-                Ok(output) => output.fingerprint,
-                Err(e) => {
-                    warn!(
-                        relation = %relation_name,
-                        error = %e,
-                        "infer_relationship: Relation embedding failed, skipping"
-                    );
+                Ok(fp) => fp,
+                Err(_) => {
+                    // embed_query already logged the error; skip this relation
                     continue;
                 }
             };
@@ -1048,18 +1011,10 @@ impl Handlers {
         let start = Instant::now();
 
         // Parse and validate request
-        let request: FindRelatedEntitiesRequest = match serde_json::from_value(args) {
+        let request: FindRelatedEntitiesRequest = match self.parse_request(id.clone(), args, "find_related_entities") {
             Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "find_related_entities: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
+            Err(resp) => return resp,
         };
-
-        if let Err(e) = request.validate() {
-            error!(error = %e, "find_related_entities: Validation failed");
-            return self.tool_error(id, &e);
-        }
 
         let entity = &request.entity;
         let relation = &request.relation;
@@ -1077,23 +1032,14 @@ impl Handlers {
         );
 
         // Step 1: Embed source entity and relation
-        let entity_fingerprint = match self.multi_array_provider.embed_all(entity).await {
-            Ok(output) => output.fingerprint,
-            Err(e) => {
-                error!(error = %e, "find_related_entities: Entity embedding FAILED");
-                return self.tool_error(id, &format!("Entity embedding failed: {}", e));
-            }
+        let entity_fingerprint = match self.embed_query(id.clone(), entity, "find_related_entities").await {
+            Ok(fp) => fp,
+            Err(resp) => return resp,
         };
 
-        let relation_fingerprint = match self.multi_array_provider.embed_all(relation).await {
-            Ok(output) => output.fingerprint,
-            Err(e) => {
-                error!(error = %e, "find_related_entities: Relation embedding FAILED");
-                return self.tool_error(
-                    id,
-                    &format!("Relation embedding failed: {}", e),
-                );
-            }
+        let relation_fingerprint = match self.embed_query(id.clone(), relation, "find_related_entities").await {
+            Ok(fp) => fp,
+            Err(resp) => return resp,
         };
 
         let entity_e11 = &entity_fingerprint.e11_entity;
@@ -1107,13 +1053,9 @@ impl Handlers {
         if search_memories {
             // Search E1 for semantic candidates
             let search_query = format!("{} {} ?", entity, relation);
-            let query_fingerprint = match self.multi_array_provider.embed_all(&search_query).await {
-                Ok(output) => output.fingerprint,
-                Err(e) => {
-                    error!(error = %e, "find_related_entities: Query embedding FAILED");
-                    return self
-                        .tool_error(id, &format!("Query embedding failed: {}", e));
-                }
+            let query_fingerprint = match self.embed_query(id.clone(), &search_query, "find_related_entities").await {
+                Ok(fp) => fp,
+                Err(resp) => return resp,
             };
 
             let fetch_top_k = top_k * 10; // Over-fetch for filtering
@@ -1282,18 +1224,10 @@ impl Handlers {
         let start = Instant::now();
 
         // Parse and validate request
-        let request: ValidateKnowledgeRequest = match serde_json::from_value(args) {
+        let request: ValidateKnowledgeRequest = match self.parse_request(id.clone(), args, "validate_knowledge") {
             Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "validate_knowledge: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
+            Err(resp) => return resp,
         };
-
-        if let Err(e) = request.validate() {
-            error!(error = %e, "validate_knowledge: Validation failed");
-            return self.tool_error(id, &e);
-        }
 
         let subject = &request.subject;
         let predicate = &request.predicate;
@@ -1320,31 +1254,19 @@ impl Handlers {
         };
 
         // Step 2: Embed subject, predicate, and object using E11
-        let subject_fingerprint = match self.multi_array_provider.embed_all(&subject_text).await {
-            Ok(output) => output.fingerprint,
-            Err(e) => {
-                error!(error = %e, "validate_knowledge: Subject embedding FAILED");
-                return self
-                    .tool_error(id, &format!("Subject embedding failed: {}", e));
-            }
+        let subject_fingerprint = match self.embed_query(id.clone(), &subject_text, "validate_knowledge").await {
+            Ok(fp) => fp,
+            Err(resp) => return resp,
         };
 
-        let predicate_fingerprint = match self.multi_array_provider.embed_all(predicate).await {
-            Ok(output) => output.fingerprint,
-            Err(e) => {
-                error!(error = %e, "validate_knowledge: Predicate embedding FAILED");
-                return self
-                    .tool_error(id, &format!("Predicate embedding failed: {}", e));
-            }
+        let predicate_fingerprint = match self.embed_query(id.clone(), predicate, "validate_knowledge").await {
+            Ok(fp) => fp,
+            Err(resp) => return resp,
         };
 
-        let object_fingerprint = match self.multi_array_provider.embed_all(&object_text).await {
-            Ok(output) => output.fingerprint,
-            Err(e) => {
-                error!(error = %e, "validate_knowledge: Object embedding FAILED");
-                return self
-                    .tool_error(id, &format!("Object embedding failed: {}", e));
-            }
+        let object_fingerprint = match self.embed_query(id.clone(), &object_text, "validate_knowledge").await {
+            Ok(fp) => fp,
+            Err(resp) => return resp,
         };
 
         let h = &subject_fingerprint.e11_entity;
@@ -1371,8 +1293,7 @@ impl Handlers {
 
         // Search for memories containing both entities
         let search_query = format!("{} {} {}", subject, predicate, object);
-        if let Ok(output) = self.multi_array_provider.embed_all(&search_query).await {
-            let query_fingerprint = output.fingerprint;
+        if let Ok(query_fingerprint) = self.embed_query(id.clone(), &search_query, "validate_knowledge").await {
 
             let options = TeleologicalSearchOptions::quick(20)
                 .with_strategy(SearchStrategy::E1Only)
@@ -1544,18 +1465,10 @@ impl Handlers {
         let start = Instant::now();
 
         // Parse and validate request
-        let request: GetEntityGraphRequest = match serde_json::from_value(args) {
+        let request: GetEntityGraphRequest = match self.parse_request(id.clone(), args, "get_entity_graph") {
             Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "get_entity_graph: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
+            Err(resp) => return resp,
         };
-
-        if let Err(e) = request.validate() {
-            error!(error = %e, "get_entity_graph: Validation failed");
-            return self.tool_error(id, &e);
-        }
 
         let max_nodes = request.max_nodes;
         let max_depth = request.max_depth;
@@ -1577,12 +1490,9 @@ impl Handlers {
             "code programming framework database".to_string()
         };
 
-        let query_fingerprint = match self.multi_array_provider.embed_all(&search_query).await {
-            Ok(output) => output.fingerprint,
-            Err(e) => {
-                error!(error = %e, "get_entity_graph: Query embedding FAILED");
-                return self.tool_error(id, &format!("Query embedding failed: {}", e));
-            }
+        let query_fingerprint = match self.embed_query(id.clone(), &search_query, "get_entity_graph").await {
+            Ok(fp) => fp,
+            Err(resp) => return resp,
         };
 
         // Fetch enough memories to build a meaningful graph

@@ -161,64 +161,10 @@ impl CausalDiscoveryConfig {
     }
 }
 
-// ============================================================================
-// DISCOVERY CYCLE RESULT (existing type, kept for compatibility)
-// ============================================================================
+// Re-export shared type from core.
+pub use context_graph_core::types::DiscoveryCycleResult;
 
-/// Result of a single discovery cycle.
-#[derive(Debug, Clone)]
-pub struct DiscoveryCycleResult {
-    /// When the cycle started.
-    pub started_at: DateTime<Utc>,
-    /// When the cycle completed.
-    pub completed_at: DateTime<Utc>,
-    /// Duration of the cycle.
-    pub duration: Duration,
-    /// Number of candidate pairs found.
-    pub candidates_found: usize,
-    /// Number of relationships confirmed by LLM.
-    pub relationships_confirmed: usize,
-    /// Number of relationships rejected by LLM.
-    pub relationships_rejected: usize,
-    /// Number of E5 embeddings generated.
-    pub embeddings_generated: usize,
-    /// Number of graph edges created.
-    pub edges_created: usize,
-    /// Number of errors encountered.
-    pub errors: usize,
-    /// Error messages (if any).
-    pub error_messages: Vec<String>,
-}
-
-impl Default for DiscoveryCycleResult {
-    fn default() -> Self {
-        Self {
-            started_at: Utc::now(),
-            completed_at: Utc::now(),
-            duration: Duration::ZERO,
-            candidates_found: 0,
-            relationships_confirmed: 0,
-            relationships_rejected: 0,
-            embeddings_generated: 0,
-            edges_created: 0,
-            errors: 0,
-            error_messages: Vec::new(),
-        }
-    }
-}
-
-// ============================================================================
-// SERVICE STATUS
-// ============================================================================
-
-/// Service status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ServiceStatus {
-    Stopped,
-    Starting,
-    Running,
-    Stopping,
-}
+pub use context_graph_core::types::ServiceStatus;
 
 // ============================================================================
 // SERVICE

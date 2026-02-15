@@ -67,6 +67,7 @@ pub fn create_stub_graph_discovery_service() -> Arc<GraphDiscoveryService> {
 
     // Create service with unloaded LLM
     // NOTE: LLM is NOT loaded - any analysis calls will return Err(LlmNotInitialized)
+    #[allow(deprecated)]
     let service = GraphDiscoveryService::with_config(
         Arc::new(llm),
         GraphDiscoveryConfig::default(),

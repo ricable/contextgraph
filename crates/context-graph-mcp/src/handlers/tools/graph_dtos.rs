@@ -300,6 +300,37 @@ impl GetGraphPathRequest {
 }
 
 // ============================================================================
+// TRAIT IMPLS (parse_request / parse_request_validated helpers)
+// ============================================================================
+
+impl super::validate::Validate for SearchConnectionsRequest {
+    fn validate(&self) -> Result<(), String> {
+        self.validate()
+    }
+}
+
+impl super::validate::ValidateInto for GetGraphPathRequest {
+    type Output = Uuid;
+    fn validate(&self) -> Result<Self::Output, String> {
+        self.validate()
+    }
+}
+
+impl super::validate::ValidateInto for DiscoverGraphRelationshipsRequest {
+    type Output = Vec<Uuid>;
+    fn validate(&self) -> Result<Self::Output, String> {
+        self.validate()
+    }
+}
+
+impl super::validate::ValidateInto for ValidateGraphLinkRequest {
+    type Output = (Uuid, Uuid);
+    fn validate(&self) -> Result<Self::Output, String> {
+        self.validate()
+    }
+}
+
+// ============================================================================
 // RESPONSE DTOs
 // ============================================================================
 

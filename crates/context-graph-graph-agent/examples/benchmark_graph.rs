@@ -36,11 +36,10 @@ struct Query {
 }
 
 /// A document chunk from the dataset.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct Chunk {
-    #[allow(dead_code)]
     id: String,
-    #[allow(dead_code)]
     doc_id: String,
     original_doc_id: String,
     title: String,
@@ -257,6 +256,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
+    #[allow(deprecated)]
     let service = GraphDiscoveryService::with_config(Arc::new(llm), graph_config);
 
     // Run benchmark

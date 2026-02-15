@@ -15,8 +15,6 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
-use rand::prelude::*;
-use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -482,14 +480,12 @@ pub struct BenchmarkMetadata {
 /// Embedder impact benchmark runner.
 pub struct EmbedderImpactRunner {
     config: EmbedderImpactConfig,
-    rng: ChaCha8Rng,
 }
 
 impl EmbedderImpactRunner {
     /// Create new runner with config.
     pub fn new(config: EmbedderImpactConfig) -> Self {
-        let rng = ChaCha8Rng::seed_from_u64(config.seed);
-        Self { config, rng }
+        Self { config }
     }
 
     /// Run the benchmark.

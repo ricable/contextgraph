@@ -3,6 +3,7 @@
 pub mod audit;
 pub mod causal_relationship;
 pub mod code_entity;
+pub mod discovery;
 pub mod file_index;
 pub mod fingerprint;
 mod graph_edge;
@@ -45,6 +46,7 @@ pub use audit::{
     EmbeddingVersionRecord, ImportanceChangeRecord, MergeRecord,
     RecommendationStatus,
 };
+pub use discovery::{DiscoveryCycleResult, ServiceStatus};
 pub use graph_edge::*;
 pub use memory_node::*;
 pub use source_metadata::{SourceMetadata, SourceType};

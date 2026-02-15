@@ -10,7 +10,8 @@ use crate::types::{InputType, ModelEmbedding, ModelId, ModelInput};
 
 use super::forward_text::text_forward;
 use super::forward_vision::vision_forward;
-use super::model::{ModelState, MultimodalModel};
+use crate::models::pretrained::shared::ModelState;
+use super::model::MultimodalModel;
 
 #[async_trait]
 impl EmbeddingModel for MultimodalModel {

@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use context_graph_causal_agent::CausalDiscoveryLLM;
 use parking_lot::RwLock;
 use tokio::sync::mpsc;
@@ -64,43 +64,10 @@ impl Default for GraphDiscoveryConfig {
     }
 }
 
-/// Result of a single discovery cycle.
-#[derive(Debug, Clone)]
-pub struct DiscoveryCycleResult {
-    /// When the cycle started.
-    pub started_at: DateTime<Utc>,
-    /// When the cycle completed.
-    pub completed_at: DateTime<Utc>,
-    /// Total duration.
-    pub duration: Duration,
-    /// Number of candidate pairs found.
-    pub candidates_found: usize,
-    /// Number of relationships confirmed by LLM.
-    pub relationships_confirmed: usize,
-    /// Number of relationships rejected by LLM.
-    pub relationships_rejected: usize,
-    /// Number of embeddings generated.
-    pub embeddings_generated: usize,
-    /// Number of graph edges created.
-    pub edges_created: usize,
-    /// Number of errors encountered.
-    pub errors: usize,
-    /// Error messages.
-    pub error_messages: Vec<String>,
-}
+// Re-export shared type from core.
+pub use context_graph_core::types::DiscoveryCycleResult;
 
-/// Service status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ServiceStatus {
-    /// Service is stopped.
-    Stopped,
-    /// Service is starting.
-    Starting,
-    /// Service is running.
-    Running,
-    /// Service is stopping.
-    Stopping,
-}
+pub use context_graph_core::types::ServiceStatus;
 
 /// Graph relationship discovery service.
 ///

@@ -17,20 +17,10 @@ use crate::types::{ModelEmbedding, ModelId, ModelInput};
 use super::image_processor::ImageProcessor;
 use super::weights::ClipWeights;
 
-/// Internal state that varies based on feature flags.
-#[allow(dead_code)]
-pub(crate) enum ModelState {
-    /// Unloaded - no weights in memory.
-    Unloaded,
+use crate::models::pretrained::shared::ModelState;
 
-    /// Loaded with CLIP weights and tokenizer (GPU-accelerated).
-    Loaded {
-        /// CLIP model weights on GPU (boxed to reduce enum size).
-        weights: Box<ClipWeights>,
-        /// HuggingFace tokenizer for text encoding (boxed to reduce enum size).
-        tokenizer: Box<Tokenizer>,
-    },
-}
+/// Concrete state type for multimodal model (CLIP weights).
+pub(crate) type MultimodalModelState = ModelState<Box<ClipWeights>>;
 
 /// Multimodal embedding model using openai/clip-vit-base-patch32.
 ///
@@ -39,7 +29,7 @@ pub(crate) enum ModelState {
 pub struct MultimodalModel {
     /// Model weights and inference engine.
     #[allow(dead_code)]
-    pub(crate) model_state: std::sync::RwLock<ModelState>,
+    pub(crate) model_state: std::sync::RwLock<MultimodalModelState>,
 
     /// Path to model weights directory.
     #[allow(dead_code)]

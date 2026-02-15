@@ -387,6 +387,38 @@ impl TraverseGraphRequest {
 }
 
 // ============================================================================
+// TRAIT IMPLS (parse_request_validated helper)
+// ============================================================================
+
+impl super::validate::ValidateInto for GetMemoryNeighborsRequest {
+    type Output = Uuid;
+    fn validate(&self) -> Result<Self::Output, String> {
+        self.validate()
+    }
+}
+
+impl super::validate::ValidateInto for GetTypedEdgesRequest {
+    type Output = Uuid;
+    fn validate(&self) -> Result<Self::Output, String> {
+        self.validate()
+    }
+}
+
+impl super::validate::ValidateInto for TraverseGraphRequest {
+    type Output = Uuid;
+    fn validate(&self) -> Result<Self::Output, String> {
+        self.validate()
+    }
+}
+
+impl super::validate::ValidateInto for GetUnifiedNeighborsRequest {
+    type Output = Uuid;
+    fn validate(&self) -> Result<Self::Output, String> {
+        self.validate()
+    }
+}
+
+// ============================================================================
 // RESPONSE DTOs
 // ============================================================================
 

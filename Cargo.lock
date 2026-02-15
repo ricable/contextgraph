@@ -911,7 +911,6 @@ dependencies = [
  "context-graph-embeddings",
  "context-graph-storage",
  "futures",
- "llama-cpp-2",
  "parking_lot",
  "rand 0.8.5",
  "serde",

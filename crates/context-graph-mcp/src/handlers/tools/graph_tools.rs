@@ -28,22 +28,27 @@ use context_graph_core::graph::asymmetric::{
     compute_e8_asymmetric_fingerprint_similarity, GraphDirection,
 };
 use context_graph_core::traits::{SearchStrategy, TeleologicalSearchOptions};
+#[cfg(feature = "llm")]
 use context_graph_core::types::audit::{AuditOperation, AuditRecord};
 use context_graph_core::types::fingerprint::SemanticFingerprint;
 
-// GRAPH-AGENT: LLM-based relationship discovery types
+// GRAPH-AGENT: LLM-based relationship discovery types (requires `llm` feature)
+#[cfg(feature = "llm")]
 use context_graph_graph_agent::{MemoryForGraphAnalysis, RelationshipType};
 
 use crate::protocol::JsonRpcId;
 use crate::protocol::JsonRpcResponse;
 
 use super::graph_dtos::{
-    ConnectionSearchMetadata, ConnectionSearchResult, DiscoveredRelationship,
-    DiscoverGraphRelationshipsRequest, DiscoverGraphRelationshipsResponse, DiscoveryMetadata,
-    GetGraphPathRequest, GetGraphPathResponse, GraphPathHop, GraphPathMetadata, GraphSourceInfo,
-    SearchConnectionsRequest, SearchConnectionsResponse, ValidateGraphLinkRequest,
-    ValidateGraphLinkResponse, HOP_ATTENUATION, SOURCE_DIRECTION_MODIFIER,
+    ConnectionSearchMetadata, ConnectionSearchResult, GetGraphPathRequest, GetGraphPathResponse,
+    GraphPathHop, GraphPathMetadata, GraphSourceInfo, SearchConnectionsRequest,
+    SearchConnectionsResponse, HOP_ATTENUATION, SOURCE_DIRECTION_MODIFIER,
     TARGET_DIRECTION_MODIFIER,
+};
+#[cfg(feature = "llm")]
+use super::graph_dtos::{
+    DiscoveredRelationship, DiscoverGraphRelationshipsRequest, DiscoverGraphRelationshipsResponse,
+    DiscoveryMetadata, ValidateGraphLinkRequest, ValidateGraphLinkResponse,
 };
 
 use super::super::Handlers;
@@ -74,18 +79,12 @@ impl Handlers {
         args: serde_json::Value,
     ) -> JsonRpcResponse {
         // Parse and validate request
-        let request: SearchConnectionsRequest = match serde_json::from_value(args.clone()) {
+        // NOTE: args is cloned because includeProvenance is read from raw args below
+        let raw_args = args.clone();
+        let request: SearchConnectionsRequest = match self.parse_request(id.clone(), args, "search_connections") {
             Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "search_connections: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
+            Err(resp) => return resp,
         };
-
-        if let Err(e) = request.validate() {
-            error!(error = %e, "search_connections: Validation failed");
-            return self.tool_error(id, &e);
-        }
 
         let query = &request.query;
         let top_k = request.top_k;
@@ -93,7 +92,7 @@ impl Handlers {
         let is_source_seeking = request.is_source();
 
         // PHASE-2-PROVENANCE: Parse includeProvenance from raw args (not in DTO)
-        let include_provenance = args
+        let include_provenance = raw_args
             .get("includeProvenance")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
@@ -107,12 +106,9 @@ impl Handlers {
         );
 
         // Step 1: Embed the query
-        let query_embedding = match self.multi_array_provider.embed_all(query).await {
-            Ok(output) => output.fingerprint,
-            Err(e) => {
-                error!(error = %e, "search_connections: Query embedding FAILED");
-                return self.tool_error(id, &format!("Query embedding failed: {}", e));
-            }
+        let query_embedding = match self.embed_query(id.clone(), query, "search_connections").await {
+            Ok(fp) => fp,
+            Err(resp) => return resp,
         };
 
         // Step 2: Search for candidates (5x over-fetch for reranking)
@@ -340,20 +336,9 @@ impl Handlers {
         args: serde_json::Value,
     ) -> JsonRpcResponse {
         // Parse and validate request
-        let request: GetGraphPathRequest = match serde_json::from_value(args) {
-            Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "get_graph_path: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
-        };
-
-        let anchor_uuid = match request.validate() {
-            Ok(uuid) => uuid,
-            Err(e) => {
-                error!(error = %e, "get_graph_path: Validation failed");
-                return self.tool_error(id, &e);
-            }
+        let (request, anchor_uuid) = match self.parse_request_validated::<GetGraphPathRequest>(id.clone(), args, "get_graph_path") {
+            Ok(pair) => pair,
+            Err(resp) => return resp,
         };
 
         let direction = &request.direction;
@@ -568,7 +553,31 @@ impl Handlers {
 
         self.tool_result(id, serde_json::to_value(response).unwrap_or_else(|_| json!({})))
     }
+}
 
+/// Non-LLM stubs: When `llm` feature is disabled, LLM-based graph tools return errors.
+#[cfg(not(feature = "llm"))]
+impl Handlers {
+    pub(crate) async fn call_discover_graph_relationships(
+        &self,
+        id: Option<JsonRpcId>,
+        _args: serde_json::Value,
+    ) -> JsonRpcResponse {
+        self.tool_error(id, "discover_graph_relationships requires the 'llm' feature (GraphDiscoveryService)")
+    }
+
+    pub(crate) async fn call_validate_graph_link(
+        &self,
+        id: Option<JsonRpcId>,
+        _args: serde_json::Value,
+    ) -> JsonRpcResponse {
+        self.tool_error(id, "validate_graph_link requires the 'llm' feature (GraphDiscoveryService)")
+    }
+}
+
+/// LLM-based graph discovery tools (requires `llm` feature).
+#[cfg(feature = "llm")]
+impl Handlers {
     /// discover_graph_relationships tool implementation.
     ///
     /// Discovers graph relationships between memories using LLM analysis.
@@ -589,20 +598,9 @@ impl Handlers {
         args: serde_json::Value,
     ) -> JsonRpcResponse {
         // Parse and validate request
-        let request: DiscoverGraphRelationshipsRequest = match serde_json::from_value(args) {
-            Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "discover_graph_relationships: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
-        };
-
-        let memory_uuids = match request.validate() {
-            Ok(uuids) => uuids,
-            Err(e) => {
-                error!(error = %e, "discover_graph_relationships: Validation failed");
-                return self.tool_error(id, &e);
-            }
+        let (request, memory_uuids) = match self.parse_request_validated::<DiscoverGraphRelationshipsRequest>(id.clone(), args, "discover_graph_relationships") {
+            Ok(pair) => pair,
+            Err(resp) => return resp,
         };
 
         let min_confidence = request.min_confidence;
@@ -830,20 +828,9 @@ impl Handlers {
         args: serde_json::Value,
     ) -> JsonRpcResponse {
         // Parse and validate request
-        let request: ValidateGraphLinkRequest = match serde_json::from_value(args) {
-            Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "validate_graph_link: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
-        };
-
-        let (source_uuid, target_uuid) = match request.validate() {
-            Ok(uuids) => uuids,
-            Err(e) => {
-                error!(error = %e, "validate_graph_link: Validation failed");
-                return self.tool_error(id, &e);
-            }
+        let (request, (source_uuid, target_uuid)) = match self.parse_request_validated::<ValidateGraphLinkRequest>(id.clone(), args, "validate_graph_link") {
+            Ok(pair) => pair,
+            Err(resp) => return resp,
         };
 
         info!(

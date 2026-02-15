@@ -9,6 +9,9 @@
 //! - [`CodeStoreAdapter`]: Bridges `CodeStore` to `CodeStorage` trait for code capture
 //! - [`LlmCausalHintProvider`]: LLM-based causal hint provider for E5 enhancement
 
+/// LLM-based causal hint provider (requires `llm` feature).
+/// Wraps CausalDiscoveryLLM for causal hint generation during store_memory.
+#[cfg(feature = "llm")]
 pub mod causal_hint;
 pub mod code_store_adapter;
 pub mod lazy_provider;
@@ -20,4 +23,5 @@ pub use lazy_provider::LazyMultiArrayProvider;
 pub use code_store_adapter::CodeStoreAdapter;
 
 // LlmCausalHintProvider wraps CausalDiscoveryLLM for causal hint generation
+#[cfg(feature = "llm")]
 pub use causal_hint::LlmCausalHintProvider;

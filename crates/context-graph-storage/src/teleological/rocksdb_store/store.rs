@@ -79,9 +79,11 @@ pub struct RocksDbTeleologicalStore {
     pub(crate) path: PathBuf,
     /// In-memory count of fingerprints (cached for performance).
     pub(crate) fingerprint_count: RwLock<Option<usize>>,
-    /// Soft-deleted IDs (tracked in memory for filtering).
+    /// Soft-deleted IDs with deletion timestamps (Unix epoch milliseconds).
     /// Wrapped in Arc to allow cheap cloning for spawn_blocking closures.
-    pub(crate) soft_deleted: Arc<RwLock<HashMap<Uuid, bool>>>,
+    /// Values are the timestamp when the soft-delete occurred, used by GC
+    /// to determine if retention period has expired.
+    pub(crate) soft_deleted: Arc<RwLock<HashMap<Uuid, i64>>>,
     /// Per-embedder index registry with 12 HNSW indexes for O(log n) ANN search.
     /// E6, E12, E13 use different index types (inverted/MaxSim).
     /// NO FALLBACKS - FAIL FAST on invalid operations.
@@ -204,16 +206,29 @@ impl RocksDbTeleologicalStore {
         let soft_deleted = {
             use super::crud::SOFT_DELETE_PREFIX;
 
-            let mut map = HashMap::new();
+            let mut map: HashMap<Uuid, i64> = HashMap::new();
             if let Some(cf_system) = db_arc.cf_handle(crate::column_families::cf_names::SYSTEM) {
                 let iter = db_arc.prefix_iterator_cf(cf_system, SOFT_DELETE_PREFIX.as_bytes());
                 for item in iter {
                     match item {
-                        Ok((key, _value)) => {
+                        Ok((key, value)) => {
                             let key_str = String::from_utf8_lossy(&key);
                             if let Some(uuid_str) = key_str.strip_prefix(SOFT_DELETE_PREFIX) {
                                 if let Ok(id) = uuid::Uuid::parse_str(uuid_str) {
-                                    map.insert(id, true);
+                                    // Parse timestamp from 8-byte big-endian i64.
+                                    // Legacy `b"1"` markers (1 byte) get timestamp 0
+                                    // (immediately eligible for GC).
+                                    let ts = if value.len() == 8 {
+                                        i64::from_be_bytes(value[..8].try_into().unwrap())
+                                    } else {
+                                        warn!(
+                                            "Legacy soft-delete marker for {} ({}B value), \
+                                             treating as timestamp 0 (immediate GC eligible)",
+                                            id, value.len()
+                                        );
+                                        0
+                                    };
+                                    map.insert(id, ts);
                                 }
                             } else {
                                 // Prefix iterator went past our prefix -- stop
@@ -244,10 +259,17 @@ impl RocksDbTeleologicalStore {
             secondary_index_lock: parking_lot::Mutex::new(()),
         };
 
-        // CRITICAL: Rebuild HNSW indexes from existing RocksDB fingerprints
-        // Without this, indexes are empty on every restart and multi-space search fails!
-        // NOTE: Soft-deleted IDs are already loaded above, so rebuild will skip them.
-        store.rebuild_indexes_from_store()?;
+        // Try fast path: load HNSW indexes from CF_HNSW_GRAPHS (persisted graphs).
+        // Falls back to O(n) rebuild from CF_FINGERPRINTS if no persisted data or errors.
+        match store.try_load_hnsw_indexes() {
+            Ok(true) => {
+                debug!("HNSW indexes loaded from persisted CF_HNSW_GRAPHS");
+            }
+            Ok(false) | Err(_) => {
+                // No persisted data or restore error — full rebuild
+                store.rebuild_indexes_from_store()?;
+            }
+        }
 
         // Rebuild E11 HNSW index from existing causal relationships
         store.rebuild_causal_e11_index()?;
@@ -674,6 +696,160 @@ impl RocksDbTeleologicalStore {
 }
 
 // ============================================================================
+// HNSW Index Persistence (CF_HNSW_GRAPHS)
+// ============================================================================
+
+impl RocksDbTeleologicalStore {
+    /// Persist all HNSW indexes to CF_HNSW_GRAPHS.
+    ///
+    /// Stores each index as two key-value pairs:
+    /// - `graph:{EmbedderDebugName}` → usearch serialized graph bytes
+    /// - `meta:{EmbedderDebugName}` → JSON of UUID↔key mappings + next_key
+    ///
+    /// Empty indexes are skipped. Uses a WriteBatch for atomicity.
+    pub fn persist_hnsw_indexes(&self) -> TeleologicalStoreResult<()> {
+        use crate::teleological::column_families::CF_HNSW_GRAPHS;
+
+        let start = std::time::Instant::now();
+        let cf = self.get_cf(CF_HNSW_GRAPHS)?;
+
+        let mut batch = rocksdb::WriteBatch::default();
+        let mut persisted = 0usize;
+        let mut skipped = 0usize;
+
+        for (embedder, index) in self.index_registry.iter() {
+            let name = format!("{:?}", embedder);
+
+            let graph_data = match index.serialize_graph() {
+                Ok(Some(data)) => data,
+                Ok(None) => {
+                    skipped += 1;
+                    continue;
+                }
+                Err(e) => {
+                    error!("Failed to serialize HNSW graph for {}: {}", name, e);
+                    return Err(TeleologicalStoreError::Internal(format!(
+                        "HNSW graph serialization failed for {}: {}",
+                        name, e
+                    )));
+                }
+            };
+
+            let meta_data = match index.serialize_metadata() {
+                Some(data) => data,
+                None => {
+                    skipped += 1;
+                    continue;
+                }
+            };
+
+            let graph_key = format!("graph:{}", name);
+            let meta_key = format!("meta:{}", name);
+
+            batch.put_cf(cf, graph_key.as_bytes(), &graph_data);
+            batch.put_cf(cf, meta_key.as_bytes(), &meta_data);
+            persisted += 1;
+        }
+
+        if persisted > 0 {
+            self.db.write(batch).map_err(|e| {
+                error!("Failed to write HNSW index batch to RocksDB: {}", e);
+                TeleologicalStoreError::rocksdb_op("write_batch", CF_HNSW_GRAPHS, None, e)
+            })?;
+        }
+
+        let elapsed = start.elapsed();
+        if persisted > 0 {
+            info!(
+                "Persisted {} HNSW indexes to CF_HNSW_GRAPHS ({} empty/skipped) in {:?}",
+                persisted, skipped, elapsed
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Try to load HNSW indexes from CF_HNSW_GRAPHS.
+    ///
+    /// Returns `true` if at least one index was restored, `false` if CF is empty.
+    /// On any deserialization error, returns `Err` so caller can fall back to rebuild.
+    fn try_load_hnsw_indexes(&self) -> TeleologicalStoreResult<bool> {
+        use crate::teleological::column_families::CF_HNSW_GRAPHS;
+
+        let start = std::time::Instant::now();
+        let cf = self.get_cf(CF_HNSW_GRAPHS)?;
+
+        let mut restored = 0usize;
+        let mut errors = Vec::new();
+
+        for (embedder, index) in self.index_registry.iter() {
+            let name = format!("{:?}", embedder);
+            let graph_key = format!("graph:{}", name);
+            let meta_key = format!("meta:{}", name);
+
+            // Read both graph and metadata
+            let graph_data = match self.db.get_cf(cf, graph_key.as_bytes()) {
+                Ok(Some(data)) => data,
+                Ok(None) => continue, // No persisted data for this index
+                Err(e) => {
+                    errors.push(format!("{}: graph read failed: {}", name, e));
+                    continue;
+                }
+            };
+
+            let meta_data = match self.db.get_cf(cf, meta_key.as_bytes()) {
+                Ok(Some(data)) => data,
+                Ok(None) => {
+                    errors.push(format!("{}: graph exists but metadata missing", name));
+                    continue;
+                }
+                Err(e) => {
+                    errors.push(format!("{}: metadata read failed: {}", name, e));
+                    continue;
+                }
+            };
+
+            // Restore the index
+            match index.restore_from_persisted(&graph_data, &meta_data) {
+                Ok(count) => {
+                    debug!("Restored HNSW index for {} ({} vectors)", name, count);
+                    restored += 1;
+                }
+                Err(e) => {
+                    errors.push(format!("{}: restore failed: {}", name, e));
+                }
+            }
+        }
+
+        let elapsed = start.elapsed();
+
+        if !errors.is_empty() {
+            warn!(
+                "HNSW index restore had {} errors (restored {}): {:?}",
+                errors.len(),
+                restored,
+                errors
+            );
+            // Return error so caller falls back to full rebuild
+            return Err(TeleologicalStoreError::Internal(format!(
+                "HNSW index restore failed for {} indexes: {}",
+                errors.len(),
+                errors.join("; ")
+            )));
+        }
+
+        if restored > 0 {
+            info!(
+                "Restored {} HNSW indexes from CF_HNSW_GRAPHS in {:?}",
+                restored, elapsed
+            );
+        }
+
+        Ok(restored > 0)
+    }
+}
+
+// ============================================================================
 // Core Storage Operations
 // ============================================================================
 
@@ -784,11 +960,7 @@ impl RocksDbTeleologicalStore {
     ///
     /// MED-11 FIX: Uses parking_lot::RwLock which is non-poisonable.
     pub(crate) fn is_soft_deleted(&self, id: &Uuid) -> bool {
-        self.soft_deleted
-            .read()
-            .get(id)
-            .copied()
-            .unwrap_or(false) // Unknown IDs are not deleted
+        self.soft_deleted.read().contains_key(id)
     }
 }
 

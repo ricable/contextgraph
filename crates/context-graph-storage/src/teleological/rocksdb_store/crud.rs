@@ -30,7 +30,7 @@ use super::store::RocksDbTeleologicalStore;
 use super::types::TeleologicalStoreError;
 
 /// Key prefix for soft-delete markers persisted in CF_SYSTEM.
-/// Format: "soft_deleted::{uuid}" -> "1"
+/// Format: "soft_deleted::{uuid}" -> i64 timestamp (8 bytes, big-endian Unix epoch millis)
 pub(crate) const SOFT_DELETE_PREFIX: &str = "soft_deleted::";
 
 /// Build the CF_SYSTEM key for a soft-delete marker.
@@ -149,15 +149,20 @@ impl RocksDbTeleologicalStore {
         if soft {
             // Soft delete: mark as deleted in memory AND persist to RocksDB
             // MED-11 FIX: parking_lot::RwLock returns guard directly (non-poisonable)
-            self.soft_deleted.write().insert(id, true);
+            let now_millis = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock before UNIX epoch")
+                .as_millis() as i64;
+            self.soft_deleted.write().insert(id, now_millis);
 
             // SEC-06-FIX: Persist soft-delete marker to CF_SYSTEM so it survives restart
+            // Value is i64 timestamp (8 bytes, big-endian) for GC retention checks
             let cf_system = self
                 .get_cf(crate::column_families::cf_names::SYSTEM)
                 .map_err(|e| CoreError::StorageError(format!("CF_SYSTEM not found: {e}")))?;
             let sd_key = soft_delete_key(&id);
             self.db
-                .put_cf(cf_system, sd_key.as_bytes(), b"1")
+                .put_cf(cf_system, sd_key.as_bytes(), &now_millis.to_be_bytes())
                 .map_err(|e| {
                     CoreError::StorageError(format!(
                         "Failed to persist soft-delete marker for {}: {}",
@@ -247,6 +252,79 @@ impl RocksDbTeleologicalStore {
 
         info!("Deleted fingerprint {} (soft={})", id, soft);
         Ok(true)
+    }
+
+    // ==================== Soft-Delete Garbage Collection ====================
+
+    /// Garbage-collect soft-deleted entries whose retention period has expired.
+    ///
+    /// Scans the in-memory `soft_deleted` map for entries whose deletion timestamp
+    /// is older than `retention_secs` seconds. For each expired entry, performs a
+    /// hard delete (removes from all CFs + HNSW indexes).
+    ///
+    /// Returns the number of entries successfully hard-deleted.
+    ///
+    /// # Errors
+    ///
+    /// Individual hard-delete failures are logged and skipped — the GC continues
+    /// processing remaining entries. Only returns Err on catastrophic failures
+    /// (e.g., CF_SYSTEM not found).
+    pub async fn gc_soft_deleted(&self, retention_secs: u64) -> CoreResult<usize> {
+        let now_millis = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock before UNIX epoch")
+            .as_millis() as i64;
+        let retention_millis = (retention_secs as i64) * 1000;
+        let cutoff = now_millis - retention_millis;
+
+        // Snapshot expired IDs while holding the read lock briefly
+        let expired_ids: Vec<Uuid> = self
+            .soft_deleted
+            .read()
+            .iter()
+            .filter(|(_, &ts)| ts < cutoff)
+            .map(|(&id, _)| id)
+            .collect();
+
+        if expired_ids.is_empty() {
+            debug!("GC: no soft-deleted entries past retention ({retention_secs}s)");
+            return Ok(0);
+        }
+
+        info!(
+            "GC: hard-deleting {} soft-deleted entries past {retention_secs}s retention",
+            expired_ids.len()
+        );
+
+        let mut deleted = 0usize;
+        for id in &expired_ids {
+            match self.delete_async(*id, false).await {
+                Ok(true) => {
+                    debug!(id = %id, "GC: hard-deleted expired soft-deleted entry");
+                    deleted += 1;
+                }
+                Ok(false) => {
+                    // Entry was already gone from RocksDB, clean up tracking
+                    warn!(
+                        id = %id,
+                        "GC: soft-deleted entry not found in RocksDB (already cleaned)"
+                    );
+                    self.soft_deleted.write().remove(id);
+                    deleted += 1;
+                }
+                Err(e) => {
+                    // Log and continue — don't fail entire GC for one entry
+                    warn!(
+                        id = %id,
+                        error = %e,
+                        "GC: failed to hard-delete soft-deleted entry, will retry next cycle"
+                    );
+                }
+            }
+        }
+
+        info!("GC: completed, {deleted}/{} entries hard-deleted", expired_ids.len());
+        Ok(deleted)
     }
 
     // ==================== Processing Cursor Storage ====================

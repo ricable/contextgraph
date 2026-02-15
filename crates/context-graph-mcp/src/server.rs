@@ -60,19 +60,25 @@ use context_graph_embeddings::adapters::E7CodeEmbeddingProvider;
 use context_graph_storage::code::CodeStore;
 
 use context_graph_embeddings::{
-    get_warm_causal_model, get_warm_graph_model, get_warm_provider,
-    initialize_global_warm_provider, is_warm_initialized, warm_status_message, GpuConfig,
-    ProductionMultiArrayProvider,
+    get_warm_provider, initialize_global_warm_provider, is_warm_initialized, warm_status_message,
+    GpuConfig, ProductionMultiArrayProvider,
 };
+#[cfg(feature = "llm")]
+use context_graph_embeddings::{get_warm_causal_model, get_warm_graph_model};
 
 // REAL implementations - NO STUBS
-use crate::adapters::{LazyMultiArrayProvider, LlmCausalHintProvider};
+use crate::adapters::LazyMultiArrayProvider;
+#[cfg(feature = "llm")]
+use crate::adapters::LlmCausalHintProvider;
+#[cfg(feature = "llm")]
 use context_graph_embeddings::provider::CausalHintProvider;
 use context_graph_storage::teleological::RocksDbTeleologicalStore;
 // TASK-GRAPHLINK: EdgeRepository and BackgroundGraphBuilder for K-NN graph linking
 use context_graph_storage::{BackgroundGraphBuilder, EdgeRepository, GraphBuilderConfig};
-// GRAPH-AGENT: LLM-based relationship discovery
+// GRAPH-AGENT: LLM-based relationship discovery (requires `llm` feature)
+#[cfg(feature = "llm")]
 use context_graph_causal_agent::CausalDiscoveryLLM;
+#[cfg(feature = "llm")]
 use context_graph_graph_agent::{GraphDiscoveryConfig, GraphDiscoveryService};
 
 use crate::handlers::Handlers;
@@ -250,8 +256,45 @@ impl McpServer {
         // so no separate initialization step is needed.
         info!("Created store with EmbedderIndexRegistry (12 HNSW-capable embedders initialized)");
 
+        // Wrap in Arc<RocksDbTeleologicalStore> first, then clone for background tasks
+        let rocksdb_store_arc = Arc::new(rocksdb_store);
+        let gc_store = Arc::clone(&rocksdb_store_arc);
+        let persist_store = Arc::clone(&rocksdb_store_arc);
+
+        // Spawn soft-delete GC background task (runs every 5 minutes)
+        tokio::spawn(async move {
+            let gc_interval = std::time::Duration::from_secs(5 * 60);
+            let gc_retention = 7 * 24 * 3600u64; // 7 days
+            info!("Soft-delete GC background task started (interval=5min, retention=7d)");
+            loop {
+                tokio::time::sleep(gc_interval).await;
+                match gc_store.gc_soft_deleted(gc_retention).await {
+                    Ok(deleted) => {
+                        if deleted > 0 {
+                            info!("GC cycle: hard-deleted {deleted} expired soft-deleted entries");
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("GC cycle failed: {e}");
+                    }
+                }
+            }
+        });
+
+        // Spawn HNSW index persistence background task (runs every 10 minutes)
+        tokio::spawn(async move {
+            let persist_interval = std::time::Duration::from_secs(10 * 60);
+            info!("HNSW persistence background task started (interval=10min)");
+            loop {
+                tokio::time::sleep(persist_interval).await;
+                if let Err(e) = persist_store.persist_hnsw_indexes() {
+                    tracing::error!("HNSW persistence failed: {e}");
+                }
+            }
+        });
+
         // Now wrap in Arc<dyn TeleologicalMemoryStore>
-        let teleological_store: Arc<dyn TeleologicalMemoryStore> = Arc::new(rocksdb_store);
+        let teleological_store: Arc<dyn TeleologicalMemoryStore> = rocksdb_store_arc;
 
         // Create EdgeRepository sharing the same RocksDB instance
         // NO FALLBACKS - If this fails, the system errors so we can debug
@@ -515,131 +558,157 @@ impl McpServer {
             graph_builder.config().min_batch_size,
         );
 
-        // GRAPH-AGENT: Initialize shared LLM for graph relationship discovery
-        // This LLM (Qwen2.5-3B) can also be shared with causal-agent
-        // NO FALLBACKS - LLM MUST load successfully or server startup fails
-        info!("GRAPH-AGENT: Initializing CausalDiscoveryLLM (Qwen2.5-3B) - NO FALLBACKS");
-        let llm = CausalDiscoveryLLM::new().map_err(|e| {
-            error!(
-                "FATAL: Failed to create CausalDiscoveryLLM: {}. \
-                 Graph discovery requires Qwen2.5-3B model (~6GB VRAM). \
-                 Check model files exist and CUDA GPU is available.",
-                e
-            );
-            anyhow::anyhow!(
-                "Failed to create CausalDiscoveryLLM: {}. \
-                 Ensure Qwen2.5-3B model is downloaded and CUDA GPU with 6GB+ VRAM is available.",
-                e
-            )
-        })?;
+        // ==========================================================================
+        // 3b. LLM Initialization (requires `llm` feature)
+        // ==========================================================================
+        // When `llm` feature is enabled (default): Load CausalDiscoveryLLM + GraphDiscoveryService
+        // When `llm` feature is disabled: Create Handlers without LLM (graph/causal tools unavailable)
 
-        info!("Loading CausalDiscoveryLLM (Qwen2.5-3B) into VRAM (~6GB)...");
-        llm.load().await.map_err(|e| {
-            error!(
-                "FATAL: Failed to load CausalDiscoveryLLM: {}. \
-                 Check CUDA GPU has at least 6GB free VRAM.",
-                e
-            );
-            anyhow::anyhow!(
-                "Failed to load CausalDiscoveryLLM: {}. \
-                 Requires ~6GB VRAM. Check GPU memory availability.",
-                e
-            )
-        })?;
-        info!("CausalDiscoveryLLM loaded successfully (~6GB VRAM)");
+        #[cfg(feature = "llm")]
+        let handlers = {
+            // GRAPH-AGENT: Initialize shared LLM for graph relationship discovery
+            // This LLM (Qwen2.5-3B) can also be shared with causal-agent
+            // NO FALLBACKS - LLM MUST load successfully or server startup fails
+            info!("GRAPH-AGENT: Initializing CausalDiscoveryLLM (Qwen2.5-3B) - NO FALLBACKS");
+            let llm = CausalDiscoveryLLM::new().map_err(|e| {
+                error!(
+                    "FATAL: Failed to create CausalDiscoveryLLM: {}. \
+                     Graph discovery requires Qwen2.5-3B model (~6GB VRAM). \
+                     Check model files exist and CUDA GPU is available.",
+                    e
+                );
+                anyhow::anyhow!(
+                    "Failed to create CausalDiscoveryLLM: {}. \
+                     Ensure Qwen2.5-3B model is downloaded and CUDA GPU with 6GB+ VRAM is available.",
+                    e
+                )
+            })?;
 
-        // CAUSAL-HINT: Wrap LLM in Arc first to enable sharing between services
-        let shared_llm = Arc::new(llm);
+            info!("Loading CausalDiscoveryLLM (Qwen2.5-3B) into VRAM (~6GB)...");
+            llm.load().await.map_err(|e| {
+                error!(
+                    "FATAL: Failed to load CausalDiscoveryLLM: {}. \
+                     Check CUDA GPU has at least 6GB free VRAM.",
+                    e
+                );
+                anyhow::anyhow!(
+                    "Failed to load CausalDiscoveryLLM: {}. \
+                     Requires ~6GB VRAM. Check GPU memory availability.",
+                    e
+                )
+            })?;
+            info!("CausalDiscoveryLLM loaded successfully (~6GB VRAM)");
 
-        // MODEL-INJECTION: Get GraphModel from warm provider for E8 embeddings
-        // This shares the already-loaded model (~1.3GB VRAM) with the embedding system
-        //
-        // In --no-warm mode, the background task may still hold the write lock on
-        // GLOBAL_WARM_PROVIDER. We must wait for it to finish before calling
-        // get_warm_graph_model() which uses try_read().
-        let graph_model = {
-            let max_wait = Duration::from_secs(180);
-            let poll_interval = Duration::from_millis(500);
-            let start = std::time::Instant::now();
+            // CAUSAL-HINT: Wrap LLM in Arc first to enable sharing between services
+            let shared_llm = Arc::new(llm);
 
-            loop {
-                match get_warm_graph_model() {
-                    Ok(model) => break model,
-                    Err(e) => {
-                        let elapsed = start.elapsed();
-                        if elapsed >= max_wait {
-                            error!(
-                                "FATAL: Timed out waiting for GraphModel after {:.1}s: {}. \
-                                 Ensure embedding models are initialized before graph discovery.",
-                                elapsed.as_secs_f64(), e
-                            );
-                            return Err(anyhow::anyhow!(
-                                "Failed to get GraphModel after {:.1}s: {}. \
-                                 GraphDiscoveryService requires E8 model for relationship embeddings.",
-                                elapsed.as_secs_f64(), e
-                            ));
+            // MODEL-INJECTION: Get GraphModel from warm provider for E8 embeddings
+            // This shares the already-loaded model (~1.3GB VRAM) with the embedding system
+            //
+            // In --no-warm mode, the background task may still hold the write lock on
+            // GLOBAL_WARM_PROVIDER. We must wait for it to finish before calling
+            // get_warm_graph_model() which uses try_read().
+            let graph_model = {
+                let max_wait = Duration::from_secs(180);
+                let poll_interval = Duration::from_millis(500);
+                let start = std::time::Instant::now();
+
+                loop {
+                    match get_warm_graph_model() {
+                        Ok(model) => break model,
+                        Err(e) => {
+                            let elapsed = start.elapsed();
+                            if elapsed >= max_wait {
+                                error!(
+                                    "FATAL: Timed out waiting for GraphModel after {:.1}s: {}. \
+                                     Ensure embedding models are initialized before graph discovery.",
+                                    elapsed.as_secs_f64(), e
+                                );
+                                return Err(anyhow::anyhow!(
+                                    "Failed to get GraphModel after {:.1}s: {}. \
+                                     GraphDiscoveryService requires E8 model for relationship embeddings.",
+                                    elapsed.as_secs_f64(), e
+                                ));
+                            }
+                            // Log first attempt and then every 10s
+                            if elapsed.as_millis() < 600 || elapsed.as_secs() % 10 == 0 {
+                                info!(
+                                    "Waiting for warm provider to be ready ({:.1}s elapsed): {}",
+                                    elapsed.as_secs_f64(), e
+                                );
+                            }
+                            tokio::time::sleep(poll_interval).await;
                         }
-                        // Log first attempt and then every 10s
-                        if elapsed.as_millis() < 600 || elapsed.as_secs() % 10 == 0 {
-                            info!(
-                                "Waiting for warm provider to be ready ({:.1}s elapsed): {}",
-                                elapsed.as_secs_f64(), e
-                            );
-                        }
-                        tokio::time::sleep(poll_interval).await;
                     }
                 }
-            }
-        };
-        info!("GraphModel obtained from warm provider - E8 embeddings ready");
+            };
+            info!("GraphModel obtained from warm provider - E8 embeddings ready");
 
-        let graph_discovery_config = GraphDiscoveryConfig::default();
-        let graph_discovery_service = Arc::new(GraphDiscoveryService::with_models(
-            Arc::clone(&shared_llm), // Shared LLM for relationship classification
-            graph_model,             // GraphModel for E8 asymmetric embeddings
-            graph_discovery_config,
-        ));
-
-        // INLINE-CAUSAL: Get CausalModel for E5 asymmetric embeddings (shares warm provider)
-        // Used by inline causal extraction during store_memory (no background loop).
-        let causal_model = get_warm_causal_model().map_err(|e| {
-            error!(
-                "FATAL: Failed to get CausalModel from warm provider: {}. \
-                 Inline causal extraction requires E5 model for relationship embeddings.",
-                e
-            );
-            anyhow::anyhow!("Failed to get CausalModel: {}", e)
-        })?;
-        info!("CausalModel obtained from warm provider - E5 embeddings ready for inline causal extraction");
-
-        // INLINE-CAUSAL: Clone shared_llm BEFORE it's moved into LlmCausalHintProvider
-        // This clone is passed to Handlers for inline extract_causal_relationships()
-        let causal_llm_for_inline = Arc::clone(&shared_llm);
-
-        // CAUSAL-HINT: Create LlmCausalHintProvider using shared LLM (GPU inference via CUDA)
-        info!("CAUSAL-HINT: Creating LlmCausalHintProvider (2s timeout for GPU inference)");
-        let causal_hint_provider: Arc<dyn CausalHintProvider> =
-            Arc::new(LlmCausalHintProvider::new(
-                shared_llm, // Move remaining Arc
-                LlmCausalHintProvider::DEFAULT_TIMEOUT_MS,
+            let graph_discovery_config = GraphDiscoveryConfig::default();
+            let graph_discovery_service = Arc::new(GraphDiscoveryService::with_models(
+                Arc::clone(&shared_llm), // Shared LLM for relationship classification
+                graph_model,             // GraphModel for E8 asymmetric embeddings
+                graph_discovery_config,
             ));
 
-        // TASK-GRAPHLINK + INLINE-CAUSAL: Use with_graph_discovery to enable K-NN graph operations
-        // with background builder support, LLM-based relationship detection, and inline causal extraction.
-        // NO FALLBACKS - All components MUST work or server startup fails.
-        info!("Creating Handlers with graph discovery, causal hints, and inline causal extraction - NO FALLBACKS");
-        let handlers = Handlers::with_graph_discovery(
-            Arc::clone(&teleological_store),
-            lazy_provider,
-            layer_status_provider,
-            edge_repository,
-            Arc::clone(&graph_builder),
-            graph_discovery_service,
-            causal_hint_provider,
-            causal_llm_for_inline, // INLINE-CAUSAL: Shared LLM for extract_causal_relationships()
-            causal_model,          // INLINE-CAUSAL: E5 CausalModel for asymmetric embeddings
-        );
-        info!("Created Handlers with inline causal extraction enabled (K-NN edges + background builder, NO FALLBACKS)");
+            // INLINE-CAUSAL: Get CausalModel for E5 asymmetric embeddings (shares warm provider)
+            // Used by inline causal extraction during store_memory (no background loop).
+            let causal_model = get_warm_causal_model().map_err(|e| {
+                error!(
+                    "FATAL: Failed to get CausalModel from warm provider: {}. \
+                     Inline causal extraction requires E5 model for relationship embeddings.",
+                    e
+                );
+                anyhow::anyhow!("Failed to get CausalModel: {}", e)
+            })?;
+            info!("CausalModel obtained from warm provider - E5 embeddings ready for inline causal extraction");
+
+            // INLINE-CAUSAL: Clone shared_llm BEFORE it's moved into LlmCausalHintProvider
+            // This clone is passed to Handlers for inline extract_causal_relationships()
+            let causal_llm_for_inline = Arc::clone(&shared_llm);
+
+            // CAUSAL-HINT: Create LlmCausalHintProvider using shared LLM (GPU inference via CUDA)
+            info!("CAUSAL-HINT: Creating LlmCausalHintProvider (2s timeout for GPU inference)");
+            let causal_hint_provider: Arc<dyn CausalHintProvider> =
+                Arc::new(LlmCausalHintProvider::new(
+                    shared_llm, // Move remaining Arc
+                    LlmCausalHintProvider::DEFAULT_TIMEOUT_MS,
+                ));
+
+            // TASK-GRAPHLINK + INLINE-CAUSAL: Use with_graph_discovery to enable K-NN graph operations
+            // with background builder support, LLM-based relationship detection, and inline causal extraction.
+            // NO FALLBACKS - All components MUST work or server startup fails.
+            info!("Creating Handlers with graph discovery, causal hints, and inline causal extraction - NO FALLBACKS");
+            let h = Handlers::with_graph_discovery(
+                Arc::clone(&teleological_store),
+                lazy_provider,
+                layer_status_provider,
+                edge_repository,
+                Arc::clone(&graph_builder),
+                graph_discovery_service,
+                causal_hint_provider,
+                causal_llm_for_inline, // INLINE-CAUSAL: Shared LLM for extract_causal_relationships()
+                causal_model,          // INLINE-CAUSAL: E5 CausalModel for asymmetric embeddings
+            );
+            info!("Created Handlers with inline causal extraction enabled (K-NN edges + background builder, NO FALLBACKS)");
+            h
+        };
+
+        #[cfg(not(feature = "llm"))]
+        let handlers = {
+            info!("LLM feature disabled - creating Handlers without LLM (graph/causal discovery tools unavailable)");
+            // Without LLM: no CausalDiscoveryLLM, no GraphDiscoveryService, no CausalHintProvider
+            // LLM-dependent tools will return errors at call time.
+            Handlers::without_llm(
+                Arc::clone(&teleological_store),
+                lazy_provider,
+                layer_status_provider,
+                edge_repository,
+                Arc::clone(&graph_builder),
+                // No causal hint provider without LLM - pass a no-op provider
+                Arc::new(context_graph_embeddings::provider::NoOpCausalHintProvider),
+            )
+        };
 
         info!(
             "MCP Server initialization complete - TeleologicalFingerprint mode with 13 embeddings"

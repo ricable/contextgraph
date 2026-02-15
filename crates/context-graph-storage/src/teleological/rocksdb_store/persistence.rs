@@ -95,11 +95,7 @@ impl RocksDbTeleologicalStore {
             for id in ids_clone {
                 // Skip soft-deleted entries (read lock inside spawn_blocking)
                 // FAIL FAST: Panic if lock is poisoned (thread panic elsewhere)
-                let is_deleted = soft_deleted
-                    .read()
-                    .get(&id)
-                    .copied()
-                    .unwrap_or(false); // Unknown IDs are not deleted
+                let is_deleted = soft_deleted.read().contains_key(&id);
                 if is_deleted {
                     results.push(None);
                     continue;
@@ -165,11 +161,7 @@ impl RocksDbTeleologicalStore {
 
                 // Check soft-deleted inside spawn_blocking
                 // FAIL FAST: Panic if lock is poisoned
-                let is_deleted = soft_deleted
-                    .read()
-                    .get(&id)
-                    .copied()
-                    .unwrap_or(false); // Unknown IDs are not deleted
+                let is_deleted = soft_deleted.read().contains_key(&id);
                 if !is_deleted {
                     count += 1;
                 }
@@ -592,11 +584,7 @@ impl RocksDbTeleologicalStore {
 
                 // Skip soft-deleted fingerprints (read lock inside spawn_blocking)
                 // FAIL FAST: Panic if lock is poisoned
-                let is_deleted = soft_deleted
-                    .read()
-                    .get(&id)
-                    .copied()
-                    .unwrap_or(false); // Unknown IDs are not deleted
+                let is_deleted = soft_deleted.read().contains_key(&id);
                 if is_deleted {
                     continue;
                 }
@@ -669,11 +657,7 @@ impl RocksDbTeleologicalStore {
                 let id = parse_fingerprint_key(&key);
 
                 // Skip soft-deleted
-                let is_deleted = soft_deleted
-                    .read()
-                    .get(&id)
-                    .copied()
-                    .unwrap_or(false);
+                let is_deleted = soft_deleted.read().contains_key(&id);
                 if is_deleted {
                     continue;
                 }

@@ -53,19 +53,24 @@
 
 pub mod activator;
 pub mod error;
+#[cfg(feature = "llm")]
 pub mod llm;
 pub mod scanner;
+#[cfg(feature = "llm")]
 pub mod service;
 pub mod types;
 
 // Re-exports
 pub use activator::E5EmbedderActivator;
 pub use error::{CausalAgentError, CausalAgentResult};
+#[cfg(feature = "llm")]
 pub use llm::{CausalDiscoveryLLM, GrammarType, LlmConfig};
 pub use scanner::MemoryScanner;
+// Shared types from core (no LLM required).
+pub use context_graph_core::types::{DiscoveryCycleResult, ServiceStatus};
+#[cfg(feature = "llm")]
 pub use service::{
     CausalDiscoveryConfig, CausalDiscoveryService, CycleMetrics, DiscoveryCursor,
-    DiscoveryCycleResult,
 };
 pub use types::{
     CausalAnalysisResult, CausalCandidate, CausalDirectionHint, CausalHint, CausalLinkDirection,

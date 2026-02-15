@@ -62,12 +62,9 @@ impl Handlers {
         );
 
         // Generate query embedding
-        let query_embedding = match self.multi_array_provider.embed_all(&params.query).await {
-            Ok(output) => output.fingerprint,
-            Err(e) => {
-                error!(error = %e, "search_recent: Query embedding FAILED");
-                return self.tool_error(id, &format!("Query embedding failed: {}", e));
-            }
+        let query_embedding = match self.embed_query(id.clone(), &params.query, "search_recent").await {
+            Ok(fp) => fp,
+            Err(resp) => return resp,
         };
 
         // Build search options - use E1Only strategy for base search
@@ -258,12 +255,9 @@ impl Handlers {
         );
 
         // Generate query embedding
-        let query_embedding = match self.multi_array_provider.embed_all(&params.query).await {
-            Ok(output) => output.fingerprint,
-            Err(e) => {
-                error!(error = %e, "search_periodic: Query embedding FAILED");
-                return self.tool_error(id, &format!("Query embedding failed: {}", e));
-            }
+        let query_embedding = match self.embed_query(id.clone(), &params.query, "search_periodic").await {
+            Ok(fp) => fp,
+            Err(resp) => return resp,
         };
 
         // Build search options - use E1Only strategy for base search

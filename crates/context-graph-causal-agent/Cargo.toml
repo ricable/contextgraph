@@ -8,8 +8,11 @@ description = "Causal relationship discovery agent using local LLM"
 
 [features]
 default = []
+# Enable LLM backend (llama-cpp-2) for causal discovery.
+# Without this feature, binary is ~500MB smaller but LLM tools are unavailable.
+llm = ["dep:llama-cpp-2"]
 # Enable CUDA acceleration via llama-cpp-2 (RTX 5090 optimized)
-cuda = ["llama-cpp-2/cuda"]
+cuda = ["llm", "llama-cpp-2/cuda"]
 # Test mode: allows placeholder embeddings when CausalModel unavailable
 # In production (without this feature), missing model = fail fast
 test-mode = []
@@ -34,7 +37,8 @@ context-graph-embeddings = { path = "../context-graph-embeddings" }
 
 # llama.cpp bindings for GGUF model inference with grammar constraints
 # Uses GBNF grammar for 100% valid JSON output
-llama-cpp-2 = "0.1"
+# Optional: only compiled when `llm` feature is enabled
+llama-cpp-2 = { version = "0.1", optional = true }
 
 # Async utilities
 futures = "0.3"

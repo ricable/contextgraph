@@ -5,7 +5,11 @@ use std::sync::atomic::AtomicBool;
 
 use crate::gpu::BertWeights;
 use crate::traits::SingleModelConfig;
-use tokenizers::Tokenizer;
+
+pub(crate) use crate::models::pretrained::shared::ModelState;
+
+/// Concrete state type for entity model (BERT weights).
+pub(crate) type EntityModelState = ModelState<Box<BertWeights>>;
 
 /// Native dimension for MiniLM entity embeddings (legacy).
 /// Note: Production E11 uses KEPLER (768D) via ModelId::Kepler.
@@ -21,21 +25,6 @@ pub const ENTITY_LATENCY_BUDGET_MS: u64 = 2;
 /// HuggingFace model repository name.
 /// Note: This is the deprecated MiniLM model. Production uses ModelId::Kepler with KEPLER 768D.
 pub const ENTITY_MODEL_NAME: &str = "sentence-transformers/all-MiniLM-L6-v2";
-
-/// Internal state that varies based on feature flags.
-#[allow(dead_code)]
-pub(crate) enum ModelState {
-    /// Unloaded - no weights in memory.
-    Unloaded,
-
-    /// Loaded with candle model and tokenizer (GPU-accelerated).
-    Loaded {
-        /// BERT model weights on GPU (boxed to reduce enum size).
-        weights: Box<BertWeights>,
-        /// HuggingFace tokenizer for text encoding (boxed to reduce enum size).
-        tokenizer: Box<Tokenizer>,
-    },
-}
 
 /// Entity embedding model (deprecated - use ModelId::Kepler for production).
 ///
@@ -79,7 +68,7 @@ pub(crate) enum ModelState {
 pub struct EntityModel {
     /// Model weights and inference engine.
     #[allow(dead_code)]
-    pub(crate) model_state: std::sync::RwLock<ModelState>,
+    pub(crate) model_state: std::sync::RwLock<EntityModelState>,
 
     /// Path to model weights directory.
     #[allow(dead_code)]

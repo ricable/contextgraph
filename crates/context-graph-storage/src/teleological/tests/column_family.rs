@@ -8,14 +8,14 @@ use crate::teleological::*;
 
 #[test]
 fn test_teleological_cf_names_count() {
-    // 19 active teleological CFs (no legacy CFs)
+    // 20 active teleological CFs (no legacy CFs)
     assert_eq!(
         TELEOLOGICAL_CFS.len(),
         TELEOLOGICAL_CF_COUNT,
         "Must have exactly {} teleological column families",
         TELEOLOGICAL_CF_COUNT
     );
-    assert_eq!(TELEOLOGICAL_CF_COUNT, 19);
+    assert_eq!(TELEOLOGICAL_CF_COUNT, 20);
 }
 
 #[test]
@@ -144,12 +144,12 @@ fn test_get_all_teleological_cf_descriptors_returns_32() {
     let cache = Cache::new_lru_cache(256 * 1024 * 1024);
     let descriptors = get_all_teleological_cf_descriptors(&cache);
 
-    // 19 teleological + 13 quantized embedder = 32
+    // 20 teleological + 13 quantized embedder = 33
     // Quantized (13): emb_0 through emb_12
     assert_eq!(
         descriptors.len(),
-        32,
-        "Must return 19 teleological + 13 quantized = 32 CFs"
+        33,
+        "Must return 20 teleological + 13 quantized = 33 CFs"
     );
 }
 

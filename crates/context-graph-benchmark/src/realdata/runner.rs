@@ -737,6 +737,7 @@ impl std::error::Error for RealDataError {}
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "real-embeddings")]
     use super::*;
 
     #[cfg(feature = "real-embeddings")]

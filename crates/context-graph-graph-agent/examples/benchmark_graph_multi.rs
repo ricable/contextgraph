@@ -256,6 +256,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
+    #[allow(deprecated)]
     let service = GraphDiscoveryService::with_config(Arc::new(llm), graph_config);
     let llm = service.llm();
 

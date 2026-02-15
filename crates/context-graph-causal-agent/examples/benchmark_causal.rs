@@ -9,10 +9,9 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use context_graph_causal_agent::llm::{CausalDiscoveryLLM, LlmConfig};
-use context_graph_causal_agent::CausalLinkDirection;
 use serde::{Deserialize, Serialize};
 
 /// A query/claim from the dataset.
@@ -23,6 +22,7 @@ struct Query {
 }
 
 /// A document chunk from the dataset.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct Chunk {
     id: String,

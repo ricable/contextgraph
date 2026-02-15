@@ -494,6 +494,29 @@ impl GetCausalChainRequest {
 }
 
 // ============================================================================
+// TRAIT IMPLS (parse_request / parse_request_validated helpers)
+// ============================================================================
+
+impl super::validate::Validate for SearchCausesRequest {
+    fn validate(&self) -> Result<(), String> {
+        self.validate()
+    }
+}
+
+impl super::validate::Validate for SearchEffectsRequest {
+    fn validate(&self) -> Result<(), String> {
+        self.validate()
+    }
+}
+
+impl super::validate::ValidateInto for GetCausalChainRequest {
+    type Output = Uuid;
+    fn validate(&self) -> Result<Self::Output, String> {
+        self.validate()
+    }
+}
+
+// ============================================================================
 // RESPONSE DTOs
 // ============================================================================
 

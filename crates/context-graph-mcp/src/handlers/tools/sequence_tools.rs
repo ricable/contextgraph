@@ -169,12 +169,9 @@ impl Handlers {
         // string would bias retrieval toward memories that happen to match that phrase.
         let results: Vec<TeleologicalSearchResult> = if let Some(query_text) = query {
             // User provided an explicit query - use semantic search with it
-            let query_embedding = match self.multi_array_provider.embed_all(query_text).await {
-                Ok(output) => output.fingerprint,
-                Err(e) => {
-                    error!(error = %e, "get_conversation_context: Query embedding FAILED");
-                    return self.tool_error(id, &format!("Query embedding failed: {}", e));
-                }
+            let query_embedding = match self.embed_query(id.clone(), query_text, "get_conversation_context").await {
+                Ok(fp) => fp,
+                Err(resp) => return resp,
             };
 
             match self
@@ -615,12 +612,9 @@ impl Handlers {
         // Using the anchor's E1 embedding finds semantically related memories with real similarity scores.
         let query_embedding = if let Some(filter_text) = semantic_filter {
             // User provided an explicit semantic filter - embed it
-            match self.multi_array_provider.embed_all(filter_text).await {
-                Ok(output) => output.fingerprint,
-                Err(e) => {
-                    error!(error = %e, "traverse_memory_chain: Query embedding FAILED");
-                    return self.tool_error(id, &format!("Query embedding failed: {}", e));
-                }
+            match self.embed_query(id.clone(), filter_text, "traverse_memory_chain").await {
+                Ok(fp) => fp,
+                Err(resp) => return resp,
             }
         } else {
             // No semantic filter - use anchor's own fingerprint as the query.

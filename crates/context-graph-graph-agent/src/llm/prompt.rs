@@ -285,10 +285,10 @@ mod tests {
         let builder = GraphPromptBuilder::new();
         let prompt = builder.build_analysis_prompt("use crate::foo;", "pub mod foo {}");
 
-        // Should include all domain options
-        assert!(prompt.contains("code:"));
-        assert!(prompt.contains("legal:"));
-        assert!(prompt.contains("academic:"));
+        // Should include all domain sections in system prompt
+        assert!(prompt.contains("CODE DOMAIN:"));
+        assert!(prompt.contains("LEGAL DOMAIN:"));
+        assert!(prompt.contains("ACADEMIC DOMAIN:"));
         // Should include new relationship types
         assert!(prompt.contains("cites"));
         assert!(prompt.contains("overrules"));
@@ -304,8 +304,10 @@ mod tests {
         );
 
         // Should include code domain hint
-        assert!(prompt.contains("Domain hint: This appears to be programming code"));
-        assert!(prompt.contains("imports, calls, implements"));
+        assert!(prompt.contains("[CODE DOMAIN DETECTED]"));
+        assert!(prompt.contains("imports"));
+        assert!(prompt.contains("calls"));
+        assert!(prompt.contains("implements"));
     }
 
     #[test]
@@ -317,8 +319,10 @@ mod tests {
         );
 
         // Should include legal domain hint
-        assert!(prompt.contains("Domain hint: This appears to be legal content"));
-        assert!(prompt.contains("cites, interprets, overrules"));
+        assert!(prompt.contains("[LEGAL DOMAIN DETECTED]"));
+        assert!(prompt.contains("cites"));
+        assert!(prompt.contains("interprets"));
+        assert!(prompt.contains("overrules"));
     }
 
     #[test]
@@ -330,8 +334,10 @@ mod tests {
         );
 
         // Should include academic domain hint
-        assert!(prompt.contains("Domain hint: This appears to be academic"));
-        assert!(prompt.contains("cites, applies, extends"));
+        assert!(prompt.contains("[ACADEMIC DOMAIN DETECTED]"));
+        assert!(prompt.contains("cites"));
+        assert!(prompt.contains("applies"));
+        assert!(prompt.contains("extends"));
     }
 
     #[test]

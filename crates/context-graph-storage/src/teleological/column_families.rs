@@ -306,7 +306,22 @@ pub const CF_EMBEDDING_REGISTRY: &str = "embedding_registry";
 /// - Point lookups by profile name
 pub const CF_CUSTOM_WEIGHT_PROFILES: &str = "custom_weight_profiles";
 
-/// All teleological column family names (19 total).
+/// Column family for persisted HNSW index graphs.
+///
+/// Stores serialized usearch HNSW graphs and their UUID-to-key mappings
+/// so indexes can be restored from disk on startup instead of full O(n) rebuild.
+///
+/// Key: `graph:{embedder}` → Value: usearch serialized bytes (1-100MB)
+/// Key: `meta:{embedder}` → Value: JSON { id_to_key, key_to_id, next_key, count }
+///
+/// # Storage Details
+/// - LZ4 compression (binary graph data compresses ~30-50%)
+/// - No bloom filter (few keys, ~30 total)
+/// - Large block size (values are large)
+/// - Updated periodically + at shutdown
+pub const CF_HNSW_GRAPHS: &str = "hnsw_graphs";
+
+/// All teleological column family names (20 total).
 pub const TELEOLOGICAL_CFS: &[&str] = &[
     CF_FINGERPRINTS,
     CF_TOPIC_PROFILES,
@@ -327,10 +342,11 @@ pub const TELEOLOGICAL_CFS: &[&str] = &[
     CF_CONSOLIDATION_RECOMMENDATIONS,
     CF_EMBEDDING_REGISTRY,
     CF_CUSTOM_WEIGHT_PROFILES,
+    CF_HNSW_GRAPHS,
 ];
 
 /// Total count of teleological CFs.
-pub const TELEOLOGICAL_CF_COUNT: usize = 19;
+pub const TELEOLOGICAL_CF_COUNT: usize = 20;
 
 // =============================================================================
 // QUANTIZED EMBEDDER COLUMN FAMILIES (13 CFs for per-embedder storage)
@@ -534,6 +550,32 @@ pub fn custom_weight_profiles_cf_options(cache: &Cache) -> Options {
     let mut block_opts = BlockBasedOptions::default();
     block_opts.set_block_cache(cache);
     block_opts.set_bloom_filter(10.0, false);
+    block_opts.set_cache_index_and_filter_blocks(true);
+
+    let mut opts = Options::default();
+    opts.set_block_based_table_factory(&block_opts);
+    opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
+    opts.create_if_missing(true);
+    opts
+}
+
+/// Options for HNSW graph persistence (large binary blobs).
+///
+/// # Configuration
+/// - LZ4 compression (~30-50% reduction for binary graph data)
+/// - No bloom filter (very few keys, ~30 total)
+/// - Large block size (values are MB-sized)
+///
+/// # Key Format
+/// `graph:{embedder_name}` or `meta:{embedder_name}` (UTF-8 string)
+///
+/// # Value Format
+/// - graph keys: usearch serialized bytes (1-100MB per index)
+/// - meta keys: JSON { id_to_key, key_to_id, next_key, count }
+pub fn hnsw_graphs_cf_options(cache: &Cache) -> Options {
+    let mut block_opts = BlockBasedOptions::default();
+    block_opts.set_block_cache(cache);
+    // No bloom filter — very few keys
     block_opts.set_cache_index_and_filter_blocks(true);
 
     let mut opts = Options::default();
@@ -1019,6 +1061,8 @@ pub fn get_teleological_cf_descriptors(cache: &Cache) -> Vec<ColumnFamilyDescrip
         ColumnFamilyDescriptor::new(CF_EMBEDDING_REGISTRY, embedding_registry_cf_options(cache)),
         // Custom weight profile persistence
         ColumnFamilyDescriptor::new(CF_CUSTOM_WEIGHT_PROFILES, custom_weight_profiles_cf_options(cache)),
+        // HNSW graph persistence for fast startup
+        ColumnFamilyDescriptor::new(CF_HNSW_GRAPHS, hnsw_graphs_cf_options(cache)),
     ]
 }
 

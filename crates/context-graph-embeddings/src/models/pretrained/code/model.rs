@@ -17,20 +17,10 @@ use crate::types::{InputType, ModelEmbedding, ModelId, ModelInput};
 use super::forward::gpu_forward;
 use super::weights::QwenWeights;
 
-/// Internal state that varies based on feature flags.
-#[allow(dead_code)]
-pub(super) enum ModelState {
-    /// Unloaded - no weights in memory.
-    Unloaded,
+use crate::models::pretrained::shared::ModelState;
 
-    /// Loaded with Qwen2 model weights and tokenizer (GPU-accelerated).
-    Loaded {
-        /// Qwen2 model weights on GPU.
-        weights: QwenWeights,
-        /// HuggingFace tokenizer for text encoding (boxed to reduce enum size).
-        tokenizer: Box<Tokenizer>,
-    },
-}
+/// Concrete state type for code model (Qwen2 weights).
+pub(super) type CodeModelState = ModelState<QwenWeights>;
 
 /// Code embedding model using Qodo/Qodo-Embed-1-1.5B.
 ///
@@ -72,7 +62,7 @@ pub(super) enum ModelState {
 pub struct CodeModel {
     /// Model weights and inference engine.
     #[allow(dead_code)]
-    pub(super) model_state: std::sync::RwLock<ModelState>,
+    pub(super) model_state: std::sync::RwLock<CodeModelState>,
 
     /// Path to model weights directory.
     #[allow(dead_code)]

@@ -18,7 +18,9 @@ use context_graph_core::clustering::MultiSpaceClusterManager;
 use context_graph_core::memory::{CodeEmbeddingProvider, CodeStorage};
 use context_graph_core::monitoring::LayerStatusProvider;
 use context_graph_core::traits::{MultiArrayEmbeddingProvider, TeleologicalMemoryStore};
+#[cfg(feature = "llm")]
 use context_graph_embeddings::models::CausalModel;
+#[cfg(feature = "llm")]
 use context_graph_graph_agent::GraphDiscoveryService;
 use context_graph_storage::{BackgroundGraphBuilder, EdgeRepository};
 
@@ -86,8 +88,9 @@ pub struct Handlers {
     // =========================================================================
 
     /// Graph discovery service for LLM-based relationship detection.
-    /// REQUIRED - NO FALLBACKS. LLM must load successfully or server startup fails.
+    /// Only available when `llm` feature is enabled.
     /// Uses shared CausalDiscoveryLLM (~6GB VRAM for Qwen2.5-3B).
+    #[cfg(feature = "llm")]
     pub(in crate::handlers) graph_discovery_service: Arc<GraphDiscoveryService>,
 
     // =========================================================================
@@ -116,11 +119,13 @@ pub struct Handlers {
     /// Causal Discovery LLM for inline multi-relationship extraction during store_memory.
     /// When present, extract_causal_relationships() is called on every store_memory content
     /// to discover and persist CausalRelationship records inline with the 13-embedder pipeline.
+    #[cfg(feature = "llm")]
     pub(in crate::handlers) causal_discovery_llm:
         Option<Arc<context_graph_causal_agent::CausalDiscoveryLLM>>,
 
     /// CausalModel (E5) for generating asymmetric cause/effect embeddings.
     /// Used by inline causal extraction to embed each discovered relationship.
+    #[cfg(feature = "llm")]
     pub(in crate::handlers) causal_model: Option<Arc<CausalModel>>,
 }
 
@@ -135,6 +140,7 @@ impl Handlers {
     /// * `layer_status_provider` - Provider for layer status information
     /// * `cluster_manager` - Multi-space cluster manager for topic detection
     /// * `graph_discovery_service` - REQUIRED LLM-based graph relationship discovery
+    #[cfg(feature = "llm")]
     #[allow(dead_code)]
     pub fn with_all(
         teleological_store: Arc<dyn TeleologicalMemoryStore>,
@@ -183,6 +189,7 @@ impl Handlers {
     /// * `code_store` - Code storage backend for code entities
     /// * `code_embedding_provider` - E7 code embedding provider
     /// * `graph_discovery_service` - REQUIRED LLM-based graph relationship discovery
+    #[cfg(feature = "llm")]
     #[allow(dead_code)]
     pub fn with_code_pipeline(
         teleological_store: Arc<dyn TeleologicalMemoryStore>,
@@ -233,6 +240,7 @@ impl Handlers {
     /// # Panics
     ///
     /// Panics if EdgeRepository column families are missing from the database.
+    #[cfg(feature = "llm")]
     #[allow(dead_code)]
     pub fn with_graph_linking(
         teleological_store: Arc<dyn TeleologicalMemoryStore>,
@@ -278,6 +286,7 @@ impl Handlers {
     /// This is a convenience constructor that creates default cluster manager.
     /// Use `with_all` for full control over dependencies.
     /// NO FALLBACKS - Requires graph_discovery_service. LLM must be loaded.
+    #[cfg(feature = "llm")]
     #[allow(dead_code)]
     pub fn with_defaults(
         teleological_store: Arc<dyn TeleologicalMemoryStore>,
@@ -329,6 +338,7 @@ impl Handlers {
     /// * `causal_hint_provider` - REQUIRED LLM-based causal hint provider for E5 enhancement
     /// * `causal_discovery_llm` - Shared LLM for inline multi-relationship extraction
     /// * `causal_model` - E5 CausalModel for asymmetric cause/effect embeddings
+    #[cfg(feature = "llm")]
     pub fn with_graph_discovery(
         teleological_store: Arc<dyn TeleologicalMemoryStore>,
         multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider>,
@@ -365,6 +375,41 @@ impl Handlers {
             // INLINE-CAUSAL: Enabled - extracts relationships during store_memory
             causal_discovery_llm: Some(causal_discovery_llm),
             causal_model: Some(causal_model),
+        }
+    }
+
+    /// Create handlers without LLM features.
+    ///
+    /// When `llm` feature is disabled, graph discovery and causal discovery are unavailable.
+    /// LLM-dependent tools (trigger_causal_discovery, discover_graph_relationships,
+    /// validate_graph_link) will return errors.
+    #[cfg(not(feature = "llm"))]
+    pub fn without_llm(
+        teleological_store: Arc<dyn TeleologicalMemoryStore>,
+        multi_array_provider: Arc<dyn MultiArrayEmbeddingProvider>,
+        layer_status_provider: Arc<dyn LayerStatusProvider>,
+        edge_repository: EdgeRepository,
+        graph_builder: Arc<BackgroundGraphBuilder>,
+        causal_hint_provider: Arc<dyn context_graph_embeddings::provider::CausalHintProvider>,
+    ) -> Self {
+        info!("Creating Handlers without LLM features (llm feature disabled)");
+
+        let cluster_manager = MultiSpaceClusterManager::with_defaults()
+            .expect("Default cluster manager should always succeed");
+
+        Self {
+            teleological_store,
+            multi_array_provider,
+            layer_status_provider,
+            cluster_manager: Arc::new(RwLock::new(cluster_manager)),
+            session_sequence_counter: Arc::new(AtomicU64::new(0)),
+            current_session_id: Arc::new(RwLock::new(None)),
+            code_store: None,
+            code_embedding_provider: None,
+            edge_repository: Some(edge_repository),
+            graph_builder: Some(graph_builder),
+            causal_hint_provider: Some(causal_hint_provider),
+            custom_profiles: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -434,6 +479,7 @@ impl Handlers {
     ///
     /// This service is guaranteed to be available since LLM loading is required
     /// at server startup. If LLM fails to load, server startup fails.
+    #[cfg(feature = "llm")]
     pub fn graph_discovery_service(&self) -> &Arc<GraphDiscoveryService> {
         &self.graph_discovery_service
     }

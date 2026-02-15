@@ -19,6 +19,7 @@ use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
 
 /// A document chunk from the dataset.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 struct Chunk {
     id: String,

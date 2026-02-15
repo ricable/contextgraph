@@ -161,6 +161,10 @@ pub struct TeleologicalStoreConfig {
     pub enable_wal: bool,
     /// Create database if it doesn't exist (default: true).
     pub create_if_missing: bool,
+    /// Soft-delete garbage collection retention period in seconds.
+    /// Soft-deleted entries older than this are permanently hard-deleted by GC.
+    /// Default: 7 days (604800 seconds). Set to 0 to GC immediately on next run.
+    pub gc_retention_secs: u64,
 }
 
 impl Default for TeleologicalStoreConfig {
@@ -170,6 +174,7 @@ impl Default for TeleologicalStoreConfig {
             max_open_files: 1000,
             enable_wal: true,
             create_if_missing: true,
+            gc_retention_secs: 7 * 24 * 3600, // 7 days
         }
     }
 }

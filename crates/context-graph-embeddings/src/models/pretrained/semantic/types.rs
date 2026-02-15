@@ -1,28 +1,15 @@
 //! Type definitions for the semantic embedding model.
-//!
-//! Contains the ModelState enum and SemanticModel struct definition.
 
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 
 use crate::gpu::BertWeights;
 use crate::traits::SingleModelConfig;
-use tokenizers::Tokenizer;
 
-/// Internal state that varies based on feature flags.
-#[allow(dead_code)]
-pub(crate) enum ModelState {
-    /// Unloaded - no weights in memory.
-    Unloaded,
+pub(crate) use crate::models::pretrained::shared::ModelState;
 
-    /// Loaded with candle model and tokenizer (GPU-accelerated).
-    Loaded {
-        /// BERT model weights on GPU (boxed to reduce enum size).
-        weights: Box<BertWeights>,
-        /// HuggingFace tokenizer for text encoding (boxed to reduce enum size).
-        tokenizer: Box<Tokenizer>,
-    },
-}
+/// Concrete state type for semantic model (BERT weights).
+pub(crate) type SemanticModelState = ModelState<Box<BertWeights>>;
 
 /// Semantic embedding model using intfloat/e5-large-v2.
 ///
@@ -41,7 +28,7 @@ pub struct SemanticModel {
     /// NOTE: Type depends on candle feature flag.
     /// For now, placeholder that compiles without candle.
     #[allow(dead_code)]
-    pub(crate) model_state: std::sync::RwLock<ModelState>,
+    pub(crate) model_state: std::sync::RwLock<SemanticModelState>,
 
     /// Path to model weights directory.
     #[allow(dead_code)]

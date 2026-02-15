@@ -62,18 +62,10 @@ impl Handlers {
         args: serde_json::Value,
     ) -> JsonRpcResponse {
         // Parse and validate request
-        let request: SearchCausesRequest = match serde_json::from_value(args.clone()) {
+        let request: SearchCausesRequest = match self.parse_request(id.clone(), args, "search_causes") {
             Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "search_causes: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
+            Err(resp) => return resp,
         };
-
-        if let Err(e) = request.validate() {
-            error!(error = %e, "search_causes: Validation failed");
-            return self.tool_error(id, &e);
-        }
 
         let query = &request.query;
         let top_k = request.top_k;
@@ -96,12 +88,9 @@ impl Handlers {
         let search_relationships = search_scope == "relationships" || search_scope == "all";
 
         let query_embedding = if search_memories {
-            match self.multi_array_provider.embed_all(query).await {
-                Ok(output) => Some(output.fingerprint),
-                Err(e) => {
-                    error!(error = %e, "search_causes: Query embedding FAILED");
-                    return self.tool_error(id, &format!("Query embedding failed: {}", e));
-                }
+            match self.embed_query(id.clone(), query, "search_causes").await {
+                Ok(fp) => Some(fp),
+                Err(resp) => return resp,
             }
         } else {
             None
@@ -429,18 +418,10 @@ impl Handlers {
         use context_graph_core::causal::chain::rank_effects_by_prediction;
 
         // Parse and validate request
-        let request: SearchEffectsRequest = match serde_json::from_value(args.clone()) {
+        let request: SearchEffectsRequest = match self.parse_request(id.clone(), args, "search_effects") {
             Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "search_effects: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
+            Err(resp) => return resp,
         };
-
-        if let Err(e) = request.validate() {
-            error!(error = %e, "search_effects: Validation failed");
-            return self.tool_error(id, &e);
-        }
 
         let query = &request.query;
         let top_k = request.top_k;
@@ -460,12 +441,9 @@ impl Handlers {
 
         // Step 1: Embed the cause query
         let query_embedding = if search_memories {
-            match self.multi_array_provider.embed_all(query).await {
-                Ok(output) => Some(output.fingerprint),
-                Err(e) => {
-                    error!(error = %e, "search_effects: Query embedding FAILED");
-                    return self.tool_error(id, &format!("Query embedding failed: {}", e));
-                }
+            match self.embed_query(id.clone(), query, "search_effects").await {
+                Ok(fp) => Some(fp),
+                Err(resp) => return resp,
             }
         } else {
             None
@@ -768,20 +746,9 @@ impl Handlers {
         args: serde_json::Value,
     ) -> JsonRpcResponse {
         // Parse and validate request
-        let request: GetCausalChainRequest = match serde_json::from_value(args.clone()) {
-            Ok(req) => req,
-            Err(e) => {
-                error!(error = %e, "get_causal_chain: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid request: {}", e));
-            }
-        };
-
-        let anchor_uuid = match request.validate() {
-            Ok(uuid) => uuid,
-            Err(e) => {
-                error!(error = %e, "get_causal_chain: Validation failed");
-                return self.tool_error(id, &e);
-            }
+        let (request, anchor_uuid) = match self.parse_request_validated::<GetCausalChainRequest>(id.clone(), args, "get_causal_chain") {
+            Ok(pair) => pair,
+            Err(resp) => return resp,
         };
 
         let direction = &request.direction;

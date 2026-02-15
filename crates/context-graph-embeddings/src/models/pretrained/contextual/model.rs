@@ -32,7 +32,7 @@ use crate::traits::{EmbeddingModel, SingleModelConfig};
 use crate::types::{InputType, ModelEmbedding, ModelId, ModelInput};
 
 use super::constants::{CONTEXTUAL_DIMENSION, CONTEXTUAL_MAX_TOKENS, INTENT_PREFIX, CONTEXT_PREFIX};
-use super::state::ModelState;
+use super::state::{ContextualModelState, ModelState};
 
 /// Contextual embedding model using intfloat/e5-base-v2.
 ///
@@ -70,7 +70,7 @@ use super::state::ModelState;
 /// ```
 pub struct ContextualModel {
     #[allow(dead_code)]
-    pub(crate) model_state: std::sync::RwLock<ModelState>,
+    pub(crate) model_state: std::sync::RwLock<ContextualModelState>,
     #[allow(dead_code)]
     pub(crate) model_path: PathBuf,
     #[allow(dead_code)]

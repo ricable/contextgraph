@@ -26,12 +26,34 @@ use context_graph_core::traits::{CausalDirectionHint, CausalHint, EmbeddingMetad
 use context_graph_core::types::audit::{AuditOperation, AuditRecord};
 use context_graph_core::types::fingerprint::TeleologicalFingerprint;
 use context_graph_core::types::SourceMetadata;
+#[cfg(feature = "llm")]
 use context_graph_graph_agent::MemoryForGraphAnalysis;
 
 use crate::protocol::{JsonRpcId, JsonRpcResponse};
 
 use super::super::Handlers;
 
+/// Non-LLM stubs: When `llm` feature is disabled, these tools return an error.
+#[cfg(not(feature = "llm"))]
+impl Handlers {
+    pub(crate) async fn call_trigger_causal_discovery(
+        &self,
+        id: Option<JsonRpcId>,
+        _args: serde_json::Value,
+    ) -> JsonRpcResponse {
+        self.tool_error(id, "trigger_causal_discovery requires the 'llm' feature (CausalDiscoveryLLM + GraphDiscoveryService)")
+    }
+
+    pub(crate) async fn call_get_causal_discovery_status(
+        &self,
+        id: Option<JsonRpcId>,
+        _args: serde_json::Value,
+    ) -> JsonRpcResponse {
+        self.tool_error(id, "get_causal_discovery_status requires the 'llm' feature (CausalDiscoveryLLM + GraphDiscoveryService)")
+    }
+}
+
+#[cfg(feature = "llm")]
 impl Handlers {
     /// trigger_causal_discovery tool implementation.
     ///

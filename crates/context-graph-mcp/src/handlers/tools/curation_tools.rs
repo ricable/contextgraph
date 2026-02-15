@@ -41,23 +41,10 @@ impl Handlers {
     ) -> JsonRpcResponse {
         debug!("Handling forget_concept");
 
-        // Parse request
-        let request: ForgetConceptRequest = match serde_json::from_value(arguments) {
-            Ok(r) => r,
-            Err(e) => {
-                error!(error = %e, "forget_concept: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid params: {}", e));
-            }
-        };
-
-        // Validate and parse UUID using DTO's validate method
-        let node_id = match request.validate() {
-            Ok(uuid) => uuid,
-            Err(validation_error) => {
-                error!(error = %validation_error, "forget_concept: Validation failed");
-                return self
-                    .tool_error(id, &format!("Invalid params: {}", validation_error));
-            }
+        // Parse and validate request
+        let (request, node_id) = match self.parse_request_validated::<ForgetConceptRequest>(id.clone(), arguments, "forget_concept") {
+            Ok(pair) => pair,
+            Err(resp) => return resp,
         };
 
         // Check if memory exists - FAIL FAST if not found
@@ -173,24 +160,10 @@ impl Handlers {
     ) -> JsonRpcResponse {
         debug!("Handling boost_importance");
 
-        // Parse request
-        let request: BoostImportanceRequest = match serde_json::from_value(arguments) {
-            Ok(r) => r,
-            Err(e) => {
-                error!(error = %e, "boost_importance: Failed to parse request");
-                return self.tool_error(id, &format!("Invalid params: {}", e));
-            }
-        };
-
-        // Validate delta range and UUID using DTO's validate method
-        // This checks: NaN/Infinity (AP-10), delta range [-1.0, 1.0], UUID format
-        let node_id = match request.validate() {
-            Ok(uuid) => uuid,
-            Err(validation_error) => {
-                error!(error = %validation_error, "boost_importance: Validation failed");
-                return self
-                    .tool_error(id, &format!("Invalid params: {}", validation_error));
-            }
+        // Parse and validate request
+        let (request, node_id) = match self.parse_request_validated::<BoostImportanceRequest>(id.clone(), arguments, "boost_importance") {
+            Ok(pair) => pair,
+            Err(resp) => return resp,
         };
 
         debug!(node_id = %node_id, delta = request.delta, "boost_importance: Processing request");

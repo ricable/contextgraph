@@ -9,22 +9,9 @@
 //! - "query: " prefix for intent embeddings
 //! - "passage: " prefix for context embeddings
 
-use tokenizers::Tokenizer;
-
 use crate::gpu::BertWeights;
 
-/// Internal state that varies based on whether the model is loaded.
-#[allow(dead_code)]
-pub enum ModelState {
-    /// Unloaded - no weights in memory.
-    Unloaded,
+pub(crate) use crate::models::pretrained::shared::ModelState;
 
-    /// Loaded with BERT-compatible weights and tokenizer.
-    /// E5-base-v2 uses prefix-based asymmetry, no projection weights needed.
-    Loaded {
-        /// Model weights on GPU.
-        weights: Box<BertWeights>,
-        /// HuggingFace tokenizer for text encoding (boxed to reduce enum size).
-        tokenizer: Box<Tokenizer>,
-    },
-}
+/// Concrete state type for contextual model (BERT weights).
+pub type ContextualModelState = ModelState<Box<BertWeights>>;

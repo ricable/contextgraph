@@ -67,8 +67,10 @@
 
 pub mod activator;
 pub mod error;
+#[cfg(feature = "llm")]
 pub mod llm;
 pub mod scanner;
+#[cfg(feature = "llm")]
 pub mod service;
 #[cfg(feature = "test-utils")]
 pub mod stubs;
@@ -77,9 +79,13 @@ pub mod types;
 // Re-exports for convenience
 pub use activator::{ActivatorConfig, ActivationStats, E8Activator, GraphEdge, GraphStorage};
 pub use error::{GraphAgentError, GraphAgentResult};
+#[cfg(feature = "llm")]
 pub use llm::{prompt::GraphPromptBuilder, GraphRelationshipLLM};
 pub use scanner::{MemoryScanner, ScannerConfig};
-pub use service::{DiscoveryCycleResult, GraphDiscoveryConfig, GraphDiscoveryService, ServiceStatus};
+// Shared types from core (no LLM required).
+pub use context_graph_core::types::{DiscoveryCycleResult, ServiceStatus};
+#[cfg(feature = "llm")]
+pub use service::{GraphDiscoveryConfig, GraphDiscoveryService};
 pub use types::{
     ContentDomain, DomainMarkers, GraphAnalysisResult, GraphCandidate, GraphLinkDirection,
     GraphMarkers, MemoryForGraphAnalysis, RelationshipCategory, RelationshipType,

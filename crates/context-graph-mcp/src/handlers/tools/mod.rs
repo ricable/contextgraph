@@ -33,6 +33,9 @@ mod graph_link_tools;
 mod graph_tools;
 mod helpers;
 mod keyword_tools;
+// Intentionally placed here (alphabetical within private modules is not required;
+// this sits next to helpers which consumes it).
+pub(crate) mod validate;
 mod maintenance_tools;
 mod memory_tools;
 mod provenance_tools;

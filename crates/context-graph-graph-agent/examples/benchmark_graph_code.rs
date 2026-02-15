@@ -10,13 +10,11 @@ use std::fs::File;
 use std::sync::Arc;
 use std::time::Instant;
 
-use chrono::Utc;
 use context_graph_causal_agent::llm::{CausalDiscoveryLLM, LlmConfig};
 use context_graph_graph_agent::{
-    GraphDiscoveryConfig, GraphDiscoveryService, MemoryForGraphAnalysis, RelationshipType,
+    GraphDiscoveryConfig, GraphDiscoveryService, RelationshipType,
 };
 use serde::Serialize;
-use uuid::Uuid;
 
 /// A code pair with known relationship for ground truth comparison.
 struct CodePair {
@@ -466,6 +464,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
+    #[allow(deprecated)]
     let service = GraphDiscoveryService::with_config(Arc::new(llm), graph_config);
     let llm = service.llm();
 

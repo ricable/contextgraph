@@ -227,6 +227,56 @@ impl SearchByEmbedderRequest {
     }
 }
 
+// ============================================================================
+// TRAIT IMPLS (parse_request helper)
+// ============================================================================
+
+impl super::validate::Validate for SearchByEmbedderRequest {
+    fn validate(&self) -> Result<(), String> {
+        self.validate()
+    }
+}
+
+impl super::validate::Validate for GetEmbedderClustersRequest {
+    fn validate(&self) -> Result<(), String> {
+        self.validate()
+    }
+}
+
+impl super::validate::Validate for CompareEmbedderViewsRequest {
+    fn validate(&self) -> Result<(), String> {
+        self.validate()
+    }
+}
+
+impl super::validate::Validate for ListEmbedderIndexesRequest {
+    fn validate(&self) -> Result<(), String> {
+        self.validate()
+    }
+}
+
+impl super::validate::Validate for GetMemoryFingerprintRequest {
+    fn validate(&self) -> Result<(), String> {
+        self.validate()
+    }
+}
+
+impl super::validate::Validate for CreateWeightProfileRequest {
+    fn validate(&self) -> Result<(), String> {
+        self.validate()
+    }
+}
+
+impl super::validate::Validate for SearchCrossEmbedderAnomaliesRequest {
+    fn validate(&self) -> Result<(), String> {
+        self.validate()
+    }
+}
+
+// ============================================================================
+// SEARCH RESULT DTOs
+// ============================================================================
+
 /// A single search result from search_by_embedder.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
