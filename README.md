@@ -1,25 +1,161 @@
 # Context Graph
 
-A 13-dimensional embedded knowledge graph and semantic memory system, exposed as an MCP (Model Context Protocol) server. Context Graph gives AI assistants persistent, searchable, multi-perspective memory with causal reasoning, entity linking, code understanding, and temporal awareness.
+**Persistent, multi-dimensional semantic memory for AI assistants.**
 
-## What It Does
+[![License: MIT/Apache-2.0](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](#license)
+[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
+[![MCP](https://img.shields.io/badge/MCP-2024--11--05-green.svg)](https://modelcontextprotocol.io/)
 
-Context Graph stores memories as rich multi-dimensional fingerprints — each memory is embedded simultaneously across 13 specialized embedding spaces. When you search, the system fuses results from multiple perspectives using Reciprocal Rank Fusion (RRF), finding matches that no single embedder could surface alone.
+Context Graph is an MCP server that gives AI assistants like Claude long-term memory with 13 specialized embedding dimensions. Every memory is embedded simultaneously across semantic, causal, temporal, code, entity, and structural spaces — then fused at search time using Reciprocal Rank Fusion to surface results that no single perspective could find alone.
 
-**Core capabilities:**
+```
+Store a memory  ──►  13 embedders fire in parallel  ──►  RocksDB + HNSW indexes
+Search a query  ──►  6 embedders retrieve candidates ──►  RRF fusion  ──►  ranked results
+```
 
-- **Semantic search** across 13 embedding dimensions with configurable weight profiles
-- **Causal reasoning** — find causes, effects, and build causal chains with asymmetric embeddings
-- **Entity extraction and linking** — TransE knowledge graph predictions
-- **Code-aware search** — AST-aware code embeddings (1536D Qodo-Embed)
-- **Temporal navigation** — freshness decay, periodic patterns, sequence ordering
-- **Typo tolerance** — hyperdimensional computing for noise-robust search
-- **Topic discovery** — emergent clustering via HDBSCAN across embedder agreement
-- **File watching** — automatic ingestion of documentation and source code
-- **Provenance tracking** — full audit trail for all memory operations
-- **Claude Code integration** — hooks for session start, tool use, compaction, and task completion
+---
 
-## Architecture Overview
+## Why Context Graph?
+
+Most memory systems for AI use a single embedding model and basic vector search. Context Graph takes a fundamentally different approach:
+
+**Multi-perspective retrieval.** A query like *"Why does auth fail under load?"* searches simultaneously through semantic similarity (E1), causal reasoning (E5), code patterns (E7), entity linking (E11), graph structure (E8), and paraphrase matching (E10). Each perspective catches what the others miss.
+
+**Asymmetric causal reasoning.** Three embedders store dual vectors for directional queries. "What caused X?" and "What did X cause?" return different results because cause and effect are embedded separately with directional boosting.
+
+**Temporal awareness without temporal bias.** Time-based embedders (freshness, periodicity, sequence) are applied as post-retrieval boosts, not during retrieval. This prevents recent memories from drowning out relevant older ones.
+
+**55 MCP tools.** Not just store-and-search — full causal chain building, entity extraction with TransE predictions, topic discovery via HDBSCAN, code-aware search with AST chunking, file watching, provenance tracking, and LLM-powered relationship discovery.
+
+**Production-grade storage.** RocksDB with 51 column families, HNSW indexes for O(log n) K-NN search, soft-delete with 30-day recovery, background compaction, and graceful degradation when components fail.
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- **Rust** 1.75+ (stable)
+- **CUDA** toolkit (for GPU-accelerated embeddings via candle)
+- **RocksDB** system library
+
+### Build
+
+```bash
+git clone https://github.com/contextgraph/contextgraph.git
+cd contextgraph
+make build
+```
+
+### Run
+
+```bash
+# Stdio mode (default — for Claude Code / Claude Desktop)
+context-graph-mcp
+
+# TCP mode (remote clients)
+context-graph-mcp --transport tcp --port 3100
+
+# Daemon mode (shared server, load models once)
+context-graph-mcp --daemon
+
+# Fast startup (models load in background)
+context-graph-mcp --no-warm
+```
+
+### Connect to Claude Code
+
+Add to `~/.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "context-graph": {
+      "command": "context-graph-mcp",
+      "args": ["--transport", "stdio"],
+      "env": {
+        "RUST_LOG": "info"
+      }
+    }
+  }
+}
+```
+
+Once connected, Claude has access to all 55 MCP tools — persistent memory, causal reasoning, entity linking, code search, and more — with no further configuration.
+
+---
+
+## Key Features
+
+### 13 Specialized Embedders
+
+Every memory is embedded across 13 spaces simultaneously. Each acts as an independent "knowledge lens."
+
+| # | Name | Model | Dim | Purpose |
+|---|------|-------|-----|---------|
+| **E1** | Semantic | e5-large-v2 | 1024D | Primary semantic similarity |
+| **E2** | Freshness | Custom temporal | 512D | Exponential recency decay |
+| **E3** | Periodic | Fourier-based | 512D | Time-of-day / day-of-week patterns |
+| **E4** | Sequence | Sinusoidal positional | 512D | Conversation ordering |
+| **E5** | Causal | Longformer SCM | 768D | Cause-effect relationships (asymmetric) |
+| **E6** | Keyword | SPLADE v2 | ~30K | BM25-style sparse keyword matching |
+| **E7** | Code | Qodo-Embed-1.5B | 1536D | Source code understanding (AST-aware) |
+| **E8** | Graph | e5-large-v2 | 1024D | Directional graph connections (asymmetric) |
+| **E9** | HDC | Hyperdimensional | 1024D | Character-level typo tolerance |
+| **E10** | Paraphrase | e5-base | 768D | Rephrase-invariant matching (asymmetric) |
+| **E11** | Entity | KEPLER | 768D | Named entity & TransE linking |
+| **E12** | ColBERT | ColBERT | 128D/tok | Late interaction precision (pipeline stage) |
+| **E13** | SPLADE | SPLADE v3 | ~30K | Learned sparse expansion (pipeline stage) |
+
+### 4 Search Strategies
+
+| Strategy | How it works | Best for |
+|----------|-------------|----------|
+| **multi_space** (default) | Weighted RRF across 6 active embedders | General-purpose queries |
+| **e1_only** | Single E1 HNSW search (~1ms) | Simple similarity, lowest latency |
+| **pipeline** | E13 recall → multi-space scoring → E12 ColBERT rerank | Maximum precision |
+| **embedder_first** | Force a single embedder's perspective | Specialized queries (code, causal, entity) |
+
+### 14 Weight Profiles
+
+Predefined profiles control how embedders are weighted during multi-space search:
+
+| Profile | Primary Focus | Best For |
+|---------|--------------|----------|
+| `semantic_search` | E1 semantic | General queries |
+| `causal_reasoning` | E1 + E5 causal | "Why" questions, root cause analysis |
+| `code_search` | E7 code | Programming queries, function lookup |
+| `fact_checking` | E11 entity + E6 keyword | Entity/fact validation |
+| `graph_reasoning` | E8 graph + E11 entity | Connection traversal |
+| `temporal_navigation` | E2/E3/E4 temporal | Time-based queries |
+| `typo_tolerant` | E1 + E9 HDC | Misspelled queries |
+| `pipeline_full` | E13 → E1 → E12 | End-to-end precision pipeline |
+
+Custom profiles can be created per-session via `create_weight_profile`.
+
+---
+
+## How It Works
+
+A query like *"Why does the authentication service fail under load?"*:
+
+1. **Intent detection** — classified as causal (seeking effects of load)
+2. **Strategy selection** — `multi_space` with `causal_reasoning` weight profile
+3. **Parallel retrieval** across 6 active embedders:
+   - **E1**: Semantic HNSW search for "authentication service fail load"
+   - **E5**: Asymmetric causal search (query as cause, searching effect index, 1.2x boost)
+   - **E7**: Code embeddings catch relevant auth service implementations
+   - **E8**: Graph connections find structurally related memories
+   - **E10**: Paraphrase matching catches rephrasings of the same concept
+   - **E11**: Entity linking identifies "authentication service" as a known entity
+4. **RRF fusion** — rankings merged: `weight_i / (rank_i + 60)` across all embedders
+5. **Post-retrieval boosts** — E2 freshness decay prioritizes recent memories
+6. **Causal gate** — high-confidence causal scores get 1.10x boost, low-confidence get 0.85x demotion
+7. **Return** — top-k results with per-embedder breakdown and full provenance
+
+---
+
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -59,119 +195,23 @@ Context Graph stores memories as rich multi-dimensional fingerprints — each me
 
 | Crate | Purpose |
 |-------|---------|
-| `context-graph-mcp` | MCP server, transport layer, tool handlers |
-| `context-graph-core` | Domain types, config, traits, weight profiles |
-| `context-graph-storage` | RocksDB persistence, column families, HNSW indexes |
-| `context-graph-embeddings` | 13-embedder pipeline (HuggingFace models via candle) |
+| `context-graph-mcp` | MCP server, transport layer, 55 tool handlers |
+| `context-graph-core` | Domain types, config, traits, 14 weight profiles |
+| `context-graph-storage` | RocksDB persistence, 51 column families, HNSW indexes |
+| `context-graph-embeddings` | 13-model embedding pipeline (HuggingFace candle) |
 | `context-graph-graph` | Knowledge graph with vector search |
-| `context-graph-cuda` | GPU acceleration (CUDA) |
+| `context-graph-cuda` | GPU acceleration (CUDA / candle) |
 | `context-graph-cli` | CLI tools, Claude Code hooks |
-| `context-graph-causal-agent` | LLM-based causal discovery (Qwen2.5-3B) |
+| `context-graph-causal-agent` | LLM-based causal discovery |
 | `context-graph-graph-agent` | LLM-based graph relationship discovery |
 | `context-graph-benchmark` | Performance benchmarking suite |
 | `context-graph-test-utils` | Shared test utilities |
 
 ---
 
-## The 13 Embedders
+## MCP Tools
 
-Every memory is embedded simultaneously across 13 specialized spaces. Each embedder acts as an independent "knowledge lens" — what looks similar in one space may be distant in another.
-
-| # | Name | Model | Dim | Type | Purpose |
-|---|------|-------|-----|------|---------|
-| **E1** | Semantic | e5-large-v2 | 1024D | Dense | Primary semantic similarity |
-| **E2** | Freshness | Custom temporal | 512D | Dense | Exponential recency decay |
-| **E3** | Periodic | Fourier-based | 512D | Dense | Time-of-day / day-of-week patterns |
-| **E4** | Sequence | Sinusoidal positional | 512D | Dense | Conversation ordering |
-| **E5** | Causal | Longformer SCM | 768D | Dense, Asymmetric | Cause-effect relationships |
-| **E6** | Keyword | SPLADE v2 | ~30K | Sparse | BM25-style keyword matching |
-| **E7** | Code | Qodo-Embed-1.5B | 1536D | Dense | Source code understanding |
-| **E8** | Graph | e5-large-v2 | 1024D | Dense, Asymmetric | Directional graph connections |
-| **E9** | HDC | Hyperdimensional | 1024D | Dense | Character-level typo tolerance |
-| **E10** | Paraphrase | e5-base | 768D | Dense, Asymmetric | Rephrase-invariant matching |
-| **E11** | Entity | KEPLER | 768D | Dense | Named entity & TransE linking |
-| **E12** | ColBERT | ColBERT | 128D/token | Token-level | Late interaction precision (pipeline only) |
-| **E13** | SPLADE | SPLADE v3 | ~30K | Sparse | Learned sparse expansion (pipeline only) |
-
-### Asymmetric Embedders
-
-Three embedders store **dual vectors** for directional reasoning:
-
-- **E5 (Causal)**: `cause_vector` and `effect_vector` — querying for causes searches the effect index with a cause query, applying a 1.2x boost for cause→effect and 0.8x for effect→cause
-- **E8 (Graph)**: `source_vector` and `target_vector` — "what points to X?" differs from "what does X point to?"
-- **E10 (Paraphrase)**: `doc_vector` and `query_vector` — asymmetric document-query similarity
-
-### Embedder Categories
-
-| Category | Embedders | Topic Weight | Notes |
-|----------|-----------|-------------|-------|
-| **Semantic** | E1, E5, E6, E7, E10, E12, E13 | 1.0 | Core similarity signals |
-| **Temporal** | E2, E3, E4 | 0.0 | Excluded from topic detection; applied post-retrieval |
-| **Relational** | E8, E11 | 0.5 | Graph structure and entity relationships |
-| **Structural** | E9 | 0.5 | Noise-robust character patterns |
-
----
-
-## Search Strategies
-
-### 1. E1 Only (`e1_only`)
-
-Uses only the E1 semantic HNSW index. Fastest option (~1ms), backward compatible.
-
-### 2. Multi-Space (`multi_space`) — Default
-
-Fuses rankings from 6 active embedders (E1, E5, E7, E8, E10, E11) using **Weighted Reciprocal Rank Fusion**:
-
-```
-score(doc) = Sum[ weight_i / (rank_i + 60) ]
-```
-
-Temporal embedders (E2-E4) are applied as **post-retrieval boosts**, not during retrieval. This prevents temporal proximity from overriding topical relevance.
-
-### 3. Pipeline (`pipeline`)
-
-Three-stage retrieval for maximum precision:
-
-1. **Stage 1 — Recall**: E13 (SPLADE) + E1 for broad candidate retrieval (~1000s)
-2. **Stage 2 — Scoring**: Multi-space fusion on top candidates (~100s)
-3. **Stage 3 — Rerank**: E12 (ColBERT MaxSim) for precision on final top-k
-
-### 4. Embedder-First (`embedder_first`)
-
-Forces retrieval through a single embedder's perspective. Useful for specialized queries:
-```
-search_by_embedder(embedder="E7", query="async fn handle_request")  → code-focused
-search_by_embedder(embedder="E5", query="what caused the outage")   → causal-focused
-```
-
-### Weight Profiles
-
-14 predefined profiles control how embedders are weighted during multi-space search:
-
-| Profile | Primary Embedder(s) | Best For |
-|---------|-------------------|----------|
-| `semantic_search` | E1 (0.33) | General queries |
-| `causal_reasoning` | E1 (0.40), E5 (0.10) | "Why" questions |
-| `code_search` | E7 (0.40), E1 (0.20) | Programming queries |
-| `fact_checking` | E11 (0.40), E6 (0.15) | Entity/fact validation |
-| `graph_reasoning` | E8 (0.40), E11 (0.20) | Connection traversal |
-| `temporal_navigation` | E2/E3/E4 (0.22 each) | Time-based queries |
-| `sequence_navigation` | E4 (0.55), E1 (0.20) | Conversation flow |
-| `conversation_history` | E4 (0.35), E1 (0.30) | Multi-turn reconstruction |
-| `typo_tolerant` | E1 (0.30), E9 (0.15) | Misspellings |
-| `category_weighted` | Constitution-compliant | Architecture-neutral |
-| `pipeline_stage1_recall` | E6/E13 (0.25 each) | Sparse recall |
-| `pipeline_stage2_scoring` | E1 (0.50) | Dense scoring |
-| `pipeline_full` | E1 (0.40) | End-to-end pipeline |
-| `balanced` | ~0.077 each | Comparison baseline |
-
-Custom weight profiles can be created per session via `create_weight_profile`.
-
----
-
-## MCP Tools Reference
-
-### Core Memory (4 tools)
+### Core Memory
 
 | Tool | Description |
 |------|-------------|
@@ -180,15 +220,15 @@ Custom weight profiles can be created per session via `create_weight_profile`.
 | `get_memetic_status` | System status: fingerprint count, embedder health, storage info |
 | `trigger_consolidation` | Merge similar memories using similarity, temporal, or semantic strategies |
 
-### Memory Curation (3 tools)
+### Memory Curation
 
 | Tool | Description |
 |------|-------------|
 | `merge_concepts` | Merge related memories with union/intersection/weighted_average strategies |
 | `forget_concept` | Soft-delete a memory (30-day recovery window) |
-| `boost_importance` | Adjust memory importance score (clamped 0.0–1.0) |
+| `boost_importance` | Adjust memory importance score (clamped 0.0-1.0) |
 
-### Causal Reasoning (4 tools)
+### Causal Reasoning
 
 | Tool | Description |
 |------|-------------|
@@ -196,15 +236,10 @@ Custom weight profiles can be created per session via `create_weight_profile`.
 | `search_causes` | Abductive reasoning — find likely causes of an observed effect |
 | `search_effects` | Forward causal reasoning — predict effects of a cause |
 | `get_causal_chain` | Build transitive causal chains with hop attenuation |
-
-### Causal Discovery — LLM (2 tools)
-
-| Tool | Description |
-|------|-------------|
-| `trigger_causal_discovery` | Run LLM-based causal discovery (Qwen2.5-3B) |
+| `trigger_causal_discovery` | Run LLM-based causal discovery (requires LLM feature) |
 | `get_causal_discovery_status` | Agent status, VRAM usage, statistics |
 
-### Entity & Knowledge Graph (6 tools)
+### Entity & Knowledge Graph
 
 | Tool | Description |
 |------|-------------|
@@ -215,7 +250,7 @@ Custom weight profiles can be created per session via `create_weight_profile`.
 | `validate_knowledge` | Score (subject, predicate, object) triples using TransE |
 | `get_entity_graph` | Build and visualize entity relationship graph |
 
-### Session & Conversation (4 tools)
+### Session & Conversation
 
 | Tool | Description |
 |------|-------------|
@@ -224,7 +259,7 @@ Custom weight profiles can be created per session via `create_weight_profile`.
 | `traverse_memory_chain` | Multi-hop traversal starting from an anchor memory |
 | `compare_session_states` | Compare memory state at different sequence points |
 
-### Topic Detection (4 tools)
+### Topic Detection
 
 | Tool | Description |
 |------|-------------|
@@ -233,7 +268,7 @@ Custom weight profiles can be created per session via `create_weight_profile`.
 | `detect_topics` | Force topic detection using HDBSCAN |
 | `get_divergence_alerts` | Check for divergence from recent activity |
 
-### Embedder-First Search (7 tools)
+### Embedder-First Search
 
 | Tool | Description |
 |------|-------------|
@@ -245,7 +280,7 @@ Custom weight profiles can be created per session via `create_weight_profile`.
 | `create_weight_profile` | Create session-scoped custom weight profiles |
 | `search_cross_embedder_anomalies` | Find blind spots (high in one embedder, low in another) |
 
-### Specialized Search (5 tools)
+### Specialized Search
 
 | Tool | Description |
 |------|-------------|
@@ -255,7 +290,7 @@ Custom weight profiles can be created per session via `create_weight_profile`.
 | `search_recent` | E2 freshness-decayed search (exponential/linear/step) |
 | `search_periodic` | E3 time-pattern matching (similar times of day/week) |
 
-### Graph Navigation (6 tools)
+### Graph Navigation
 
 | Tool | Description |
 |------|-------------|
@@ -265,15 +300,10 @@ Custom weight profiles can be created per session via `create_weight_profile`.
 | `get_typed_edges` | Explore typed edges derived from embedder agreement |
 | `traverse_graph` | Multi-hop traversal following typed edges |
 | `get_unified_neighbors` | Unified neighbors via Weighted RRF across all embedders |
-
-### Graph Discovery — LLM (2 tools)
-
-| Tool | Description |
-|------|-------------|
-| `discover_graph_relationships` | LLM-based relationship discovery across 20 types (4 domains) |
+| `discover_graph_relationships` | LLM-based relationship discovery across 20 types |
 | `validate_graph_link` | Validate proposed graph links with confidence scoring |
 
-### File Watcher (4 tools)
+### File Watcher
 
 | Tool | Description |
 |------|-------------|
@@ -282,7 +312,7 @@ Custom weight profiles can be created per session via `create_weight_profile`.
 | `delete_file_content` | Delete embeddings for a file path (soft-delete) |
 | `reconcile_files` | Find and clean up orphaned file embeddings |
 
-### Provenance & Audit (3 tools)
+### Provenance & Audit
 
 | Tool | Description |
 |------|-------------|
@@ -290,7 +320,7 @@ Custom weight profiles can be created per session via `create_weight_profile`.
 | `get_merge_history` | Show merge lineage and history for fingerprints |
 | `get_provenance_chain` | Full provenance from embedding to source |
 
-### Maintenance (1 tool)
+### Maintenance
 
 | Tool | Description |
 |------|-------------|
@@ -300,25 +330,19 @@ Custom weight profiles can be created per session via `create_weight_profile`.
 
 ## Storage
 
-### RocksDB Column Families
+### RocksDB Column Families (51 total)
 
-Context Graph uses 51 RocksDB column families organized across several layers:
-
-**Core (11 CFs):** `nodes`, `edges`, `embeddings`, `metadata`, `temporal`, `tags`, `sources`, `system`, `embedder_edges`, `typed_edges`, `typed_edges_by_type`
-
-**Teleological (20 CFs):** Fingerprints, topic profiles, synergy matrix, causal relationships, weight profiles, inverted indexes (E6/E13), Matryoshka truncations
-
-**Quantized (13 CFs):** `CF_EMB_0` through `CF_EMB_12` — quantized vectors per embedder (PQ-8 or Float8)
-
-**Code (5 CFs):** AST chunks, language indexes, symbol tables
-
-**Causal (2 CFs):** Causal relationship metadata and indexes
+| Layer | CFs | Contents |
+|-------|-----|----------|
+| **Core** | 11 | Nodes, edges, embeddings, metadata, temporal, tags, sources, system, typed edges |
+| **Teleological** | 20 | Fingerprints, topic profiles, synergy matrix, causal relationships, weight profiles, inverted indexes |
+| **Quantized** | 13 | `CF_EMB_0` through `CF_EMB_12` — quantized vectors per embedder (PQ-8 or Float8) |
+| **Code** | 5 | AST chunks, language indexes, symbol tables |
+| **Causal** | 2 | Causal relationship metadata and indexes |
 
 ### HNSW Indexing
 
-10 of 13 embedders use HNSW (Hierarchical Navigable Small World) graphs for logarithmic-time K-NN search via [usearch](https://github.com/unum-cloud/usearch). E6 and E13 (sparse) use inverted indexes, and E12 (ColBERT) uses MaxSim token-level scoring.
-
-HNSW graphs are persisted to RocksDB and compacted on a 10-minute background interval.
+10 of 13 embedders use [usearch](https://github.com/unum-cloud/usearch) HNSW graphs for O(log n) K-NN search. E6/E13 (sparse) use inverted indexes. E12 (ColBERT) uses MaxSim token-level scoring. HNSW graphs are persisted to RocksDB and compacted on a 10-minute background interval.
 
 ---
 
@@ -331,7 +355,7 @@ HNSW graphs are persisted to RocksDB and compacted on a 10-minute background int
 3. **Config files** (`config/default.toml`, `config/{env}.toml`)
 4. **Defaults** (lowest)
 
-### Key Environment Variables
+### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -346,7 +370,7 @@ HNSW graphs are persisted to RocksDB and compacted on a 10-minute background int
 | `CONTEXT_GRAPH_ENV` | `development` | Config environment |
 | `RUST_LOG` | `info` | Log level |
 
-### Config File Example
+### Config File
 
 ```toml
 [mcp]
@@ -368,7 +392,7 @@ extensions = ["md"]
 
 [watcher.code]
 enabled = false
-watch_paths = ["./crates"]
+watch_paths = ["./src"]
 extensions = ["rs"]
 use_ast_chunker = true
 target_chunk_size = 500
@@ -383,170 +407,119 @@ target_chunk_size = 500
 | **stdio** | Newline-delimited JSON over stdin/stdout | Claude Code, Claude Desktop |
 | **tcp** | JSON-RPC over TCP socket | Remote deployments, multiple clients |
 | **sse** | Server-Sent Events over HTTP | Web clients, real-time streaming |
-| **stdio+tcp** | Both simultaneously | stdio for Claude Code + TCP for hooks |
-| **daemon** | Shared TCP server | Single server across multiple terminals |
+| **stdio+tcp** | Both simultaneously | stdio for Claude Code + TCP for hooks/CLI |
+| **daemon** | Shared TCP server | Single server instance across multiple terminals |
 
 ---
 
-## Setup
+## CLI & Hooks
 
-### Prerequisites
-
-- **Rust** 1.75+ (stable)
-- **CUDA** toolkit (for GPU-accelerated embeddings)
-- **RocksDB** system library
-
-### Build
-
-```bash
-# Release build
-make build
-
-# Quick check (no linking)
-make check
-
-# Run tests
-make test
-
-# Lint
-make clippy
-```
-
-### Run the MCP Server
-
-```bash
-# Stdio mode (default — for Claude Code)
-context-graph-mcp
-
-# TCP mode
-context-graph-mcp --transport tcp --port 3100
-
-# Daemon mode (shared server, load models once)
-context-graph-mcp --daemon
-
-# Fast startup (models load in background)
-context-graph-mcp --no-warm
-```
-
-### Claude Code Integration
-
-Add to `~/.claude/settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "context-graph": {
-      "command": "context-graph-mcp",
-      "args": ["--transport", "stdio"],
-      "env": {
-        "RUST_LOG": "info"
-      }
-    }
-  }
-}
-```
-
-### CLI & Hooks
-
-The CLI provides Claude Code hooks for automatic memory capture:
+The CLI provides Claude Code hooks for automatic memory capture during sessions:
 
 ```bash
 # Set up hooks for Claude Code
 context-graph-cli setup
 
-# Manual operations
+# Manual memory operations
 context-graph-cli memory capture --content "learned something" --rationale "important pattern"
 context-graph-cli memory inject --query "authentication patterns"
 context-graph-cli topic portfolio
 context-graph-cli warmup   # Pre-load embeddings into VRAM
 ```
 
-**Hook timeouts:**
+### Hook Timeouts
 
 | Hook | Timeout | Trigger |
 |------|---------|---------|
-| `session-start` | 5s | Session begins |
+| `session-start` | 5s | Session begins — injects previous session context |
 | `pre-tool-use` | 500ms | Before each tool call |
 | `post-tool-use` | 3s | After each tool call |
 | `user-prompt-submit` | 2s | User sends a message |
-| `pre-compact` | 20s | Before context compaction |
-| `task-completed` | 20s | Task finishes |
-| `session-end` | 30s | Session ends |
-
----
-
-## How It Works — Example Flow
-
-A query like *"Why does the authentication service fail under load?"*:
-
-1. **Intent detection** — classified as causal (seeking effects of load)
-2. **Strategy selection** — `multi_space` with `causal_reasoning` weight profile
-3. **Parallel retrieval** across 6 active embedders:
-   - **E1**: Semantic HNSW search for "authentication service fail load"
-   - **E5**: Asymmetric causal search (query as cause, searching effect index, 1.2x boost)
-   - **E7**: Code embeddings catch relevant auth service implementations
-   - **E8**: Graph connections find structurally related memories
-   - **E10**: Paraphrase matching catches rephrasings of the same concept
-   - **E11**: Entity linking identifies "authentication service" as a known entity
-4. **RRF fusion** — rankings merged with causal weights: `0.40/(rank_E1+60) + 0.10/(rank_E5+60) + ...`
-5. **Post-retrieval boosts** — E2 freshness decay prioritizes recent memories
-6. **Causal gate** — scores above 0.04 threshold get 1.10x boost, below 0.008 get 0.85x demotion
-7. **Return** — top-k results with per-embedder breakdown and provenance
+| `pre-compact` | 20s | Before context compaction — preserves important context |
+| `task-completed` | 20s | Task finishes — captures learnings |
+| `session-end` | 30s | Session ends — persists session summary |
 
 ---
 
 ## Graceful Degradation
 
-- **LLM unavailable**: 52 of 55 tools work normally. Only `trigger_causal_discovery`, `discover_graph_relationships`, and `validate_graph_link` return errors.
-- **Embedder failure**: LazyMultiArrayProvider handles loading failures. Search falls back to available embedders with degraded tracking.
-- **Soft-delete**: All deletions are soft with a 30-day recovery window. A background GC task runs every 5 minutes.
+Context Graph is designed to keep working when components fail:
+
+- **LLM unavailable**: 52 of 55 tools work normally. Only `trigger_causal_discovery`, `discover_graph_relationships`, and `validate_graph_link` return errors. Build without the `llm` feature to skip LLM dependencies entirely (~500MB smaller binary).
+- **Embedder failure**: The pipeline handles individual embedder loading failures. Search falls back to available embedders with degraded-mode tracking.
+- **Soft-delete**: All deletions are soft with a 30-day recovery window. A background GC task runs every 5 minutes to clean up expired deletions.
+- **HNSW compaction**: Background task rebuilds HNSW indexes every 10 minutes. Safe concurrent reads during rebuild.
 
 ---
 
-## Performance Targets
+## Performance
 
 | Operation | Target |
 |-----------|--------|
 | `store_memory` | < 5ms p95 |
 | `get_node` | < 1ms p95 |
 | Context injection | < 25ms p95, < 50ms p99 |
+| HNSW K-NN search | O(log n) |
 | Embedding validation | < 1ms |
 | Health check | < 1ms |
-| HNSW K-NN search | O(log n) |
 
 ---
 
-## Project Structure
+## Building Without GPU
+
+To build without CUDA (CPU-only embeddings):
+
+```bash
+cargo build --release --no-default-features --features llm
+```
+
+To build without LLM support (smaller binary, 52 tools):
+
+```bash
+cargo build --release --no-default-features --features cuda
+```
+
+---
+
+## Development
+
+```bash
+# Run all tests
+make test
+
+# Run E2E hook tests
+make test-e2e
+
+# Run MCP server tests
+make test-mcp
+
+# Quick check (no linking)
+make check
+
+# Lint
+make clippy
+
+# Disk usage report
+make disk-check
+```
+
+### Project Structure
 
 ```
 contextgraph/
 ├── crates/
-│   ├── context-graph-mcp/          # MCP server
-│   │   ├── src/
-│   │   │   ├── main.rs             # Entry point, CLI args
-│   │   │   ├── server/             # Server core, transport
-│   │   │   ├── handlers/           # Tool dispatch and handlers
-│   │   │   └── tools/              # Tool definitions and schemas
-│   ├── context-graph-core/         # Domain types, config, traits
-│   │   ├── src/
-│   │   │   ├── config/             # Configuration system
-│   │   │   ├── embeddings/         # Embedder config and categories
-│   │   │   ├── teleological/       # 13-embedder fingerprints
-│   │   │   ├── weights/            # 14 weight profiles
-│   │   │   └── traits/             # Store traits and search options
-│   ├── context-graph-storage/      # RocksDB persistence
-│   │   ├── src/
-│   │   │   ├── column_families.rs  # 51 column family definitions
-│   │   │   └── teleological/       # HNSW indexes, quantization
-│   ├── context-graph-embeddings/   # 13-model embedding pipeline
-│   ├── context-graph-graph/        # Knowledge graph
+│   ├── context-graph-mcp/          # MCP server, transport, tool handlers
+│   ├── context-graph-core/         # Domain types, config, traits, weight profiles
+│   ├── context-graph-storage/      # RocksDB persistence, 51 column families
+│   ├── context-graph-embeddings/   # 13-model embedding pipeline (candle)
+│   ├── context-graph-graph/        # Knowledge graph with vector search
 │   ├── context-graph-cuda/         # GPU acceleration
 │   ├── context-graph-cli/          # CLI and Claude Code hooks
-│   ├── context-graph-causal-agent/ # LLM causal discovery
-│   ├── context-graph-graph-agent/  # LLM graph discovery
-│   ├── context-graph-benchmark/    # Benchmarking suite
+│   ├── context-graph-causal-agent/ # LLM-based causal discovery
+│   ├── context-graph-graph-agent/  # LLM-based graph relationship discovery
+│   ├── context-graph-benchmark/    # Performance benchmarking suite
 │   └── context-graph-test-utils/   # Shared test helpers
-├── config/                         # Configuration files
+├── config/                         # Configuration files (TOML)
 ├── scripts/                        # Build and maintenance scripts
 └── Makefile                        # Build targets
 ```
@@ -558,8 +531,12 @@ contextgraph/
 - **MCP Version**: 2024-11-05
 - **Message Format**: Newline-delimited JSON (NDJSON)
 - **RPC**: JSON-RPC 2.0
-- **Serialization**: JSON for all provenance and metadata (bincode has known issues with `skip_serializing_if`)
 
 ## License
 
-All rights reserved.
+Licensed under either of:
+
+- [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)
+- [MIT License](http://opensource.org/licenses/MIT)
+
+at your option.
