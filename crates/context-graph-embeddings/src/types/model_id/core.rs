@@ -135,7 +135,7 @@ impl ModelId {
     /// # Returns
     /// - Code (Qodo-Embed): 32768 tokens (Qwen2's extended context)
     /// - Causal (nomic-embed): 512 tokens (capped from 8192 for causal use)
-    /// - CLIP (Multimodal): 77 tokens
+    /// - Multimodal (e5-base-v2): 512 tokens (BERT tokenizer)
     /// - Most others: 512 tokens
     /// - Custom models: effectively unlimited (no tokenization)
     #[must_use]
@@ -143,7 +143,7 @@ impl ModelId {
         match self {
             Self::Code => 32768,    // Qodo-Embed-1-1.5B (Qwen2) supports 32K context
             Self::Causal => 512,    // nomic-embed-text-v1.5 (capped from 8192)
-            Self::Multimodal => 77, // CLIP text encoder limit
+            Self::Multimodal => 512, // EMB-1 FIX: e5-base-v2 uses BERT tokenizer (512), not CLIP (77)
             Self::TemporalRecent
             | Self::TemporalPeriodic
             | Self::TemporalPositional
@@ -166,7 +166,7 @@ impl ModelId {
             Self::Sparse => TokenizerFamily::BertWordpiece,   // SPLADE uses BERT
             Self::Code => TokenizerFamily::BertWordpiece,     // Qodo-Embed uses BERT tokenizer
             Self::Graph => TokenizerFamily::BertWordpiece,    // MiniLM uses BERT
-            Self::Multimodal => TokenizerFamily::ClipBpe,     // CLIP has its own BPE
+            Self::Multimodal => TokenizerFamily::BertWordpiece, // EMB-1 FIX: e5-base-v2 uses BERT, not CLIP
             Self::Entity => TokenizerFamily::BertWordpiece,   // all-MiniLM uses BERT
             Self::Kepler => TokenizerFamily::RobertaBpe,      // KEPLER uses RoBERTa/GPT-2 BPE
             Self::LateInteraction => TokenizerFamily::BertWordpiece, // ColBERT uses BERT

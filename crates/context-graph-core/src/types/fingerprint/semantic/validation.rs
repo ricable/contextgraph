@@ -31,7 +31,7 @@ impl SemanticFingerprint {
     /// 3. E5: Must have exactly 768 dimensions
     /// 4. E6: Sparse indices must be < E6_SPARSE_VOCAB, indices/values must match length
     /// 5. E7: Must have exactly 1536 dimensions (Qodo-Embed)
-    /// 6. E8: Must have exactly 384 dimensions, E11: Must have exactly 768 dimensions
+    /// 6. E8: Must have exactly 1024 dimensions (e5-large-v2), E11: Must have exactly 768 dimensions
     /// 7. E9: Must have exactly 1024 dimensions (projected)
     /// 8. E10: Must have exactly 768 dimensions
     /// 9. E12: Each token must have exactly 128 dimensions

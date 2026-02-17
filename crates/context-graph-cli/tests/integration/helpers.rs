@@ -506,16 +506,14 @@ pub fn deterministic_session_id(test_name: &str, suffix: &str) -> String {
 // These functions provide compatibility for tests
 // =============================================================================
 
-/// Verify that a snapshot exists for the given session_id
-/// Since we use in-memory SessionCache, this checks if any snapshot was stored
-/// Note: In integration tests, the CLI process runs separately, so we can't check
-/// the in-memory cache directly. This is a stub that always returns true for
-/// integration test compatibility.
+/// Verify that a snapshot exists for the given session_id.
+///
+/// CLI-2 FIX: Returns `false` — cross-process snapshot verification is impossible
+/// because SessionCache is in-memory and process-scoped (PRD v6 Section 14).
+/// Tests must verify session behavior via CLI exit codes and stdout JSON, not
+/// by probing in-memory state across process boundaries.
 pub fn verify_snapshot_exists(_db_path: &Path, _session_id: &str) -> bool {
-    // In integration tests, we trust that if the CLI returned success,
-    // the snapshot was stored in its in-memory cache.
-    // Cross-process cache verification is not possible with in-memory storage.
-    true
+    false
 }
 
 /// Load snapshot for verification purposes

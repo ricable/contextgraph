@@ -52,7 +52,8 @@ fn test_model_path() {
 #[test]
 fn test_max_tokens() {
     assert_eq!(ModelId::Causal.max_tokens(), 512);
-    assert_eq!(ModelId::Multimodal.max_tokens(), 77);
+    // EMB-1 FIX: Multimodal uses BERT tokenizer (512 tokens), not CLIP (77)
+    assert_eq!(ModelId::Multimodal.max_tokens(), 512);
     assert_eq!(ModelId::Semantic.max_tokens(), 512);
 }
 
@@ -145,10 +146,10 @@ fn test_tokenizer_families() {
         TokenizerFamily::BertWordpiece
     );
 
-    // CLIP family
+    // EMB-1 FIX: Multimodal uses BERT family, not CLIP (e5-base-v2 is BERT-based)
     assert_eq!(
         ModelId::Multimodal.tokenizer_family(),
-        TokenizerFamily::ClipBpe
+        TokenizerFamily::BertWordpiece
     );
 
     // Custom: no tokenizer

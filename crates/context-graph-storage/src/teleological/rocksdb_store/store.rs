@@ -302,6 +302,9 @@ impl RocksDbTeleologicalStore {
             }
             Err(e) => {
                 warn!(error = %e, "HNSW restore from disk failed — falling back to O(n) rebuild. If this persists, investigate HNSW data corruption.");
+                // STOR-3 FIX: Clear partially-loaded indexes before rebuild
+                // to prevent duplicate/orphaned vectors from the failed partial load.
+                store.index_registry.clear_all();
                 store.rebuild_indexes_from_store()?;
             }
         }
@@ -844,6 +847,17 @@ impl RocksDbTeleologicalStore {
             }
         }
 
+        // STOR-4 FIX: Also check CausalE11Index for compaction
+        if self.causal_e11_index.needs_compaction() {
+            let removed = self.causal_e11_index.removed_count();
+            let total = self.causal_e11_index.len();
+            info!(
+                "HNSW compaction needed for CausalE11Index: {removed} orphaned / {total} total ({:.0}%)",
+                if total > 0 { (removed as f64 / total as f64) * 100.0 } else { 0.0 }
+            );
+            any_needs_compaction = true;
+        }
+
         if any_needs_compaction {
             // DATA-5: Warn about race condition only when compaction actually runs
             warn!(
@@ -856,7 +870,13 @@ impl RocksDbTeleologicalStore {
             for (_embedder, index) in self.index_registry.iter() {
                 index.reset_removed_count();
             }
-            info!("HNSW compaction complete — all orphaned vectors eliminated");
+
+            // STOR-4 FIX: Also rebuild and reset CausalE11Index
+            self.causal_e11_index.clear();
+            self.rebuild_causal_e11_index()?;
+            self.causal_e11_index.reset_removed_count();
+
+            info!("HNSW compaction complete — all orphaned vectors eliminated (including CausalE11Index)");
         }
 
         Ok(())

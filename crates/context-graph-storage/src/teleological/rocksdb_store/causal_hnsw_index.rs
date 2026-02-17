@@ -230,8 +230,8 @@ impl CausalE11Index {
     /// * `k` - Number of results to return
     ///
     /// # Returns
-    /// Vector of (causal_id, distance) tuples, sorted by distance ascending.
-    /// Distance is cosine distance (0 = identical, 2 = opposite).
+    /// STOR-9 FIX: Vector of (causal_id, similarity) tuples, sorted by similarity descending.
+    /// STOR-10 FIX: Similarity = (2.0 - distance) / 2.0, matching compute_cosine_similarity().
     ///
     /// # Errors
     /// Returns error if embedding dimension is wrong or usearch operation fails.
@@ -272,9 +272,8 @@ impl CausalE11Index {
         let mut output = Vec::with_capacity(k.min(active_count));
         for (key, distance) in results.keys.iter().zip(results.distances.iter()) {
             if let Some(&id) = key_to_id.get(key) {
-                // Convert distance to similarity: similarity = 1 - distance
-                // usearch cosine returns distance in [0, 2]
-                let similarity = 1.0 - distance.min(1.0);
+                // STOR-10 FIX: Use normalized similarity to match compute_cosine_similarity()
+                let similarity = super::helpers::hnsw_distance_to_similarity(*distance);
                 output.push((id, similarity));
                 if output.len() >= k {
                     break;

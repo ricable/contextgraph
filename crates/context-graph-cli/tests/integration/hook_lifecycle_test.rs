@@ -22,7 +22,7 @@ use super::helpers::{
     assert_exit_code, assert_output_bool, assert_timing_under_budget, create_post_tool_input,
     create_pre_tool_input, create_prompt_submit_input, create_session_end_input,
     create_session_start_input, deterministic_session_id, generate_test_session_id,
-    invoke_hook_with_stdin, log_test_evidence, verify_snapshot_exists, EXIT_SUCCESS,
+    invoke_hook_with_stdin, log_test_evidence, EXIT_SUCCESS,
     TIMEOUT_POST_TOOL_MS, TIMEOUT_PRE_TOOL_MS, TIMEOUT_SESSION_END_MS, TIMEOUT_SESSION_START_MS,
     TIMEOUT_USER_PROMPT_MS,
 };
@@ -157,13 +157,8 @@ async fn test_session_lifecycle_full_flow() {
     assert_timing_under_budget(&end_result, TIMEOUT_SESSION_END_MS, "SessionEnd");
 
     // STEP 7: VERIFICATION
-    // Per PRD v6 Section 14, we use in-memory SessionCache instead of RocksDB
-    // Since the CLI runs in a separate process, we verify via JSON output
-    let snapshot_exists = verify_snapshot_exists(db_path, &session_id);
-    assert!(
-        snapshot_exists,
-        "Snapshot verification failed (stub returns true)"
-    );
+    // CLI-2 FIX: Cross-process snapshot verification is impossible (SessionCache is in-memory).
+    // Verify session behavior via exit code (already asserted above) and JSON output below.
 
     // Parse the JSON output to verify session state
     if let Ok(json_output) = end_result.parse_stdout() {
@@ -177,7 +172,7 @@ async fn test_session_lifecycle_full_flow() {
             &session_id,
             end_result.exit_code,
             end_result.execution_time_ms,
-            true,
+            false, // CLI-2: db_verified=false (cross-process verification impossible)
             Some(json!({
                 "session_ended": true,
                 "json_output_parsed": true,
@@ -191,7 +186,7 @@ async fn test_session_lifecycle_full_flow() {
             &session_id,
             end_result.exit_code,
             end_result.execution_time_ms,
-            true,
+            false, // CLI-2: db_verified=false (cross-process verification impossible)
             Some(json!({
                 "session_ended": true,
                 "json_output_parsed": false,
@@ -280,11 +275,8 @@ async fn test_multiple_tool_uses_in_session() {
     );
     assert_exit_code(&end_result, EXIT_SUCCESS, "SessionEnd failed");
 
-    // PHYSICAL DATABASE VERIFICATION
-    assert!(
-        verify_snapshot_exists(db_path, &session_id),
-        "Snapshot not persisted after multi-tool session"
-    );
+    // CLI-2 FIX: Cross-process snapshot verification not possible (in-memory SessionCache).
+    // Exit code already asserted above — that's the source of truth.
 
     log_test_evidence(
         "test_multiple_tool_uses_in_session",
@@ -292,7 +284,7 @@ async fn test_multiple_tool_uses_in_session() {
         &session_id,
         end_result.exit_code,
         end_result.execution_time_ms,
-        true,
+        false, // CLI-2: db_verified=false (cross-process verification impossible)
         Some(json!({"tool_cycles": 5})),
     );
 }
@@ -378,7 +370,7 @@ async fn test_topic_state_injection() {
         &session_id,
         end_result.exit_code,
         end_result.execution_time_ms,
-        verify_snapshot_exists(db_path, &session_id),
+        false, // CLI-2: db_verified=false (cross-process verification impossible)
         Some(json!({"topic_state_verified": true})),
     );
 }
@@ -503,7 +495,7 @@ async fn test_concurrent_tool_hooks() {
         &session_id,
         EXIT_SUCCESS,
         total_time.as_millis() as u64,
-        verify_snapshot_exists(db_path, &session_id),
+        false, // CLI-2: db_verified=false (cross-process verification impossible)
         Some(json!({
             "concurrent_hooks": 10,
             "all_succeeded": success_count == 10,

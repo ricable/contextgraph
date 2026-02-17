@@ -182,7 +182,8 @@ fn test_max_tokens_delegates_to_model_id() {
     assert_eq!(causal.max_tokens(), 512);
 
     let multimodal = TestModel::new(ModelId::Multimodal, vec![InputType::Text]);
-    assert_eq!(multimodal.max_tokens(), 77);
+    // EMB-1 FIX: Multimodal uses BERT tokenizer (512 tokens), not CLIP (77)
+    assert_eq!(multimodal.max_tokens(), 512);
 }
 
 #[test]

@@ -365,16 +365,19 @@ pub fn create_claude_code_session_end_input(session_id: &str, reason: &str) -> S
 // Per PRD v6 Section 14, we use SessionCache instead of RocksDB
 // =============================================================================
 
-/// Verify that a session snapshot exists
-/// Since we use in-memory SessionCache per PRD v6 Section 14, this is a stub
-/// that always returns true for E2E test compatibility.
-/// Note: In E2E tests, the CLI process runs separately, so we can't check
-/// the in-memory cache directly.
+/// Verify that a session snapshot exists by checking CLI exit code.
+///
+/// CLI-2 FIX: The previous stub always returned `true`, making tests tautological.
+/// Since session state is process-scoped (CLI-1), cross-process verification
+/// is not possible with in-memory storage. This function now returns `false`
+/// to make callers aware that verification cannot be performed.
+///
+/// Tests should verify session behavior by checking CLI exit codes and stdout,
+/// not by probing in-memory state across processes.
 pub fn verify_snapshot_exists(_db_path: &Path, _session_id: &str) -> bool {
-    // In E2E tests, we trust that if the CLI returned success,
-    // the snapshot was stored in its in-memory cache.
-    // Cross-process cache verification is not possible with in-memory storage.
-    true
+    // CLI-2 FIX: Return false — no cross-process verification possible.
+    // Callers must use CLI exit codes and stdout for validation.
+    false
 }
 
 // =============================================================================

@@ -56,6 +56,18 @@ impl RocksDbTeleologicalStore {
 
         for fp in fingerprints {
             let id = fp.id;
+
+            // STOR-5 FIX: Reject stores for soft-deleted IDs (same guard as store_async).
+            // Without this, batch stores can write phantom records hidden by soft-delete filter.
+            if self.is_soft_deleted(&id) {
+                error!(
+                    id = %id,
+                    "Batch store: skipping soft-deleted ID — FAIL FAST"
+                );
+                failed.push((id, format!("Cannot store fingerprint {}: ID is soft-deleted", id)));
+                continue;
+            }
+
             // Store in RocksDB (primary storage) — new insert, count for IDF
             if let Err(e) = self.store_fingerprint_internal(&fp, true) {
                 error!(

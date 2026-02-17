@@ -82,8 +82,7 @@ impl Handlers {
         args: serde_json::Value,
     ) -> JsonRpcResponse {
         // Parse and validate request
-        // NOTE: args is cloned because includeProvenance is read from raw args below
-        let raw_args = args.clone();
+        // MCP-6 FIX: includeProvenance is now modeled in DTO — no need for raw args clone
         let request: SearchConnectionsRequest = match self.parse_request(id.clone(), args, "search_connections") {
             Ok(req) => req,
             Err(resp) => return resp,
@@ -93,12 +92,8 @@ impl Handlers {
         let top_k = request.top_k;
         let min_score = request.min_score;
         let is_source_seeking = request.is_source();
-
-        // PHASE-2-PROVENANCE: Parse includeProvenance from raw args (not in DTO)
-        let include_provenance = raw_args
-            .get("includeProvenance")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let is_bidirectional = request.is_both();
+        let include_provenance = request.include_provenance;
 
         info!(
             query_preview = %query.chars().take(50).collect::<String>(),
@@ -141,35 +136,60 @@ impl Handlers {
             "search_connections: Evaluating candidates for connection scoring"
         );
 
-        // Step 3: Apply connection scoring using asymmetric E8 similarity
-        let direction_modifier = if is_source_seeking {
+        // Step 3: Apply connection scoring using asymmetric E8 similarity.
+        // MCP-7 FIX: For "both", compute max of source-seeking and target-seeking scores.
+        let direction_modifier = if is_bidirectional {
+            1.0 // No modifier for bidirectional — raw asymmetric scores used
+        } else if is_source_seeking {
             SOURCE_DIRECTION_MODIFIER
         } else {
             TARGET_DIRECTION_MODIFIER
         };
 
-        // Score each candidate using asymmetric E8 fingerprint similarity
-        let mut scored_candidates: Vec<(Uuid, f32, f32)> = candidates
+        // Score each candidate using asymmetric E8 fingerprint similarity.
+        // MCP-1 FIX: Also infer graph_direction from E8 vectors.
+        // MCP-2 FIX: Apply direction_modifier to the asymmetric score.
+        let mut scored_candidates: Vec<(Uuid, f32, f32, GraphDirection)> = candidates
             .iter()
             .map(|c| {
                 let raw_sim = c.similarity;
-                let asymmetric_score = compute_e8_asymmetric_fingerprint_similarity(
-                    &query_embedding,
-                    &c.fingerprint.semantic,
-                    is_source_seeking, // query_is_source
-                );
-                (c.fingerprint.id, asymmetric_score, raw_sim)
+                let graph_dir = infer_graph_direction(&c.fingerprint.semantic);
+
+                let adjusted_score = if is_bidirectional {
+                    // MCP-7 FIX: For "both", compute both directions and take the max
+                    let source_score = compute_e8_asymmetric_fingerprint_similarity(
+                        &query_embedding,
+                        &c.fingerprint.semantic,
+                        true,
+                    ) * SOURCE_DIRECTION_MODIFIER;
+                    let target_score = compute_e8_asymmetric_fingerprint_similarity(
+                        &query_embedding,
+                        &c.fingerprint.semantic,
+                        false,
+                    ) * TARGET_DIRECTION_MODIFIER;
+                    source_score.max(target_score).clamp(0.0, 1.0)
+                } else {
+                    let asymmetric_score = compute_e8_asymmetric_fingerprint_similarity(
+                        &query_embedding,
+                        &c.fingerprint.semantic,
+                        is_source_seeking,
+                    );
+                    // MCP-2 FIX: Apply direction modifier to the score (was cosmetic-only)
+                    (asymmetric_score * direction_modifier).clamp(0.0, 1.0)
+                };
+
+                (c.fingerprint.id, adjusted_score, raw_sim, graph_dir)
             })
             .collect();
 
-        // Sort by asymmetric score descending
+        // Sort by adjusted score descending
         scored_candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         // Step 4: Filter by minScore and prepare response
         let mut filtered_count = 0;
         let connections: Vec<ConnectionSearchResult> = scored_candidates
             .into_iter()
-            .filter_map(|(id, score, raw_sim)| {
+            .filter_map(|(id, score, raw_sim, graph_dir)| {
                 if score < min_score {
                     filtered_count += 1;
                     return None;
@@ -179,7 +199,7 @@ impl Handlers {
                     connection_id: id,
                     score,
                     raw_similarity: raw_sim,
-                    graph_direction: None, // Will be populated from source metadata
+                    graph_direction: Some(format!("{}", graph_dir)),
                     content: None,
                     source: None,
                 })

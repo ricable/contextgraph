@@ -11,6 +11,12 @@ pub fn hex_encode(bytes: &[u8]) -> String {
 
 /// Compute cosine similarity between two dense vectors.
 ///
+/// Returns values in [0, 1] via normalization: `(raw_cosine + 1) / 2`.
+/// This maps cosine [-1, 1] to [0, 1] where 0.5 = orthogonal, 1.0 = identical.
+///
+/// STOR-10 NOTE: HNSW search paths use `hnsw_distance_to_similarity()` which
+/// also normalizes to [0, 1] for consistency. Both formulas map cos_sim [-1,1] → [0,1].
+///
 /// # Panics
 /// STG-06 FIX: Panics in ALL build modes if vectors have different dimensions.
 /// Dimension mismatches indicate upstream embedding pipeline bugs that must
@@ -46,4 +52,20 @@ pub fn compute_cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
         // Normalize from [-1, 1] to [0, 1] to match core crate's cosine_similarity()
         (dot / denom + 1.0) / 2.0
     }
+}
+
+/// Convert HNSW cosine distance to normalized similarity in [0, 1].
+///
+/// Usearch cosine distance = `1.0 - cos_sim`, ranging [0, 2].
+/// We normalize: `(2.0 - distance) / 2.0 = (cos_sim + 1) / 2`.
+/// This matches `compute_cosine_similarity()` which also normalizes to [0, 1].
+///
+/// STOR-10 FIX: Previously used `1.0 - distance.min(1.0)` which mapped
+/// cos_sim [0,1] → [0,1] but clipped cos_sim [-1,0) → 0.0. This formula
+/// instead maps the full range cos_sim [-1,1] → [0,1], consistent with
+/// `compute_cosine_similarity()`. The `min_similarity` threshold now means
+/// the same thing regardless of whether results come from HNSW or direct computation.
+#[inline]
+pub fn hnsw_distance_to_similarity(distance: f32) -> f32 {
+    ((2.0 - distance) / 2.0).clamp(0.0, 1.0)
 }

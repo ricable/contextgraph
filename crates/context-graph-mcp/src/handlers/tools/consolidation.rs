@@ -323,7 +323,14 @@ impl Handlers {
             fingerprints.push((fp.id, fp.created_at));
         }
 
-        // Build pairs based on strategy
+        // Build pairs based on strategy.
+        //
+        // MCP-3 NOTE: Strategies differ in PAIR SELECTION, not scoring.
+        // All pairs are scored by cosine similarity in find_consolidation_candidates().
+        //  - "similarity": Pre-filters by cosine >= threshold * 0.9 (most selective)
+        //  - "temporal": 24h time window only — temporally close but potentially dissimilar
+        //  - "semantic": No pre-filter — all O(n²) pairs sent for cosine scoring
+        // The consolidation service makes the final merge/skip decision via cosine threshold.
         let pairs: Vec<MemoryPair> = match params.strategy.as_str() {
             "similarity" => {
                 let mut pairs = Vec::new();

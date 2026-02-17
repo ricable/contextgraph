@@ -137,6 +137,13 @@ impl RocksDbTeleologicalStore {
     }
 
     /// Update a fingerprint (internal async wrapper).
+    ///
+    /// STOR-7 NOTE: There is a brief transient inconsistency window between
+    /// removing old inverted index terms and adding new ones. A concurrent reader
+    /// may see the fingerprint missing from inverted indexes but still present in
+    /// HNSW. This is self-healing on completion and is an accepted design trade-off
+    /// vs holding the secondary_index_lock across the entire operation (which would
+    /// reduce write concurrency).
     pub(crate) async fn update_async(
         &self,
         fingerprint: TeleologicalFingerprint,
@@ -250,6 +257,12 @@ impl RocksDbTeleologicalStore {
                     ))
                 })?;
 
+            // STOR-1 FIX: Decrement total_doc_count for IDF accuracy.
+            // Soft-deleted docs are excluded from search, so they must not inflate
+            // the IDF denominator between restarts.
+            self.total_doc_count
+                .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+
             // Invalidate count cache (soft delete changes the effective count)
             *self.fingerprint_count.write() = None;
         } else {
@@ -328,20 +341,23 @@ impl RocksDbTeleologicalStore {
             let sd_key = soft_delete_key(&id);
             batch.delete_cf(cf_system, sd_key.as_bytes());
 
+            // STOR-8 FIX: Remove from HNSW indexes BEFORE committing RocksDB delete.
+            // If index removal fails, the RocksDB record still exists (safe — no orphan).
+            // Old order: commit RocksDB → remove indexes (orphan risk on index failure).
+            // STG-04: Release inverted-index lock before HNSW operations.
+            drop(_index_guard);
+
+            self.remove_from_indexes(id)
+                .map_err(|e| CoreError::IndexError(e.to_string()))?;
+
+            // Now commit the RocksDB delete (indexes already cleaned up)
             self.db.write(batch).map_err(|e| {
                 TeleologicalStoreError::rocksdb_op("delete_batch", CF_FINGERPRINTS, Some(id), e)
             })?;
 
-            // STG-04: Release lock before HNSW operations
-            drop(_index_guard);
-
             // Invalidate count cache and decrement total doc count for IDF
             *self.fingerprint_count.write() = None;
             self.total_doc_count.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-
-            // Remove from per-embedder indexes
-            self.remove_from_indexes(id)
-                .map_err(|e| CoreError::IndexError(e.to_string()))?;
         }
 
         info!("Deleted fingerprint {} (soft={})", id, soft);

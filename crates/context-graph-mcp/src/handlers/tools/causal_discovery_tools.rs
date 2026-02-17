@@ -65,7 +65,8 @@ impl Handlers {
     /// - `mode`: Analysis mode ("pairs" for pair analysis, "extract" for multi-relationship extraction, default: "extract")
     /// - `maxMemories`: Maximum memories to analyze (1-200, default: 50)
     /// - `minConfidence`: Minimum LLM confidence to accept (0.5-1.0, default: 0.7)
-    /// - `sessionScope`: Scope of memories ("current", "all", "recent", default: "all")
+    /// - `sessionScope`: Scope of indexed files ("current" = last 10, "recent" = last 50, "all" = all, default: "all")
+    ///   MCP-5: This is file-count based, not session-scoped. Contrast with search_graph's sessionScope which filters by session_id.
     /// - `dryRun`: Analyze but don't store relationships (default: false)
     ///
     /// # Modes

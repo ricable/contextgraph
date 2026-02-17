@@ -78,7 +78,9 @@ mod tests {
         }
 
         fn embedder_uses_hnsw(&self, embedder_idx: u8) -> bool {
-            embedder_idx != 5 && embedder_idx != 11
+            // EMB-4 FIX: E6 (idx 5), E12 (idx 11), and E13 (idx 12) don't use HNSW.
+            // E6/E13 use inverted index, E12 uses MaxSim.
+            embedder_idx != 5 && embedder_idx != 11 && embedder_idx != 12
         }
     }
 

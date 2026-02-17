@@ -88,7 +88,7 @@ fn test_full_state_verification() {
     println!();
     println!("EXPECTED:");
     println!("  Top results: A or C (similarity ~= 1.0)");
-    println!("  Lowest result: B (similarity ~= 0.0)");
+    println!("  Lowest result: B (similarity ~= 0.5, orthogonal under STOR-10)");
     println!();
     println!("ACTUAL:");
     println!("  Top similarity: {:.4}", results.top().unwrap().similarity);
@@ -98,9 +98,10 @@ fn test_full_state_verification() {
         results.top().unwrap().similarity > 0.99,
         "Top should be ~1.0"
     );
+    // STOR-10: orthogonal vectors now have similarity ~0.5, still notably lower than identical (~1.0)
     assert!(
-        last.similarity < 0.1,
-        "B should have low similarity (orthogonal)"
+        last.similarity < 0.6,
+        "B should have lower similarity than identical vectors (orthogonal ~0.5)"
     );
 
     // Verify IDs in source of truth

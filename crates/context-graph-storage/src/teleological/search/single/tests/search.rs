@@ -150,7 +150,8 @@ fn test_search_orthogonal_vectors_low_similarity() {
     assert_eq!(result.len(), 1);
     let hit = result.top().unwrap();
     println!("Similarity: {}", hit.similarity);
-    assert!(hit.similarity < 0.01); // Orthogonal
+    // STOR-10: orthogonal vectors have similarity ~0.5, still notably lower than identical (~1.0)
+    assert!(hit.similarity < 0.6, "Orthogonal should be ~0.5 under STOR-10 formula");
 
     println!("RESULT: PASS");
 }

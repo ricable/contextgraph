@@ -213,6 +213,44 @@ impl HnswEmbedderIndex {
             .store(0, std::sync::atomic::Ordering::Relaxed);
     }
 
+    /// STOR-3 FIX: Clear all vectors and mappings, creating a fresh usearch index.
+    ///
+    /// Used before `rebuild_indexes_from_store()` when a partial HNSW load has failed,
+    /// to prevent duplicate/orphaned vectors from the partial load.
+    pub fn clear(&self) {
+        let usearch_metric = metric_to_usearch(self.config.metric);
+        let options = IndexOptions {
+            dimensions: self.config.dimension,
+            metric: usearch_metric,
+            quantization: ScalarKind::F32,
+            connectivity: self.config.m,
+            expansion_add: self.config.ef_construction,
+            expansion_search: self.config.ef_search,
+            ..Default::default()
+        };
+
+        let new_index = Index::new(&options).unwrap_or_else(|e| {
+            panic!(
+                "FAIL FAST: Failed to create fresh usearch index for {:?}: {}",
+                self.embedder, e
+            )
+        });
+        const INITIAL_CAPACITY: usize = 1024;
+        new_index.reserve(INITIAL_CAPACITY).unwrap_or_else(|e| {
+            panic!(
+                "FAIL FAST: Failed to reserve capacity for {:?}: {}",
+                self.embedder, e
+            )
+        });
+
+        *self.index.write() = new_index;
+        self.id_to_key.write().clear();
+        self.key_to_id.write().clear();
+        *self.next_key.write() = 0;
+        self.removed_count
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// Check if a vector ID exists in the index.
     pub fn contains(&self, id: Uuid) -> bool {
         self.id_to_key.read().contains_key(&id)

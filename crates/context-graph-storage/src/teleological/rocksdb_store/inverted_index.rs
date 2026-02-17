@@ -236,6 +236,7 @@ impl RocksDbTeleologicalStore {
         let mut candidate_counts: HashMap<Uuid, usize> = HashMap::new();
 
         // For each query term, fetch the posting list and count matches
+        // STOR-2 FIX: Filter out soft-deleted IDs from posting lists
         for &term_id in &query_sparse.indices {
             let term_key = e6_sparse_inverted_key(term_id);
 
@@ -246,6 +247,10 @@ impl RocksDbTeleologicalStore {
             if let Some(data) = existing {
                 let ids = deserialize_memory_id_list(&data)?;
                 for id in ids {
+                    // STOR-2 FIX: Skip soft-deleted fingerprints (ghost entries)
+                    if self.is_soft_deleted(&id) {
+                        continue;
+                    }
                     *candidate_counts.entry(id).or_insert(0) += 1;
                 }
             }

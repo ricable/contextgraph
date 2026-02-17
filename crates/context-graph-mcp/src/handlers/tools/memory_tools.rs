@@ -1202,12 +1202,28 @@ impl Handlers {
                 // P6: Resolve weight profile ONCE before per-result loop.
                 // Was: custom_profiles.read() acquired per-embedder per-result (50*13*3 = ~1,950 locks/search).
                 // Now: single lock acquisition, then direct array indexing.
-                let resolved_weights: [f32; 13] = custom_weights
-                    .or_else(|| effective_weight_profile.as_ref()
-                        .and_then(|p| self.custom_profiles.read().get(p).copied()))
-                    .or_else(|| effective_weight_profile.as_ref()
-                        .and_then(|p| get_weight_profile(p)))
-                    .unwrap_or([1.0 / 13.0; 13]);
+                // MCP-4 FIX: Error on invalid weight profile name instead of silent uniform fallback.
+                let resolved_weights: [f32; 13] = if let Some(cw) = custom_weights {
+                    cw
+                } else if let Some(ref profile_name) = effective_weight_profile {
+                    match self.custom_profiles.read().get(profile_name).copied()
+                        .or_else(|| get_weight_profile(profile_name))
+                    {
+                        Some(weights) => weights,
+                        None => {
+                            return self.tool_error_typed(
+                                id,
+                                ToolErrorKind::Validation,
+                                &format!(
+                                    "Unknown weightProfile '{}'. Use one of the built-in profiles or create a custom one via create_weight_profile.",
+                                    profile_name
+                                ),
+                            );
+                        }
+                    }
+                } else {
+                    [1.0 / 13.0; 13] // No profile specified — uniform weights
+                };
 
                 // LOW-16: Removed dead `query_analysis: Option<QueryClassification> = None`.
                 // The field was always None and the schema advertised a perpetually null

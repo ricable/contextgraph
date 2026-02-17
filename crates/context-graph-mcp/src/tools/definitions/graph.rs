@@ -60,6 +60,11 @@ pub fn definitions() -> Vec<ToolDefinition> {
                         "type": "string",
                         "enum": ["source", "target", "unknown"],
                         "description": "Filter results by persisted graph direction. Omit for no filtering."
+                    },
+                    "includeProvenance": {
+                        "type": "boolean",
+                        "description": "Include retrieval provenance metadata in results (default: false). Shows connection scoring method, direction modifiers, and E8 similarity details.",
+                        "default": false
                     }
                 },
                 "additionalProperties": false

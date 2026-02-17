@@ -53,7 +53,8 @@ fn test_projected_dimension_equals_native() {
 #[test]
 fn test_max_tokens() {
     let model = create_test_model();
-    assert_eq!(model.max_tokens(), 77);
+    // EMB-1 FIX: e5-base-v2 uses BERT tokenizer (512 tokens), not CLIP (77)
+    assert_eq!(model.max_tokens(), 512);
 }
 
 #[test]

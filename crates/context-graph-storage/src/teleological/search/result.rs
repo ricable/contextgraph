@@ -8,11 +8,11 @@
 //! # Distance to Similarity Conversion
 //!
 //! HNSW returns **distance** (lower = more similar). We convert to **similarity**
-//! for consistency with the comparison API:
+//! for consistency with `compute_cosine_similarity()`:
 //!
 //! ```text
-//! Cosine distance ∈ [0, 2]  →  similarity = 1 - distance  →  ∈ [-1, 1]
-//! Clamped to [0, 1] for practical use
+//! Cosine distance ∈ [0, 2]  →  similarity = (2 - distance) / 2  →  ∈ [0, 1]
+//! STOR-10 FIX: Normalized to match direct cosine computation: (cos+1)/2
 //! ```
 
 use uuid::Uuid;
@@ -39,11 +39,11 @@ use super::super::indexes::EmbedderIndex;
 ///
 /// let hit = EmbedderSearchHit::from_hnsw(
 ///     Uuid::new_v4(),
-///     0.1,  // 10% distance = 90% similarity
+///     0.1,  // 10% distance → (2-0.1)/2 = 0.95 similarity
 ///     EmbedderIndex::E1Semantic,
 /// );
 ///
-/// assert!(hit.similarity > 0.89 && hit.similarity < 0.91);
+/// assert!(hit.similarity > 0.94 && hit.similarity < 0.96);
 /// ```
 #[derive(Debug, Clone)]
 pub struct EmbedderSearchHit {
@@ -58,7 +58,7 @@ pub struct EmbedderSearchHit {
 
     /// Similarity score [0.0, 1.0] (converted from distance).
     ///
-    /// For cosine distance: similarity = 1.0 - distance, clamped to [0, 1].
+    /// STOR-10 FIX: similarity = (2.0 - distance) / 2.0, matching compute_cosine_similarity().
     pub similarity: f32,
 
     /// Which embedder was searched.
@@ -68,10 +68,12 @@ pub struct EmbedderSearchHit {
 impl EmbedderSearchHit {
     /// Create from HNSW search result (id, distance).
     ///
-    /// Converts distance to similarity based on cosine metric:
+    /// Converts distance to similarity using normalized formula:
     /// - distance 0.0 → similarity 1.0 (identical)
-    /// - distance 1.0 → similarity 0.0 (orthogonal)
-    /// - distance 2.0 → similarity 0.0 (clamped, opposite)
+    /// - distance 1.0 → similarity 0.5 (orthogonal)
+    /// - distance 2.0 → similarity 0.0 (opposite)
+    ///
+    /// STOR-10 FIX: Uses `(2 - distance) / 2` to match `compute_cosine_similarity()`.
     ///
     /// # Arguments
     ///
@@ -94,19 +96,18 @@ impl EmbedderSearchHit {
     /// );
     /// assert!((hit.similarity - 1.0).abs() < 0.001);
     ///
-    /// // Orthogonal vectors (distance 1)
+    /// // Orthogonal vectors (distance 1) — now 0.5, not 0.0
     /// let hit = EmbedderSearchHit::from_hnsw(
     ///     Uuid::new_v4(),
     ///     1.0,
     ///     EmbedderIndex::E8Graph,
     /// );
-    /// assert!(hit.similarity.abs() < 0.001);
+    /// assert!((hit.similarity - 0.5).abs() < 0.001);
     /// ```
     #[inline]
     pub fn from_hnsw(id: Uuid, distance: f32, embedder: EmbedderIndex) -> Self {
-        // For cosine distance, similarity = 1.0 - distance
-        // HNSW returns distance in [0, 2] for cosine, clamped to [0, 1]
-        let similarity = (1.0 - distance).clamp(0.0, 1.0);
+        // STOR-10 FIX: Normalize to match compute_cosine_similarity(): (cos+1)/2
+        let similarity = ((2.0 - distance) / 2.0).clamp(0.0, 1.0);
         Self {
             id,
             distance,
@@ -263,14 +264,15 @@ mod tests {
 
     #[test]
     fn test_hit_from_hnsw_orthogonal_vectors() {
-        println!("=== TEST: Orthogonal vectors have distance 1, similarity 0 ===");
+        println!("=== TEST: Orthogonal vectors have distance 1, similarity 0.5 (STOR-10) ===");
         println!("BEFORE: distance = 1.0");
 
         let hit = EmbedderSearchHit::from_hnsw(Uuid::new_v4(), 1.0, EmbedderIndex::E1Semantic);
 
         println!("AFTER: similarity = {}", hit.similarity);
-        assert!(hit.similarity.abs() < 1e-6);
-        assert!(!hit.is_high_similarity());
+        // STOR-10: (2.0 - 1.0) / 2.0 = 0.5 — orthogonal is mid-range, not zero
+        assert!((hit.similarity - 0.5).abs() < 1e-6);
+        assert!(!hit.is_high_similarity()); // 0.5 < 0.9
 
         println!("RESULT: PASS");
     }
@@ -296,8 +298,9 @@ mod tests {
         let hit = EmbedderSearchHit::from_hnsw(Uuid::new_v4(), 0.3, EmbedderIndex::E8Graph);
 
         println!("AFTER: similarity = {}", hit.similarity);
-        assert!((hit.similarity - 0.7).abs() < 1e-6);
-        assert!(!hit.is_high_similarity()); // 0.7 < 0.9
+        // STOR-10: (2.0 - 0.3) / 2.0 = 0.85
+        assert!((hit.similarity - 0.85).abs() < 1e-6);
+        assert!(!hit.is_high_similarity()); // 0.85 < 0.9
 
         println!("RESULT: PASS");
     }
@@ -306,16 +309,17 @@ mod tests {
     fn test_hit_meets_threshold() {
         println!("=== TEST: meets_threshold() ===");
 
+        // STOR-10: distance 0.2 → similarity = (2.0 - 0.2) / 2.0 = 0.9
         let hit = EmbedderSearchHit::from_hnsw(
             Uuid::new_v4(),
-            0.2, // similarity = 0.8
+            0.2, // similarity = 0.9
             EmbedderIndex::E1Semantic,
         );
 
         assert!(hit.meets_threshold(0.5));
         assert!(hit.meets_threshold(0.8));
-        assert!(!hit.meets_threshold(0.81));
-        assert!(!hit.meets_threshold(0.9));
+        assert!(hit.meets_threshold(0.9));
+        assert!(!hit.meets_threshold(0.91));
 
         println!("RESULT: PASS");
     }
@@ -349,11 +353,12 @@ mod tests {
         let id2 = Uuid::new_v4();
         let id3 = Uuid::new_v4();
 
+        // STOR-10: distances 0.1/0.3/0.5 → sims 0.95/0.85/0.75
         let results = SingleEmbedderSearchResults {
             hits: vec![
-                EmbedderSearchHit::from_hnsw(id1, 0.1, EmbedderIndex::E1Semantic), // sim 0.9
-                EmbedderSearchHit::from_hnsw(id2, 0.3, EmbedderIndex::E1Semantic), // sim 0.7
-                EmbedderSearchHit::from_hnsw(id3, 0.5, EmbedderIndex::E1Semantic), // sim 0.5
+                EmbedderSearchHit::from_hnsw(id1, 0.1, EmbedderIndex::E1Semantic), // sim 0.95
+                EmbedderSearchHit::from_hnsw(id2, 0.3, EmbedderIndex::E1Semantic), // sim 0.85
+                EmbedderSearchHit::from_hnsw(id3, 0.5, EmbedderIndex::E1Semantic), // sim 0.75
             ],
             embedder: EmbedderIndex::E1Semantic,
             k: 10,
@@ -366,7 +371,7 @@ mod tests {
 
         let top = results.top().unwrap();
         assert_eq!(top.id, id1);
-        assert!((top.similarity - 0.9).abs() < 1e-6);
+        assert!((top.similarity - 0.95).abs() < 1e-6);
 
         let ids = results.ids();
         assert_eq!(ids.len(), 3);
@@ -403,11 +408,12 @@ mod tests {
     fn test_results_above_threshold() {
         println!("=== TEST: above_threshold() ===");
 
+        // STOR-10: distances 0.1/0.3/0.6 → sims 0.95/0.85/0.70
         let results = SingleEmbedderSearchResults {
             hits: vec![
-                EmbedderSearchHit::from_hnsw(Uuid::new_v4(), 0.1, EmbedderIndex::E1Semantic), // 0.9
-                EmbedderSearchHit::from_hnsw(Uuid::new_v4(), 0.3, EmbedderIndex::E1Semantic), // 0.7
-                EmbedderSearchHit::from_hnsw(Uuid::new_v4(), 0.6, EmbedderIndex::E1Semantic), // 0.4
+                EmbedderSearchHit::from_hnsw(Uuid::new_v4(), 0.1, EmbedderIndex::E1Semantic), // 0.95
+                EmbedderSearchHit::from_hnsw(Uuid::new_v4(), 0.3, EmbedderIndex::E1Semantic), // 0.85
+                EmbedderSearchHit::from_hnsw(Uuid::new_v4(), 0.6, EmbedderIndex::E1Semantic), // 0.70
             ],
             embedder: EmbedderIndex::E1Semantic,
             k: 10,
@@ -415,14 +421,14 @@ mod tests {
             latency_us: 100,
         };
 
+        let above_90 = results.above_threshold(0.9);
+        assert_eq!(above_90.len(), 1); // only 0.95
+
         let above_80 = results.above_threshold(0.8);
-        assert_eq!(above_80.len(), 1);
+        assert_eq!(above_80.len(), 2); // 0.95 and 0.85
 
-        let above_50 = results.above_threshold(0.5);
-        assert_eq!(above_50.len(), 2);
-
-        let above_30 = results.above_threshold(0.3);
-        assert_eq!(above_30.len(), 3);
+        let above_60 = results.above_threshold(0.6);
+        assert_eq!(above_60.len(), 3); // all three
 
         println!("RESULT: PASS");
     }
@@ -431,11 +437,12 @@ mod tests {
     fn test_results_average_similarity() {
         println!("=== TEST: average_similarity() ===");
 
+        // STOR-10: distances 0.0/0.5/1.0 → sims 1.0/0.75/0.5
         let results = SingleEmbedderSearchResults {
             hits: vec![
                 EmbedderSearchHit::from_hnsw(Uuid::new_v4(), 0.0, EmbedderIndex::E1Semantic), // 1.0
-                EmbedderSearchHit::from_hnsw(Uuid::new_v4(), 0.5, EmbedderIndex::E1Semantic), // 0.5
-                EmbedderSearchHit::from_hnsw(Uuid::new_v4(), 1.0, EmbedderIndex::E1Semantic), // 0.0
+                EmbedderSearchHit::from_hnsw(Uuid::new_v4(), 0.5, EmbedderIndex::E1Semantic), // 0.75
+                EmbedderSearchHit::from_hnsw(Uuid::new_v4(), 1.0, EmbedderIndex::E1Semantic), // 0.5
             ],
             embedder: EmbedderIndex::E1Semantic,
             k: 10,
@@ -445,7 +452,8 @@ mod tests {
 
         let avg = results.average_similarity().unwrap();
         println!("Average similarity: {}", avg);
-        assert!((avg - 0.5).abs() < 1e-6); // (1.0 + 0.5 + 0.0) / 3 = 0.5
+        // (1.0 + 0.75 + 0.5) / 3 = 0.75
+        assert!((avg - 0.75).abs() < 1e-6);
 
         println!("RESULT: PASS");
     }

@@ -227,8 +227,10 @@ fn persist_to_cache(
     );
 
     // Build CoherenceState for output (DTO for JSON response)
+    // CLI-3 FIX: Use mean (not product) — consistent with all other hooks.
+    // Product of (0.8, 0.75, 0.85) = 0.51 vs mean = 0.80. Product causes false crisis states.
     let coherence_state = CoherenceState::new(
-        integration * reflection * differentiation, // Coherence score C(t) = I(t) * R(t) * D(t)
+        (integration + reflection + differentiation) / 3.0,
         integration,
         reflection,
         differentiation,

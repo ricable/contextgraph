@@ -151,9 +151,13 @@ impl SingleEmbedder for DenseEmbedderAdapter {
     }
 
     fn is_ready(&self) -> bool {
-        // We can't easily check without blocking, so we assume ready if constructed
-        // The actual check happens in embed()
-        true
+        // EMB-6 FIX: Delegate to model's is_initialized() instead of hardcoding true.
+        // Use try_read() since is_ready() is sync but RwLock is tokio::sync (async).
+        // If lock is held (active embedding), assume ready.
+        match self.model.try_read() {
+            Ok(guard) => guard.is_initialized(),
+            Err(_) => true, // Lock held = model actively embedding = ready
+        }
     }
 }
 
@@ -225,7 +229,11 @@ impl SparseEmbedder for SparseEmbedderAdapter {
     }
 
     fn is_ready(&self) -> bool {
-        true
+        // EMB-6 FIX: Delegate to model's is_initialized()
+        match self.model.try_read() {
+            Ok(guard) => guard.is_initialized(),
+            Err(_) => true,
+        }
     }
 }
 
@@ -318,7 +326,11 @@ impl TokenEmbedder for TokenEmbedderAdapter {
     }
 
     fn is_ready(&self) -> bool {
-        true
+        // EMB-6 FIX: Delegate to model's is_initialized()
+        match self.model.try_read() {
+            Ok(guard) => guard.is_initialized(),
+            Err(_) => true,
+        }
     }
 }
 
@@ -656,7 +668,7 @@ pub struct ProductionMultiArrayProvider {
     e6_sparse: Arc<dyn SparseEmbedder>,
     /// E7: Code embedder (Qodo-Embed, 1536D)
     e7_code: Arc<dyn SingleEmbedder>,
-    /// E8: Graph embedder (MiniLM, 384D) - DUAL embedder for asymmetric similarity
+    /// E8: Graph embedder (e5-large-v2, 1024D) - DUAL embedder for asymmetric similarity
     ///
     /// Per E8 Upgrade: Uses GraphDualEmbedderAdapter to produce genuinely different
     /// vectors for source vs target roles.

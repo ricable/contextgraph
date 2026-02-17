@@ -222,6 +222,16 @@ impl EmbedderIndexRegistry {
         self.indexes.values().map(|idx| idx.len()).sum()
     }
 
+    /// STOR-3 FIX: Clear all indexes (fresh usearch indexes, empty mappings).
+    ///
+    /// Used before `rebuild_indexes_from_store()` when partial HNSW load has failed,
+    /// to prevent duplicate/orphaned vectors from the partial load.
+    pub fn clear_all(&self) {
+        for index in self.indexes.values() {
+            index.clear();
+        }
+    }
+
     /// Flush all indexes.
     pub fn flush_all(&self) -> Result<(), super::embedder_index::IndexError> {
         for index in self.indexes.values() {

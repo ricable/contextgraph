@@ -89,7 +89,7 @@ pub enum Embedder {
     Sparse = 5,
     /// E7: Code via Qodo-Embed (1536D dense)
     Code = 6,
-    /// E8: Emotional/connectivity patterns via MiniLM (384D dense)
+    /// E8: Emotional/connectivity patterns via e5-large-v2 (1024D dense)
     ///
     /// Constitution: teleological_purpose = V_connectivity
     ///
@@ -157,7 +157,7 @@ impl Embedder {
                 vocab_size: E6_SPARSE_VOCAB,
             }, // 30522
             Self::Code => EmbedderDims::Dense(E7_DIM),     // 1536
-            Self::Emotional => EmbedderDims::Dense(E8_DIM), // 384
+            Self::Emotional => EmbedderDims::Dense(E8_DIM), // 1024 (e5-large-v2)
             Self::Hdc => EmbedderDims::Dense(E9_DIM),      // 1024 (projected)
             Self::Multimodal => EmbedderDims::Dense(E10_DIM), // 768
             Self::Entity => EmbedderDims::Dense(E11_DIM),  // 768 (KEPLER)

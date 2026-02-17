@@ -151,8 +151,9 @@ fn test_normalization_none() {
     let normalized = search.normalize_scores(&hits, &NormalizationStrategy::None);
 
     assert_eq!(normalized.len(), 2);
-    assert!((normalized[0].2 - 0.9).abs() < 0.01);
-    assert!((normalized[1].2 - 0.7).abs() < 0.01);
+    // STOR-10: distance 0.1 → sim 0.95, distance 0.3 → sim 0.85
+    assert!((normalized[0].2 - 0.95).abs() < 0.01);
+    assert!((normalized[1].2 - 0.85).abs() < 0.01);
 
     println!("RESULT: PASS");
 }

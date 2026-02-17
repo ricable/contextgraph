@@ -88,6 +88,11 @@ pub struct SearchConnectionsRequest {
     #[serde(rename = "includeContent", default)]
     pub include_content: bool,
 
+    /// Whether to include provenance metadata in results (default: false).
+    /// MCP-6 FIX: Modeled in DTO instead of parsing from raw args.
+    #[serde(rename = "includeProvenance", default)]
+    pub include_provenance: bool,
+
     /// Optional filter for graph direction of results.
     /// - "source": Only return memories that act as sources
     /// - "target": Only return memories that act as targets
@@ -116,6 +121,7 @@ impl Default for SearchConnectionsRequest {
             top_k: DEFAULT_CONNECTION_SEARCH_TOP_K,
             min_score: MIN_CONNECTION_SCORE,
             include_content: false,
+            include_provenance: false,
             filter_graph_direction: None,
         }
     }
@@ -176,13 +182,21 @@ impl SearchConnectionsRequest {
     }
 
     /// Returns true if searching for sources (incoming connections).
+    /// MCP-7 FIX: "both" no longer maps to source — it's handled separately.
     pub fn is_source(&self) -> bool {
-        self.direction == "source" || self.direction == "both"
+        self.direction == "source"
     }
 
     /// Returns true if searching for targets (outgoing connections).
-    pub fn _is_target(&self) -> bool {
-        self.direction == "target" || self.direction == "both"
+    /// Used in tests and reserved for future bidirectional search implementation.
+    #[allow(dead_code)]
+    pub fn is_target(&self) -> bool {
+        self.direction == "target"
+    }
+
+    /// Returns true if searching bidirectionally.
+    pub fn is_both(&self) -> bool {
+        self.direction == "both"
     }
 }
 
@@ -898,6 +912,7 @@ mod tests {
             top_k: 20,
             min_score: 0.5,
             include_content: true,
+            include_provenance: false,
             filter_graph_direction: Some("source".to_string()),
         };
 
@@ -954,7 +969,8 @@ mod tests {
             ..Default::default()
         };
         assert!(source.is_source());
-        assert!(!source._is_target());
+        assert!(!source.is_target());
+        assert!(!source.is_both());
 
         let target = SearchConnectionsRequest {
             query: "test".to_string(),
@@ -962,17 +978,20 @@ mod tests {
             ..Default::default()
         };
         assert!(!target.is_source());
-        assert!(target._is_target());
+        assert!(target.is_target());
+        assert!(!target.is_both());
 
+        // MCP-7 FIX: "both" is now truly bidirectional, not an alias for "source"
         let both = SearchConnectionsRequest {
             query: "test".to_string(),
             direction: "both".to_string(),
             ..Default::default()
         };
-        assert!(both.is_source());
-        assert!(both._is_target());
+        assert!(!both.is_source(), "MCP-7: 'both' must NOT map to is_source()");
+        assert!(!both.is_target(), "MCP-7: 'both' must NOT map to is_target()");
+        assert!(both.is_both(), "MCP-7: 'both' must map to is_both()");
 
-        println!("[PASS] is_source and is_target work correctly");
+        println!("[PASS] is_source, is_target, is_both work correctly");
     }
 
     // ===== GetGraphPathRequest Tests =====

@@ -85,7 +85,7 @@ use rocksdb::DB;
 use crate::teleological::column_families::CF_FINGERPRINTS;
 use crate::teleological::schema::fingerprint_key;
 use crate::teleological::indexes::EmbedderIndexRegistry;
-use super::helpers::compute_cosine_similarity;
+use super::helpers::{compute_cosine_similarity, hnsw_distance_to_similarity};
 
 // =============================================================================
 // SPAWN_BLOCKING SYNC FUNCTIONS
@@ -189,7 +189,7 @@ fn search_single_embedder_sync(
     let mut results = Vec::with_capacity(candidates.len());
 
     for (id, distance) in candidates {
-        let similarity = 1.0 - distance.min(1.0);
+        let similarity = hnsw_distance_to_similarity(distance);
 
         if !options.include_deleted && is_soft_deleted_sync(soft_deleted, &id) {
             continue;
@@ -290,7 +290,7 @@ fn search_filtered_multi_space_sync(
                     let ranked: Vec<(Uuid, f32)> = candidates
                         .into_iter()
                         .filter(|(id, _)| options.include_deleted || !is_soft_deleted_sync(soft_deleted, id))
-                        .map(|(id, dist)| (id, 1.0 - dist.min(1.0)))
+                        .map(|(id, dist)| (id, hnsw_distance_to_similarity(dist)))
                         .collect();
 
                     if !ranked.is_empty() && weights[idx] > 0.0 {
@@ -518,7 +518,7 @@ fn search_e1_only_sync(
     let mut results = Vec::with_capacity(candidates.len());
 
     for (id, distance) in candidates {
-        let similarity = 1.0 - distance.min(1.0);
+        let similarity = hnsw_distance_to_similarity(distance);
 
         if !options.include_deleted && is_soft_deleted_sync(soft_deleted, &id) {
             continue;
@@ -587,7 +587,7 @@ fn search_multi_space_sync(
     let e1_ranked: Vec<(Uuid, f32)> = e1_candidates
         .into_iter()
         .filter(|(id, _)| options.include_deleted || !is_soft_deleted_sync(soft_deleted, id))
-        .map(|(id, dist)| (id, 1.0 - dist.min(1.0)))
+        .map(|(id, dist)| (id, hnsw_distance_to_similarity(dist)))
         .collect();
 
     if !e1_ranked.is_empty() {
@@ -610,7 +610,7 @@ fn search_multi_space_sync(
                 let e5_ranked: Vec<(Uuid, f32)> = e5_candidates
                     .into_iter()
                     .filter(|(id, _)| options.include_deleted || !is_soft_deleted_sync(soft_deleted, id))
-                    .map(|(id, dist)| (id, 1.0 - dist.min(1.0)))
+                    .map(|(id, dist)| (id, hnsw_distance_to_similarity(dist)))
                     .collect();
 
                 if !e5_ranked.is_empty() && weights[4] > 0.0 {
@@ -641,7 +641,7 @@ fn search_multi_space_sync(
                 let e7_ranked: Vec<(Uuid, f32)> = e7_candidates
                     .into_iter()
                     .filter(|(id, _)| options.include_deleted || !is_soft_deleted_sync(soft_deleted, id))
-                    .map(|(id, dist)| (id, 1.0 - dist.min(1.0)))
+                    .map(|(id, dist)| (id, hnsw_distance_to_similarity(dist)))
                     .collect();
 
                 if !e7_ranked.is_empty() && weights[6] > 0.0 {
@@ -669,7 +669,7 @@ fn search_multi_space_sync(
                 let e10_ranked: Vec<(Uuid, f32)> = e10_candidates
                     .into_iter()
                     .filter(|(id, _)| options.include_deleted || !is_soft_deleted_sync(soft_deleted, id))
-                    .map(|(id, dist)| (id, 1.0 - dist.min(1.0)))
+                    .map(|(id, dist)| (id, hnsw_distance_to_similarity(dist)))
                     .collect();
 
                 if !e10_ranked.is_empty() && weights[9] > 0.0 {
@@ -698,7 +698,7 @@ fn search_multi_space_sync(
                 let e8_ranked: Vec<(Uuid, f32)> = e8_candidates
                     .into_iter()
                     .filter(|(id, _)| options.include_deleted || !is_soft_deleted_sync(soft_deleted, id))
-                    .map(|(id, dist)| (id, 1.0 - dist.min(1.0)))
+                    .map(|(id, dist)| (id, hnsw_distance_to_similarity(dist)))
                     .collect();
 
                 if !e8_ranked.is_empty() && weights[7] > 0.0 {
@@ -722,7 +722,7 @@ fn search_multi_space_sync(
                 let e11_ranked: Vec<(Uuid, f32)> = e11_candidates
                     .into_iter()
                     .filter(|(id, _)| options.include_deleted || !is_soft_deleted_sync(soft_deleted, id))
-                    .map(|(id, dist)| (id, 1.0 - dist.min(1.0)))
+                    .map(|(id, dist)| (id, hnsw_distance_to_similarity(dist)))
                     .collect();
 
                 if !e11_ranked.is_empty() && weights[10] > 0.0 {
@@ -748,7 +748,7 @@ fn search_multi_space_sync(
                 let e9_ranked: Vec<(Uuid, f32)> = e9_candidates
                     .into_iter()
                     .filter(|(id, _)| options.include_deleted || !is_soft_deleted_sync(soft_deleted, id))
-                    .map(|(id, dist)| (id, 1.0 - dist.min(1.0)))
+                    .map(|(id, dist)| (id, hnsw_distance_to_similarity(dist)))
                     .collect();
 
                 if !e9_ranked.is_empty() && weights[8] > 0.0 {
@@ -1145,6 +1145,12 @@ fn search_pipeline_sync(
     // (includes metadata fields beyond SemanticFingerprint), but carry the semantic
     // fingerprint forward to avoid a redundant deserialization of the embedding vectors.
     // The full TeleologicalFingerprint is needed for id, purpose, created_at, etc.
+    //
+    // STOR-6 NOTE: Under concurrent modification, the semantic carried from Stage 2
+    // may be stale relative to the freshly-read metadata. This is an intentional trade-off:
+    // re-deserializing ~63KB vectors per result is expensive. The pipeline scored with
+    // THESE embeddings, so the score and embeddings are internally consistent.
+    // A concurrent update would be reflected on the next search.
     let mut results = Vec::with_capacity(scored_candidates.len());
 
     for (id, score, embedder_scores, semantic) in scored_candidates {

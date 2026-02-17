@@ -193,31 +193,66 @@ pub fn compute_similarity_for_space(
     query: &SemanticFingerprint,
     memory: &SemanticFingerprint,
 ) -> f32 {
-    let query_ref = query.get(embedder);
-    let memory_ref = memory.get(embedder);
-
-    // Capture discriminants before match moves the values
-    let query_disc = std::mem::discriminant(&query_ref);
-    let memory_disc = std::mem::discriminant(&memory_ref);
-
-    match (query_ref, memory_ref) {
-        (EmbeddingRef::Dense(q), EmbeddingRef::Dense(m)) => {
-            // All dense embedders use cosine similarity
-            // E11 (Entity) now uses cosine for general similarity;
-            // TransE is reserved for triplet operations in entity_tools
-            cosine_similarity(q, m)
+    // EMB-7 FIX: E5 MUST NOT use symmetric cosine per AP-77.
+    // EMB-2 FIX: E8 and E10 have asymmetric dual vectors that were computed/stored
+    // but never used in search. Use cross-pair comparison (source-vs-target, paraphrase-vs-context)
+    // to produce a more informative similarity score.
+    match embedder {
+        Embedder::Causal => {
+            // EMB-7 FIX: E5 without direction returns 0.0.
+            // Use compute_similarity_for_space_with_direction() for directional E5 similarity.
+            return 0.0;
         }
-        (EmbeddingRef::Sparse(q), EmbeddingRef::Sparse(m)) => jaccard_similarity(q, m),
-        (EmbeddingRef::TokenLevel(q), EmbeddingRef::TokenLevel(m)) => max_sim(q, m),
-        _ => {
-            // Type mismatch is a programming bug — fail fast per constitution
-            panic!(
-                "BUG: Type mismatch in compute_similarity_for_space for embedder {}. \
-                 query={:?}, memory={:?}. This indicates a corrupted SemanticFingerprint.",
-                embedder.name(),
-                query_disc,
-                memory_disc,
+        Embedder::Emotional => {
+            // E8: Compare source-vs-target cross pairs and take max
+            let source_vs_target = cosine_similarity(
+                query.get_e8_as_source(),
+                memory.get_e8_as_target(),
             );
+            let target_vs_source = cosine_similarity(
+                query.get_e8_as_target(),
+                memory.get_e8_as_source(),
+            );
+            // Take max of both directions — the stronger signal wins
+            source_vs_target.max(target_vs_source)
+        }
+        Embedder::Multimodal => {
+            // E10: Compare paraphrase-vs-context cross pairs and take max
+            let para_vs_context = cosine_similarity(
+                query.get_e10_as_paraphrase(),
+                memory.get_e10_as_context(),
+            );
+            let context_vs_para = cosine_similarity(
+                query.get_e10_as_context(),
+                memory.get_e10_as_paraphrase(),
+            );
+            // Take max of both directions — captures paraphrase detection
+            para_vs_context.max(context_vs_para)
+        }
+        _ => {
+            // All other embedders use standard symmetric comparison
+            let query_ref = query.get(embedder);
+            let memory_ref = memory.get(embedder);
+
+            let query_disc = std::mem::discriminant(&query_ref);
+            let memory_disc = std::mem::discriminant(&memory_ref);
+
+            match (query_ref, memory_ref) {
+                (EmbeddingRef::Dense(q), EmbeddingRef::Dense(m)) => {
+                    cosine_similarity(q, m)
+                }
+                (EmbeddingRef::Sparse(q), EmbeddingRef::Sparse(m)) => jaccard_similarity(q, m),
+                (EmbeddingRef::TokenLevel(q), EmbeddingRef::TokenLevel(m)) => max_sim(q, m),
+                _ => {
+                    panic!(
+                        "BUG: Type mismatch in compute_similarity_for_space for embedder {}. \
+                         query={:?}, memory={:?}. This indicates a corrupted SemanticFingerprint.",
+                        embedder.name(),
+                        query_disc,
+                        memory_disc,
+                    );
+                }
+            }
         }
     }
 }

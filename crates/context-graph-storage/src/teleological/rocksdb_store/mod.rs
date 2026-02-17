@@ -65,7 +65,7 @@ mod tests;
 
 // Re-export all public types for backwards compatibility
 pub use fusion::{compute_consensus, weighted_rrf_fusion, weighted_rrf_fusion_with_scores, RRF_K};
-pub use helpers::{compute_cosine_similarity, hex_encode};
+pub use helpers::{compute_cosine_similarity, hex_encode, hnsw_distance_to_similarity};
 pub use store::RocksDbTeleologicalStore;
 pub use types::{TeleologicalStoreConfig, TeleologicalStoreError, TeleologicalStoreResult};
 

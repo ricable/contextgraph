@@ -578,14 +578,24 @@ ws ::= [ \t\n\r]*"#
     }
 
     /// Fallback parsing using regex when JSON parsing fails.
+    ///
+    /// CLI-4 FIX: Returns `Err` if no parseable fields found, instead of `Ok(default)`.
+    /// This prevents garbage LLM output from being indistinguishable from a genuine negative.
     fn parse_single_text_fallback(&self, response: &str) -> CausalAgentResult<CausalHint> {
         use regex::Regex;
 
+        // Track whether we extracted at least one field
+        let mut fields_found = 0u32;
+
         // Extract is_causal
         let is_causal_re = Regex::new(r#""is_causal"\s*:\s*(true|false)"#).unwrap();
-        let is_causal = is_causal_re
+        let is_causal_match = is_causal_re
             .captures(response)
-            .and_then(|c| c.get(1))
+            .and_then(|c| c.get(1));
+        if is_causal_match.is_some() {
+            fields_found += 1;
+        }
+        let is_causal = is_causal_match
             .map(|m| m.as_str() == "true")
             .unwrap_or(false);
 
@@ -599,11 +609,14 @@ ws ::= [ \t\n\r]*"#
 
         // Extract confidence
         let confidence_re = Regex::new(r#""confidence"\s*:\s*([0-9.]+)"#).unwrap();
-        let confidence = confidence_re
+        let confidence_match = confidence_re
             .captures(response)
             .and_then(|c| c.get(1))
-            .and_then(|m| m.as_str().parse::<f32>().ok())
-            .unwrap_or(0.0);
+            .and_then(|m| m.as_str().parse::<f32>().ok());
+        if confidence_match.is_some() {
+            fields_found += 1;
+        }
+        let confidence = confidence_match.unwrap_or(0.0);
 
         // Extract key_phrases (simplified - just get strings)
         let phrases_re = Regex::new(r#""key_phrases"\s*:\s*\[(.*?)\]"#).unwrap();
@@ -632,6 +645,17 @@ ws ::= [ \t\n\r]*"#
                     .replace("\\\\", "\\")
             })
             .filter(|d| !d.is_empty());
+
+        // CLI-4 FIX: If no fields were extracted, the response is garbage — return Err.
+        // Without this, unparseable LLM output is indistinguishable from a genuine "not causal" result.
+        if fields_found == 0 {
+            return Err(CausalAgentError::ParseError {
+                message: format!(
+                    "Fallback regex extracted 0 fields from LLM response ({} chars) — treating as parse failure",
+                    response.len()
+                ),
+            });
+        }
 
         let mut hint = CausalHint::new(is_causal, direction, confidence, key_phrases);
         hint.description = description;
@@ -822,6 +846,9 @@ ws ::= [ \t\n\r]*"#
         )
         .unwrap();
 
+        // CLI-5: Regex fallback cannot capture source_spans (nested JSON arrays).
+        // Relationships from this path have empty provenance. This is inherent to
+        // regex parsing — JSON parser handles source_spans correctly.
         let relationships: Vec<ExtractedCausalRelationship> = rel_re
             .captures_iter(response)
             .filter_map(|cap| {
@@ -844,12 +871,21 @@ ws ::= [ \t\n\r]*"#
                         explanation,
                         confidence,
                         mechanism_type,
+                        // CLI-5: source_spans empty — regex can't extract nested JSON
                     ))
                 } else {
                     None
                 }
             })
             .collect();
+
+        if !relationships.is_empty() {
+            warn!(
+                count = relationships.len(),
+                "CLI-5: Multi-relationship fallback extracted {} relationships WITHOUT source_spans provenance",
+                relationships.len()
+            );
+        }
 
         debug!(
             relationship_count = relationships.len(),
