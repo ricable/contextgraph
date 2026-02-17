@@ -4,7 +4,6 @@ docs2/
 benchmarks/
 benchmark_results/
 .github/
-scripts/
 
 # Rust build artifacts
 target/
