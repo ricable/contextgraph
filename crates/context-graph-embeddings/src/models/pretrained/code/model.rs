@@ -62,23 +62,13 @@ pub(super) type CodeModelState = ModelState<QwenWeights>;
 /// ```
 pub struct CodeModel {
     /// Model weights and inference engine.
-    #[allow(dead_code)]
     pub(super) model_state: std::sync::RwLock<CodeModelState>,
 
     /// Path to model weights directory.
-    #[allow(dead_code)]
     pub(super) model_path: PathBuf,
-
-    /// Configuration for this model instance.
-    #[allow(dead_code)]
-    pub(super) config: SingleModelConfig,
 
     /// Whether model weights are loaded and ready.
     pub(super) loaded: AtomicBool,
-
-    /// Memory used by model weights (bytes).
-    #[allow(dead_code)]
-    pub(super) memory_size: usize,
 
     /// Attention strategy (dense, tiled, sliding window).
     attention_strategy: Box<dyn AttentionStrategy>,
@@ -115,9 +105,7 @@ impl CodeModel {
         Ok(Self {
             model_state: std::sync::RwLock::new(ModelState::Unloaded),
             model_path: model_path.to_path_buf(),
-            config,
             loaded: AtomicBool::new(false),
-            memory_size: 0,
             attention_strategy: strategy,
         })
     }

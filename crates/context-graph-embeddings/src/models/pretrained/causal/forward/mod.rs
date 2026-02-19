@@ -359,32 +359,6 @@ pub fn gpu_forward_with_lora_tensor(
     l2_normalize(&pooled)
 }
 
-/// GPU forward pass with LoRA adapters, returning Vec<f32>.
-///
-/// Convenience wrapper that detaches the tensor for inference.
-/// Used by `load_trained_weights()` forward-path integration (not yet wired).
-#[allow(dead_code)]
-pub fn gpu_forward_with_lora(
-    text: &str,
-    weights: &NomicWeights,
-    tokenizer: &Tokenizer,
-    lora_layers: &crate::training::lora::LoraLayers,
-    strategy: &dyn AttentionStrategy,
-) -> EmbeddingResult<Vec<f32>> {
-    let normalized =
-        gpu_forward_with_lora_tensor(text, weights, tokenizer, lora_layers, strategy)?;
-
-    normalized
-        .flatten_all()
-        .map_err(|e| EmbeddingError::GpuError {
-            message: format!("CausalModel flatten output failed: {}", e),
-        })?
-        .to_vec1()
-        .map_err(|e| EmbeddingError::GpuError {
-            message: format!("CausalModel to_vec1 failed: {}", e),
-        })
-}
-
 /// GPU dual forward pass with trained LoRA + projection, returning Vec<f32>.
 ///
 /// Inference-mode version of `gpu_forward_dual_trainable_tensor`:

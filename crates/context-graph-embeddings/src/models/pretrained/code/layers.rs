@@ -144,7 +144,7 @@ pub fn decoder_layer_forward(
     )?;
 
     // SwiGLU FFN
-    let ffn_output = swiglu_ffn_forward(&normed, &layer.mlp, config, layer_idx)?;
+    let ffn_output = swiglu_ffn_forward(&normed, &layer.mlp, layer_idx)?;
 
     // Residual connection
     hidden_states
@@ -165,7 +165,6 @@ pub fn decoder_layer_forward(
 pub fn swiglu_ffn_forward(
     hidden_states: &Tensor,
     mlp: &QwenMlpWeights,
-    _config: &QwenConfig,
     layer_idx: usize,
 ) -> EmbeddingResult<Tensor> {
     let (batch_size, seq_len, hidden_size) =

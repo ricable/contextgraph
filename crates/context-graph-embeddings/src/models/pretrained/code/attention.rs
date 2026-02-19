@@ -36,7 +36,6 @@ pub fn gqa_forward(
     let num_heads = config.num_attention_heads;
     let num_kv_heads = config.num_key_value_heads;
     let head_dim = config.head_dim;
-    let _kv_dim = num_kv_heads * head_dim;
 
     // Flatten to [batch*seq, hidden] for Candle matmul compatibility
     let hidden_flat = hidden_states
