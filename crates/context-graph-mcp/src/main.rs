@@ -924,6 +924,137 @@ async fn kill_stale_lock_holder(db_path: &Path, daemon_port: u16) -> bool {
     false
 }
 
+/// Kill a stale standalone (stdio) process holding the PID file flock.
+///
+/// Unlike `kill_stale_lock_holder` (daemon mode), this doesn't check daemon
+/// health. Instead, it detects stale standalone processes by checking if their
+/// stdio file descriptors are broken (dead sockets from a disconnected Claude
+/// Code session) or if the process is stuck with no active transport.
+///
+/// A standalone MCP server's stdin/stdout should be connected pipes/sockets.
+/// If both are dead (socket:[deleted], pipe:[broken]), the process is orphaned
+/// and can never receive new requests — it's safe to kill.
+#[cfg(unix)]
+async fn kill_stale_standalone_holder(db_path: &Path) -> bool {
+    use tokio::time::{sleep, Duration};
+
+    let pid_path = db_path.join("mcp.pid");
+
+    let pid_str = match fs::read_to_string(&pid_path) {
+        Ok(s) => s.trim().to_string(),
+        Err(_) => return false,
+    };
+
+    let pid: i32 = match pid_str.parse() {
+        Ok(p) => p,
+        Err(_) => {
+            warn!("PID file contains non-numeric value '{}' — removing", pid_str);
+            let _ = fs::remove_file(&pid_path);
+            return true;
+        }
+    };
+
+    let our_pid = std::process::id() as i32;
+    if pid <= 1 || pid == our_pid {
+        return false;
+    }
+
+    // Check if process is alive
+    if unsafe { libc::kill(pid, 0) } != 0 {
+        info!("PID file holder {} is dead — lock will be reclaimable", pid);
+        return false;
+    }
+
+    // Process is alive — check if its stdio is still connected.
+    // A healthy standalone MCP server has stdin (fd/0) connected to a live
+    // socket or pipe. An orphaned one has fd/0 pointing to a dead socket
+    // or the process is blocked on a futex with no active I/O.
+    let fd0_path = format!("/proc/{}/fd/0", pid);
+    let fd0_target = fs::read_link(&fd0_path).ok();
+    let fd0_str = fd0_target
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    // Check if stdin is a socket — if so, verify it's not in ESTABLISHED state.
+    // An orphaned MCP server's socket will be in CLOSE_WAIT or not in ss at all.
+    let stdin_is_dead = if fd0_str.starts_with("socket:") || fd0_str.starts_with("pipe:") {
+        // If we can read /proc/pid/fdinfo/0 and the process cmdline matches
+        // ours, and the socket is not in /proc/net/tcp ESTABLISHED, it's dead.
+        // Simpler heuristic: the process was started without --daemon, has
+        // a socket stdin, and isn't listening on any port → it's a disconnected
+        // stdio server.
+        let cmdline = fs::read_to_string(format!("/proc/{}/cmdline", pid))
+            .unwrap_or_default()
+            .replace('\0', " ");
+        let is_standalone = !cmdline.contains("--daemon");
+        if is_standalone {
+            info!(
+                "PID {} is a standalone MCP server (stdin={}) — treating as stale",
+                pid, fd0_str
+            );
+            true
+        } else {
+            false
+        }
+    } else {
+        // fd/0 points to /dev/null or is unreadable — likely stale
+        !fd0_str.is_empty()
+    };
+
+    if !stdin_is_dead {
+        warn!(
+            "PID {} holds flock but appears to be a healthy process — not killing",
+            pid
+        );
+        return false;
+    }
+
+    // Kill the stale standalone process
+    warn!(
+        "STALE STANDALONE DETECTED: PID {} holds flock on '{}' with dead stdio. \
+         Sending SIGTERM.",
+        pid, pid_path.display()
+    );
+
+    unsafe { libc::kill(pid, libc::SIGTERM); }
+
+    for i in 0..20 {
+        sleep(Duration::from_millis(100)).await;
+        if unsafe { libc::kill(pid, 0) } != 0 {
+            info!("Stale PID {} terminated after SIGTERM ({}ms)", pid, (i + 1) * 100);
+            sleep(Duration::from_millis(200)).await;
+            return true;
+        }
+    }
+
+    warn!("PID {} did not exit after SIGTERM (2s), sending SIGKILL", pid);
+    unsafe { libc::kill(pid, libc::SIGKILL); }
+
+    for i in 0..10 {
+        sleep(Duration::from_millis(100)).await;
+        if unsafe { libc::kill(pid, 0) } != 0 {
+            info!("Stale PID {} terminated after SIGKILL ({}ms)", pid, (i + 1) * 100);
+            sleep(Duration::from_millis(200)).await;
+            return true;
+        }
+        let status_path = format!("/proc/{}/status", pid);
+        let is_zombie = fs::read_to_string(&status_path)
+            .map(|s| s.contains("State:\tZ") || s.contains("State:\tX"))
+            .unwrap_or(false);
+        if is_zombie {
+            info!("PID {} is zombie after SIGKILL — flock released", pid);
+            return true;
+        }
+    }
+
+    error!(
+        "FATAL: PID {} still alive after SIGKILL — manual kill required: kill -9 {}",
+        pid, pid
+    );
+    false
+}
+
 /// Quick TCP connect check (no protocol verification).
 /// Used only to detect if a port is in use before attempting to bind.
 async fn is_port_in_use(port: u16) -> bool {
@@ -1293,7 +1424,7 @@ async fn main() -> Result<()> {
         // ==================================================================
         info!("Daemon mode enabled (port {})", daemon_port);
 
-        let max_attempts = 3;
+        let max_attempts = 5;
         let mut connected = false;
         for attempt in 1..=max_attempts {
             // ---- Step 1: Check for a healthy, running daemon ----
@@ -1325,15 +1456,39 @@ async fn main() -> Result<()> {
             // Port is free but a stale process may hold flock on mcp.pid,
             // blocking Step 3's PidFileGuard::acquire(). Kill it first.
             #[cfg(unix)]
-            if uses_rocksdb {
+            let killed_stale = if uses_rocksdb {
                 if kill_stale_lock_holder(&db_path, daemon_port).await {
-                    info!("Stale lock holder removed, retrying lock acquisition (attempt {})", attempt);
+                    // After SIGKILL, the kernel must reap the process and release
+                    // the flock. On WSL2 this can take 500ms+. Wait with retries
+                    // instead of racing PidFileGuard::acquire().
+                    info!("Stale lock holder killed, waiting for flock release...");
+                    true
+                } else {
+                    false
                 }
-            }
+            } else {
+                false
+            };
+            #[cfg(not(unix))]
+            let killed_stale = false;
 
             // ---- Step 3: Port is free — try to acquire PID lock and start daemon ----
             let pid_guard = if uses_rocksdb {
-                match PidFileGuard::acquire(&db_path) {
+                let mut guard_result = PidFileGuard::acquire(&db_path);
+                // If we just killed a stale holder, the flock may not be released
+                // yet (kernel reap delay, especially on WSL2). Retry with backoff.
+                if guard_result.is_err() && killed_stale {
+                    for retry in 1..=5 {
+                        let delay_ms = 300 * retry;
+                        info!("Waiting for flock release (retry {}/5, {}ms)...", retry, delay_ms);
+                        tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+                        guard_result = PidFileGuard::acquire(&db_path);
+                        if guard_result.is_ok() {
+                            break;
+                        }
+                    }
+                }
+                match guard_result {
                     Ok(guard) => Some(guard),
                     Err(e) => {
                         warn!(
@@ -1389,12 +1544,47 @@ async fn main() -> Result<()> {
 
         // Acquire PID file guard BEFORE opening RocksDB to prevent corruption
         // from multiple processes accessing the same database.
+        // If a stale process (e.g., from a previous session with dead stdio)
+        // holds the lock, kill it and retry.
         let _pid_guard = if uses_rocksdb {
             match PidFileGuard::acquire(&db_path) {
                 Ok(guard) => Some(guard),
                 Err(e) => {
-                    error!("FATAL: {}", e);
-                    return Err(e);
+                    #[cfg(unix)]
+                    {
+                        warn!("Lock contention: {} — attempting stale holder recovery", e);
+                        if kill_stale_standalone_holder(&db_path).await {
+                            // Retry with backoff for flock release
+                            let mut guard_result = Err(e);
+                            for retry in 1..=5 {
+                                let delay_ms = 300 * retry;
+                                info!("Waiting for flock release (retry {}/5, {}ms)...", retry, delay_ms);
+                                tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+                                match PidFileGuard::acquire(&db_path) {
+                                    Ok(guard) => {
+                                        guard_result = Ok(guard);
+                                        break;
+                                    }
+                                    Err(e2) => guard_result = Err(e2),
+                                }
+                            }
+                            match guard_result {
+                                Ok(guard) => Some(guard),
+                                Err(e) => {
+                                    error!("FATAL: {}", e);
+                                    return Err(e);
+                                }
+                            }
+                        } else {
+                            error!("FATAL: {}", e);
+                            return Err(e);
+                        }
+                    }
+                    #[cfg(not(unix))]
+                    {
+                        error!("FATAL: {}", e);
+                        return Err(e);
+                    }
                 }
             }
         } else {

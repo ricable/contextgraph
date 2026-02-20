@@ -59,9 +59,9 @@ fn search_code_definition() -> ToolDefinition {
                 },
                 "searchMode": {
                     "type": "string",
-                    "enum": ["e7Only", "pipeline", "semantic"],
-                    "default": "semantic",
-                    "description": "Code search strategy: 'semantic' (default, hybrid E1+E7 blend), 'e7Only' (pure E7 code search), 'pipeline' (full E13->E1->E7->E12 pipeline)."
+                    "enum": ["hybrid", "e7Only", "e1WithE7Rerank", "pipeline"],
+                    "default": "hybrid",
+                    "description": "Code search strategy: 'hybrid' (default, blend E1+E7 scores), 'e7Only' (pure E7 code search), 'e1WithE7Rerank' (E1 retrieval with E7 reranking), 'pipeline' (alias for hybrid, MED-17)."
                 },
                 "languageHint": {
                     "type": "string",
