@@ -338,6 +338,7 @@ impl McpServer {
             // MCP-H2 FIX: Clone request.id before dispatch consumes the request,
             // so timeout errors can include the correct id per JSON-RPC 2.0 spec.
             let request_id = request.id.clone();
+            let is_notification = request_id.is_none();
             let response = match tokio::time::timeout(
                 Duration::from_secs(request_timeout),
                 handlers.dispatch(request),
@@ -350,6 +351,17 @@ impl McpServer {
                         "[{}] Request timed out after {}s for {}",
                         conn_tag, request_timeout, peer_addr
                     );
+                    // Audit-7 MCP7-M1 FIX: Notifications MUST NOT receive responses per
+                    // JSON-RPC 2.0 spec. If a notification times out, log the error but
+                    // do NOT create an error response -- the suppression check below would
+                    // fail because error=Some, sending a spurious response to the client.
+                    if is_notification {
+                        warn!(
+                            "[{}] {} notification timed out -- suppressing error response (JSON-RPC 2.0)",
+                            conn_tag, peer_addr
+                        );
+                        continue;
+                    }
                     JsonRpcResponse::error(
                         request_id,
                         crate::protocol::error_codes::TCP_CLIENT_TIMEOUT,

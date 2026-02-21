@@ -810,6 +810,7 @@ impl McpServer {
                     .ok()
                     .and_then(|v| v.get("id").cloned())
                     .and_then(|id_val| serde_json::from_value(id_val).ok());
+            let is_notification = request_id.is_none();
 
             let response = match tokio::time::timeout(
                 std::time::Duration::from_secs(request_timeout),
@@ -820,9 +821,18 @@ impl McpServer {
                 Ok(result) => result,
                 Err(_) => {
                     error!(
-                        "Stdio request timed out after {}s — handler may be deadlocked",
+                        "Stdio request timed out after {}s -- handler may be deadlocked",
                         request_timeout
                     );
+                    // Audit-7 MCP7-M1 FIX: Notifications MUST NOT receive responses per
+                    // JSON-RPC 2.0 spec. If a notification times out, log and suppress.
+                    if is_notification {
+                        warn!(
+                            "Notification timed out after {}s -- suppressing error response (JSON-RPC 2.0)",
+                            request_timeout
+                        );
+                        continue;
+                    }
                     JsonRpcResponse::error(
                         request_id,
                         crate::protocol::error_codes::LAYER_TIMEOUT,
@@ -911,7 +921,10 @@ impl McpServer {
         // 4. Stop graph builder, code watcher, file watcher
         self.stop_graph_builder().await;
         self.stop_code_watcher().await;
-        self.stop_file_watcher();
+        // Audit-7 MCP7-L1 FIX: stop_file_watcher uses std::thread::sleep for polling,
+        // which blocks the tokio runtime thread. Use block_in_place to move this work
+        // off the async worker pool so other tasks can progress during the 0-2s wait.
+        tokio::task::block_in_place(|| self.stop_file_watcher());
 
         // 5. Final HNSW persistence (captures any changes since last background persist)
         info!("Persisting HNSW indexes on shutdown...");

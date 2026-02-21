@@ -209,6 +209,97 @@ impl MultiArrayEmbeddingProvider for LazyMultiArrayProvider {
             Err(_) => [true; NUM_EMBEDDERS], // lock contended, assume healthy
         }
     }
+
+    /// Audit-7 MCP-H1 FIX: Override embed_e1_only to delegate to real provider.
+    /// Without this, the default trait impl calls self.embed_all() which runs all 13
+    /// embedders instead of delegating to inner.embed_e1_only() (runs only E1).
+    /// This causes 13x overhead for multi-embedder search in search_causal_relationships.
+    async fn embed_e1_only(&self, content: &str) -> CoreResult<Vec<f32>> {
+        if self.loading.load(Ordering::SeqCst) {
+            return Err(CoreError::Internal(
+                "Embedding models are still loading. Please wait and try again.".to_string(),
+            ));
+        }
+        if let Some(ref err) = *self.failed.read().await {
+            return Err(CoreError::Internal(format!(
+                "Embedding model loading failed: {}",
+                err
+            )));
+        }
+        let guard = self.inner.read().await;
+        match guard.as_ref() {
+            Some(provider) => provider.embed_e1_only(content).await,
+            None => Err(CoreError::Internal(
+                "Embedding provider not available. This is a bug.".to_string(),
+            )),
+        }
+    }
+
+    /// Audit-7 MCP-H1 FIX: Override embed_e5_dual to delegate to real provider.
+    async fn embed_e5_dual(&self, content: &str) -> CoreResult<(Vec<f32>, Vec<f32>)> {
+        if self.loading.load(Ordering::SeqCst) {
+            return Err(CoreError::Internal(
+                "Embedding models are still loading. Please wait and try again.".to_string(),
+            ));
+        }
+        if let Some(ref err) = *self.failed.read().await {
+            return Err(CoreError::Internal(format!(
+                "Embedding model loading failed: {}",
+                err
+            )));
+        }
+        let guard = self.inner.read().await;
+        match guard.as_ref() {
+            Some(provider) => provider.embed_e5_dual(content).await,
+            None => Err(CoreError::Internal(
+                "Embedding provider not available. This is a bug.".to_string(),
+            )),
+        }
+    }
+
+    /// Audit-7 MCP-H1 FIX: Override embed_e8_dual to delegate to real provider.
+    async fn embed_e8_dual(&self, content: &str) -> CoreResult<(Vec<f32>, Vec<f32>)> {
+        if self.loading.load(Ordering::SeqCst) {
+            return Err(CoreError::Internal(
+                "Embedding models are still loading. Please wait and try again.".to_string(),
+            ));
+        }
+        if let Some(ref err) = *self.failed.read().await {
+            return Err(CoreError::Internal(format!(
+                "Embedding model loading failed: {}",
+                err
+            )));
+        }
+        let guard = self.inner.read().await;
+        match guard.as_ref() {
+            Some(provider) => provider.embed_e8_dual(content).await,
+            None => Err(CoreError::Internal(
+                "Embedding provider not available. This is a bug.".to_string(),
+            )),
+        }
+    }
+
+    /// Audit-7 MCP-H1 FIX: Override embed_e11_only to delegate to real provider.
+    async fn embed_e11_only(&self, content: &str) -> CoreResult<Vec<f32>> {
+        if self.loading.load(Ordering::SeqCst) {
+            return Err(CoreError::Internal(
+                "Embedding models are still loading. Please wait and try again.".to_string(),
+            ));
+        }
+        if let Some(ref err) = *self.failed.read().await {
+            return Err(CoreError::Internal(format!(
+                "Embedding model loading failed: {}",
+                err
+            )));
+        }
+        let guard = self.inner.read().await;
+        match guard.as_ref() {
+            Some(provider) => provider.embed_e11_only(content).await,
+            None => Err(CoreError::Internal(
+                "Embedding provider not available. This is a bug.".to_string(),
+            )),
+        }
+    }
 }
 
 // All fields (Arc<RwLock<...>>, Arc<AtomicBool>) are already Send + Sync.

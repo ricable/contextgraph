@@ -876,13 +876,17 @@ impl Handlers {
                     is_forward, // query_is_cause
                 );
 
-                // Apply direction modifier
-                let direction_mod = if is_forward { 1.2 } else { 0.8 };
-                let adjusted_sim = asymmetric_sim * direction_mod;
-
-                if adjusted_sim < min_similarity {
+                // Audit-7 MCP-M3 FIX: Filter on RAW similarity before direction modifier.
+                // Previously, direction_mod was applied before the threshold check, making
+                // the effective threshold direction-dependent (0.375 backward vs 0.25 forward
+                // for min_similarity=0.3). Now the user's threshold is respected uniformly.
+                if asymmetric_sim < min_similarity {
                     continue;
                 }
+
+                // Apply direction modifier for RANKING only (not threshold filtering)
+                let direction_mod = if is_forward { 1.2 } else { 0.8 };
+                let adjusted_sim = asymmetric_sim * direction_mod;
 
                 // Track best candidate
                 if best_candidate.is_none()

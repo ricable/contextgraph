@@ -1386,10 +1386,13 @@ impl Handlers {
                             };
                             let score_before_direction = r.similarity / direction_multiplier;
 
+                            // Audit-7 MCP-H3 FIX: scoreDelta = score * (multiplier - 1.0)
+                            // Previously used s - s/multiplier which is mathematically wrong
+                            // (gave ~9% error for boost, ~17% for demotion).
                             let (action, score_delta) = if e5_sim >= causal_gate::CAUSAL_THRESHOLD {
-                                ("boost", score_before_direction - (score_before_direction / causal_gate::CAUSAL_BOOST))
+                                ("boost", score_before_direction * (causal_gate::CAUSAL_BOOST - 1.0))
                             } else if e5_sim <= causal_gate::NON_CAUSAL_THRESHOLD {
-                                ("demote", score_before_direction - (score_before_direction / causal_gate::NON_CAUSAL_DEMOTION))
+                                ("demote", score_before_direction * (causal_gate::NON_CAUSAL_DEMOTION - 1.0))
                             } else {
                                 ("none", 0.0)
                             };

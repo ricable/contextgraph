@@ -633,11 +633,20 @@ impl PidFileGuard {
                             let fd = file.as_raw_fd();
                             let result = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
                             if result == 0 {
+                                // Audit-7 MCP7-L2 FIX: Log warnings on PID write failures
                                 let mut f = &file;
-                                let _ = f.seek(io::SeekFrom::Start(0));
-                                let _ = f.set_len(0);
-                                let _ = write!(f, "{}", std::process::id());
-                                let _ = f.flush();
+                                if let Err(e) = f.seek(io::SeekFrom::Start(0)) {
+                                    warn!("PID file seek failed (reclaim): {}", e);
+                                }
+                                if let Err(e) = f.set_len(0) {
+                                    warn!("PID file truncate failed (reclaim): {}", e);
+                                }
+                                if let Err(e) = write!(f, "{}", std::process::id()) {
+                                    warn!("PID file write failed (reclaim): {}", e);
+                                }
+                                if let Err(e) = f.flush() {
+                                    warn!("PID file flush failed (reclaim): {}", e);
+                                }
                                 info!(
                                     "Reclaimed stale PID lock (was process {}): new pid={}",
                                     pid, std::process::id()
@@ -664,12 +673,23 @@ impl PidFileGuard {
                 ));
             }
 
-            // We hold the lock — write our PID
+            // We hold the lock -- write our PID
+            // Audit-7 MCP7-L2 FIX: Log warnings on PID write failures instead of
+            // silently discarding with `let _ =`. If writing fails, other processes
+            // reading the PID file get stale/partial data, breaking stale detection.
             let mut f = &file;
-            let _ = f.seek(io::SeekFrom::Start(0));
-            let _ = f.set_len(0);
-            let _ = write!(f, "{}", std::process::id());
-            let _ = f.flush();
+            if let Err(e) = f.seek(io::SeekFrom::Start(0)) {
+                warn!("PID file seek failed: {} -- stale detection may be unreliable", e);
+            }
+            if let Err(e) = f.set_len(0) {
+                warn!("PID file truncate failed: {} -- stale detection may be unreliable", e);
+            }
+            if let Err(e) = write!(f, "{}", std::process::id()) {
+                warn!("PID file write failed: {} -- stale detection may be unreliable", e);
+            }
+            if let Err(e) = f.flush() {
+                warn!("PID file flush failed: {} -- stale detection may be unreliable", e);
+            }
 
             info!(
                 "PID file guard acquired: pid={}, path='{}'",
@@ -689,10 +709,17 @@ impl PidFileGuard {
             // Without a file lock, there is no protection against multiple daemon instances.
             // Concurrent instances sharing the same RocksDB directory WILL corrupt data.
             use std::io::Write;
+            // Audit-7 MCP7-L2 FIX: Log warnings on PID write failures (non-Unix path)
             let mut f = &file;
-            let _ = f.set_len(0);
-            let _ = write!(f, "{}", std::process::id());
-            let _ = f.flush();
+            if let Err(e) = f.set_len(0) {
+                warn!("PID file truncate failed (non-unix): {}", e);
+            }
+            if let Err(e) = write!(f, "{}", std::process::id()) {
+                warn!("PID file write failed (non-unix): {}", e);
+            }
+            if let Err(e) = f.flush() {
+                warn!("PID file flush failed (non-unix): {}", e);
+            }
 
             warn!(
                 "E_PID_NO_LOCK: PidFileGuard on non-Unix platform provides no lock protection. \
@@ -1009,25 +1036,54 @@ async fn kill_stale_standalone_holder(db_path: &Path) -> bool {
             .replace('\0', " ");
         let is_standalone = !cmdline.contains("--daemon");
         if is_standalone {
-            // L6 FIX: Check if the process is still listening on a TCP port.
-            // A standalone server actively serving requests is not stale.
-            let is_listening = std::fs::read_to_string(format!("/proc/{}/net/tcp", pid))
-                .unwrap_or_default()
-                .lines()
-                .skip(1) // skip header
-                .any(|line| {
-                    // Column 4 (st) = 0A means LISTEN state
-                    line.split_whitespace().nth(3).map_or(false, |st| st == "0A")
-                });
-            if is_listening {
+            // Audit-7 MCP7-M2 FIX: Check if THIS process owns any listening socket.
+            // Previously used /proc/{pid}/net/tcp which shows ALL sockets in the
+            // network namespace, not just those owned by pid. Any system TCP listener
+            // (sshd, nginx, etc.) would prevent stale detection from ever triggering.
+            // Now we iterate /proc/{pid}/fd/ and check which fds are sockets in LISTEN state.
+            let owns_listener = (|| -> bool {
+                let fd_dir = format!("/proc/{}/fd", pid);
+                let entries = match fs::read_dir(&fd_dir) {
+                    Ok(e) => e,
+                    Err(_) => return false,
+                };
+                // Read /proc/{pid}/net/tcp once for inode matching
+                let tcp_data = std::fs::read_to_string(format!("/proc/{}/net/tcp", pid))
+                    .unwrap_or_default();
+                for entry in entries.flatten() {
+                    // Read where each fd points
+                    let link = match fs::read_link(entry.path()) {
+                        Ok(l) => l.to_string_lossy().to_string(),
+                        Err(_) => continue,
+                    };
+                    // Only check socket fds
+                    if !link.starts_with("socket:[") {
+                        continue;
+                    }
+                    // Extract inode number from "socket:[12345]"
+                    let inode = link
+                        .trim_start_matches("socket:[")
+                        .trim_end_matches(']');
+                    // Check if this inode is in LISTEN state in /proc/{pid}/net/tcp
+                    for tcp_line in tcp_data.lines().skip(1) {
+                        let cols: Vec<&str> = tcp_line.split_whitespace().collect();
+                        // Column 3 (0-indexed) = state, Column 9 = inode
+                        if cols.len() >= 10 && cols[3] == "0A" && cols[9] == inode {
+                            return true;
+                        }
+                    }
+                }
+                false
+            })();
+            if owns_listener {
                 info!(
-                    "PID {} is standalone but still listening on a port — not stale",
+                    "PID {} is standalone and owns a listening socket -- not stale",
                     pid
                 );
                 false
             } else {
                 info!(
-                    "PID {} is a standalone MCP server (stdin={}) — treating as stale",
+                    "PID {} is a standalone MCP server (stdin={}) -- treating as stale",
                     pid, fd0_str
                 );
                 true
@@ -1036,8 +1092,12 @@ async fn kill_stale_standalone_holder(db_path: &Path) -> bool {
             false
         }
     } else {
-        // fd/0 points to /dev/null or is unreadable — likely stale
-        !fd0_str.is_empty()
+        // Audit-7 MCP7-M3 FIX: fd/0 is neither socket nor pipe.
+        // If fd0_str is empty, read_link failed (process fd unreadable) -- treat as dead.
+        // If fd0_str is "/dev/null", stdin is disconnected -- treat as dead.
+        // If fd0_str points to a real file/device (e.g., /dev/pts/0), stdin may be alive.
+        // Previously: `!fd0_str.is_empty()` treated empty (unreadable) as healthy -- inverted.
+        fd0_str.is_empty() || fd0_str.contains("/dev/null")
     };
 
     if !stdin_is_dead {
