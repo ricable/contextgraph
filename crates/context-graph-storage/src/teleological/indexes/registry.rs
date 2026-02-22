@@ -13,7 +13,7 @@
 //! +----------------------------+
 //! | indexes: HashMap<          |
 //! |   EmbedderIndex,           |
-//! |   Arc<HnswEmbedderIndex>   |  (13 indexes)
+//! |   Arc<HnswEmbedderIndex>   |  (15 indexes)
 //! | >                          |
 //! +----------------------------+
 //!         |
@@ -39,7 +39,7 @@ use super::hnsw_impl::HnswEmbedderIndex;
 
 /// Registry for per-embedder HNSW indexes.
 ///
-/// Creates and manages 11 HNSW indexes (excludes E6, E12, E13 which use different index types).
+/// Creates and manages 15 HNSW indexes (excludes E6, E12, E13 which use different index types).
 ///
 /// # Thread Safety
 ///

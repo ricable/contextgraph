@@ -90,22 +90,26 @@ impl PipelineBuilder {
             stages.retain(|s| *s != PipelineStage::MatryoshkaAnn);
         }
 
-        // Create modified config with k
-        let mut config = pipeline.config.clone();
-        if let Some(k) = self.k {
-            config.k = k;
-        }
+        let requested_k = self.k;
 
-        // Note: This is a workaround since we can't modify pipeline's config
-        // In a real implementation, you'd pass config through execute_stages
-
-        pipeline.execute_stages(
+        let mut result = pipeline.execute_stages(
             &query_splade,
             &query_matryoshka,
             &query_semantic,
             &query_tokens,
             &stages,
-        )
+        )?;
+
+        // H2 FIX (Audit #10): Apply builder's k as post-execution truncation.
+        // execute_stages uses pipeline.config.k internally for stage-level limits.
+        // The builder's k controls the FINAL result count returned to the caller.
+        // Previously, the builder computed a modified config but never passed it,
+        // silently ignoring the caller's .k() value.
+        if let Some(k) = requested_k {
+            result.results.truncate(k);
+        }
+
+        Ok(result)
     }
 }
 

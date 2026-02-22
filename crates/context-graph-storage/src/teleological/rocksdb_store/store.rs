@@ -93,7 +93,7 @@ pub struct RocksDbTeleologicalStore {
     /// under 100+ concurrent searches x 50+ results = 5,000+ lookups).
     /// Wrapped in Arc for cheap cloning into spawn_blocking closures.
     pub(crate) soft_deleted: Arc<DashMap<Uuid, i64>>,
-    /// Per-embedder index registry with 12 HNSW indexes for O(log n) ANN search.
+    /// Per-embedder index registry with 15 HNSW indexes for O(log n) ANN search.
     /// E6, E12, E13 use different index types (inverted/MaxSim).
     /// NO FALLBACKS - FAIL FAST on invalid operations.
     pub(crate) index_registry: Arc<EmbedderIndexRegistry>,

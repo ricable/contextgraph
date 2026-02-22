@@ -108,8 +108,18 @@ impl RocksDbTeleologicalStore {
             if let Some(data) = result.map_err(|e| {
                 TeleologicalStoreError::rocksdb_op("multi_get", CF_E13_SPLADE_INVERTED, None, e)
             })? {
-                let mut ids: Vec<Uuid> = deserialize_memory_id_list(&data)?;
-                ids.retain(|&entry_id| entry_id != *id);
+                // M4 FIX (Audit #10): Use deserialize_sorted_posting_list to handle
+                // legacy unsorted lists. Previously used raw deserialize_memory_id_list
+                // which wrote back unsorted data, breaking binary_search in concurrent
+                // update_splade_inverted_index calls.
+                let (mut ids, _was_unsorted) = deserialize_sorted_posting_list(&data)?;
+                if let Ok(pos) = ids.binary_search(id) {
+                    ids.remove(pos);
+                } else {
+                    // ID not found via binary search -- fall back to linear retain
+                    // for safety (legacy data or concurrent modification edge case)
+                    ids.retain(|&entry_id| entry_id != *id);
+                }
 
                 if ids.is_empty() {
                     batch.delete_cf(cf_inverted, term_key.as_slice());
@@ -199,8 +209,14 @@ impl RocksDbTeleologicalStore {
             if let Some(data) = result.map_err(|e| {
                 TeleologicalStoreError::rocksdb_op("multi_get", CF_E6_SPARSE_INVERTED, None, e)
             })? {
-                let mut ids: Vec<Uuid> = deserialize_memory_id_list(&data)?;
-                ids.retain(|&entry_id| entry_id != *id);
+                // M4 FIX (Audit #10): Use deserialize_sorted_posting_list to handle
+                // legacy unsorted lists (same fix as E13 SPLADE remove path above).
+                let (mut ids, _was_unsorted) = deserialize_sorted_posting_list(&data)?;
+                if let Ok(pos) = ids.binary_search(id) {
+                    ids.remove(pos);
+                } else {
+                    ids.retain(|&entry_id| entry_id != *id);
+                }
 
                 if ids.is_empty() {
                     batch.delete_cf(cf_inverted, term_key.as_slice());

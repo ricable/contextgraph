@@ -673,6 +673,11 @@ impl CodeStore {
     }
 
     /// Compute cosine similarity with pre-computed query norm.
+    ///
+    /// Returns values in [0, 1] via normalization: `(raw_cosine + 1) / 2`.
+    /// This matches `helpers::compute_cosine_similarity()` and
+    /// `helpers::hnsw_distance_to_similarity()` which also normalize to [0, 1].
+    /// SRC-3: Orthogonal vectors = 0.5, identical = 1.0, opposite = 0.0.
     fn cosine_similarity_with_norm(query: &[f32], candidate: &[f32], query_norm: f32) -> f32 {
         if query.len() != candidate.len() {
             return 0.0;
@@ -685,7 +690,12 @@ impl CodeStore {
             return 0.0;
         }
 
-        (dot / (query_norm * candidate_norm)).clamp(-1.0, 1.0)
+        // H1 FIX (Audit #10): Normalize from [-1, 1] to [0, 1] to match all other
+        // cosine similarity paths in the codebase. Previously returned raw cosine
+        // in [-1, 1] which made min_similarity filtering inconsistent with the
+        // teleological store's search paths.
+        let raw_cosine = (dot / (query_norm * candidate_norm)).clamp(-1.0, 1.0);
+        (raw_cosine + 1.0) / 2.0
     }
 
     // =========================================================================
