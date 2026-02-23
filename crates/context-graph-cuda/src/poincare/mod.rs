@@ -40,7 +40,34 @@ mod config;
 mod constants;
 mod cpu;
 mod ffi;
+
+#[cfg(feature = "cuda")]
 mod gpu;
+
+#[cfg(not(feature = "cuda"))]
+mod gpu_stub {
+    use crate::error::{CudaError, CudaResult};
+
+    pub fn poincare_distance_batch_gpu(
+        _d_queries: *mut f32,
+        _d_database: *mut f32,
+        _d_distances: *mut f32,
+        _n_queries: usize,
+        _n_database: usize,
+        _curvature: f32,
+    ) -> CudaResult<()> {
+        Err(CudaError::NoDevice)
+    }
+
+    pub fn poincare_distance_single_gpu(
+        _d_query: *const f32,
+        _d_database: *const f32,
+        _curvature: f32,
+    ) -> CudaResult<f32> {
+        Err(CudaError::NoDevice)
+    }
+}
+
 mod kernel;
 
 #[cfg(test)]
@@ -56,8 +83,12 @@ pub use config::PoincareCudaConfig;
 // Kernel info and GPU availability
 pub use kernel::{get_kernel_info, is_poincare_gpu_available, PoincareKernelInfo};
 
-// GPU functions
+// GPU functions (CUDA only)
+#[cfg(feature = "cuda")]
 pub use gpu::{poincare_distance_batch_gpu, poincare_distance_single_gpu};
+
+#[cfg(not(feature = "cuda"))]
+pub use gpu_stub::{poincare_distance_batch_gpu, poincare_distance_single_gpu};
 
 // CPU reference implementations
 pub use cpu::{poincare_distance_batch_cpu, poincare_distance_cpu};

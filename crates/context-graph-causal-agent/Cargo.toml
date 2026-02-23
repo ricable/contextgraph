@@ -13,6 +13,8 @@ default = []
 llm = ["dep:llama-cpp-2"]
 # Enable CUDA acceleration via llama-cpp-2 (RTX 5090 optimized)
 cuda = ["llm", "llama-cpp-2/cuda"]
+# Enable Metal acceleration via llama-cpp-2 (Apple Silicon)
+metal = ["llm", "llama-cpp-2/metal"]
 
 [dependencies]
 # Workspace dependencies

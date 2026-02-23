@@ -51,12 +51,14 @@ pub mod similarity;
 pub mod stub;
 
 pub use cone::{
-    cone_check_batch_cpu, cone_membership_score_cpu, get_cone_kernel_info, is_cone_gpu_available,
-    ConeCudaConfig, ConeData, ConeKernelInfo, CONE_DATA_DIM, POINT_DIM,
+    cone_check_batch_cpu, cone_membership_score_cpu,
+    ConeCudaConfig, ConeData, CONE_DATA_DIM, POINT_DIM,
 };
 #[cfg(feature = "cuda")]
-pub use cone::{cone_check_batch_gpu, cone_check_single_gpu};
+pub use cone::{cone_check_batch_gpu, cone_check_single_gpu, get_cone_kernel_info, is_cone_gpu_available};
 pub use error::{CudaError, CudaResult};
+// CUDA Driver API exports - only available with cuda or faiss-working feature
+#[cfg(any(feature = "cuda", feature = "faiss-working"))]
 pub use ffi::{
     // CUDA Driver API exports
     cuCtxCreate_v2,
@@ -95,6 +97,17 @@ pub use ffi::{
     // FAISS GPU status
     is_faiss_gpu_available,
     faiss_status,
+};
+
+// Stub functions available with metal feature (return false / status strings)
+#[cfg(feature = "metal")]
+#[cfg(not(any(feature = "cuda", feature = "faiss-working")))]
+pub use ffi::{
+    // FAISS GPU status - stubs that return false when CUDA not available
+    is_faiss_gpu_available,
+    faiss_status,
+    // CUDA availability - stub that returns false without CUDA
+    cuda_available,
 };
 // Re-export FAISS types when faiss-working feature is enabled
 #[cfg(feature = "faiss-working")]

@@ -55,13 +55,15 @@ half = "2.3"
 nvml-wrapper = { version = "0.10", optional = true }
 
 [features]
-# Default includes NVML for RTX 5090 GPU monitoring
-default = ["nvml"]
+# Default includes NVML for RTX 5090 GPU monitoring - disabled by default for cross-platform builds
+default = []
 # Enable test utilities (stubs, zeroed() methods) for downstream crate tests
 # WARNING: Never enable this in production builds!
 test-utils = []
 # Real NVML GPU monitoring (RTX 5090 required per Constitution)
 nvml = ["nvml-wrapper"]
+# Marker feature for Metal-aware code paths
+metal = []
 
 [dev-dependencies]
 tempfile = "3.10"

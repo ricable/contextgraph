@@ -2,19 +2,19 @@
 //!
 //! # GPU-ONLY Architecture
 //!
-//! This module is **strictly GPU-only** with NO CPU fallback. If a CUDA-capable
-//! GPU is not available, initialization will fail with a clear error.
+//! This module supports CUDA, Metal, and CPU fallbacks. Platform is detected
+//! at runtime based on available hardware.
 //!
 //! # Requirements
 //!
-//! - **Hardware**: NVIDIA CUDA-capable GPU (target: RTX 5090 / Blackwell GB202)
-//! - **Driver**: CUDA 13.1+ with compatible NVIDIA drivers
-//! - **Memory**: Minimum 16GB VRAM recommended (32GB for RTX 5090)
+//! - **NVIDIA**: CUDA-capable GPU (target: RTX 5090 / Blackwell GB202)
+//! - **Apple**: Metal MPS capable GPU (M1/M2/M3 series)
+//! - **Fallback**: CPU if no GPU available
 //!
 //! # Singleton Pattern
 //!
 //! The GPU device is initialized once and shared globally. This ensures:
-//! - Single CUDA context for optimal memory management
+//! - Single GPU context for optimal memory management
 //! - Consistent device placement across all operations
 //! - Automatic cleanup on process exit
 
@@ -36,31 +36,100 @@ pub(crate) static GPU_INFO: OnceLock<GpuInfo> = OnceLock::new();
 /// Initialize result for thread-safe error handling.
 pub(crate) static INIT_RESULT: OnceLock<Result<(), String>> = OnceLock::new();
 
+/// Platform type for GPU device selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GpuPlatform {
+    /// NVIDIA CUDA GPU
+    Cuda,
+    /// Apple Metal MPS
+    Metal,
+    /// CPU fallback
+    Cpu,
+}
+
+/// Create a new device based on platform availability.
+///
+/// This function attempts to create a GPU device in the following order:
+/// 1. CUDA (NVIDIA GPUs)
+/// 2. Metal (Apple Silicon)
+/// 3. CPU (fallback)
+///
+/// # Arguments
+///
+/// * `device_id` - Device ordinal (typically 0)
+///
+/// # Returns
+///
+/// A new `Device` for the best available platform.
+pub fn new_device(device_id: usize) -> Device {
+    // Try CUDA first (default for NVIDIA)
+    #[cfg(any(feature = "cuda", feature = "candle"))]
+    {
+        match Device::new_cuda(device_id) {
+            Ok(device) => {
+                tracing::info!("Using CUDA device {}", device_id);
+                return device;
+            }
+            Err(e) => {
+                tracing::debug!("CUDA not available: {}", e);
+            }
+        }
+    }
+
+    // Try Metal (Apple Silicon)
+    #[cfg(feature = "metal")]
+    {
+        match Device::new_metal(device_id) {
+            Ok(device) => {
+                tracing::info!("Using Metal device {}", device_id);
+                return device;
+            }
+            Err(e) => {
+                tracing::debug!("Metal not available: {}", e);
+            }
+        }
+    }
+
+    // Fallback to CPU
+    tracing::info!("Using CPU device");
+    Device::Cpu
+}
+
+/// Get the current platform type.
+pub fn get_platform() -> GpuPlatform {
+    #[cfg(all(feature = "cuda", feature = "candle"))]
+    {
+        if Device::new_cuda(0).is_ok() {
+            return GpuPlatform::Cuda;
+        }
+    }
+    #[cfg(feature = "metal")]
+    {
+        if Device::new_metal(0).is_ok() {
+            return GpuPlatform::Metal;
+        }
+    }
+    GpuPlatform::Cpu
+}
+
 /// Initialize the GPU device (call once at startup).
 ///
-/// # GPU-Only Requirement
+/// # GPU Architecture
 ///
-/// This function **requires** a CUDA-capable GPU. There is NO CPU fallback.
-/// If no GPU is available, this function returns an error with detailed
-/// diagnostic information.
+/// This function supports multiple backends:
+/// - CUDA: NVIDIA GPUs (RTX 5090 / Blackwell)
+/// - Metal: Apple Silicon (M-series)
+/// - CPU: Fallback when GPU unavailable
 ///
 /// # Target Hardware
 ///
 /// - Primary target: NVIDIA RTX 5090 (Blackwell GB202, 32GB VRAM)
-/// - Minimum requirement: Any CUDA-capable GPU with compute capability 6.0+
-/// - Required driver: CUDA 13.1+ recommended
+/// - Apple Silicon: M1/M2/M3 with Metal MPS
+/// - Minimum: CPU fallback always available
 ///
 /// # Returns
 ///
-/// Reference to the initialized GPU device, or error if CUDA unavailable.
-///
-/// # Errors
-///
-/// Returns [`candle_core::Error`] if:
-/// - No CUDA-capable GPU is detected
-/// - CUDA drivers are not installed or incompatible
-/// - GPU is in use by another process with exclusive access
-/// - Insufficient GPU memory for initialization
+/// Reference to the initialized device (GPU or CPU).
 ///
 /// # Thread Safety
 ///
@@ -72,86 +141,99 @@ pub(crate) static INIT_RESULT: OnceLock<Result<(), String>> = OnceLock::new();
 /// use context_graph_embeddings::gpu::init_gpu;
 ///
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     // GPU is available - RTX 5090 with CUDA 13.1
+///     // GPU is available - RTX 5090 with CUDA 13.1 or Apple Silicon with Metal
 ///     let device = init_gpu()?;
-///     println!("GPU initialized: {:?}", device);
+///     println!("Device initialized: {:?}", device);
 ///     Ok(())
 /// }
 /// ```
 pub fn init_gpu() -> Result<&'static Device, candle_core::Error> {
     // Check if already initialized
     if let Some(device) = GPU_DEVICE.get() {
-        tracing::debug!("GPU already initialized, returning cached device");
+        tracing::debug!("Device already initialized, returning cached device");
         return Ok(device);
     }
 
     // Check if previous initialization failed
     if let Some(Err(msg)) = INIT_RESULT.get() {
-        tracing::error!("GPU initialization previously failed: {}", msg);
+        tracing::error!("Device initialization previously failed: {}", msg);
         return Err(candle_core::Error::Msg(msg.clone()));
     }
 
     // Log initialization attempt with full context
-    tracing::info!("=== GPU Initialization Starting ===");
-    tracing::info!("Target hardware: NVIDIA RTX 5090 / Blackwell GB202");
-    tracing::info!("Target CUDA version: 13.1+");
-    tracing::info!("Attempting CUDA device 0 initialization...");
+    tracing::info!("=== Device Initialization Starting ===");
+    tracing::info!("Backend priority: CUDA -> Metal -> CPU");
+    #[cfg(feature = "cuda")]
+    tracing::info!("CUDA feature: enabled");
+    #[cfg(feature = "metal")]
+    tracing::info!("Metal feature: enabled");
+    tracing::info!("Attempting device initialization...");
 
-    match Device::new_cuda(0) {
-        Ok(device) => init_success(device),
-        Err(e) => init_failure(e),
-    }
+    // Platform-aware device initialization (CUDA -> Metal -> CPU)
+    let device = new_device(0);
+    init_success(device)
 }
 
-/// Handle successful GPU initialization.
+/// Handle successful device initialization (GPU or CPU).
 fn init_success(device: Device) -> Result<&'static Device, candle_core::Error> {
+    // Determine if we got a GPU or CPU before storing
+    let is_gpu = !matches!(device, Device::Cpu);
+
     // Store the device
     let _ = GPU_DEVICE.set(device);
-    let _ = GPU_AVAILABLE.set(true);
+    let _ = GPU_AVAILABLE.set(is_gpu);
 
     // Get device reference after storing
     let device_ref = GPU_DEVICE.get().unwrap();
 
-    // Cache GPU info
+    // Cache device info (works for CUDA; Metal/CPU get appropriate info)
     let info = query_gpu_info(device_ref);
     let _ = GPU_INFO.set(info.clone());
     let _ = INIT_RESULT.set(Ok(()));
 
     // Log success with comprehensive details
-    tracing::info!("=== GPU Initialization SUCCESS ===");
-    tracing::info!("  Device: {}", info.name);
-    tracing::info!("  VRAM: {}", super::utils::format_bytes(info.total_vram));
-    tracing::info!("  Compute Capability: {}", info.compute_capability);
+    if is_gpu {
+        tracing::info!("=== GPU Initialization SUCCESS ===");
+        tracing::info!("  Device: {}", info.name);
+        #[cfg(feature = "cuda")]
+        {
+            tracing::info!("  VRAM: {}", super::utils::format_bytes(info.total_vram));
+            tracing::info!("  Compute Capability: {}", info.compute_capability);
+        }
+    } else {
+        tracing::info!("=== CPU Initialization SUCCESS (GPU unavailable) ===");
+    }
     tracing::info!("  Status: Ready for tensor operations");
 
     Ok(device_ref)
 }
 
-/// Handle GPU initialization failure with detailed error logging.
+/// Handle GPU initialization failure with CPU fallback.
 fn init_failure(e: candle_core::Error) -> Result<&'static Device, candle_core::Error> {
     let msg = e.to_string();
+
+    tracing::warn!("GPU initialization failed: {}", msg);
+    tracing::info!("Falling back to CPU...");
+
+    // Initialize CPU device as fallback
+    let device = Device::Cpu;
+    let _ = GPU_DEVICE.set(device);
     let _ = GPU_AVAILABLE.set(false);
-    let _ = INIT_RESULT.set(Err(msg.clone()));
 
-    // ROBUST ERROR LOGGING - provide actionable information
-    tracing::error!("=== GPU Initialization FAILED ===");
-    tracing::error!("Error: {}", msg);
-    tracing::error!("");
-    tracing::error!("This crate REQUIRES a CUDA-capable GPU. NO CPU FALLBACK.");
-    tracing::error!("");
-    tracing::error!("Troubleshooting steps:");
-    tracing::error!("  1. Verify NVIDIA GPU is present: nvidia-smi");
-    tracing::error!("  2. Check CUDA installation: nvcc --version");
-    tracing::error!("  3. Verify driver compatibility with CUDA 13.1+");
-    tracing::error!("  4. Ensure GPU is not in exclusive compute mode");
-    tracing::error!(
-        "  5. Check available GPU memory: nvidia-smi --query-gpu=memory.free --format=csv"
-    );
-    tracing::error!("");
-    tracing::error!("Target hardware: RTX 5090 (32GB VRAM, Compute 12.0)");
-    tracing::error!("Minimum hardware: Any CUDA GPU with Compute 6.0+");
+    // Create basic CPU info
+    let info = GpuInfo {
+        name: "CPU".to_string(),
+        total_vram: 0,
+        compute_capability: "N/A".to_string(),
+        available: false,
+    };
+    let _ = GPU_INFO.set(info);
+    let _ = INIT_RESULT.set(Ok(()));
 
-    Err(e)
+    tracing::info!("=== Using CPU Fallback ===");
+    tracing::info!("  Status: CPU mode - GPU acceleration unavailable");
+
+    Ok(GPU_DEVICE.get().unwrap())
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-//! Tool definitions per PRD v6 Section 10 (56 tools with LLM, 52 without).
+//! Tool definitions per PRD v6 Section 10 (60 tools with LLM, 56 without).
 //!
 //! Includes 17 original tools (inject_context merged into store_memory)
 //! plus 4 sequence tools for E4 integration
@@ -13,6 +13,8 @@
 //! plus 2 temporal tools for E2/E3 (search_recent, search_periodic)
 //! plus 4 graph linking tools (get_memory_neighbors, get_typed_edges, traverse_graph, get_unified_neighbors)
 //! plus 1 maintenance tool (repair_causal_relationships).
+//! plus 4 RVF tools for Phase 3: RVF + SONA integration.
+//! plus 7 OCR tools for Phase 2: OCR and Document Ingestion.
 
 pub(crate) mod causal;
 pub(crate) mod causal_discovery;
@@ -28,8 +30,10 @@ pub(crate) mod graph_link;
 pub(crate) mod keyword;
 pub(crate) mod maintenance;
 pub(crate) mod merge;
+pub(crate) mod ocr;
 pub(crate) mod provenance;
 pub(crate) mod robustness;
+pub(crate) mod rvf;
 pub(crate) mod sequence;
 pub(crate) mod temporal;
 pub(crate) mod topic;
@@ -97,6 +101,12 @@ pub fn get_tool_definitions() -> Vec<ToolDefinition> {
     // Daemon tools (1) - Multi-agent observability
     tools.extend(daemon::definitions());
 
+    // RVF tools (4) - Phase 3: RVF + SONA integration
+    tools.extend(rvf::definitions());
+
+    // OCR tools (7) - Phase 2: OCR and Document Ingestion
+    tools.extend(ocr::definitions());
+
     tools
 }
 
@@ -108,9 +118,9 @@ mod tests {
     fn test_total_tool_count_and_no_duplicates() {
         let tools = get_tool_definitions();
         #[cfg(feature = "llm")]
-        assert_eq!(tools.len(), 56);
+        assert_eq!(tools.len(), 67); // 60 + 7 OCR tools
         #[cfg(not(feature = "llm"))]
-        assert_eq!(tools.len(), 52);
+        assert_eq!(tools.len(), 63); // 56 + 7 OCR tools
         // No duplicates
         let mut names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         let len_before = names.len();
@@ -143,6 +153,8 @@ mod tests {
         assert_eq!(maintenance::definitions().len(), 1);
         assert_eq!(provenance::definitions().len(), 3);
         assert_eq!(daemon::definitions().len(), 1);
+        assert_eq!(rvf::definitions().len(), 4);
+        assert_eq!(ocr::definitions().len(), 7); // OCR tools for Phase 2
         // Audit-12 TST-H2 FIX: graph and causal_discovery are LLM-gated, must be tested
         #[cfg(feature = "llm")]
         {

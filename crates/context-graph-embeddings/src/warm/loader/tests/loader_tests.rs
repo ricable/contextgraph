@@ -1,7 +1,7 @@
 //! Core loader functionality tests.
 
 use crate::warm::config::WarmConfig;
-use crate::warm::cuda_alloc::{REQUIRED_COMPUTE_MAJOR, REQUIRED_COMPUTE_MINOR};
+use crate::warm::{REQUIRED_COMPUTE_MAJOR, REQUIRED_COMPUTE_MINOR};
 use crate::warm::error::WarmError;
 use crate::warm::handle::ModelHandle;
 use crate::warm::registry::{WarmModelRegistry, EMBEDDING_MODEL_IDS, TOTAL_MODEL_COUNT};

@@ -52,23 +52,44 @@ const FAISS_UNAVAILABLE_HELP: &str =
 /// 1. `context-graph-cuda` was built with `faiss-working` feature
 /// 2. FAISS reports at least one GPU
 /// 3. GPU actually works (verified at runtime)
+#[cfg(feature = "faiss-working")]
 #[inline]
 pub fn gpu_available() -> bool {
     context_graph_cuda::is_faiss_gpu_available()
 }
 
+#[cfg(not(feature = "faiss-working"))]
+#[inline]
+pub fn gpu_available() -> bool {
+    false
+}
+
 /// Check if CUDA is available via driver API.
 ///
 /// This works even when FAISS GPU is not available.
+#[cfg(feature = "faiss-working")]
 #[inline]
 pub fn cuda_driver_available() -> bool {
     context_graph_cuda::ffi::cuda_available()
 }
 
+#[cfg(not(feature = "faiss-working"))]
+#[inline]
+pub fn cuda_driver_available() -> bool {
+    false
+}
+
 /// Get a human-readable status of FAISS GPU availability.
+#[cfg(feature = "faiss-working")]
 #[inline]
 pub fn faiss_status() -> &'static str {
     context_graph_cuda::faiss_status()
+}
+
+#[cfg(not(feature = "faiss-working"))]
+#[inline]
+pub fn faiss_status() -> &'static str {
+    "FAISS GPU not available - faiss-working feature not enabled"
 }
 
 // =============================================================================

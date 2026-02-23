@@ -18,13 +18,13 @@ use sha2::{Digest, Sha256};
 
 use crate::types::ModelId;
 use crate::warm::config::WarmConfig;
-use crate::warm::cuda_alloc::WarmCudaAllocator;
 use crate::warm::error::{WarmError, WarmResult};
 use crate::warm::handle::ModelHandle;
 use crate::warm::memory_pool::WarmMemoryPools;
 use crate::warm::registry::SharedWarmRegistry;
 use crate::warm::state::WarmModelState;
 use crate::warm::validation::WarmValidator;
+use crate::warm::WarmCudaAllocator;
 
 use super::helpers::format_bytes;
 

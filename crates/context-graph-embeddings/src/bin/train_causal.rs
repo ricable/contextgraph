@@ -196,14 +196,9 @@ fn main() {
     println!("Seed:       {}", args.seed);
     println!();
 
-    // Select device
-    let device = if candle_core::utils::cuda_is_available() {
-        println!("Using CUDA GPU");
-        Device::new_cuda(0).expect("Failed to initialize CUDA device")
-    } else {
-        println!("Warning: CUDA not available, using CPU (training will be slow)");
-        Device::Cpu
-    };
+    // Select device using platform-aware initialization
+    let device = context_graph_embeddings::gpu::device::new_device(0);
+    println!("Using device: {:?}", device);
 
     // Load model weights
     println!("Loading nomic-embed-text-v1.5 weights...");

@@ -15,24 +15,27 @@
 //! - Valid device ordinals passed to device functions
 //! - Sufficient buffer sizes for string outputs
 //!
-//! # FAISS GPU Support
+//! # Feature Flags
 //!
-//! FAISS GPU is conditionally available via the `faiss-working` feature.
-//! Without this feature, only the custom GPU k-NN implementation (knn.rs) is available.
+//! - `cuda`: Enable CUDA GPU support
+//! - `metal`: Enable Metal GPU support (Apple Silicon)
+//! - `faiss-working`: Enable FAISS GPU support (requires custom FAISS build)
 //!
-//! ## Enabling FAISS GPU
-//!
-//! 1. Run `./scripts/rebuild_faiss_gpu.sh` to build FAISS with CUDA 13.1 support
-//! 2. Build with: `cargo build --features faiss-working`
-//!
-//! ## Why FAISS is Optional
-//!
-//! On WSL2 with CUDA 13.1, the standard FAISS build crashes during static
-//! initialization due to cudart bugs. The custom k-NN in knn.rs uses the
-//! CUDA Driver API which works correctly. FAISS GPU requires a custom build
-//! with lazy CUDA initialization.
+//! Without `cuda` or `faiss-working`, only CPU operations are available.
 
+#[cfg(feature = "cuda")]
 pub mod cuda_driver;
+
+#[cfg(not(feature = "cuda"))]
+mod cuda_driver_stub {
+    // Stub types for non-CUDA builds
+    pub type CUresult = i32;
+    pub const CUDA_SUCCESS: CUresult = 0;
+    pub const CUDA_ERROR_NOT_INITIALIZED: CUresult = 3;
+    pub const CUDA_ERROR_NO_DEVICE: CUresult = 100;
+    pub const CUDA_ERROR_INVALID_DEVICE: CUresult = 101;
+}
+
 pub mod knn;
 
 // FAISS module - only compiled when faiss-working feature is explicitly enabled.
@@ -45,8 +48,17 @@ pub mod knn;
 #[cfg(feature = "faiss-working")]
 pub mod faiss;
 
+#[cfg(feature = "cuda")]
 pub use cuda_driver::*;
+#[cfg(not(feature = "cuda"))]
+pub use cuda_driver_stub::*;
+
+#[cfg(feature = "cuda")]
 pub use knn::*;
+
+// When metal feature is enabled without cuda, expose the stub cuda_available from knn module
+#[cfg(all(feature = "metal", not(feature = "cuda")))]
+pub use knn::cuda_available;
 
 // Re-export FAISS types when available
 #[cfg(feature = "faiss-working")]

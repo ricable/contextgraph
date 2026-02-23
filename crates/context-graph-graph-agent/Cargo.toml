@@ -13,6 +13,8 @@ default = []
 llm = ["context-graph-causal-agent/llm"]
 # Enable CUDA acceleration via llama-cpp-2 (RTX 5090 optimized)
 cuda = ["llm", "context-graph-causal-agent/cuda"]
+# Enable Metal acceleration via llama-cpp-2 (Apple Silicon)
+metal = ["llm", "context-graph-causal-agent/metal"]
 # Test utilities - provides stub constructors that panic on usage
 # Use for tests that need Handlers but don't actually call graph discovery
 test-utils = []

@@ -1,4 +1,6 @@
 //! Safe RAII wrapper for CUDA device and context.
+
+#![cfg(feature = "cuda")]
 //!
 //! Ensures proper initialization and cleanup of CUDA resources.
 //!

@@ -52,4 +52,4 @@ mod utils;
 
 // Re-export all public APIs for backwards compatibility
 pub use accessors::{default_dtype, device, get_gpu_info, is_gpu_available, require_gpu};
-pub use core::init_gpu;
+pub use core::{init_gpu, new_device, get_platform, GpuPlatform};

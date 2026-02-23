@@ -54,6 +54,7 @@ pub mod adapters;
 pub mod batch;
 pub mod cache;
 pub mod config;
+pub mod document_embedder;
 pub mod error;
 pub mod global_provider;
 pub mod gpu;
@@ -119,3 +120,6 @@ pub use global_provider::{
 
 // Adapter re-exports
 pub use adapters::E7CodeEmbeddingProvider;
+
+// Document embedder re-exports
+pub use document_embedder::{DocumentChunkInput, DocumentEmbedder, DocumentEmbeddings};

@@ -77,21 +77,16 @@ impl InferenceEngine {
             "Initializing inference engine"
         );
 
-        // Initialize CUDA device - NO FALLBACK to CPU
-        let device = Device::new_cuda(device_id as usize).map_err(|e| {
-            error!(
-                target: "warm::inference",
-                code = "EMB-E011",
-                model_id = %model_id,
-                device_id = device_id,
-                error = %e,
-                "Failed to initialize CUDA device for inference"
-            );
-            WarmError::InferenceInitFailed {
-                model_id: model_id.to_string(),
-                reason: format!("CUDA device {} initialization failed: {}", device_id, e),
-            }
-        })?;
+        // Initialize device - platform-aware (CUDA, Metal, or CPU)
+        let device = crate::gpu::device::new_device(device_id as usize);
+        info!(
+            target: "warm::inference",
+            code = "EMB-I015",
+            model_id = %model_id,
+            device_id = device_id,
+            device = ?device,
+            "Device initialized successfully"
+        );
 
         info!(
             target: "warm::inference",

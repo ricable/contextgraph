@@ -25,17 +25,49 @@ compile_error!(
     Exit Code: 101 (CUDA_UNAVAILABLE)"
 );
 
+// Candle feature (GPU support) is REQUIRED for warm loading
+#[cfg(not(feature = "candle"))]
+compile_error!(
+    "[EMB-E001] CUDA_UNAVAILABLE: The 'candle' feature MUST be enabled.
+
+    Context Graph embeddings require GPU acceleration.
+    There is NO CPU fallback and NO stub mode.
+
+    Target Hardware (Constitution v4.0.0):
+    - GPU: RTX 5090 (Blackwell architecture) or Apple Silicon
+    - VRAM: 32GB minimum
+
+    Remediation:
+    1. Build with default features (candle is enabled by default)
+    2. For Metal: --features metal
+    3. For CUDA: --features cuda
+
+    Constitution Reference: stack.gpu, AP-007
+    Exit Code: 101 (CUDA_UNAVAILABLE)"
+);
+
 #[cfg(feature = "candle")]
 use super::constants::{GB, MODEL_SIZES};
 #[cfg(feature = "candle")]
 use super::helpers::format_bytes;
 #[cfg(feature = "candle")]
 use crate::warm::config::WarmConfig;
-#[cfg(feature = "candle")]
+
+// cuda_alloc is only available with cuda feature, not metal
+// Use the re-export from warm/mod.rs which handles this conditionally
+#[cfg(feature = "cuda")]
 use crate::warm::cuda_alloc::{
     GpuInfo, WarmCudaAllocator, MINIMUM_VRAM_BYTES, REQUIRED_COMPUTE_MAJOR, REQUIRED_COMPUTE_MINOR,
 };
-#[cfg(feature = "candle")]
+#[cfg(feature = "cuda")]
+use crate::warm::error::{WarmError, WarmResult};
+
+// For metal (candle but not cuda), provide stub types via warm module re-exports
+#[cfg(all(feature = "candle", not(feature = "cuda")))]
+use crate::warm::cuda_alloc_stub::{
+    GpuInfo, WarmCudaAllocator, MINIMUM_VRAM_BYTES, REQUIRED_COMPUTE_MAJOR, REQUIRED_COMPUTE_MINOR,
+};
+#[cfg(all(feature = "candle", not(feature = "cuda")))]
 use crate::warm::error::{WarmError, WarmResult};
 
 /// Run pre-flight checks before loading.

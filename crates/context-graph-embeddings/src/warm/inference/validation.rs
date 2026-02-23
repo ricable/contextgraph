@@ -13,7 +13,7 @@
 //!
 //! FAIL FAST. NO FALLBACKS. REAL INFERENCE ONLY.
 
-use crate::warm::cuda_alloc::{GOLDEN_SIMILARITY_THRESHOLD, SIN_WAVE_ENERGY_THRESHOLD};
+use crate::warm::{GOLDEN_SIMILARITY_THRESHOLD, SIN_WAVE_ENERGY_THRESHOLD};
 use crate::warm::error::{WarmError, WarmResult};
 use tracing::{error, info, warn};
 

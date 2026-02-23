@@ -16,13 +16,13 @@
 //!
 //! GPU functionality requires CUDA hardware and the candle backend (now mandatory).
 
-mod device;
+pub mod device;
 mod memory;
 mod model_loader;
 mod ops;
 mod tensor;
 
-pub use device::{default_dtype, device, get_gpu_info, init_gpu, is_gpu_available, require_gpu};
+pub use device::{default_dtype, device, get_gpu_info, init_gpu, is_gpu_available, new_device, require_gpu};
 pub use memory::{
     GpuMemoryPool, MemoryBudget, MemoryError, MemoryPressure, MemoryStats, ModelSlot,
     ModelSlotManager, VramTracker, MODEL_BUDGET_BYTES,

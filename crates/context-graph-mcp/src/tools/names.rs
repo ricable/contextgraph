@@ -133,3 +133,29 @@ pub const GET_AUDIT_TRAIL: &str = "get_audit_trail";
 pub const GET_MERGE_HISTORY: &str = "get_merge_history";
 /// Full provenance chain from embedding to source for a memory.
 pub const GET_PROVENANCE_CHAIN: &str = "get_provenance_chain";
+
+// ========== RVF TOOLS (Phase 3 - RVF + SONA Integration) ==========
+/// Store vectors in RVF cognitive container with dual-write support.
+pub const CG_RVF_STORE: &str = "cg_rvf_store";
+/// Search vectors with progressive recall (Layer A/B/C).
+pub const CG_RVF_SEARCH: &str = "cg_rvf_search";
+/// Create COW branch from parent RVF store.
+pub const CG_RVF_DERIVE: &str = "cg_rvf_derive";
+/// Get RVF store status and metrics.
+pub const CG_RVF_STATUS: &str = "cg_rvf_status";
+
+// ========== OCR TOOLS (Phase 2 - OCR and Document Ingestion) ==========
+/// Process document through OCR and store in RVF format.
+pub const CG_OCR_INGEST: &str = "cg_ocr_ingest";
+/// Verify provenance chain integrity for a document.
+pub const CG_PROVENANCE_VERIFY: &str = "cg_provenance_verify";
+/// Export provenance chain as JSON for audit.
+pub const CG_PROVENANCE_EXPORT: &str = "cg_provenance_export";
+/// Initialize OCR storage backend.
+pub const CG_DB_INIT: &str = "cg_db_init";
+/// List stored memories/embeddings.
+pub const CG_MEMORY_LIST: &str = "cg_memory_list";
+/// Extract images from PDF/document.
+pub const CG_IMAGE_EXTRACT: &str = "cg_image_extract";
+/// Analyze image with VLM (Vision-Language Model).
+pub const CG_VLM_ANALYZE: &str = "cg_vlm_analyze";

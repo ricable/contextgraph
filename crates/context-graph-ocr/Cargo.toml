@@ -1,0 +1,73 @@
+[package]
+name = "context-graph-ocr"
+version = "0.1.0"
+edition = "2021"
+authors = ["Context Graph Team"]
+description = "OCR and Document Ingestion for Context Graph - RVF Producer"
+license = "MIT"
+repository = "https://github.com/contextgraph/contextgraph"
+
+[lib]
+name = "context_graph_ocr"
+path = "src/lib.rs"
+
+[features]
+default = []
+# GPU acceleration features (for embedding integration)
+candle = []
+metal = []
+cuda = []
+
+[dependencies]
+# Async runtime
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# HTTP client for Datalab API
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# PDF extraction
+lopdf = "0.34"
+
+# DOCX extraction (ZIP archive with XML)
+zip = "2.1"
+
+# Image processing
+image = "0.25"
+
+# Hashing
+sha2 = { workspace = true }
+hex = "0.4"
+
+# Serialization
+serde = { workspace = true }
+serde_json = "1.0"
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = "1.0"
+
+# Logging
+tracing = { workspace = true }
+
+# Time
+chrono = { workspace = true }
+
+# UUID
+uuid = { workspace = true }
+
+# Async file I/O
+tokio-util = { version = "0.7", features = ["codec"] }
+
+# Base64 encoding for image data
+base64 = "0.22"
+
+# URL parsing
+url = "2.5"
+
+# MIME type detection
+mime_guess = "2.0"
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.10"

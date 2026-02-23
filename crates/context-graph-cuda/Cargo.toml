@@ -41,12 +41,13 @@ tokio-test = "0.4"
 context-graph-core = { path = "../context-graph-core", features = ["test-utils"] }
 
 [features]
-default = ["cuda"]
+default = []
 cuda = []  # REQUIRED: RTX 5090 Blackwell CUDA support (candle integration pending CUDA 13.1 support)
 # FAISS GPU support - requires FAISS rebuilt with CUDA 13.1+ and sm_120 support.
 # Enable this ONLY after running: scripts/rebuild_faiss_gpu.sh
 # This feature links against libfaiss_c.so and enables GPU vector indexing.
 faiss-working = ["cuda"]
+metal = []  # Marker feature for Metal-aware code paths
 
 [build-dependencies]
 # Future: cc = "1.0"

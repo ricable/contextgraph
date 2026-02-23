@@ -7,6 +7,8 @@
 //! This module requires CUDA support (RTX 5090 / Blackwell).
 //! There are NO fallback stubs - the system will fail fast if CUDA is unavailable.
 
+#![cfg(feature = "cuda")]
+
 use crate::warm::error::{WarmError, WarmResult};
 
 use super::allocation::VramAllocation;

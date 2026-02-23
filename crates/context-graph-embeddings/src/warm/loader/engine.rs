@@ -11,7 +11,7 @@ use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
 use crate::warm::config::WarmConfig;
-use crate::warm::cuda_alloc::{GpuInfo, WarmCudaAllocator};
+use crate::warm::{GpuInfo, WarmCudaAllocator};
 use crate::warm::error::{WarmError, WarmResult};
 use crate::warm::memory_pool::WarmMemoryPools;
 use crate::warm::registry::{

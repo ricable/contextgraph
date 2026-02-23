@@ -17,6 +17,7 @@
 //! - `serialization`: Bincode serialization utilities
 //! - `indexes`: Secondary index operations (tags, temporal, sources)
 //! - `code`: Code entity and E7 embedding storage (separate from text)
+//! - `rvf`: RVF (RuVector Format) bridge for cognitive containers
 //!
 //! # Column Families (51 total)
 //!
@@ -42,6 +43,7 @@ pub mod graph_edges;
 pub mod indexes;
 pub mod memex;
 pub mod rocksdb_backend;
+pub mod rvf;
 pub mod serialization;
 pub mod teleological;
 
@@ -187,4 +189,13 @@ pub use context_graph_core::types::{
 pub use graph_edges::{
     BackgroundGraphBuilder, BatchBuildResult, BuilderStats, EdgeRepository, GraphBuilderConfig,
     GraphEdgeStats, GraphEdgeStorageError, GraphEdgeStorageResult, RebuildResult,
+};
+
+// Re-export RVF bridge types (Phase 3: RVF + SONA integration)
+pub use rvf::{
+    BridgeSearchResult, CowFilterType, ProgressiveRecallLayer, ResultSource, RvfBridge,
+    RvfBridgeConfig, RvfBridgeError, RvfBridgeResult, RvfBridgeStatus, RvfClient,
+    RvfClientConfig, RvfClientError, RvfClientResult, RvfFileIdentity, RvfSearchResult,
+    RvfSegment, RvfSegmentHeader, RvfSegmentStats, RvfSegmentType, SonaConfidence,
+    SonaConfig, SonaFeedback, SonaLearning, SonaLoop, SonaRecommendation, SonaState,
 };

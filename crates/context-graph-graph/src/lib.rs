@@ -52,7 +52,7 @@
 // Constitution Reference: stack.gpu, AP-007, TECH-GRAPH-004
 // ============================================================================
 
-#[cfg(not(feature = "faiss-gpu"))]
+#[cfg(not(any(feature = "faiss-gpu", feature = "faiss-working", feature = "metal")))]
 compile_error!(
     "[GRAPH-E001] FAISS_GPU_REQUIRED: The 'faiss-gpu' feature MUST be enabled.
 
@@ -62,8 +62,10 @@ compile_error!(
         - GPU: RTX 5090 (Blackwell architecture) or compatible
         - CUDA: 13.1+
         - libfaiss_c: GPU-enabled build
+        - OR Apple Silicon with Metal (build with --features metal)
 
     Build with: cargo build --features faiss-gpu
+    For Apple Silicon: cargo build --no-default-features --features faiss-gpu,metal
 
     Constitution Reference: stack.gpu, AP-007, TECH-GRAPH-004
     Performance Target: <2ms for 1M vectors @ k=100 (perf.latency.faiss_1M_k100)

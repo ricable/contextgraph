@@ -11,7 +11,7 @@ keywords = ["knowledge-graph", "faiss", "hyperbolic", "vector-search", "gpu"]
 [features]
 # GPU is REQUIRED for production. No CPU fallback.
 # Constitution Reference: stack.gpu, AP-007, ARCH-GPU-04
-default = ["faiss-gpu"]
+default = []
 # FAISS GPU support. REQUIRED in production.
 # Without this feature, compilation will FAIL with compile_error!
 faiss-gpu = []
@@ -19,12 +19,16 @@ faiss-gpu = []
 # This enables actual GPU vector indexing via libfaiss_c.so.
 # Enable ONLY after running: ./scripts/rebuild_faiss_gpu.sh
 faiss-working = ["context-graph-cuda/faiss-working"]
+# Enable CUDA acceleration (RTX 5090)
+cuda = ["context-graph-cuda/cuda", "context-graph-embeddings/cuda"]
+# Enable Metal acceleration (Apple Silicon)
+metal = ["context-graph-cuda/metal", "context-graph-embeddings/metal"]
 
 [dependencies]
-# Workspace crates - GPU required for all
+# Workspace crates
 context-graph-core = { path = "../context-graph-core" }
-context-graph-cuda = { path = "../context-graph-cuda", features = ["cuda"] }
-context-graph-embeddings = { path = "../context-graph-embeddings", features = ["cuda"] }
+context-graph-cuda = { path = "../context-graph-cuda", optional = true }
+context-graph-embeddings = { path = "../context-graph-embeddings" }
 
 # Storage
 rocksdb = "0.22"

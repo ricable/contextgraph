@@ -42,18 +42,30 @@
 mod config;
 mod constants;
 mod cpu;
+
+#[cfg(feature = "cuda")]
 mod ffi;
+
+#[cfg(feature = "cuda")]
 mod gpu;
+
+#[cfg(feature = "cuda")]
+mod types;
+
+#[cfg(not(feature = "cuda"))]
 mod types;
 
 #[cfg(test)]
 mod tests;
 
-// Re-export all public items - CUDA is ALWAYS required
+// Re-export all public items - GPU optional based on feature
 pub use config::ConeCudaConfig;
 pub use constants::{CONE_DATA_DIM, CONE_EPS, DEFAULT_CURVATURE, POINT_DIM};
 pub use cpu::{cone_check_batch_cpu, cone_membership_score_cpu};
+
+#[cfg(feature = "cuda")]
 pub use gpu::{
     cone_check_batch_gpu, cone_check_single_gpu, get_cone_kernel_info, is_cone_gpu_available,
 };
+
 pub use types::{ConeData, ConeKernelInfo};

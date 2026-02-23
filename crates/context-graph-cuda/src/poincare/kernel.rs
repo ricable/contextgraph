@@ -7,6 +7,7 @@
 //! This module requires CUDA support (RTX 5090 / Blackwell).
 //! There are NO fallback stubs - the system will fail fast if CUDA is unavailable.
 
+#[cfg(feature = "cuda")]
 use super::ffi;
 
 /// Information about the CUDA kernel configuration.
@@ -38,6 +39,7 @@ pub struct PoincareKernelInfo {
 ///     println!("Shared memory: {} bytes", info.shared_mem_bytes);
 /// }
 /// ```
+#[cfg(feature = "cuda")]
 pub fn get_kernel_info() -> Option<PoincareKernelInfo> {
     let mut block_dim_x: i32 = 0;
     let mut block_dim_y: i32 = 0;
@@ -59,6 +61,12 @@ pub fn get_kernel_info() -> Option<PoincareKernelInfo> {
         point_dim,
         shared_mem_bytes: shared_mem,
     })
+}
+
+/// Stub for non-cuda builds - returns None
+#[cfg(not(feature = "cuda"))]
+pub fn get_kernel_info() -> Option<PoincareKernelInfo> {
+    None
 }
 
 /// Check if CUDA Poincare kernels are available.
@@ -85,6 +93,7 @@ pub fn get_kernel_info() -> Option<PoincareKernelInfo> {
 ///     panic!("RTX 5090 required but CUDA unavailable");
 /// }
 /// ```
+#[cfg(feature = "cuda")]
 pub fn is_poincare_gpu_available() -> bool {
     // Use consolidated CUDA FFI from ffi module (ARCH-06 compliance)
     use crate::ffi::{cuDeviceGetCount, cuInit, is_cuda_success};
@@ -105,4 +114,10 @@ pub fn is_poincare_gpu_available() -> bool {
 
         device_count > 0
     }
+}
+
+// Stub for non-cuda builds - always returns false
+#[cfg(not(feature = "cuda"))]
+pub fn is_poincare_gpu_available() -> bool {
+    false
 }

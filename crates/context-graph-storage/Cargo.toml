@@ -8,7 +8,7 @@ license = "MIT"
 [dependencies]
 context-graph-core = { path = "../context-graph-core" }
 # GPU required per constitution (stack.gpu, AP-007)
-context-graph-embeddings = { path = "../context-graph-embeddings", features = ["candle", "cuda"] }
+context-graph-embeddings = { path = "../context-graph-embeddings" }
 # GPU batch similarity for multi-space search (ARCH-GPU-06)
 context-graph-cuda = { path = "../context-graph-cuda", optional = true }
 rocksdb = "0.22"
@@ -31,13 +31,17 @@ sha2 = "0.10"
 # TASK-STORAGE-P1-001
 usearch = "2"
 
+# RVF client for RuVector Format integration
+reqwest = { version = "0.12", features = ["json"] }
+
 # Unix file locking for stale lock detection
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 [features]
 # GPU is REQUIRED for production. Constitution Reference: stack.gpu, AP-007
-default = ["cuda"]
+default = []
+metal = ["context-graph-embeddings/metal"]
 cuda = ["context-graph-embeddings/cuda", "dep:context-graph-cuda", "context-graph-cuda/cuda"]
 
 [dev-dependencies]

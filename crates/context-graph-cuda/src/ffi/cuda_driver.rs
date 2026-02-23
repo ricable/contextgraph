@@ -73,6 +73,7 @@ pub const CU_DEVICE_ATTRIBUTE_WARP_SIZE: CUdevice_attribute = 10;
 // FFI DECLARATIONS
 // =============================================================================
 
+#[cfg(feature = "cuda")]
 #[link(name = "cuda")]
 extern "C" {
     /// Initialize the CUDA driver.
@@ -240,6 +241,58 @@ extern "C" {
     ///
     /// * `CUDA_SUCCESS` on success
     pub fn cuCtxGetCurrent(pctx: *mut CUcontext) -> CUresult;
+}
+
+// Stub implementations for non-CUDA builds - return error codes indicating no device
+#[cfg(not(feature = "cuda"))]
+extern "C" {
+    pub fn cuInit(_flags: c_uint) -> CUresult {
+        CUDA_ERROR_NOT_INITIALIZED
+    }
+
+    pub fn cuDeviceGet(_device: *mut CUdevice, _ordinal: c_int) -> CUresult {
+        CUDA_ERROR_NO_DEVICE
+    }
+
+    pub fn cuDeviceGetCount(_count: *mut c_int) -> CUresult {
+        CUDA_ERROR_NO_DEVICE
+    }
+
+    pub fn cuDeviceGetName(_name: *mut c_char, _len: c_int, _device: CUdevice) -> CUresult {
+        CUDA_ERROR_NO_DEVICE
+    }
+
+    pub fn cuDeviceTotalMem(_bytes: *mut usize, _device: CUdevice) -> CUresult {
+        CUDA_ERROR_NO_DEVICE
+    }
+
+    pub fn cuDriverGetVersion(_version: *mut c_int) -> CUresult {
+        CUDA_ERROR_NO_DEVICE
+    }
+
+    pub fn cuCtxCreate_v2(_pctx: *mut *mut c_void, _flags: c_uint, _device: CUdevice) -> CUresult {
+        CUDA_ERROR_NO_DEVICE
+    }
+
+    pub fn cuCtxDestroy_v2(_ctx: *mut c_void) -> CUresult {
+        CUDA_SUCCESS
+    }
+
+    pub fn cuCtxGetCurrent(_pctx: *mut *mut c_void) -> CUresult {
+        CUDA_SUCCESS
+    }
+
+    pub fn cuCtxSetCurrent(_ctx: *mut c_void) -> CUresult {
+        CUDA_SUCCESS
+    }
+
+    pub fn cuMemGetInfo_v2(_free: *mut usize, _total: *mut usize) -> CUresult {
+        CUDA_ERROR_NOT_INITIALIZED
+    }
+
+    pub fn cuDeviceGetAttribute(_pi: *mut c_int, _attr: CUdevice_attribute, _dev: CUdevice) -> CUresult {
+        CUDA_ERROR_NO_DEVICE
+    }
 }
 
 // =============================================================================

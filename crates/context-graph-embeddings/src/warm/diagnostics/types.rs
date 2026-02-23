@@ -5,7 +5,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::warm::cuda_alloc::GpuInfo;
+use crate::warm::GpuInfo;
+
 use crate::warm::error::WarmError;
 use crate::warm::state::WarmModelState;
 
@@ -118,6 +119,7 @@ pub struct GpuDiagnostics {
 impl GpuDiagnostics {
     /// Create GPU diagnostics from a [`GpuInfo`] structure.
     #[must_use]
+    #[cfg(feature = "cuda")]
     pub fn from_gpu_info(info: &GpuInfo, available_bytes: usize) -> Self {
         Self {
             device_id: info.device_id,
@@ -126,6 +128,20 @@ impl GpuDiagnostics {
             total_vram_bytes: info.total_memory_bytes,
             available_vram_bytes: available_bytes,
             driver_version: info.driver_version.clone(),
+        }
+    }
+
+    /// Create GPU diagnostics from a stub [`GpuInfo`] structure.
+    #[must_use]
+    #[cfg(not(feature = "cuda"))]
+    pub fn from_gpu_info(_info: &GpuInfo, available_bytes: usize) -> Self {
+        Self {
+            device_id: 0,
+            name: "CPU (Metal)".to_string(),
+            compute_capability: "N/A".to_string(),
+            total_vram_bytes: 0,
+            available_vram_bytes: available_bytes,
+            driver_version: "N/A".to_string(),
         }
     }
 }

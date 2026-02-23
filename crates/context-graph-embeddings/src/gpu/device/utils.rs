@@ -17,34 +17,43 @@ use candle_core::Device;
 
 use crate::gpu::GpuInfo;
 
-// Use consolidated CUDA FFI from context-graph-cuda
+// Use consolidated CUDA FFI from context-graph-cuda (only when CUDA is available)
+#[cfg(feature = "cuda")]
 use context_graph_cuda::ffi::{
     cuDeviceGet, cuDeviceGetAttribute, cuDeviceGetName, cuDeviceTotalMem_v2, cuDriverGetVersion,
     cuInit, decode_driver_version, is_cuda_success, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR,
     CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR,
 };
 
-/// Query REAL GPU information using CUDA Driver API.
+/// Query GPU information using platform-appropriate APIs.
 ///
-/// This function queries actual hardware properties. NO hardcoded fallbacks.
-/// If any query fails, appropriate error information is logged.
-///
-/// # Implementation Notes
-///
-/// Uses CUDA Driver API instead of Runtime API to avoid CUDA 13.1 WSL2 segfault bug.
-/// Uses `cuDeviceGetAttribute` instead of `cudaGetDeviceProperties` for performance
-/// (nanoseconds vs milliseconds per NVIDIA recommendations).
-///
-/// # Arguments
-///
-/// * `_device` - Candle device reference (used for API consistency; ordinal 0 assumed)
-///
-/// # Returns
-///
-/// `GpuInfo` with real hardware properties queried from the GPU.
-/// If queries fail, returns best-effort partial information with errors logged.
+/// This function queries actual hardware properties. For CUDA, uses Driver API.
+/// For Metal, returns Apple Silicon info. For CPU, returns CPU fallback info.
 pub(crate) fn query_gpu_info(_device: &Device) -> GpuInfo {
-    query_gpu_info_real(0)
+    #[cfg(feature = "cuda")]
+    {
+        query_gpu_info_real(0)
+    }
+    #[cfg(all(feature = "metal", target_os = "macos", not(feature = "cuda")))]
+    {
+        // Metal on Apple Silicon
+        GpuInfo {
+            name: "Apple Silicon GPU (Metal)".to_string(),
+            total_vram: 0, // Metal uses unified memory - not directly queryable
+            compute_capability: "metal".to_string(),
+            available: true,
+        }
+    }
+    #[cfg(not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))))]
+    {
+        // CPU fallback
+        GpuInfo {
+            name: "CPU".to_string(),
+            total_vram: 0,
+            compute_capability: "cpu".to_string(),
+            available: false,
+        }
+    }
 }
 
 /// Query GPU information for a specific device ordinal.
@@ -61,6 +70,7 @@ pub(crate) fn query_gpu_info(_device: &Device) -> GpuInfo {
 ///
 /// Logs errors but returns partial information with available=true if device exists.
 /// This ensures the system continues with best-effort info rather than failing entirely.
+#[cfg(feature = "cuda")]
 fn query_gpu_info_real(device_ordinal: u32) -> GpuInfo {
     // Default values in case of query failures (to detect partial success)
     let name;

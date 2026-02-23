@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::warm::config::WarmConfig;
-use crate::warm::cuda_alloc::GpuInfo;
+use crate::warm::GpuInfo;
 use crate::warm::error::WarmError;
 use crate::warm::handle::ModelHandle;
 use crate::warm::loader::WarmLoader;

@@ -42,11 +42,11 @@ fn main() {
         compile_cuda_kernels();
     }
 
-    // CUDA is ALWAYS required - no stub implementations
-    // RTX 5090 / Blackwell architecture mandated by constitution
-    #[cfg(not(feature = "cuda"))]
+    // No panic on non-cuda builds - allow Metal/CPU builds to proceed
+    // CUDA kernels will simply not be compiled without the cuda feature
+    #[cfg(not(any(feature = "cuda", feature = "metal")))]
     {
-        panic!("CUDA feature is required. RTX 5090 GPU must be available. No fallback stubs.");
+        println!("cargo:warning=Building without GPU acceleration. Use --features cuda for NVIDIA or --features metal for Apple Silicon.");
     }
 }
 

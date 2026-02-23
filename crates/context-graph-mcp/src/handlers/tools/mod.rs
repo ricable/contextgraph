@@ -18,6 +18,8 @@
 //! - search_by_embedder, get_embedder_clusters, compare_embedder_views, list_embedder_indexes (embedder_tools.rs) - Constitution v6.3 Embedder-First Search
 //! - search_recent (temporal_tools.rs) - E2 V_freshness Temporal Search
 //! - get_memory_neighbors, get_typed_edges, traverse_graph (graph_link_tools.rs) - K-NN Graph Linking
+//! - cg_rvf_store, cg_rvf_search, cg_rvf_derive, cg_rvf_status (rvf_tools.rs) - Phase 3 RVF + SONA Integration
+//! - cg_ocr_ingest, cg_provenance_verify, cg_provenance_export, cg_db_init, cg_memory_list, cg_image_extract, cg_vlm_analyze (ocr_tools.rs) - Phase 2 OCR and Document Ingestion
 
 mod causal_discovery_tools;
 mod causal_relationship_tools;
@@ -39,8 +41,10 @@ mod keyword_tools;
 pub(crate) mod validate;
 mod maintenance_tools;
 mod memory_tools;
+mod ocr_tools;
 mod provenance_tools;
 mod robustness_tools;
+mod rvf_tools;
 mod sequence_tools;
 mod status_tools;
 mod temporal_tools;

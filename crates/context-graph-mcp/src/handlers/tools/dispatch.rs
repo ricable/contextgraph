@@ -161,6 +161,19 @@ impl Handlers {
             tool_names::GET_PROVENANCE_CHAIN => call_get_provenance_chain(arguments),
             // Daemon tools (Multi-agent observability)
             tool_names::DAEMON_STATUS => call_daemon_status(),
+            // RVF tools (Phase 3: RVF + SONA integration)
+            tool_names::CG_RVF_STORE => call_cg_rvf_store(arguments),
+            tool_names::CG_RVF_SEARCH => call_cg_rvf_search(arguments),
+            tool_names::CG_RVF_DERIVE => call_cg_rvf_derive(arguments),
+            tool_names::CG_RVF_STATUS => call_cg_rvf_status(arguments),
+            // OCR tools (Phase 2: OCR and Document Ingestion)
+            tool_names::CG_OCR_INGEST => call_cg_ocr_ingest(arguments),
+            tool_names::CG_PROVENANCE_VERIFY => call_cg_provenance_verify(arguments),
+            tool_names::CG_PROVENANCE_EXPORT => call_cg_provenance_export(arguments),
+            tool_names::CG_DB_INIT => call_cg_db_init(arguments),
+            tool_names::CG_MEMORY_LIST => call_cg_memory_list(arguments),
+            tool_names::CG_IMAGE_EXTRACT => call_cg_image_extract(arguments),
+            tool_names::CG_VLM_ANALYZE => call_cg_vlm_analyze(arguments),
         )
     }
 }

@@ -5,6 +5,8 @@
 //! This module requires CUDA support (RTX 5090 / Blackwell).
 //! There are NO fallback stubs - linking will fail if CUDA libraries are unavailable.
 
+#![cfg(feature = "cuda")]
+
 use std::ffi::c_void;
 use std::os::raw::c_int;
 

@@ -1,4 +1,6 @@
 //! Green Contexts implementation for GPU SM partitioning.
+
+#![cfg(feature = "cuda")]
 //!
 //! TASK-13: Implements CUDA Green Contexts auto-enable for Volta+ GPUs.
 //! Constitution: 70% inference / 30% background partition.

@@ -10,7 +10,7 @@
 //! - `registry`: WarmModelRegistry for tracking loading state of all models
 //! - `memory_pool`: WarmMemoryPools for VRAM allocation management
 //! - `validation`: WarmValidator for model dimension/weight/inference validation
-//! - `cuda_alloc`: WarmCudaAllocator for non-evictable VRAM allocations
+//! - `cuda_alloc`: WarmCudaAllocator for non-evictable VRAM allocations (CUDA only)
 //! - `loader`: WarmLoader main orchestrator for warm model loading
 //! - `diagnostics`: WarmDiagnostics for comprehensive diagnostic reporting
 //! - `integration`: WarmEmbeddingPipeline for unified pipeline access
@@ -18,12 +18,25 @@
 //!
 //! # Requirements
 //!
-//! - CUDA 13.1+
+//! - CUDA 13.1+ (for cuda_alloc module)
 //! - RTX 5090 or equivalent (32GB VRAM)
 //! - Compute capability 12.0+
+//!
+//! # Feature Flags
+//!
+//! - `cuda`: Enables CUDA-specific VRAM management (cuda_alloc)
+//! - `metal`: Uses standard Candle allocator (no cuda_alloc)
+//! - Default: Uses standard allocator (equivalent to metal)
 
 pub mod config;
+
+// cuda_alloc is CUDA-specific - Metal uses Candle's built-in allocator
+#[cfg(feature = "cuda")]
 pub mod cuda_alloc;
+
+#[cfg(not(feature = "cuda"))]
+pub mod cuda_alloc_stub;
+
 pub mod diagnostics;
 pub mod error;
 pub mod handle;
@@ -64,7 +77,17 @@ pub use validation::{TestInferenceConfig, TestInput, ValidationResult, WarmValid
 pub use memory_pool::{ModelAllocation, ModelMemoryPool, WarmMemoryPools, WorkingMemoryPool};
 
 // Re-export CUDA allocation types for convenient access
+// When cuda feature is enabled: re-export CUDA allocator
+// When metal or no GPU feature: re-export stub (no-op for Metal)
+#[cfg(feature = "cuda")]
 pub use cuda_alloc::{
+    GpuInfo, VramAllocation, WarmCudaAllocator, FAKE_ALLOCATION_BASE_PATTERN,
+    GOLDEN_SIMILARITY_THRESHOLD, MINIMUM_VRAM_BYTES, REQUIRED_COMPUTE_MAJOR,
+    REQUIRED_COMPUTE_MINOR, SIN_WAVE_ENERGY_THRESHOLD,
+};
+
+#[cfg(not(feature = "cuda"))]
+pub use cuda_alloc_stub::{
     GpuInfo, VramAllocation, WarmCudaAllocator, FAKE_ALLOCATION_BASE_PATTERN,
     GOLDEN_SIMILARITY_THRESHOLD, MINIMUM_VRAM_BYTES, REQUIRED_COMPUTE_MAJOR,
     REQUIRED_COMPUTE_MINOR, SIN_WAVE_ENERGY_THRESHOLD,
